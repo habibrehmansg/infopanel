@@ -51,32 +51,54 @@
             "visible": {
               "args": [
                 {
-                  "field": "available",
-                  "name": "v",
-                  "op": "input"
+                  "args": [
+                    false,
+                    {
+                      "args": [
+                        {
+                          "field": "status",
+                          "name": "v",
+                          "op": "input"
+                        },
+                        "unbound"
+                      ],
+                      "op": "eq"
+                    }
+                  ],
+                  "op": "and"
                 },
                 {
                   "args": [
                     {
+                      "field": "available",
                       "name": "v",
                       "op": "input"
                     },
-                    1000
-                  ],
-                  "op": "ge"
-                },
-                {
-                  "args": [
                     {
-                      "name": "v",
-                      "op": "input"
+                      "args": [
+                        {
+                          "name": "v",
+                          "op": "input"
+                        },
+                        1000
+                      ],
+                      "op": "ge"
                     },
-                    2000
+                    {
+                      "args": [
+                        {
+                          "name": "v",
+                          "op": "input"
+                        },
+                        2000
+                      ],
+                      "op": "le"
+                    }
                   ],
-                  "op": "le"
+                  "op": "and"
                 }
               ],
-              "op": "and"
+              "op": "or"
             }
           }
         ]

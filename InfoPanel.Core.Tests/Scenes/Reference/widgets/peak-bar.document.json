@@ -86,7 +86,19 @@
                       "name": "held",
                       "op": "value"
                     },
-                    237
+                    {
+                      "args": [
+                        0,
+                        {
+                          "args": [
+                            240,
+                            3
+                          ],
+                          "op": "sub"
+                        }
+                      ],
+                      "op": "max"
+                    }
                   ],
                   "op": "mul"
                 }
@@ -531,7 +543,19 @@
                       "name": "held",
                       "op": "value"
                     },
-                    236
+                    {
+                      "args": [
+                        0,
+                        {
+                          "args": [
+                            240,
+                            4
+                          ],
+                          "op": "sub"
+                        }
+                      ],
+                      "op": "max"
+                    }
                   ],
                   "op": "mul"
                 }

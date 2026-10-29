@@ -95,13 +95,37 @@
                 "format": "infopanel.scene/1",
                 "nodes": [
                   {
-                    "cx": 80,
-                    "cy": 25,
+                    "cx": {
+                      "args": [
+                        160,
+                        2
+                      ],
+                      "op": "div"
+                    },
+                    "cy": {
+                      "args": [
+                        50,
+                        2
+                      ],
+                      "op": "div"
+                    },
                     "fill": "#ff1744ff",
                     "id": "shape",
                     "kind": "ellipse",
-                    "rx": 80,
-                    "ry": 25,
+                    "rx": {
+                      "args": [
+                        160,
+                        2
+                      ],
+                      "op": "div"
+                    },
+                    "ry": {
+                      "args": [
+                        50,
+                        2
+                      ],
+                      "op": "div"
+                    },
                     "stroke": {
                       "paint": "#ff0000ff",
                       "width": 5

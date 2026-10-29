@@ -99,6 +99,8 @@ public sealed class V1ParityTests(ITestOutputHelper output)
         // The glow reaches the whole frame; without it the case is the table case (A_glowing_table_differs_only_by_its_glow).
         ["table-glow"] = new(0.252, Hinting + "; " + FractionalRows + "; " + TableGlow, Unhinted: true, Box(0, 0, 260, 130)),
         ["donut-span270-rotation90"] = new(0.024, RotatedChart, Areas: Box(20, 20, 120, 120)),
+        // The bar turned 30° (its box on the canvas): its gradient turns with it, as in the turned picture; only the edges differ.
+        ["bar-rotated-gradient"] = new(0.017, RotatedChart, Areas: Box(22, 11, 276, 178)),
         ["composite-scale1"] = new(0.019, Hinting + "; " + RotatedChart, Unhinted: true, Box(360, 128, 88, 88)),
         ["composite-scale2"] = new(0.031, Hinting + "; " + RotatedChart + "; charts drawn at full resolution, not a 1x raster scaled up", Unhinted: true,
             [.. CompositeCharts.Select(c => c.Area)]),

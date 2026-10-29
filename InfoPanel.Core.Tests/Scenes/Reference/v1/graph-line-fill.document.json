@@ -48,8 +48,20 @@
                 "kind": "polyline",
                 "points": [
                   [
-                    302,
-                    102
+                    {
+                      "args": [
+                        300,
+                        2
+                      ],
+                      "op": "add"
+                    },
+                    {
+                      "args": [
+                        100,
+                        2
+                      ],
+                      "op": "add"
+                    }
                   ],
                   [
                     {
@@ -62,18 +74,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    75
+                                    0
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -88,7 +94,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -119,11 +128,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -145,18 +163,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    74
+                                    1
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -171,7 +183,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -202,11 +217,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -228,18 +252,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    73
+                                    2
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -254,7 +272,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -285,11 +306,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -311,18 +341,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    72
+                                    3
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -337,7 +361,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -368,11 +395,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -394,18 +430,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    71
+                                    4
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -420,7 +450,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -451,11 +484,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -477,18 +519,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    70
+                                    5
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -503,7 +539,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -534,11 +573,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -560,18 +608,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    69
+                                    6
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -586,7 +628,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -617,11 +662,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -643,18 +697,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    68
+                                    7
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -669,7 +717,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -700,11 +751,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -726,18 +786,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    67
+                                    8
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -752,7 +806,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -783,11 +840,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -809,18 +875,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    66
+                                    9
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -835,7 +895,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -866,11 +929,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -892,18 +964,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    65
+                                    10
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -918,7 +984,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -949,11 +1018,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -975,18 +1053,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    64
+                                    11
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1001,7 +1073,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1032,11 +1107,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1058,18 +1142,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    63
+                                    12
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1084,7 +1162,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1115,11 +1196,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1141,18 +1231,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    62
+                                    13
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1167,7 +1251,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1198,11 +1285,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1224,18 +1320,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    61
+                                    14
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1250,7 +1340,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1281,11 +1374,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1307,18 +1409,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    60
+                                    15
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1333,7 +1429,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1364,11 +1463,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1390,18 +1498,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    59
+                                    16
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1416,7 +1518,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1447,11 +1552,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1473,18 +1587,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    58
+                                    17
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1499,7 +1607,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1530,11 +1641,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1556,18 +1676,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    57
+                                    18
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1582,7 +1696,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1613,11 +1730,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1639,18 +1765,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    56
+                                    19
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1665,7 +1785,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1696,11 +1819,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1722,18 +1854,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    55
+                                    20
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1748,7 +1874,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1779,11 +1908,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1805,18 +1943,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    54
+                                    21
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1831,7 +1963,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1862,11 +1997,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1888,18 +2032,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    53
+                                    22
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1914,7 +2052,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -1945,11 +2086,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -1971,18 +2121,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    52
+                                    23
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -1997,7 +2141,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2028,11 +2175,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2054,18 +2210,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    51
+                                    24
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2080,7 +2230,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2111,11 +2264,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2137,18 +2299,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    50
+                                    25
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2163,7 +2319,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2194,11 +2353,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2220,18 +2388,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    49
+                                    26
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2246,7 +2408,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2277,11 +2442,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2303,18 +2477,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    48
+                                    27
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2329,7 +2497,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2360,11 +2531,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2386,18 +2566,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    47
+                                    28
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2412,7 +2586,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2443,11 +2620,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2469,18 +2655,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    46
+                                    29
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2495,7 +2675,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2526,11 +2709,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2552,18 +2744,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    45
+                                    30
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2578,7 +2764,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2609,11 +2798,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2635,18 +2833,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    44
+                                    31
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2661,7 +2853,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2692,11 +2887,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2718,18 +2922,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    43
+                                    32
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2744,7 +2942,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2775,11 +2976,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2801,18 +3011,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    42
+                                    33
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2827,7 +3031,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2858,11 +3065,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2884,18 +3100,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    41
+                                    34
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2910,7 +3120,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -2941,11 +3154,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -2967,18 +3189,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    40
+                                    35
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -2993,7 +3209,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3024,11 +3243,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3050,18 +3278,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    39
+                                    36
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3076,7 +3298,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3107,11 +3332,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3133,18 +3367,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    38
+                                    37
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3159,7 +3387,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3190,11 +3421,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3216,18 +3456,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    37
+                                    38
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3242,7 +3476,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3273,11 +3510,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3299,18 +3545,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    36
+                                    39
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3325,7 +3565,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3356,11 +3599,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3382,18 +3634,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    35
+                                    40
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3408,7 +3654,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3439,11 +3688,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3465,18 +3723,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    34
+                                    41
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3491,7 +3743,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3522,11 +3777,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3548,18 +3812,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    33
+                                    42
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3574,7 +3832,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3605,11 +3866,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3631,18 +3901,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    32
+                                    43
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3657,7 +3921,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3688,11 +3955,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3714,18 +3990,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    31
+                                    44
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3740,7 +4010,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3771,11 +4044,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3797,18 +4079,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    30
+                                    45
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3823,7 +4099,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3854,11 +4133,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3880,18 +4168,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    29
+                                    46
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3906,7 +4188,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -3937,11 +4222,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -3963,18 +4257,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    28
+                                    47
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -3989,7 +4277,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4020,11 +4311,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4046,18 +4346,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    27
+                                    48
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4072,7 +4366,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4103,11 +4400,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4129,18 +4435,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    26
+                                    49
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4155,7 +4455,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4186,11 +4489,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4212,18 +4524,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    25
+                                    50
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4238,7 +4544,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4269,11 +4578,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4295,18 +4613,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    24
+                                    51
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4321,7 +4633,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4352,11 +4667,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4378,18 +4702,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    23
+                                    52
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4404,7 +4722,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4435,11 +4756,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4461,18 +4791,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    22
+                                    53
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4487,7 +4811,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4518,11 +4845,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4544,18 +4880,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    21
+                                    54
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4570,7 +4900,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4601,11 +4934,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4627,18 +4969,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    20
+                                    55
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4653,7 +4989,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4684,11 +5023,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4710,18 +5058,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    19
+                                    56
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4736,7 +5078,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4767,11 +5112,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4793,18 +5147,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    18
+                                    57
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4819,7 +5167,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4850,11 +5201,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4876,18 +5236,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    17
+                                    58
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4902,7 +5256,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -4933,11 +5290,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -4959,18 +5325,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    16
+                                    59
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -4985,7 +5345,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5016,11 +5379,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5042,18 +5414,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    15
+                                    60
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5068,7 +5434,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5099,11 +5468,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5125,18 +5503,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    14
+                                    61
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5151,7 +5523,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5182,11 +5557,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5208,18 +5592,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    13
+                                    62
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5234,7 +5612,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5265,11 +5646,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5291,18 +5681,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    12
+                                    63
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5317,7 +5701,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5348,11 +5735,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5374,18 +5770,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    11
+                                    64
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5400,7 +5790,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5431,11 +5824,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5457,18 +5859,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    10
+                                    65
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5483,7 +5879,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5514,11 +5913,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5540,18 +5948,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    9
+                                    66
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5566,7 +5968,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5597,11 +6002,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5623,18 +6037,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    8
+                                    67
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5649,7 +6057,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5680,11 +6091,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5706,18 +6126,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    7
+                                    68
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5732,7 +6146,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5763,11 +6180,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5789,18 +6215,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    6
+                                    69
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5815,7 +6235,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5846,11 +6269,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5872,18 +6304,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    5
+                                    70
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5898,7 +6324,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -5929,11 +6358,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -5955,18 +6393,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    4
+                                    71
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -5981,7 +6413,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -6012,11 +6447,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -6038,18 +6482,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    3
+                                    72
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -6064,7 +6502,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -6095,11 +6536,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -6121,18 +6571,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    2
+                                    73
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -6147,7 +6591,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -6178,11 +6625,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -6204,18 +6660,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    1
+                                    74
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -6230,7 +6680,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -6261,11 +6714,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -6287,18 +6749,12 @@
                                 {
                                   "args": [
                                     {
-                                      "args": [
-                                        {
-                                          "name": "cnt",
-                                          "op": "value"
-                                        },
-                                        1
-                                      ],
-                                      "op": "sub"
+                                      "name": "shift",
+                                      "op": "value"
                                     },
-                                    0
+                                    75
                                   ],
-                                  "op": "sub"
+                                  "op": "add"
                                 },
                                 0
                               ],
@@ -6313,7 +6769,10 @@
                     },
                     {
                       "args": [
-                        99,
+                        {
+                          "name": "c",
+                          "op": "value"
+                        },
                         {
                           "args": [
                             {
@@ -6344,11 +6803,20 @@
                                       ],
                                       "op": "min"
                                     },
-                                    100
+                                    {
+                                      "name": "span",
+                                      "op": "value"
+                                    }
                                   ],
                                   "op": "div"
                                 },
-                                98
+                                {
+                                  "args": [
+                                    100,
+                                    2
+                                  ],
+                                  "op": "sub"
+                                }
                               ],
                               "op": "mul"
                             }
@@ -6388,7 +6856,13 @@
                       ],
                       "op": "sub"
                     },
-                    102
+                    {
+                      "args": [
+                        100,
+                        2
+                      ],
+                      "op": "add"
+                    }
                   ]
                 ],
                 "stroke": {
@@ -6397,13 +6871,25 @@
                 }
               },
               {
-                "h": 99,
+                "h": {
+                  "args": [
+                    100,
+                    1
+                  ],
+                  "op": "sub"
+                },
                 "kind": "rect",
                 "stroke": {
                   "paint": "#5c6370ff",
                   "width": 1
                 },
-                "w": 299,
+                "w": {
+                  "args": [
+                    300,
+                    1
+                  ],
+                  "op": "sub"
+                },
                 "x": 0.5,
                 "y": 0.5
               }
@@ -6428,11 +6914,187 @@
           }
         ],
         "values": {
+          "c": {
+            "args": [
+              100,
+              {
+                "args": [
+                  2,
+                  2
+                ],
+                "op": "div"
+              }
+            ],
+            "op": "sub"
+          },
           "cnt": {
             "count": 76,
             "fn": "count",
             "input": "v",
             "op": "history"
+          },
+          "shift": {
+            "args": [
+              {
+                "name": "cnt",
+                "op": "value"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          "line",
+                          "line"
+                        ],
+                        "op": "eq"
+                      },
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              {
+                                "args": [
+                                  300,
+                                  4
+                                ],
+                                "op": "div"
+                              }
+                            ],
+                            "op": "floor"
+                          },
+                          {
+                            "args": [
+                              {
+                                "args": [
+                                  {
+                                    "args": [
+                                      {
+                                        "args": [
+                                          {
+                                            "args": [
+                                              300,
+                                              4
+                                            ],
+                                            "op": "div"
+                                          }
+                                        ],
+                                        "op": "floor"
+                                      },
+                                      4
+                                    ],
+                                    "op": "mul"
+                                  },
+                                  300
+                                ],
+                                "op": "eq"
+                              },
+                              1,
+                              2
+                            ],
+                            "op": "if"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              {
+                                "args": [
+                                  300,
+                                  {
+                                    "args": [
+                                      2,
+                                      4,
+                                      2
+                                    ],
+                                    "op": "add"
+                                  }
+                                ],
+                                "op": "div"
+                              }
+                            ],
+                            "op": "floor"
+                          },
+                          {
+                            "args": [
+                              {
+                                "args": [
+                                  {
+                                    "args": [
+                                      {
+                                        "args": [
+                                          {
+                                            "args": [
+                                              300,
+                                              {
+                                                "args": [
+                                                  2,
+                                                  4,
+                                                  2
+                                                ],
+                                                "op": "add"
+                                              }
+                                            ],
+                                            "op": "div"
+                                          }
+                                        ],
+                                        "op": "floor"
+                                      },
+                                      4
+                                    ],
+                                    "op": "mul"
+                                  },
+                                  300
+                                ],
+                                "op": "eq"
+                              },
+                              0,
+                              1
+                            ],
+                            "op": "if"
+                          }
+                        ],
+                        "op": "add"
+                      }
+                    ],
+                    "op": "if"
+                  },
+                  4096
+                ],
+                "op": "min"
+              }
+            ],
+            "op": "sub"
+          },
+          "span": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      100,
+                      0
+                    ],
+                    "op": "sub"
+                  },
+                  0
+                ],
+                "op": "gt"
+              },
+              {
+                "args": [
+                  100,
+                  0
+                ],
+                "op": "sub"
+              },
+              0
+            ],
+            "op": "if"
           }
         }
       }

@@ -1,0 +1,638 @@
+{
+  "format": "infopanel.document/1",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "profile": {
+    "name": "bar-rotated-gradient",
+    "width": 320,
+    "height": 200,
+    "background": "#15191fff"
+  },
+  "items": [
+    {
+      "kind": "scene",
+      "id": "g115",
+      "name": "Bar",
+      "placement": {
+        "x": 10,
+        "y": 85,
+        "rotation": 30,
+        "pivot": [
+          150,
+          15
+        ]
+      },
+      "layout": {
+        "h": 30,
+        "w": 300
+      },
+      "bindings": {
+        "v": {
+          "key": "plugin:/golden/cpu/load"
+        }
+      },
+      "scene": {
+        "format": "infopanel.scene/1",
+        "inputs": {
+          "v": {
+            "label": "Value",
+            "type": "number"
+          }
+        },
+        "nodes": [
+          {
+            "children": [
+              {
+                "fill": "#2a2f3aff",
+                "h": {
+                  "args": [
+                    30,
+                    {
+                      "args": [
+                        2,
+                        {
+                          "args": [
+                            true,
+                            1,
+                            0
+                          ],
+                          "op": "if"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "kind": "rect",
+                "r": {
+                  "args": [
+                    0,
+                    {
+                      "args": [
+                        0,
+                        {
+                          "args": [
+                            true,
+                            1,
+                            0
+                          ],
+                          "op": "if"
+                        }
+                      ],
+                      "op": "sub"
+                    }
+                  ],
+                  "op": "max"
+                },
+                "w": {
+                  "args": [
+                    300,
+                    {
+                      "args": [
+                        2,
+                        {
+                          "args": [
+                            true,
+                            1,
+                            0
+                          ],
+                          "op": "if"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "x": {
+                  "args": [
+                    true,
+                    1,
+                    0
+                  ],
+                  "op": "if"
+                },
+                "y": {
+                  "args": [
+                    true,
+                    1,
+                    0
+                  ],
+                  "op": "if"
+                }
+              },
+              {
+                "fill": {
+                  "stops": [
+                    {
+                      "at": 0,
+                      "color": "#00c853ff"
+                    },
+                    {
+                      "at": 0.5,
+                      "color": "#00c853ff"
+                    },
+                    {
+                      "at": 1,
+                      "color": "#ffd600ff"
+                    }
+                  ],
+                  "type": "linear",
+                  "x1": {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              true,
+                              1,
+                              0
+                            ],
+                            "op": "if"
+                          },
+                          {
+                            "args": [
+                              {
+                                "name": "fill",
+                                "op": "value"
+                              },
+                              2
+                            ],
+                            "op": "div"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "half",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "sub"
+                  },
+                  "x2": {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              true,
+                              1,
+                              0
+                            ],
+                            "op": "if"
+                          },
+                          {
+                            "args": [
+                              {
+                                "name": "fill",
+                                "op": "value"
+                              },
+                              2
+                            ],
+                            "op": "div"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "half",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "add"
+                  },
+                  "y1": {
+                    "args": [
+                      {
+                        "args": [
+                          true,
+                          1,
+                          0
+                        ],
+                        "op": "if"
+                      },
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              30,
+                              {
+                                "args": [
+                                  2,
+                                  {
+                                    "args": [
+                                      true,
+                                      1,
+                                      0
+                                    ],
+                                    "op": "if"
+                                  }
+                                ],
+                                "op": "mul"
+                              }
+                            ],
+                            "op": "sub"
+                          },
+                          2
+                        ],
+                        "op": "div"
+                      }
+                    ],
+                    "op": "add"
+                  },
+                  "y2": {
+                    "args": [
+                      {
+                        "args": [
+                          true,
+                          1,
+                          0
+                        ],
+                        "op": "if"
+                      },
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              30,
+                              {
+                                "args": [
+                                  2,
+                                  {
+                                    "args": [
+                                      true,
+                                      1,
+                                      0
+                                    ],
+                                    "op": "if"
+                                  }
+                                ],
+                                "op": "mul"
+                              }
+                            ],
+                            "op": "sub"
+                          },
+                          2
+                        ],
+                        "op": "div"
+                      }
+                    ],
+                    "op": "add"
+                  }
+                },
+                "h": {
+                  "args": [
+                    30,
+                    {
+                      "args": [
+                        2,
+                        {
+                          "args": [
+                            true,
+                            1,
+                            0
+                          ],
+                          "op": "if"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                "id": "fill",
+                "kind": "rect",
+                "r": {
+                  "args": [
+                    0,
+                    {
+                      "args": [
+                        0,
+                        {
+                          "args": [
+                            true,
+                            1,
+                            0
+                          ],
+                          "op": "if"
+                        }
+                      ],
+                      "op": "sub"
+                    }
+                  ],
+                  "op": "max"
+                },
+                "visible": {
+                  "args": [
+                    {
+                      "name": "fill",
+                      "op": "value"
+                    },
+                    0
+                  ],
+                  "op": "gt"
+                },
+                "w": {
+                  "name": "fill",
+                  "op": "value"
+                },
+                "x": {
+                  "args": [
+                    true,
+                    1,
+                    0
+                  ],
+                  "op": "if"
+                },
+                "y": {
+                  "args": [
+                    true,
+                    1,
+                    0
+                  ],
+                  "op": "if"
+                }
+              },
+              {
+                "h": {
+                  "args": [
+                    30,
+                    1
+                  ],
+                  "op": "sub"
+                },
+                "kind": "rect",
+                "r": {
+                  "args": [
+                    0,
+                    {
+                      "args": [
+                        0,
+                        0.5
+                      ],
+                      "op": "sub"
+                    }
+                  ],
+                  "op": "max"
+                },
+                "stroke": {
+                  "paint": "#ffffffff",
+                  "width": 1
+                },
+                "w": {
+                  "args": [
+                    300,
+                    1
+                  ],
+                  "op": "sub"
+                },
+                "x": 0.5,
+                "y": 0.5
+              }
+            ],
+            "id": "bar",
+            "kind": "group"
+          }
+        ],
+        "state": {
+          "shown": {
+            "init": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "name": "v",
+                              "op": "input"
+                            },
+                            0,
+                            100
+                          ],
+                          "op": "norm"
+                        },
+                        0,
+                        1
+                      ],
+                      "op": "clamp"
+                    },
+                    {
+                      "args": [
+                        300,
+                        30
+                      ],
+                      "op": "max"
+                    }
+                  ],
+                  "op": "mul"
+                }
+              ],
+              "op": "round"
+            },
+            "next": {
+              "args": [
+                {
+                  "name": "shown",
+                  "op": "state"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "name": "v",
+                                          "op": "input"
+                                        },
+                                        0,
+                                        100
+                                      ],
+                                      "op": "norm"
+                                    },
+                                    0,
+                                    1
+                                  ],
+                                  "op": "clamp"
+                                },
+                                {
+                                  "args": [
+                                    300,
+                                    30
+                                  ],
+                                  "op": "max"
+                                }
+                              ],
+                              "op": "mul"
+                            }
+                          ],
+                          "op": "round"
+                        },
+                        {
+                          "name": "shown",
+                          "op": "state"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "op": "dt"
+                                    }
+                                  ],
+                                  "op": "neg"
+                                },
+                                0.3
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "exp"
+                        }
+                      ],
+                      "op": "sub"
+                    }
+                  ],
+                  "op": "mul"
+                }
+              ],
+              "op": "add"
+            }
+          }
+        },
+        "values": {
+          "fill": {
+            "args": [
+              {
+                "name": "shown",
+                "op": "state"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      30,
+                      300
+                    ],
+                    "op": "gt"
+                  },
+                  {
+                    "args": [
+                      30,
+                      {
+                        "args": [
+                          2,
+                          {
+                            "args": [
+                              true,
+                              1,
+                              0
+                            ],
+                            "op": "if"
+                          }
+                        ],
+                        "op": "mul"
+                      }
+                    ],
+                    "op": "sub"
+                  },
+                  {
+                    "args": [
+                      300,
+                      {
+                        "args": [
+                          2,
+                          {
+                            "args": [
+                              true,
+                              1,
+                              0
+                            ],
+                            "op": "if"
+                          }
+                        ],
+                        "op": "mul"
+                      }
+                    ],
+                    "op": "sub"
+                  }
+                ],
+                "op": "if"
+              }
+            ],
+            "op": "min"
+          },
+          "half": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "fill",
+                            "op": "value"
+                          },
+                          2
+                        ],
+                        "op": "pow"
+                      },
+                      {
+                        "args": [
+                          {
+                            "args": [
+                              30,
+                              {
+                                "args": [
+                                  2,
+                                  {
+                                    "args": [
+                                      true,
+                                      1,
+                                      0
+                                    ],
+                                    "op": "if"
+                                  }
+                                ],
+                                "op": "mul"
+                              }
+                            ],
+                            "op": "sub"
+                          },
+                          2
+                        ],
+                        "op": "pow"
+                      }
+                    ],
+                    "op": "add"
+                  }
+                ],
+                "op": "sqrt"
+              },
+              2
+            ],
+            "op": "div"
+          }
+        }
+      }
+    }
+  ]
+}

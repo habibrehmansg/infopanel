@@ -42,25 +42,25 @@
               "type": "linear",
               "x1": {
                 "args": [
-                  66,
+                  {
+                    "name": "gcx",
+                    "op": "value"
+                  },
                   {
                     "args": [
                       {
                         "args": [
                           {
-                            "args": [
-                              90,
-                              {
-                                "name": "angle",
-                                "op": "value"
-                              }
-                            ],
-                            "op": "sub"
+                            "name": "linearAngle",
+                            "op": "value"
                           }
                         ],
                         "op": "cos"
                       },
-                      81.60882305241266
+                      {
+                        "name": "half",
+                        "op": "value"
+                      }
                     ],
                     "op": "mul"
                   }
@@ -69,25 +69,25 @@
               },
               "x2": {
                 "args": [
-                  66,
+                  {
+                    "name": "gcx",
+                    "op": "value"
+                  },
                   {
                     "args": [
                       {
                         "args": [
                           {
-                            "args": [
-                              90,
-                              {
-                                "name": "angle",
-                                "op": "value"
-                              }
-                            ],
-                            "op": "sub"
+                            "name": "linearAngle",
+                            "op": "value"
                           }
                         ],
                         "op": "cos"
                       },
-                      81.60882305241266
+                      {
+                        "name": "half",
+                        "op": "value"
+                      }
                     ],
                     "op": "mul"
                   }
@@ -96,25 +96,25 @@
               },
               "y1": {
                 "args": [
-                  48,
+                  {
+                    "name": "gcy",
+                    "op": "value"
+                  },
                   {
                     "args": [
                       {
                         "args": [
                           {
-                            "args": [
-                              90,
-                              {
-                                "name": "angle",
-                                "op": "value"
-                              }
-                            ],
-                            "op": "sub"
+                            "name": "linearAngle",
+                            "op": "value"
                           }
                         ],
                         "op": "sin"
                       },
-                      81.60882305241266
+                      {
+                        "name": "half",
+                        "op": "value"
+                      }
                     ],
                     "op": "mul"
                   }
@@ -123,25 +123,25 @@
               },
               "y2": {
                 "args": [
-                  48,
+                  {
+                    "name": "gcy",
+                    "op": "value"
+                  },
                   {
                     "args": [
                       {
                         "args": [
                           {
-                            "args": [
-                              90,
-                              {
-                                "name": "angle",
-                                "op": "value"
-                              }
-                            ],
-                            "op": "sub"
+                            "name": "linearAngle",
+                            "op": "value"
                           }
                         ],
                         "op": "sin"
                       },
-                      81.60882305241266
+                      {
+                        "name": "half",
+                        "op": "value"
+                      }
                     ],
                     "op": "mul"
                   }
@@ -176,6 +176,439 @@
               360
             ],
             "op": "mod"
+          },
+          "bh": {
+            "args": [
+              {
+                "name": "vmax",
+                "op": "value"
+              },
+              {
+                "name": "vmin",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "bw": {
+            "args": [
+              {
+                "name": "umax",
+                "op": "value"
+              },
+              {
+                "name": "umin",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "gcx": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "gcy": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "half": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "bw",
+                            "op": "value"
+                          },
+                          {
+                            "name": "bw",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "mul"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "bh",
+                            "op": "value"
+                          },
+                          {
+                            "name": "bh",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "mul"
+                      }
+                    ],
+                    "op": "add"
+                  }
+                ],
+                "op": "sqrt"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "linearAngle": {
+            "args": [
+              {
+                "args": [
+                  90,
+                  {
+                    "name": "angle",
+                    "op": "value"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "rc": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "cos"
+          },
+          "rot": {
+            "field": "rotation",
+            "op": "box"
+          },
+          "rs": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sin"
+          },
+          "umax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "max"
+          },
+          "umin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "min"
+          },
+          "vmax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "max"
+          },
+          "vmin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "min"
           }
         }
       }
@@ -197,12 +630,18 @@
         "nodes": [
           {
             "fill": {
-              "cx": 66,
-              "cy": 48,
+              "cx": {
+                "name": "gcx",
+                "op": "value"
+              },
+              "cy": {
+                "name": "gcy",
+                "op": "value"
+              },
               "start": {
                 "args": [
                   {
-                    "name": "angle",
+                    "name": "localAngle",
                     "op": "value"
                   },
                   90
@@ -256,6 +695,365 @@
               360
             ],
             "op": "mod"
+          },
+          "gcx": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "gcy": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "localAngle": {
+            "args": [
+              {
+                "name": "angle",
+                "op": "value"
+              },
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "rc": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "cos"
+          },
+          "rot": {
+            "field": "rotation",
+            "op": "box"
+          },
+          "rs": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sin"
+          },
+          "umax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "max"
+          },
+          "umin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "min"
+          },
+          "vmax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "max"
+          },
+          "vmin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "min"
           }
         }
       }
@@ -277,11 +1075,29 @@
         "nodes": [
           {
             "fill": {
-              "cx": 66,
-              "cy": 48,
+              "cx": {
+                "name": "gcx",
+                "op": "value"
+              },
+              "cy": {
+                "name": "gcy",
+                "op": "value"
+              },
               "r": {
                 "args": [
-                  132,
+                  {
+                    "args": [
+                      {
+                        "name": "bw",
+                        "op": "value"
+                      },
+                      {
+                        "name": "bh",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "max"
+                  },
                   {
                     "args": [
                       0.8,
@@ -429,6 +1245,378 @@
               360
             ],
             "op": "mod"
+          },
+          "bh": {
+            "args": [
+              {
+                "name": "vmax",
+                "op": "value"
+              },
+              {
+                "name": "vmin",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "bw": {
+            "args": [
+              {
+                "name": "umax",
+                "op": "value"
+              },
+              {
+                "name": "umin",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "gcx": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "gcy": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "rc": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "cos"
+          },
+          "rot": {
+            "field": "rotation",
+            "op": "box"
+          },
+          "rs": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sin"
+          },
+          "umax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "max"
+          },
+          "umin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "min"
+          },
+          "vmax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "max"
+          },
+          "vmin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "min"
           }
         }
       }
@@ -477,19 +1665,25 @@
                 "type": "linear",
                 "x1": {
                   "args": [
-                    66,
+                    {
+                      "name": "gcx",
+                      "op": "value"
+                    },
                     {
                       "args": [
                         {
                           "args": [
                             {
-                              "name": "angle",
+                              "name": "localAngle",
                               "op": "value"
                             }
                           ],
                           "op": "cos"
                         },
-                        81.60882305241266
+                        {
+                          "name": "half",
+                          "op": "value"
+                        }
                       ],
                       "op": "mul"
                     }
@@ -498,19 +1692,25 @@
                 },
                 "x2": {
                   "args": [
-                    66,
+                    {
+                      "name": "gcx",
+                      "op": "value"
+                    },
                     {
                       "args": [
                         {
                           "args": [
                             {
-                              "name": "angle",
+                              "name": "localAngle",
                               "op": "value"
                             }
                           ],
                           "op": "cos"
                         },
-                        81.60882305241266
+                        {
+                          "name": "half",
+                          "op": "value"
+                        }
                       ],
                       "op": "mul"
                     }
@@ -519,19 +1719,25 @@
                 },
                 "y1": {
                   "args": [
-                    48,
+                    {
+                      "name": "gcy",
+                      "op": "value"
+                    },
                     {
                       "args": [
                         {
                           "args": [
                             {
-                              "name": "angle",
+                              "name": "localAngle",
                               "op": "value"
                             }
                           ],
                           "op": "sin"
                         },
-                        81.60882305241266
+                        {
+                          "name": "half",
+                          "op": "value"
+                        }
                       ],
                       "op": "mul"
                     }
@@ -540,19 +1746,25 @@
                 },
                 "y2": {
                   "args": [
-                    48,
+                    {
+                      "name": "gcy",
+                      "op": "value"
+                    },
                     {
                       "args": [
                         {
                           "args": [
                             {
-                              "name": "angle",
+                              "name": "localAngle",
                               "op": "value"
                             }
                           ],
                           "op": "sin"
                         },
-                        81.60882305241266
+                        {
+                          "name": "half",
+                          "op": "value"
+                        }
                       ],
                       "op": "mul"
                     }
@@ -586,7 +1798,10 @@
                 "type": "linear",
                 "x1": {
                   "args": [
-                    66,
+                    {
+                      "name": "gcx",
+                      "op": "value"
+                    },
                     {
                       "args": [
                         {
@@ -594,7 +1809,7 @@
                             {
                               "args": [
                                 {
-                                  "name": "angle",
+                                  "name": "localAngle",
                                   "op": "value"
                                 },
                                 90
@@ -604,7 +1819,10 @@
                           ],
                           "op": "cos"
                         },
-                        81.60882305241266
+                        {
+                          "name": "half",
+                          "op": "value"
+                        }
                       ],
                       "op": "mul"
                     }
@@ -613,7 +1831,10 @@
                 },
                 "x2": {
                   "args": [
-                    66,
+                    {
+                      "name": "gcx",
+                      "op": "value"
+                    },
                     {
                       "args": [
                         {
@@ -621,7 +1842,7 @@
                             {
                               "args": [
                                 {
-                                  "name": "angle",
+                                  "name": "localAngle",
                                   "op": "value"
                                 },
                                 90
@@ -631,7 +1852,10 @@
                           ],
                           "op": "cos"
                         },
-                        81.60882305241266
+                        {
+                          "name": "half",
+                          "op": "value"
+                        }
                       ],
                       "op": "mul"
                     }
@@ -640,7 +1864,10 @@
                 },
                 "y1": {
                   "args": [
-                    48,
+                    {
+                      "name": "gcy",
+                      "op": "value"
+                    },
                     {
                       "args": [
                         {
@@ -648,7 +1875,7 @@
                             {
                               "args": [
                                 {
-                                  "name": "angle",
+                                  "name": "localAngle",
                                   "op": "value"
                                 },
                                 90
@@ -658,7 +1885,10 @@
                           ],
                           "op": "sin"
                         },
-                        81.60882305241266
+                        {
+                          "name": "half",
+                          "op": "value"
+                        }
                       ],
                       "op": "mul"
                     }
@@ -667,7 +1897,10 @@
                 },
                 "y2": {
                   "args": [
-                    48,
+                    {
+                      "name": "gcy",
+                      "op": "value"
+                    },
                     {
                       "args": [
                         {
@@ -675,7 +1908,7 @@
                             {
                               "args": [
                                 {
-                                  "name": "angle",
+                                  "name": "localAngle",
                                   "op": "value"
                                 },
                                 90
@@ -685,7 +1918,10 @@
                           ],
                           "op": "sin"
                         },
-                        81.60882305241266
+                        {
+                          "name": "half",
+                          "op": "value"
+                        }
                       ],
                       "op": "mul"
                     }
@@ -722,6 +1958,433 @@
               360
             ],
             "op": "mod"
+          },
+          "bh": {
+            "args": [
+              {
+                "name": "vmax",
+                "op": "value"
+              },
+              {
+                "name": "vmin",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "bw": {
+            "args": [
+              {
+                "name": "umax",
+                "op": "value"
+              },
+              {
+                "name": "umin",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "gcx": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "gcy": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "half": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "bw",
+                            "op": "value"
+                          },
+                          {
+                            "name": "bw",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "mul"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "bh",
+                            "op": "value"
+                          },
+                          {
+                            "name": "bh",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "mul"
+                      }
+                    ],
+                    "op": "add"
+                  }
+                ],
+                "op": "sqrt"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "localAngle": {
+            "args": [
+              {
+                "name": "angle",
+                "op": "value"
+              },
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "rc": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "cos"
+          },
+          "rot": {
+            "field": "rotation",
+            "op": "box"
+          },
+          "rs": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sin"
+          },
+          "umax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "max"
+          },
+          "umin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "min"
+          },
+          "vmax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "max"
+          },
+          "vmin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "min"
           }
         }
       }
@@ -768,19 +2431,25 @@
               "type": "linear",
               "x1": {
                 "args": [
-                  66,
+                  {
+                    "name": "gcx",
+                    "op": "value"
+                  },
                   {
                     "args": [
                       {
                         "args": [
                           {
-                            "name": "angle",
+                            "name": "localAngle",
                             "op": "value"
                           }
                         ],
                         "op": "cos"
                       },
-                      81.60882305241266
+                      {
+                        "name": "half",
+                        "op": "value"
+                      }
                     ],
                     "op": "mul"
                   }
@@ -789,19 +2458,25 @@
               },
               "x2": {
                 "args": [
-                  66,
+                  {
+                    "name": "gcx",
+                    "op": "value"
+                  },
                   {
                     "args": [
                       {
                         "args": [
                           {
-                            "name": "angle",
+                            "name": "localAngle",
                             "op": "value"
                           }
                         ],
                         "op": "cos"
                       },
-                      81.60882305241266
+                      {
+                        "name": "half",
+                        "op": "value"
+                      }
                     ],
                     "op": "mul"
                   }
@@ -810,19 +2485,25 @@
               },
               "y1": {
                 "args": [
-                  48,
+                  {
+                    "name": "gcy",
+                    "op": "value"
+                  },
                   {
                     "args": [
                       {
                         "args": [
                           {
-                            "name": "angle",
+                            "name": "localAngle",
                             "op": "value"
                           }
                         ],
                         "op": "sin"
                       },
-                      81.60882305241266
+                      {
+                        "name": "half",
+                        "op": "value"
+                      }
                     ],
                     "op": "mul"
                   }
@@ -831,19 +2512,25 @@
               },
               "y2": {
                 "args": [
-                  48,
+                  {
+                    "name": "gcy",
+                    "op": "value"
+                  },
                   {
                     "args": [
                       {
                         "args": [
                           {
-                            "name": "angle",
+                            "name": "localAngle",
                             "op": "value"
                           }
                         ],
                         "op": "sin"
                       },
-                      81.60882305241266
+                      {
+                        "name": "half",
+                        "op": "value"
+                      }
                     ],
                     "op": "mul"
                   }
@@ -878,6 +2565,433 @@
               360
             ],
             "op": "mod"
+          },
+          "bh": {
+            "args": [
+              {
+                "name": "vmax",
+                "op": "value"
+              },
+              {
+                "name": "vmin",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "bw": {
+            "args": [
+              {
+                "name": "umax",
+                "op": "value"
+              },
+              {
+                "name": "umin",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "gcx": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "gcy": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "half": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "bw",
+                            "op": "value"
+                          },
+                          {
+                            "name": "bw",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "mul"
+                      },
+                      {
+                        "args": [
+                          {
+                            "name": "bh",
+                            "op": "value"
+                          },
+                          {
+                            "name": "bh",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "mul"
+                      }
+                    ],
+                    "op": "add"
+                  }
+                ],
+                "op": "sqrt"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "localAngle": {
+            "args": [
+              {
+                "name": "angle",
+                "op": "value"
+              },
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "rc": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "cos"
+          },
+          "rot": {
+            "field": "rotation",
+            "op": "box"
+          },
+          "rs": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sin"
+          },
+          "umax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "max"
+          },
+          "umin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "min"
+          },
+          "vmax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "max"
+          },
+          "vmin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "min"
           }
         }
       }
@@ -899,10 +3013,16 @@
         "nodes": [
           {
             "fill": {
-              "cx": 66,
-              "cy": 48,
+              "cx": {
+                "name": "gcx",
+                "op": "value"
+              },
+              "cy": {
+                "name": "gcy",
+                "op": "value"
+              },
               "start": {
-                "name": "angle",
+                "name": "localAngle",
                 "op": "value"
               },
               "stops": [
@@ -976,6 +3096,365 @@
               360
             ],
             "op": "mod"
+          },
+          "gcx": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "gcy": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "vmin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "vmax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          {
+                            "name": "umin",
+                            "op": "value"
+                          },
+                          {
+                            "name": "umax",
+                            "op": "value"
+                          }
+                        ],
+                        "op": "add"
+                      },
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              2
+            ],
+            "op": "div"
+          },
+          "localAngle": {
+            "args": [
+              {
+                "name": "angle",
+                "op": "value"
+              },
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sub"
+          },
+          "rc": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "cos"
+          },
+          "rot": {
+            "field": "rotation",
+            "op": "box"
+          },
+          "rs": {
+            "args": [
+              {
+                "name": "rot",
+                "op": "value"
+              }
+            ],
+            "op": "sin"
+          },
+          "umax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "max"
+          },
+          "umin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "sub"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "neg"
+              }
+            ],
+            "op": "min"
+          },
+          "vmax": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "max"
+          },
+          "vmin": {
+            "args": [
+              0,
+              {
+                "args": [
+                  132,
+                  {
+                    "name": "rs",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              },
+              {
+                "args": [
+                  {
+                    "args": [
+                      132,
+                      {
+                        "name": "rs",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  },
+                  {
+                    "args": [
+                      96,
+                      {
+                        "name": "rc",
+                        "op": "value"
+                      }
+                    ],
+                    "op": "mul"
+                  }
+                ],
+                "op": "add"
+              },
+              {
+                "args": [
+                  96,
+                  {
+                    "name": "rc",
+                    "op": "value"
+                  }
+                ],
+                "op": "mul"
+              }
+            ],
+            "op": "min"
           }
         }
       }

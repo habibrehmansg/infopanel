@@ -37,22 +37,252 @@
           {
             "children": [
               {
-                "cx": 60,
-                "cy": 60,
+                "cx": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    1
+                  ],
+                  "op": "add"
+                },
+                "cy": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    1
+                  ],
+                  "op": "add"
+                },
                 "fill": "#2a2f3aff",
-                "inner": 43,
+                "inner": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            16,
+                            0
+                          ],
+                          "op": "max"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    120,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        }
+                      ],
+                      "op": "min"
+                    }
+                  ],
+                  "op": "sub"
+                },
                 "kind": "arc",
-                "r": 59,
+                "r": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            120,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    1
+                  ],
+                  "op": "sub"
+                },
                 "sweep": 270
               },
               {
-                "cx": 60,
-                "cy": 60,
+                "cx": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    1
+                  ],
+                  "op": "add"
+                },
+                "cy": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    1
+                  ],
+                  "op": "add"
+                },
                 "fill": "#00e676ff",
                 "id": "value",
-                "inner": 43,
+                "inner": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            16,
+                            0
+                          ],
+                          "op": "max"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    120,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        }
+                      ],
+                      "op": "min"
+                    }
+                  ],
+                  "op": "sub"
+                },
                 "kind": "arc",
-                "r": 59,
+                "r": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            120,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    1
+                  ],
+                  "op": "sub"
+                },
                 "sweep": {
                   "name": "sweep",
                   "op": "value"
@@ -70,10 +300,79 @@
               },
               {
                 "close": "open",
-                "cx": 60,
-                "cy": 60,
+                "cx": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    1
+                  ],
+                  "op": "add"
+                },
+                "cy": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    1
+                  ],
+                  "op": "add"
+                },
                 "kind": "arc",
-                "r": 58.5,
+                "r": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    0.5
+                  ],
+                  "op": "sub"
+                },
                 "stroke": {
                   "paint": "#ffffffff",
                   "width": 1
@@ -82,10 +381,114 @@
               },
               {
                 "close": "open",
-                "cx": 60,
-                "cy": 60,
+                "cx": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    1
+                  ],
+                  "op": "add"
+                },
+                "cy": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    1
+                  ],
+                  "op": "add"
+                },
                 "kind": "arc",
-                "r": 43.5,
+                "r": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    120,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                16,
+                                0
+                              ],
+                              "op": "max"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        120,
+                                        2
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            }
+                          ],
+                          "op": "min"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    0.5
+                  ],
+                  "op": "add"
+                },
                 "stroke": {
                   "paint": "#ffffffff",
                   "width": 1
@@ -98,10 +501,195 @@
                   "paint": "#ffffffff",
                   "width": 1
                 },
-                "x1": 103.5,
-                "x2": 118.5,
-                "y1": 60,
-                "y2": 60
+                "x1": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    120,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        },
+                        1
+                      ],
+                      "op": "add"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        120,
+                                        2
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    16,
+                                    0
+                                  ],
+                                  "op": "max"
+                                },
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            120,
+                                            2
+                                          ],
+                                          "op": "div"
+                                        }
+                                      ],
+                                      "op": "floor"
+                                    },
+                                    1
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "min"
+                            }
+                          ],
+                          "op": "sub"
+                        },
+                        0.5
+                      ],
+                      "op": "add"
+                    }
+                  ],
+                  "op": "add"
+                },
+                "x2": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    120,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        },
+                        1
+                      ],
+                      "op": "add"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    120,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        },
+                        0.5
+                      ],
+                      "op": "sub"
+                    }
+                  ],
+                  "op": "add"
+                },
+                "y1": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    1
+                  ],
+                  "op": "add"
+                },
+                "y2": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                120,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        1
+                      ],
+                      "op": "sub"
+                    },
+                    1
+                  ],
+                  "op": "add"
+                }
               },
               {
                 "kind": "line",
@@ -109,10 +697,332 @@
                   "paint": "#ffffffff",
                   "width": 1
                 },
-                "x1": 59.99999999999999,
-                "x2": 59.999999999999986,
-                "y1": 16.5,
-                "y2": 1.5
+                "x1": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    120,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        },
+                        1
+                      ],
+                      "op": "add"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            120,
+                                            2
+                                          ],
+                                          "op": "div"
+                                        }
+                                      ],
+                                      "op": "floor"
+                                    },
+                                    1
+                                  ],
+                                  "op": "sub"
+                                },
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        16,
+                                        0
+                                      ],
+                                      "op": "max"
+                                    },
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            {
+                                              "args": [
+                                                120,
+                                                2
+                                              ],
+                                              "op": "div"
+                                            }
+                                          ],
+                                          "op": "floor"
+                                        },
+                                        1
+                                      ],
+                                      "op": "sub"
+                                    }
+                                  ],
+                                  "op": "min"
+                                }
+                              ],
+                              "op": "sub"
+                            },
+                            0.5
+                          ],
+                          "op": "add"
+                        },
+                        {
+                          "args": [
+                            270
+                          ],
+                          "op": "cos"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                "x2": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    120,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        },
+                        1
+                      ],
+                      "op": "add"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        120,
+                                        2
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            0.5
+                          ],
+                          "op": "sub"
+                        },
+                        {
+                          "args": [
+                            270
+                          ],
+                          "op": "cos"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                "y1": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    120,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        },
+                        1
+                      ],
+                      "op": "add"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            120,
+                                            2
+                                          ],
+                                          "op": "div"
+                                        }
+                                      ],
+                                      "op": "floor"
+                                    },
+                                    1
+                                  ],
+                                  "op": "sub"
+                                },
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        16,
+                                        0
+                                      ],
+                                      "op": "max"
+                                    },
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            {
+                                              "args": [
+                                                120,
+                                                2
+                                              ],
+                                              "op": "div"
+                                            }
+                                          ],
+                                          "op": "floor"
+                                        },
+                                        1
+                                      ],
+                                      "op": "sub"
+                                    }
+                                  ],
+                                  "op": "min"
+                                }
+                              ],
+                              "op": "sub"
+                            },
+                            0.5
+                          ],
+                          "op": "add"
+                        },
+                        {
+                          "args": [
+                            270
+                          ],
+                          "op": "sin"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                "y2": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    120,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            1
+                          ],
+                          "op": "sub"
+                        },
+                        1
+                      ],
+                      "op": "add"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        120,
+                                        2
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                1
+                              ],
+                              "op": "sub"
+                            },
+                            0.5
+                          ],
+                          "op": "sub"
+                        },
+                        {
+                          "args": [
+                            270
+                          ],
+                          "op": "sin"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               }
             ],
             "clip": {
@@ -125,8 +1035,30 @@
             "transform": [
               {
                 "angle": 90,
-                "cx": 60,
-                "cy": 60,
+                "cx": {
+                  "args": [
+                    {
+                      "args": [
+                        120,
+                        2
+                      ],
+                      "op": "div"
+                    }
+                  ],
+                  "op": "floor"
+                },
+                "cy": {
+                  "args": [
+                    {
+                      "args": [
+                        120,
+                        2
+                      ],
+                      "op": "div"
+                    }
+                  ],
+                  "op": "floor"
+                },
                 "type": "rotate"
               }
             ],

@@ -89,11 +89,29 @@
             "kind": "polyline",
             "points": [
               [
-                19.200000000000003,
+                {
+                  "args": [
+                    96,
+                    0.2
+                  ],
+                  "op": "mul"
+                },
                 0
               ],
               [
-                76.8,
+                {
+                  "args": [
+                    96,
+                    {
+                      "args": [
+                        96,
+                        0.2
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
                 0
               ],
               [
@@ -135,7 +153,13 @@
             "kind": "polyline",
             "points": [
               [
-                24,
+                {
+                  "args": [
+                    96,
+                    0.25
+                  ],
+                  "op": "mul"
+                },
                 0
               ],
               [
@@ -143,7 +167,19 @@
                 0
               ],
               [
-                72,
+                {
+                  "args": [
+                    96,
+                    {
+                      "args": [
+                        96,
+                        0.25
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "sub"
+                },
                 96
               ],
               [
@@ -175,13 +211,37 @@
         "format": "infopanel.scene/1",
         "nodes": [
           {
-            "cx": 48,
-            "cy": 48,
+            "cx": {
+              "args": [
+                96,
+                2
+              ],
+              "op": "div"
+            },
+            "cy": {
+              "args": [
+                96,
+                2
+              ],
+              "op": "div"
+            },
             "fill": "#3d5afeff",
             "id": "shape",
             "kind": "ellipse",
-            "rx": 48,
-            "ry": 48,
+            "rx": {
+              "args": [
+                96,
+                2
+              ],
+              "op": "div"
+            },
+            "ry": {
+              "args": [
+                96,
+                2
+              ],
+              "op": "div"
+            },
             "stroke": {
               "paint": "#ffffffff",
               "width": 3
@@ -212,7 +272,18 @@
             "kind": "polyline",
             "points": [
               [
-                48,
+                {
+                  "args": [
+                    {
+                      "args": [
+                        96,
+                        2
+                      ],
+                      "op": "div"
+                    }
+                  ],
+                  "op": "floor"
+                },
                 0
               ],
               [
@@ -254,24 +325,594 @@
             "kind": "polyline",
             "points": [
               [
-                48,
-                0
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        0,
+                                        72
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        0,
+                                        72
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                93.65071278216737,
-                33.16718427000252
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        1,
+                                        72
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        1,
+                                        72
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                76.2136921100387,
-                86.83281572999748
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        2,
+                                        72
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        2,
+                                        72
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                19.786307889961293,
-                86.83281572999748
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        3,
+                                        72
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        3,
+                                        72
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                2.349287217832625,
-                33.16718427000253
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        4,
+                                        72
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        4,
+                                        72
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ]
             ],
             "stroke": {
@@ -304,28 +945,712 @@
             "kind": "polyline",
             "points": [
               [
-                48,
-                0
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        0,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        0,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                89.56921938165306,
-                24.000000000000004
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        1,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        1,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                89.56921938165306,
-                72
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        2,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        2,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                48,
-                96
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        3,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        3,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                6.430780618346944,
-                72
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        4,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        4,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                6.430780618346944,
-                23.999999999999993
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        5,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        5,
+                                        60
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ]
             ],
             "stroke": {
@@ -358,36 +1683,948 @@
             "kind": "polyline",
             "points": [
               [
-                48,
-                0
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        0,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        0,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                81.94112549695429,
-                14.058874503045722
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        1,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        1,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                96,
-                48
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        2,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        2,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                81.94112549695429,
-                81.94112549695427
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        3,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        3,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                48,
-                96
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        4,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        4,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                14.058874503045722,
-                81.94112549695429
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        5,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        5,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                0,
-                48.00000000000001
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        6,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        6,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                14.058874503045715,
-                14.058874503045722
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        7,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        1,
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        7,
+                                        45
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ]
             ],
             "stroke": {
@@ -420,44 +2657,1564 @@
             "kind": "polyline",
             "points": [
               [
-                48,
-                0
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    0,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        0,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    0,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        0,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                58.77763038603479,
-                33.165864391140964
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    1,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        1,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    1,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        1,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                93.65071278216737,
-                33.16718427000252
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    2,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        2,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    2,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        2,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                65.43857228278793,
-                53.66613560885904
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    3,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        3,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    3,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        3,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                76.2136921100387,
-                86.83281572999748
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    4,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        4,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    4,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        4,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                48,
-                66.336
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    5,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        5,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    5,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        5,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                19.786307889961293,
-                86.83281572999748
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    6,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        6,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    6,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        6,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                30.561427717212066,
-                53.66613560885904
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    7,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        7,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    7,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        7,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                2.349287217832625,
-                33.16718427000253
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    8,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        8,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    8,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        8,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                37.22236961396521,
-                33.165864391140964
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    9,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        9,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "cos"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    9,
+                                    2
+                                  ],
+                                  "op": "mod"
+                                },
+                                0
+                              ],
+                              "op": "eq"
+                            },
+                            1,
+                            0.382
+                          ],
+                          "op": "if"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    96,
+                                    2
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        9,
+                                        36
+                                      ],
+                                      "op": "mul"
+                                    },
+                                    90
+                                  ],
+                                  "op": "sub"
+                                }
+                              ],
+                              "op": "sin"
+                            }
+                          ],
+                          "op": "mul"
+                        }
+                      ],
+                      "op": "mul"
+                    }
+                  ],
+                  "op": "add"
+                }
               ]
             ],
             "stroke": {
@@ -490,52 +4247,956 @@
             "kind": "polyline",
             "points": [
               [
-                32,
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        96,
+                                        96
+                                      ],
+                                      "op": "min"
+                                    },
+                                    3
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "sub"
+                },
                 0
               ],
               [
-                64,
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            96,
+                                            96
+                                          ],
+                                          "op": "min"
+                                        },
+                                        3
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                96
+                              ],
+                              "op": "min"
+                            },
+                            3
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "add"
+                },
                 0
               ],
               [
-                64,
-                32
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            96,
+                                            96
+                                          ],
+                                          "op": "min"
+                                        },
+                                        3
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                96
+                              ],
+                              "op": "min"
+                            },
+                            3
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        96,
+                                        96
+                                      ],
+                                      "op": "min"
+                                    },
+                                    3
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "sub"
+                }
               ],
               [
                 96,
-                32
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        96,
+                                        96
+                                      ],
+                                      "op": "min"
+                                    },
+                                    3
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "sub"
+                }
               ],
               [
                 96,
-                64
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            96,
+                                            96
+                                          ],
+                                          "op": "min"
+                                        },
+                                        3
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                96
+                              ],
+                              "op": "min"
+                            },
+                            3
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                64,
-                64
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            96,
+                                            96
+                                          ],
+                                          "op": "min"
+                                        },
+                                        3
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                96
+                              ],
+                              "op": "min"
+                            },
+                            3
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "add"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            96,
+                                            96
+                                          ],
+                                          "op": "min"
+                                        },
+                                        3
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                96
+                              ],
+                              "op": "min"
+                            },
+                            3
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
-                64,
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            96,
+                                            96
+                                          ],
+                                          "op": "min"
+                                        },
+                                        3
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                96
+                              ],
+                              "op": "min"
+                            },
+                            3
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "add"
+                },
                 96
               ],
               [
-                32,
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        96,
+                                        96
+                                      ],
+                                      "op": "min"
+                                    },
+                                    3
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "sub"
+                },
                 96
               ],
               [
-                32,
-                64
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        96,
+                                        96
+                                      ],
+                                      "op": "min"
+                                    },
+                                    3
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            96,
+                                            96
+                                          ],
+                                          "op": "min"
+                                        },
+                                        3
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                96
+                              ],
+                              "op": "min"
+                            },
+                            3
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
                 0,
-                64
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        },
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        {
+                                          "args": [
+                                            96,
+                                            96
+                                          ],
+                                          "op": "min"
+                                        },
+                                        3
+                                      ],
+                                      "op": "div"
+                                    }
+                                  ],
+                                  "op": "floor"
+                                },
+                                2
+                              ],
+                              "op": "div"
+                            }
+                          ],
+                          "op": "floor"
+                        }
+                      ],
+                      "op": "sub"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                96,
+                                96
+                              ],
+                              "op": "min"
+                            },
+                            3
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "add"
+                }
               ],
               [
                 0,
-                32
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        96,
+                                        96
+                                      ],
+                                      "op": "min"
+                                    },
+                                    3
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "sub"
+                }
               ],
               [
-                32,
-                32
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        96,
+                                        96
+                                      ],
+                                      "op": "min"
+                                    },
+                                    3
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "sub"
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            96,
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "args": [
+                                {
+                                  "args": [
+                                    {
+                                      "args": [
+                                        96,
+                                        96
+                                      ],
+                                      "op": "min"
+                                    },
+                                    3
+                                  ],
+                                  "op": "div"
+                                }
+                              ],
+                              "op": "floor"
+                            },
+                            2
+                          ],
+                          "op": "div"
+                        }
+                      ],
+                      "op": "floor"
+                    }
+                  ],
+                  "op": "sub"
+                }
               ]
             ],
             "stroke": {
@@ -568,32 +5229,91 @@
             "kind": "polyline",
             "points": [
               [
-                48,
+                {
+                  "args": [
+                    {
+                      "args": [
+                        96,
+                        2
+                      ],
+                      "op": "div"
+                    }
+                  ],
+                  "op": "floor"
+                },
                 0
               ],
               [
                 96,
-                38.400000000000006
+                {
+                  "args": [
+                    96,
+                    0.4
+                  ],
+                  "op": "mul"
+                }
               ],
               [
-                72,
-                38.400000000000006
+                {
+                  "args": [
+                    96,
+                    0.75
+                  ],
+                  "op": "mul"
+                },
+                {
+                  "args": [
+                    96,
+                    0.4
+                  ],
+                  "op": "mul"
+                }
               ],
               [
-                72,
+                {
+                  "args": [
+                    96,
+                    0.75
+                  ],
+                  "op": "mul"
+                },
                 96
               ],
               [
-                24,
+                {
+                  "args": [
+                    96,
+                    0.25
+                  ],
+                  "op": "mul"
+                },
                 96
               ],
               [
-                24,
-                38.400000000000006
+                {
+                  "args": [
+                    96,
+                    0.25
+                  ],
+                  "op": "mul"
+                },
+                {
+                  "args": [
+                    96,
+                    0.4
+                  ],
+                  "op": "mul"
+                }
               ],
               [
                 0,
-                38.400000000000006
+                {
+                  "args": [
+                    96,
+                    0.4
+                  ],
+                  "op": "mul"
+                }
               ]
             ],
             "stroke": {

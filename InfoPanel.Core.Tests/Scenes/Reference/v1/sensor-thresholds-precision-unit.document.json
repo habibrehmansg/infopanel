@@ -194,7 +194,13 @@
               },
               {
                 "args": [
-                  "CPU ",
+                  {
+                    "args": [
+                      "CPU",
+                      " "
+                    ],
+                    "op": "concat"
+                  },
                   {
                     "field": "text",
                     "name": "t",
@@ -217,7 +223,13 @@
                   },
                   {
                     "args": [
-                      "CPU ",
+                      {
+                        "args": [
+                          "CPU",
+                          " "
+                        ],
+                        "op": "concat"
+                      },
                       {
                         "name": "number",
                         "op": "value"
@@ -624,9 +636,13 @@
               {
                 "args": [
                   {
-                    "field": "text",
-                    "name": "t",
-                    "op": "input"
+                    "group": true,
+                    "op": "format",
+                    "value": {
+                      "field": "text",
+                      "name": "t",
+                      "op": "input"
+                    }
                   },
                   " MHz (gpu)"
                 ],
