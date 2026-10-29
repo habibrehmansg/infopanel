@@ -251,6 +251,111 @@ public class MediaProbeTests
     public void Gif_ShortHeader_Truncated() =>
         Assert.Equal("media.truncated", Bad(Ascii("GIF89a").Concat(new byte[] { 1, 0 }).ToArray()).Code);
 
+    // A frame is drawn at its offset: decoders grow the canvas to hold the first frame (Skia and browsers; a test
+    // below holds the probe to Skia's canvas) and clip later ones, so the size is the logical screen widened to the
+    // first frame, and the limits hold that size.
+
+    private static byte[] GifFrameAt(int left, int top, int w, int h) =>
+        Concat([0x2C], Le16(left), Le16(top), Le16(w), Le16(h), [0], [2, 2, 0x44, 0x01, 0]);
+
+    private static IReadOnlyList<SpecError> Errors(byte[] bytes) => MediaValidator.Check(bytes).Errors;
+
+    [Fact]
+    public void Gif_FirstFrameOffsetPastTheScreen_GrowsTheSizeAndMeetsTheLimits()
+    {
+        // A 1 x 1 screen whose frame sits at 8191: decoders draw an 8192 x 8192 canvas (256 MiB).
+        var gif = Gif(1, 1, true, GifFrameAt(8191, 8191, 1, 1));
+        Assert.Equal((8192, 8192), (Ok(gif).Width, Ok(gif).Height));
+        Assert.Equal("limit.mediaArea", Assert.Single(Errors(gif)).Code);
+    }
+
+    [Fact]
+    public void Gif_FirstFrameLargerThanTheScreen_GrowsTheSizeAndMeetsTheLimits()
+    {
+        Assert.Equal((20, 30), (Ok(Gif(10, 10, true, GifFrameAt(0, 0, 20, 30))).Width, Ok(Gif(10, 10, true, GifFrameAt(0, 0, 20, 30))).Height));
+        Assert.Equal("limit.mediaSide", Assert.Single(Errors(Gif(1, 1, true, GifFrameAt(0, 0, 9000, 1)))).Code);
+        // One cause, one error: a side over the limit is not also counted against the frame area (131070² here).
+        Assert.Equal("limit.mediaSide", Assert.Single(Errors(Gif(1, 1, true, GifFrameAt(65535, 65535, 65535, 65535)))).Code);
+        Assert.Equal("limit.mediaArea", Assert.Single(MediaValidator.Check(Gif(100, 100, true, GifFrameAt(0, 0, 100, 100)),
+            SpecLimits.Default with { MediaArea = 9999, MediaFrameArea = 9999 }).Errors).Code);
+    }
+
+    [Fact]
+    public void Gif_FramesWithinTheScreen_KeepItsSize()
+    {
+        var gif = Gif(20, 10, true, GifFrameAt(5, 5, 15, 5), GifFrameAt(0, 0, 20, 10));
+        Assert.Equal(new MediaInfo(MediaFormat.Gif, 20, 10, 2, 0), Ok(gif));
+        Assert.Empty(Errors(gif));
+    }
+
+    [Fact]
+    public void Gif_LaterFrameOutsideTheScreen_IsClippedAndAccepted()
+    {
+        // Decoders clip a later frame to the canvas, so neither the size nor the limits see past it.
+        var offset = Gif(10, 10, true, GifFrameAt(0, 0, 10, 10), GifFrameAt(8000, 8000, 1, 1));
+        Assert.Equal(new MediaInfo(MediaFormat.Gif, 10, 10, 2, 0), Ok(offset));
+        Assert.Empty(Errors(offset));
+        Assert.Empty(Errors(Gif(10, 10, true, GifFrameAt(0, 0, 10, 10), GifFrameAt(0, 0, 9000, 1))));
+        // The frame area is the size's area times the frames.
+        var area = Gif(10, 10, true, GifFrameAt(0, 0, 10, 10), GifFrameAt(90, 90, 10, 10));
+        Assert.Equal("limit.mediaFrameArea", Assert.Single(MediaValidator.Check(area, SpecLimits.Default with { MediaFrameArea = 2 * 10 * 10 - 1 }).Errors).Code);
+        Assert.Empty(MediaValidator.Check(area, SpecLimits.Default with { MediaFrameArea = 2 * 10 * 10 }).Errors);
+    }
+
+    [Fact]
+    public void Gif_LaterFrameFarOutside_ManyFrames_IsAcceptedAtTheDecodersSize()
+    {
+        // 500 x 500 in 200 frames, the last 1 x 1 at (60000, 60000): Skia reads 500 x 500 in 200 frames.
+        var far = Gif(500, 500, true, [.. Enumerable.Repeat(GifFrameAt(0, 0, 500, 500), 199), GifFrameAt(60000, 60000, 1, 1)]);
+        Assert.Equal(new MediaInfo(MediaFormat.Gif, 500, 500, 200, 0), Ok(far));
+        Assert.Empty(Errors(far));
+        using (var codec = SKCodec.Create(new MemoryStream(far)))
+            Assert.Equal((500, 500, 200), (codec.Info.Width, codec.Info.Height, codec.FrameCount));
+        // 1000 x 1000 in 200 frames (200 Mpx, under mediaFrameArea), the last 100 x 100 at (1100, 1100): 1000 x 1000 too.
+        var near = Gif(1000, 1000, true, [.. Enumerable.Repeat(GifFrameAt(0, 0, 1000, 1000), 199), GifFrameAt(1100, 1100, 100, 100)]);
+        Assert.Equal(new MediaInfo(MediaFormat.Gif, 1000, 1000, 200, 0), Ok(near));
+        Assert.Empty(Errors(near));
+        using (var codec = SKCodec.Create(new MemoryStream(near)))
+            Assert.Equal((1000, 1000, 200), (codec.Info.Width, codec.Info.Height, codec.FrameCount));
+    }
+
+    [Fact]
+    public void Gif_EmptyScreen_TakesItsFirstFramesSize()
+    {
+        // A 0 x 0 (or 0-wide) logical screen: decoders draw the first frame's canvas, so does the check.
+        Assert.Equal(new MediaInfo(MediaFormat.Gif, 5, 6, 1, 0), Ok(Gif(0, 0, true, GifFrameAt(0, 0, 5, 6))));
+        Assert.Equal(new MediaInfo(MediaFormat.Gif, 7, 10, 1, 0), Ok(Gif(0, 10, true, GifFrameAt(2, 0, 5, 6))));
+        Assert.Empty(Errors(Gif(0, 0, true, GifFrameAt(0, 0, 5, 6))));
+        // Still empty once widened to the first frame: refused.
+        Assert.Equal("media.malformed", Bad(Gif(0, 0, true, GifFrameAt(0, 0, 0, 0))).Code);
+        Assert.Equal("media.malformed", Bad(Gif(0, 0, true, GifFrameAt(0, 0, 0, 5))).Code);
+        // A frame's offset counts, as for any first frame: 0 wide at 3 is a 3-wide canvas.
+        Assert.Equal(new MediaInfo(MediaFormat.Gif, 3, 5, 1, 0), Ok(Gif(0, 0, true, GifFrameAt(3, 0, 0, 5))));
+        Assert.Equal("media.malformed", Bad(Gif(10, 0, true, GifFrameAt(0, 0, 10, 0), GifFrameAt(0, 0, 10, 10))).Code);
+        Assert.Equal("media.malformed", Bad(Gif(0, 0, true, GifComment())).Code);
+    }
+
+    [Fact]
+    public void Gif_FrameBounds_MatchSkiasCanvas()
+    {
+        // What the engine's own decoder draws: the probe's size is its canvas, so the renderer's check agrees.
+        foreach (var gif in new[]
+        {
+            Gif(10, 10, true, GifFrameAt(5, 5, 10, 10)),
+            Gif(10, 10, true, GifFrameAt(0, 0, 20, 30)),
+            Gif(10, 10, true, GifFrameAt(0, 0, 10, 10), GifFrameAt(0, 0, 30, 30)),
+            Gif(10, 10, true, GifFrameAt(3, 3, 0, 0)),
+            Gif(0, 0, true, GifFrameAt(0, 0, 5, 6)),
+            Gif(0, 10, true, GifFrameAt(2, 0, 5, 6)),
+            Gif(0, 0, true, GifFrameAt(3, 0, 0, 5)),
+        })
+        {
+            using var codec = SKCodec.Create(new MemoryStream(gif));
+            Assert.NotNull(codec);
+            Assert.Equal((codec.Info.Width, codec.Info.Height), (Ok(gif).Width, Ok(gif).Height));
+        }
+    }
+
     // ------------------------------------------------------------ WebP
 
     [Fact]
@@ -345,6 +450,99 @@ public class MediaProbeTests
         // In px, the resolved size meets the limits.
         Assert.Equal("limit.mediaSide", Assert.Single(MediaValidator.Check(Svg("<svg xmlns='http://www.w3.org/2000/svg' width='9600px' height='1'/>")).Errors).Code);
         Assert.Equal("limit.mediaSide", Assert.Single(MediaValidator.Check(Svg("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9600 1'/>")).Errors).Code);
+    }
+
+    [Fact]
+    public void Svg_OneSideGiven_TheOtherFromTheViewBoxRatio_MeetsTheLimits()
+    {
+        // Browsers size the missing side from the viewBox's aspect ratio: 8000 x 8,000,000 here, while the size is
+        // 8000 x 1000 (the viewBox's height, as the engine draws it).
+        var tall = Svg("<svg xmlns='http://www.w3.org/2000/svg' width='8000' viewBox='0 0 1 1000'/>");
+        Assert.Equal((8000, 1000), (Ok(tall).Width, Ok(tall).Height));
+        Assert.Equal("limit.mediaSide", Assert.Single(MediaValidator.Check(tall).Errors).Code);
+        var wide = Svg("<svg xmlns='http://www.w3.org/2000/svg' height='5000' viewBox='0 0 4 1'/>");
+        Assert.Equal("limit.mediaSide", Assert.Single(MediaValidator.Check(wide).Errors).Code);
+        var area = Svg("<svg xmlns='http://www.w3.org/2000/svg' width='5000' viewBox='0 0 1 1'/>");
+        Assert.Equal((5000, 1), (Ok(area).Width, Ok(area).Height));
+        Assert.Equal("limit.mediaArea", Assert.Single(MediaValidator.Check(area).Errors).Code);
+        // Within them, nothing changes; both sides given, or neither, the viewBox's ratio sizes nothing.
+        Assert.Empty(MediaValidator.Check(Svg("<svg xmlns='http://www.w3.org/2000/svg' height='7' viewBox='0 0 30 40'/>")).Errors);
+        Assert.Empty(MediaValidator.Check(Svg("<svg xmlns='http://www.w3.org/2000/svg' width='4000' viewBox='0 0 1 1'/>")).Errors);
+        Assert.Empty(MediaValidator.Check(Svg("<svg xmlns='http://www.w3.org/2000/svg' width='8000' height='1' viewBox='0 0 1 1000'/>")).Errors);
+        Assert.Empty(MediaValidator.Check(Svg("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1000'/>")).Errors);
+    }
+
+    [Theory]
+    [InlineData("width='8000' viewBox='0 0 1e-29 1'")]
+    [InlineData("height='8000' viewBox='0 0 1 1e-29'")]
+    [InlineData("width='8000' viewBox='0 0 1e-50 1'")]
+    [InlineData("viewBox='0 0 1e-29 1'")]
+    public void Svg_ViewBoxSideAbove0ThatRoundsTo0_IsRefused(string attrs)
+    {
+        // Rebuilt, the side would be 0 and the ratio unknown, while the file's ratio (here 1e29) sizes it elsewhere.
+        Assert.Equal("media.svg-size", Bad(Svg($"<svg xmlns='http://www.w3.org/2000/svg' {attrs}/>")).Code);
+    }
+
+    [Fact]
+    public void Svg_ViewBoxRatio_IsTakenFromTheNumbersAsWritten()
+    {
+        // 1.6e-28 is rebuilt as 0.0000000000000000000000000002, a ratio of 5000 where the file's is 6250: browsers read
+        // the file's, so 1.5 wide is 9375 high (over mediaSide) and not 7500.
+        var tall = Svg("<svg xmlns='http://www.w3.org/2000/svg' width='1.5' viewBox='0 0 1.6e-28 1e-24'/>");
+        var info = MediaProbe.Inspect(tall, out var problem, SpecLimits.Default, out var rebuilt);
+        Assert.Null(problem);
+        Assert.Contains("viewBox=\"0 0 0.0000000000000000000000000002 0.000000000000000000000001\"", Encoding.UTF8.GetString(rebuilt!));
+        Assert.Equal(9375, info!.Extent.Height);
+        Assert.Equal("limit.mediaSide", Assert.Single(MediaValidator.Check(tall).Errors).Code);
+        var wide = Svg("<svg xmlns='http://www.w3.org/2000/svg' height='1.5' viewBox='0 0 1e-24 1.6e-28'/>");
+        Assert.Equal(9375, Ok(wide).Extent.Width);
+        Assert.Equal("limit.mediaSide", Assert.Single(MediaValidator.Check(wide).Errors).Code);
+    }
+
+    [Theory]
+    // The viewBox alone: 8192.0001 is rebuilt as 8192, but rounded up as written it is 8193, over mediaSide.
+    [InlineData("viewBox='0 0 8192 1'", null)]
+    [InlineData("viewBox='0 0 8192.0001 1'", "limit.mediaSide")]
+    [InlineData("viewBox='0 0 1 8192.0001'", "limit.mediaSide")]
+    [InlineData("viewBox='0 0 4096 4096'", null)]
+    [InlineData("viewBox='0 0 4096.0001 4096'", "limit.mediaArea")]
+    // One side given, the other the viewBox's (its aspect ratio gives less here).
+    [InlineData("width='1' viewBox='0 0 2 8192'", null)]
+    [InlineData("width='1' viewBox='0 0 2 8192.0001'", "limit.mediaSide")]
+    [InlineData("height='1' viewBox='0 0 8192.0001 2'", "limit.mediaSide")]
+    [InlineData("width='4096' viewBox='0 0 8192 4096'", null)]
+    [InlineData("width='4096' viewBox='0 0 8192 4096.0001'", "limit.mediaArea")]
+    // Both sides given.
+    [InlineData("width='8192' height='1' viewBox='0 0 1 1'", null)]
+    [InlineData("width='8192.0001' height='1' viewBox='0 0 1 1'", "limit.mediaSide")]
+    [InlineData("width='4096' height='4096'", null)]
+    [InlineData("width='4096' height='4096.0001'", "limit.mediaArea")]
+    public void Svg_TheLimitsHoldTheSizeAsWritten_RoundedUp(string attrs, string? code)
+    {
+        var errors = MediaValidator.Check(Svg($"<svg xmlns='http://www.w3.org/2000/svg' {attrs}/>")).Errors;
+        if (code is null) Assert.Empty(errors);
+        else Assert.Equal(code, Assert.Single(errors).Code);
+    }
+
+    [Theory]
+    // A side below 0 as written is refused though the rebuilt document would round it to 0, in the root and nested.
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 -1e-29 1'/>")]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 -1e-29'/>")]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 -1e-29 1'/>")]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg'><svg viewBox='0 0 -1e-29 1'/></svg>")]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg'><symbol id='s' viewBox='0 0 1 -1e-29'/><use href='#s'/></svg>")]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 -1 1'/>")]
+    public void Svg_ViewBoxSideBelow0AsWritten_IsRefused(string svg) =>
+        Assert.Equal("media.svg-external", Bad(Svg(svg)).Code);
+
+    [Fact]
+    public void Svg_SizeAsWritten_IsHeldToTheLimits_WhileTheSizeReportedIsTheRebuiltOne()
+    {
+        var info = MediaProbe.Inspect(Svg("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8192.0001 1'/>"), out var problem, SpecLimits.Default, out var rebuilt);
+        Assert.Null(problem);
+        Assert.Contains("viewBox=\"0 0 8192 1\"", Encoding.UTF8.GetString(rebuilt!));
+        Assert.Equal((8192, 1), (info!.Width, info.Height));
+        Assert.Equal((8193, 1), info.Extent);
     }
 
     /// <summary>A normal icon: gradients (one inheriting another by href), a clip path, a mask, a symbol drawn by use.</summary>

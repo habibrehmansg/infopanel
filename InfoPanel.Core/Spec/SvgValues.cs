@@ -150,16 +150,30 @@ internal static class SvgValues
         return list is not null && count % 2 == 0 ? list : null;
     }
 
-    /// <summary><c>viewBox</c>: four numbers, the width and height not negative.</summary>
-    public static string? ViewBox(string s, out double width, out double height)
+    /// <summary>
+    /// <c>viewBox</c>: four numbers, the width and height not negative as written. <paramref name="width"/> and <paramref name="height"/>
+    /// are as rebuilt; <paramref name="writtenWidth"/> and <paramref name="writtenHeight"/> as written, before rounding.
+    /// </summary>
+    public static string? ViewBox(string s, out double width, out double height, out double writtenWidth, out double writtenHeight)
     {
-        width = height = 0;
+        width = height = writtenWidth = writtenHeight = 0;
         var list = Numbers(s, out var count);
         if (list is null || count != 4) return null;
         var parts = list.Split(' ');
         width = double.Parse(parts[2], Inv);
         height = double.Parse(parts[3], Inv);
-        return width < 0 || height < 0 ? null : list;
+        // The list parsed, so the numbers read again one by one: four, each followed by white space and a comma at most.
+        var i = 0;
+        var written = new double[4];
+        SkipSpace(s, ref i);
+        for (var n = 0; n < 4; n++)
+        {
+            ReadNumber(s, ref i, out written[n]);
+            SkipCommaSpace(s, ref i);
+        }
+        (writtenWidth, writtenHeight) = (written[2], written[3]);
+        // The sign as written: rebuilt, a side such as -1e-29 would be 0 and pass.
+        return writtenWidth < 0 || writtenHeight < 0 ? null : list;
     }
 
     /// <summary>A gradient stop's <c>offset</c>: a number or a percentage, clamped to 0..1.</summary>

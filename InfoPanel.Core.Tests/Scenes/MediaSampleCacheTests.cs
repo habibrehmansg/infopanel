@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using InfoPanel.Images;
+using InfoPanel.Spec;
 using SkiaSharp;
 using Xunit;
 
@@ -115,25 +116,47 @@ public sealed class MediaSampleCacheTests
     [Fact]
     public void A_gif_frame_larger_than_its_screen_is_refused_before_anything_is_allocated()
     {
-        // A 1 x 1 logical screen (what the probe checks) with a 16384 x 16384 frame: a decoder that grows the canvas to
-        // the frame would allocate 1 GiB.
+        // A 1 x 1 logical screen with a 16384 x 16384 frame: decoders grow the canvas to the frame (1 GiB), so the
+        // media check refuses it from the frame's descriptor, before a decoder is made.
         var store = new MemoryAssets();
         store.Assets["big"] = TestGif.Build(1, 1, new TestGif.Frame(0, 0, 16384, 16384, 1, Pixels: false));
         using var media = new MediaSampleCache(store, new MediaSampleCacheOptions { Synchronous = true });
         var lookup = media.Get("big", 0, MediaPlayback.Loop);
-        if (lookup.Sample is { } sample)
-        {
-            // A decoder that keeps the logical screen is fine too, as long as that is all it allocates.
-            Assert.Equal(1, sample.Width);
-            Assert.Equal(1, sample.Height);
-            sample.Release();
-        }
-        else
-        {
-            Assert.Equal(MediaState.Failed, lookup.State);
-            Assert.Contains("header says 1 x 1", lookup.Problem);
-        }
+        Assert.Null(lookup.Sample);
+        Assert.Equal(MediaState.Failed, lookup.State);
+        Assert.Contains("(mediaSide)", lookup.Problem);
         Assert.True(media.Bytes < 1024 * 1024, $"{media.Bytes} bytes");
+    }
+
+    [Fact]
+    public void The_decoders_dimensions_are_checked_against_the_probe_and_the_limits()
+    {
+        // The backstop after the media check: unreached while the probe reads what the decoder reads, so its branches
+        // are driven here with a probe result that disagrees, or with limits the decoder's size is over.
+        using var codec = SKCodec.Create(new MemoryStream(MemoryAssets.Png(SKColors.Red, 10)));
+        Assert.Null(MediaSampleCache.CheckCodec(codec, new MediaInfo(MediaFormat.Png, 10, 10, 1, 0), SpecLimits.Default));
+        Assert.Contains("reads 10 x 10 pixels where the header says 10 x 5",
+            MediaSampleCache.CheckCodec(codec, new MediaInfo(MediaFormat.Png, 10, 5, 1, 0), SpecLimits.Default));
+        Assert.Contains("over the media limits",
+            MediaSampleCache.CheckCodec(codec, new MediaInfo(MediaFormat.Png, 10, 10, 1, 0), SpecLimits.Default with { MediaSide = 9 }));
+        Assert.Contains("over the media limits",
+            MediaSampleCache.CheckCodec(codec, new MediaInfo(MediaFormat.Png, 10, 10, 1, 0), SpecLimits.Default with { MediaArea = 99 }));
+    }
+
+    [Fact]
+    public void A_gif_whose_first_frame_grows_its_canvas_within_the_limits_draws_at_that_canvas()
+    {
+        // The check's size is the decoder's canvas (the screen widened to the first frame at its offset), so the two agree.
+        var store = new MemoryAssets();
+        store.Assets["grown"] = TestGif.Build(10, 10, new TestGif.Frame(5, 5, 10, 10, 1));
+        using var media = new MediaSampleCache(store, new MediaSampleCacheOptions { Synchronous = true });
+        var lookup = media.Get("grown", 0, MediaPlayback.Loop);
+        Assert.Equal(MediaState.Ready, lookup.State);
+        var sample = Assert.IsType<MediaSample>(lookup.Sample);
+        Assert.Equal((15f, 15f), (sample.Width, sample.Height));
+        Assert.Equal((15, 15), (lookup.Info!.Width, lookup.Info.Height));
+        Assert.Equal(SKColors.Red, Pixel(sample, 12, 12));
+        sample.Release();
     }
 
     [Fact]

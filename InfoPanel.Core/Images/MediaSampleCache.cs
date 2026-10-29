@@ -410,10 +410,10 @@ namespace InfoPanel.Images
         /// <summary>
         /// Checks what the decoder will allocate against the probe and the media limits: a decoder may read other
         /// dimensions than the header the probe checked (a GIF frame larger than its logical screen grows the canvas).
+        /// Static and internal so a test can reach it with a probe result that disagrees.
         /// </summary>
-        private string? CheckCodec(SKCodec codec, MediaInfo info)
+        internal static string? CheckCodec(SKCodec codec, MediaInfo info, SpecLimits limits)
         {
-            var limits = _options.Limits;
             int w = codec.Info.Width, h = codec.Info.Height, frames = Math.Max(1, codec.FrameCount);
             if (w != info.Width || h != info.Height)
                 return $"The decoder reads {w} x {h} pixels where the header says {info.Width} x {info.Height}.";
@@ -475,7 +475,7 @@ namespace InfoPanel.Images
                 Fail(asset, "media.format", "Not a supported image.");
                 return;
             }
-            if (CheckCodec(asset.Codec, info) is { } problem)
+            if (CheckCodec(asset.Codec, info, _options.Limits) is { } problem)
             {
                 Fail(asset, "media.malformed", problem);
                 return;

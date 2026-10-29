@@ -24,7 +24,8 @@ public sealed record MediaCheck(MediaInfo? Info, IReadOnlyList<SpecError> Errors
 /// <summary>
 /// Checks a media asset's bytes before anything decodes them (spec/docs/limits.md, "Media"): the header and container
 /// structure (<see cref="MediaProbe"/>; an SVG's byte limit first, and its element limit while it is read), then the
-/// size, dimension, frame and duration limits. An accepted SVG comes back rebuilt (<see cref="MediaCheck.Sanitized"/>).
+/// size, dimension (of <see cref="MediaInfo.Extent"/>), frame and duration limits. An accepted SVG comes back rebuilt
+/// (<see cref="MediaCheck.Sanitized"/>).
 /// </summary>
 public static class MediaValidator
 {
@@ -43,14 +44,18 @@ public static class MediaValidator
         if (info.Format == MediaFormat.Svg && info.Elements > limits.SvgElements)
             return new(null, [new SpecError("", "limit.svgElements", $"Over {limits.SvgElements} elements; the limit is {limits.SvgElements} (svgElements).")]);
 
+        // The size limits hold everything a decoder may draw (an SVG's ratio-derived side too); a GIF's size is its canvas.
         var errors = new List<SpecError>();
-        var area = (long)info.Width * info.Height;
-        if (info.Width > limits.MediaSide || info.Height > limits.MediaSide)
-            errors.Add(Over("mediaSide", Math.Max(info.Width, info.Height), limits.MediaSide));
+        var (width, height) = info.Extent;
+        var area = (long)width * height;
+        if (width > limits.MediaSide || height > limits.MediaSide)
+            errors.Add(Over("mediaSide", Math.Max(width, height), limits.MediaSide));
         else if (area > limits.MediaArea)
             errors.Add(Over("mediaArea", area, limits.MediaArea));
+        var sizeFailed = errors.Count > 0;
         if (info.Frames > limits.MediaFrames) errors.Add(Over("mediaFrames", info.Frames, limits.MediaFrames));
-        else if (area * info.Frames > limits.MediaFrameArea) errors.Add(Over("mediaFrameArea", area * info.Frames, limits.MediaFrameArea));
+        // One cause, one error: a size already over a limit isn't counted against the frame area too.
+        else if (!sizeFailed && area * info.Frames > limits.MediaFrameArea) errors.Add(Over("mediaFrameArea", area * info.Frames, limits.MediaFrameArea));
         if (info.DurationSeconds > limits.MediaDuration)
             errors.Add(new SpecError("", "limit.mediaDuration", $"{info.DurationSeconds} s is over the limit of {limits.MediaDuration} s."));
         return new(info, errors, errors.Count == 0 && info.Format == MediaFormat.Svg ? rebuilt : null);

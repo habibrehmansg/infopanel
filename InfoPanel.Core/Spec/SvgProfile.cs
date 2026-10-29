@@ -101,7 +101,8 @@ internal static class SvgProfile
         var open = new List<int>(); // the element open at each depth
         var ids = new Dictionary<string, int>(StringComparer.Ordinal);
         string? widthAttr = null, heightAttr = null;
-        double? vbW = null, vbH = null;
+        double? vbW = null, vbH = null; // the root viewBox's size as rebuilt
+        double writtenVbW = 0, writtenVbH = 0; // and as written, before rounding
         int textDepth = -1; // the depth of the <title> or <desc> being read, or -1
         try
         {
@@ -210,7 +211,7 @@ internal static class SvgProfile
                                     var canonical = GeometryValue(attr, value, out var numbers, out var vb) ?? throw BadValue(attr, value);
                                     node.Numbers += numbers;
                                     if (canonical.Length > 0 || attr is "d" or "points") node.Attrs[attr] = canonical;
-                                    if (index == 0 && vb is { } box) (vbW, vbH) = box;
+                                    if (index == 0 && vb is { } box) (vbW, vbH, writtenVbW, writtenVbH) = box;
                                 }
                                 else if (attr.StartsWith("on", StringComparison.OrdinalIgnoreCase))
                                     throw new Outside($"has an event attribute ({attr}).");
@@ -254,11 +255,26 @@ internal static class SvgProfile
         // width and height: unitless or px; any other unit or a percentage is unsupported. Absent: the viewBox size.
         if (!MediaProbe.TryLength(widthAttr, out var w) || !MediaProbe.TryLength(heightAttr, out var h))
             return Fail(out problem, MediaProbe.SvgSizeCode, "SVG width and height must be unitless or in px.");
+        // A viewBox side too small for the rebuilt document's numbers would be 0 there, its aspect ratio lost.
+        if ((writtenVbW > 0 && vbW == 0) || (writtenVbH > 0 && vbH == 0))
+            return Fail(out problem, MediaProbe.SvgSizeCode, "SVG viewBox width or height is above 0 but too small to keep.");
         if (w is { } width) nodes[0].Attrs["width"] = SvgValues.Num(Math.Min(width, SvgValues.MaxMagnitude))!;
         if (h is { } height) nodes[0].Attrs["height"] = SvgValues.Num(Math.Min(height, SvgValues.MaxMagnitude))!;
 
         rebuilt = Emit(nodes);
-        return new MediaInfo(MediaFormat.Svg, MediaProbe.ToPixels(w ?? vbW), MediaProbe.ToPixels(h ?? vbH), 1, 0, elements);
+        // The size reported is the rebuilt document's; the limits hold the size as written (the stored file is what other
+        // renderers read), each side rounded up to whole pixels, so rounding to 7 significant digits can't take a side
+        // just over a limit back under it (a viewBox 8192.0001 wide is rebuilt as 8192, and held to 8193).
+        int sizeW = MediaProbe.ToPixels(w ?? vbW), sizeH = MediaProbe.ToPixels(h ?? vbH);
+        int extentW = MediaProbe.ToPixels(w ?? writtenVbW), extentH = MediaProbe.ToPixels(h ?? writtenVbH);
+        // Other renderers take the absent side from the viewBox's aspect ratio rather than its size: the limits hold that
+        // too, worked out from the viewBox as written.
+        if (writtenVbW > 0 && writtenVbH > 0)
+        {
+            if (w is { } onlyW && h is null) extentH = Math.Max(extentH, MediaProbe.ToPixels(onlyW * writtenVbH / writtenVbW));
+            else if (h is { } onlyH && w is null) extentW = Math.Max(extentW, MediaProbe.ToPixels(onlyH * writtenVbW / writtenVbH));
+        }
+        return new MediaInfo(MediaFormat.Svg, sizeW, sizeH, 1, 0, elements, extentW > sizeW ? extentW : 0, extentH > sizeH ? extentH : 0);
     }
 
     private static MediaInfo? Fail(out MediaProblem? problem, string code, string message)
@@ -325,9 +341,10 @@ internal static class SvgProfile
 
     /// <summary>
     /// A geometry or structure value in canonical form ("" for one that isn't emitted), or null when it doesn't parse;
-    /// <paramref name="numbers"/> counts the numbers of <c>d</c> and <c>points</c>, <paramref name="viewBox"/> is the size of a <c>viewBox</c>.
+    /// <paramref name="numbers"/> counts the numbers of <c>d</c> and <c>points</c>, <paramref name="viewBox"/> is the size of a <c>viewBox</c>,
+    /// as rebuilt and as written.
     /// </summary>
-    private static string? GeometryValue(string attr, string value, out int numbers, out (double, double)? viewBox)
+    private static string? GeometryValue(string attr, string value, out int numbers, out (double, double, double, double)? viewBox)
     {
         numbers = 0;
         viewBox = null;
@@ -352,8 +369,8 @@ internal static class SvgProfile
             case "spreadMethod":
                 return SvgValues.Exact(value, "pad", "reflect", "repeat");
             case "viewBox":
-                var box = SvgValues.ViewBox(value, out var vw, out var vh);
-                if (box is not null) viewBox = (vw, vh);
+                var box = SvgValues.ViewBox(value, out var vw, out var vh, out var writtenW, out var writtenH);
+                if (box is not null) viewBox = (vw, vh, writtenW, writtenH);
                 return box;
             case "preserveAspectRatio":
                 return SvgValues.AspectRatio(value);

@@ -340,6 +340,8 @@ public class SpecExampleTests
         var expected = Expect(rel);
         var (_, errors) = MediaValidator.Check(File.ReadAllBytes(Path.Combine(ExamplesDir, rel)), Limits(expected));
         AssertHas(errors, expected, rel);
+        // Refused for one reason: the stated one, and no other.
+        Assert.True(errors.Count == 1, $"{rel}: expected only {expected["code"]}, got: {string.Join("; ", errors.Select(e => e.Code))}");
     }
 
     // ---- the example set itself --------------------------------------------------------------------------------

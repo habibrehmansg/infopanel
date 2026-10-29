@@ -13,9 +13,18 @@ public enum MediaFormat { Png, Jpeg, Gif, WebP, Svg }
 /// What a probe found. <paramref name="Elements"/> is the SVG's expanded element count (spec/docs/svg.md, "Expanded
 /// size": its elements, their path numbers and gradient references, plus for each <c>use</c>, <c>clip-path</c> and
 /// <c>mask</c> reference the expanded count of what it draws; 0 for raster formats); it is an optional trailing
-/// parameter so the five-argument form still works.
+/// parameter so the five-argument form still works. <paramref name="ExtentWidth"/> and <paramref name="ExtentHeight"/>
+/// are, where it is larger than <paramref name="Width"/> x <paramref name="Height"/>, the size other renderers may draw
+/// (0 otherwise): an SVG's size as written, rounded up, where rounding its numbers for the rebuilt document made it
+/// smaller, or with one of <c>width</c> and <c>height</c>, the other from the <c>viewBox</c>'s aspect ratio. The size
+/// limits hold both (<see cref="Extent"/>).
 /// </summary>
-public sealed record MediaInfo(MediaFormat Format, int Width, int Height, int Frames, double DurationSeconds, int Elements = 0);
+public sealed record MediaInfo(MediaFormat Format, int Width, int Height, int Frames, double DurationSeconds, int Elements = 0,
+    int ExtentWidth = 0, int ExtentHeight = 0)
+{
+    /// <summary>The size the media limits apply to: <see cref="Width"/> x <see cref="Height"/>, or the extent where larger.</summary>
+    public (int Width, int Height) Extent => (Math.Max(Width, ExtentWidth), Math.Max(Height, ExtentHeight));
+}
 
 /// <summary>
 /// Why a probe refused: <c>media.format</c>, <c>media.truncated</c>, <c>media.malformed</c>, <c>media.svg-external</c>
@@ -228,8 +237,8 @@ public static class MediaProbe
             return Fail(out problem, TruncatedCode, "GIF: the logical screen descriptor is incomplete.");
         int w = BinaryPrimitives.ReadUInt16LittleEndian(b[6..]);
         int h = BinaryPrimitives.ReadUInt16LittleEndian(b[8..]);
-        if (w == 0 || h == 0)
-            return Fail(out problem, MalformedCode, "GIF: zero width or height.");
+        // Each frame is drawn at its offset: decoders grow the canvas to hold the first frame and clip later ones to
+        // it, so the size is the logical screen widened to the first frame, and the limits hold that size.
 
         int pos = 13;
         if ((b[10] & 0x80) != 0)
@@ -254,7 +263,11 @@ public static class MediaProbe
             else if (intro == 0x2C) // image descriptor
             {
                 if (pos + 10 > b.Length) break;
-                frames++;
+                if (++frames == 1)
+                {
+                    w = Math.Max(w, BinaryPrimitives.ReadUInt16LittleEndian(b[(pos + 1)..]) + BinaryPrimitives.ReadUInt16LittleEndian(b[(pos + 5)..]));
+                    h = Math.Max(h, BinaryPrimitives.ReadUInt16LittleEndian(b[(pos + 3)..]) + BinaryPrimitives.ReadUInt16LittleEndian(b[(pos + 7)..]));
+                }
                 byte flags = b[pos + 9];
                 pos += 10;
                 if ((flags & 0x80) != 0)
@@ -272,6 +285,9 @@ public static class MediaProbe
 
         if (frames == 0)
             return Fail(out problem, MalformedCode, "GIF: no image data.");
+        // A screen of 0 is drawn at the first frame's size; empty even then, there is nothing to draw.
+        if (w == 0 || h == 0)
+            return Fail(out problem, MalformedCode, "GIF: zero width or height.");
         return new MediaInfo(MediaFormat.Gif, w, h, frames, centis / 100.0);
     }
 
