@@ -12,12 +12,19 @@ export interface Session {
    */
   engineVersion: string;
   /**
+   * The source revision the engine was built from, for a bug report (docs/api.md#session): the commit's abbreviated id as git writes it, such as "004cf52", followed by "-dirty" when the build had changes not yet committed; "unknown" when the build couldn't tell (built without git or outside a repository, as from a source archive). A client shows it as given.
+   * Pattern: `^(unknown|[0-9a-f]{7,64}(-dirty)?)$`.
+   */
+  engineBuild: string;
+  /**
    * The engine API's version: 2 for the API these schemas describe. It goes up only when the API changes in a way a client can't ignore (a member or endpoint removed or changed); members and endpoints are added without changing it.
    * Range: ≥ 1.
    */
   protocol: number;
   /** This run of the engine: new every time the engine starts, so a client that sees another knows the engine restarted (and that every document tag it read before is stale). Not a document's tag: a commit names its document's (documentResponse). */
   instance: InstanceId;
+  /** When this run of the engine started, in UTC to the second. The same for the whole run, like `instance`. */
+  started: Timestamp;
   /**
    * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines none, so the list is empty. A client ignores a name it doesn't know.
    * Unique items.
@@ -25,6 +32,13 @@ export interface Session {
   features: ApiFeature[];
   /** The operating system the engine runs on. A client treats a platform it doesn't know as `other`. */
   platform: "macos" | "windows" | "linux" | "other";
+  /**
+   * The operating system's version as it reports it, for a bug report: on macOS its product version ("26.1", "15.6.1"), on Windows major.minor.build ("10.0.26100"), on Linux the kernel release ("6.8.0-45-generic"); "unknown" when the engine can't read it. Each system writes its own: a client shows it as given.
+   * Length: 1–64.
+   */
+  osVersion: string;
+  /** The processor architecture the engine runs as: the engine's own, so an engine emulated on another architecture reports the one it was built for. A client treats an architecture it doesn't know as `other`. */
+  arch: "x64" | "arm64" | "x86" | "arm" | "other";
   /**
    * The folder the engine keeps its data in: an absolute path on the engine's machine.
    * Length: ≥ 1.

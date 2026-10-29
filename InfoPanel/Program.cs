@@ -39,6 +39,9 @@ if (parsed.Error != null)
     return 2;
 }
 
+// When this run started (the session's `started`): before anything else it does.
+var started = DateTimeOffset.UtcNow;
+
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [.. parsed.HostArgs] });
 builder.Configuration.AddInMemoryCollection(parsed.Settings);
 
@@ -188,7 +191,7 @@ try
         Log.Information("Serving the web client from {WebRoot}", webRoot);
 
     var port = options.Port == 0 ? EngineRuntime.FindFreePort() : options.Port;
-    var runtime = new EngineRuntime(port, options.Token, options.DevOrigins, options.AllowOrigins);
+    var runtime = new EngineRuntime(port, options.Token, options.DevOrigins, options.AllowOrigins) { Started = started };
 
     builder.Services.AddSerilog(engineLogger);
     // Loopback only: endpoints from configuration (Kestrel:Endpoints from arguments, environment or appsettings)

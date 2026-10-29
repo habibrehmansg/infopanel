@@ -1,9 +1,13 @@
 {
   "engineVersion": "2.0.0",
+  "engineBuild": "004cf52",
   "protocol": 2,
   "instance": "b8e14f0a6d2c4e97a3f5c0d9e1b27a46",
+  "started": "2026-10-29T09:30:00Z",
   "features": [],
   "platform": "macos",
+  "osVersion": "26.1",
+  "arch": "arm64",
   "dataDir": "/Users/me/Library/Application Support/InfoPanel/v2",
   "locale": {"tag": "de-CH", "decimalSeparator": ".", "groupSeparator": "'"},
   "formatSupport": {

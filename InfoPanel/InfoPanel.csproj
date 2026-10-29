@@ -29,4 +29,7 @@
     <ProjectReference Include="..\InfoPanel.Core\InfoPanel.Core.csproj" />
   </ItemGroup>
 
+  <!-- The engine's build, which GET /api/session reports (engineBuild): EngineBuild.targets records it. -->
+  <Import Project="EngineBuild.targets" />
+
 </Project>

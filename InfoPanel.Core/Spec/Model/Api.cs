@@ -11,12 +11,20 @@ namespace InfoPanel.Spec;
 public sealed record Session
 {
     public required string EngineVersion { get; init; }
+    /// <summary>The commit the engine was built from (abbreviated, <c>-dirty</c> with uncommitted changes), or <c>unknown</c>.</summary>
+    public required string EngineBuild { get; init; }
     public required int Protocol { get; init; }
     public required string Instance { get; init; }
+    /// <summary>When this run started: RFC 3339 in UTC, to the second.</summary>
+    public required string Started { get; init; }
     /// <summary>The optional API features the engine has, by name; none in this version of the API.</summary>
     public required IReadOnlyList<string> Features { get; init; }
     /// <summary><c>macos</c>, <c>windows</c>, <c>linux</c> or <c>other</c>.</summary>
     public required string Platform { get; init; }
+    /// <summary>The operating system's version as it reports it, or <c>unknown</c>.</summary>
+    public required string OsVersion { get; init; }
+    /// <summary><c>x64</c>, <c>arm64</c>, <c>x86</c>, <c>arm</c> or <c>other</c>: the architecture the engine runs as.</summary>
+    public required string Arch { get; init; }
     public required string DataDir { get; init; }
     /// <summary>The PC's regional format as the engine read it when it started.</summary>
     public required SessionLocale Locale { get; init; }

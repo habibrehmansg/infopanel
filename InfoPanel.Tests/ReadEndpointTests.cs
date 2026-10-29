@@ -1,4 +1,6 @@
 using System.Net;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using InfoPanel.Api;
@@ -68,7 +70,193 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
 
         // The PC's regional format as the engine read it at start-up (every test engine's is en-US).
         Assert.Equal("""{"tag":"en-US","decimalSeparator":".","groupSeparator":","}""", session.GetProperty("locale").GetRawText());
+
+        // What a bug report needs: the engine's build (the commit it was built from), the operating system's version, the
+        // architecture the engine runs as, and when this run started.
+        var build = session.GetProperty("engineBuild").GetString();
+        Assert.Matches("^(unknown|[0-9a-f]{7,64}(-dirty)?)$", build);
+        Assert.Equal(ReadEndpoints.EngineBuild(), build);
+        var osVersion = session.GetProperty("osVersion").GetString();
+        Assert.Equal(ReadEndpoints.OsVersion(), osVersion);
+        Assert.NotEqual("unknown", osVersion);
+        var arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+        Assert.Equal(arch is "x64" or "arm64" or "x86" or "arm" ? arch : "other", session.GetProperty("arch").GetString());
+        Assert.Matches(TimestampPattern, session.GetProperty("started").GetString());
     }
+
+    /// <summary>The schema's <c>timestamp</c>: RFC 3339 in UTC, to the second.</summary>
+    private const string TimestampPattern = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$";
+
+    private static DateTimeOffset ParseTimestamp(string? text) =>
+        DateTimeOffset.ParseExact(text!, "yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal);
+
+    [Fact]
+    public async Task Session_ReportsWhenThisRunStarted()
+    {
+        var before = DateTimeOffset.UtcNow;
+        using var fresh = new EngineFactory();
+        using var client = fresh.CreateApiClient();
+        using var first = await client.GetAsync("/api/session", Ct);
+        var session = JsonDocument.Parse(await first.Content.ReadAsStringAsync(Ct)).RootElement.Clone();
+        var after = DateTimeOffset.UtcNow;
+
+        Assert.True(Valid(session, "session"));
+        var started = session.GetProperty("started").GetString();
+        Assert.Matches(TimestampPattern, started);
+        Assert.InRange(ParseTimestamp(started), before.AddTicks(-(before.Ticks % TimeSpan.TicksPerSecond)), after);
+
+        // The run's, kept for the run: asked again, the same.
+        using var second = await client.GetAsync("/api/session", Ct);
+        var again = JsonDocument.Parse(await second.Content.ReadAsStringAsync(Ct)).RootElement;
+        Assert.Equal(started, again.GetProperty("started").GetString());
+        Assert.Equal(session.GetProperty("instance").GetString(), again.GetProperty("instance").GetString());
+    }
+
+    [Fact]
+    public async Task Session_ReportsTheRunsStart_InUtc_ToTheSecond()
+    {
+        // A run that began at 11:04:05.678 in UTC+8 reports 03:04:05Z, however much later it is asked: the run's start,
+        // not the time of the request, in UTC and cut to the second.
+        var runtime = new InfoPanel.Hosting.EngineRuntime(EngineFactory.Port, EngineFactory.Token, [EngineFactory.DevOrigin], [EngineFactory.CrossOrigin])
+        {
+            Started = new DateTimeOffset(2026, 1, 2, 11, 4, 5, 678, TimeSpan.FromHours(8)),
+        };
+        using var fresh = new EngineFactory();
+        using var engine = fresh.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.AddSingleton(runtime)));
+        using var client = engine.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+        for (var i = 0; i < 2; i++)
+        {
+            using var response = await client.GetAsync("/api/session", Ct);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var session = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct)).RootElement;
+            Assert.True(Valid(session, "session"));
+            Assert.Equal("2026-01-02T03:04:05Z", session.GetProperty("started").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("004cf52")]
+    [InlineData("004cf52-dirty")]
+    [InlineData("004cf521a45f")]
+    [InlineData("004cf521a45fc7c18c426ed6163ac6b7f73ba593")]
+    [InlineData("004cf521a45fc7c18c426ed6163ac6b7f73ba593-dirty")]
+    public void TheBuild_IsTheCommitTheEngineWasBuiltFrom(string recorded) => Assert.Equal(recorded, ReadEndpoints.BuildOf(recorded));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("unknown")]
+    [InlineData("004CF52")]
+    [InlineData("004cf5")]
+    [InlineData("004cf52-modified")]
+    [InlineData("004cf52-dirty-dirty")]
+    [InlineData(" 004cf52")]
+    [InlineData("004cf52\n")]
+    [InlineData("warning: ignoring;004cf52")]
+    [InlineData("004cf521a45fc7c18c426ed6163ac6b7f73ba593004cf521a45fc7c18c426ed6163ac6b7f7")]
+    public void TheBuild_IsUnknown_WhenNoCommitWasRecorded(string? recorded) =>
+        Assert.Equal("unknown", ReadEndpoints.BuildOf(recorded));
+
+    [Fact]
+    public void TheBuild_NamesTheCommitTheSdkRecorded()
+    {
+        // The SDK reads the repository itself (without git) and writes the commit it built from after a '+' in the
+        // informational version; the engine's build asks git. When both know the commit, they name the same one. Either
+        // may not know it (no repository; the engine's also without git, or when git fails): EngineBuildTargetTests
+        // holds the build to unknown then, whatever this machine has.
+        var informational = typeof(ReadEndpoints).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()!.InformationalVersion;
+        var plus = informational.IndexOf('+');
+        var build = ReadEndpoints.EngineBuild();
+        Assert.Matches("^(unknown|[0-9a-f]{7,64}(-dirty)?)$", build);
+        if (plus < 0 || build == "unknown")
+            return;
+        Assert.StartsWith(build.Split('-')[0], informational[(plus + 1)..], StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("macos", "27.2.0", null, "27.2")]
+    [InlineData("macos", "26.1", null, "26.1")]
+    [InlineData("macos", "15.6.1", null, "15.6.1")]
+    [InlineData("windows", "10.0.26100.0", null, "10.0.26100")]
+    [InlineData("windows", "10.0.26100", null, "10.0.26100")]
+    [InlineData("linux", "6.8.0.45", "6.8.0-45-generic\n", "6.8.0-45-generic")]
+    [InlineData("linux", "6.8.0", null, "6.8.0")]
+    [InlineData("linux", "6.8.0", "", "6.8.0")]
+    [InlineData("linux", "6.8.0", "not a release", "6.8.0")]
+    [InlineData("linux", "6.8.0", "6.8.0-0123456789012345678901234567890123456789012345678901234567890", "6.8.0")]
+    [InlineData("other", "1.2.3", null, "1.2.3")]
+    [InlineData("macos", "0.0", null, "unknown")]
+    [InlineData("windows", "0.0.0.0", null, "unknown")]
+    [InlineData("linux", "0.0", null, "unknown")]
+    public void TheOsVersion_IsTheVersionTheOsReports(string platform, string version, string? linuxRelease, string expected) =>
+        Assert.Equal(expected, ReadEndpoints.OsVersionOf(platform, Version.Parse(version), linuxRelease));
+
+    /// <summary>An OS query that fails: <paramref name="kind"/> names what it throws.</summary>
+    private static Version Fails(string kind) => throw (kind switch
+    {
+        "platform" => new PlatformNotSupportedException("no version"),
+        "win32" => new System.ComponentModel.Win32Exception(5),
+        "io" => new IOException("no version"),
+        _ => (Exception)new InvalidOperationException("no version"),
+    });
+
+    [Theory]
+    [InlineData("macos", "invalid")]
+    [InlineData("windows", "invalid")]
+    [InlineData("windows", "win32")]
+    [InlineData("windows", "platform")]
+    [InlineData("linux", "io")]
+    [InlineData("other", "invalid")]
+    public void TheOsVersion_IsUnknown_WhenTheOsCantSay(string platform, string failure)
+    {
+        // Reading the OS's version can itself fail (Environment.OSVersion throws when the system won't say): the session
+        // then reports unknown, on every platform, rather than failing.
+        Assert.Equal("unknown", ReadEndpoints.ReadOsVersion(platform, () => Fails(failure), () => throw new IOException("no release")));
+        Assert.Equal("unknown", ReadEndpoints.ReadOsVersion(platform, () => Fails(failure), () => null));
+    }
+
+    [Fact]
+    public void TheOsVersion_OnLinux_KeepsWhicheverReadWorked()
+    {
+        // The kernel release when only the version failed; the version when only the release failed.
+        Assert.Equal("6.8.0-45-generic", ReadEndpoints.ReadOsVersion("linux", () => Fails("invalid"), () => "6.8.0-45-generic\n"));
+        Assert.Equal("6.8.0", ReadEndpoints.ReadOsVersion("linux", () => new Version(6, 8, 0), () => throw new UnauthorizedAccessException()));
+        Assert.Equal("6.8.0", ReadEndpoints.ReadOsVersion("linux", () => new Version(6, 8, 0), () => throw new InvalidOperationException()));
+    }
+
+    [Fact]
+    public void TheOsVersion_OnAMac_IsItsProductVersion()
+    {
+        // As the Mac reports it (sw_vers, About This Mac), not the Darwin kernel's version.
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.NotEqual("unknown", ReadEndpoints.OsVersion());
+            return;
+        }
+        using var swVers = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/usr/bin/sw_vers", "-productVersion")
+        {
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        })!;
+        var product = swVers.StandardOutput.ReadToEnd().Trim();
+        swVers.WaitForExit();
+        Assert.Matches(@"^[0-9]+\.[0-9]+(\.[0-9]+)?$", product);
+        Assert.Equal(product, ReadEndpoints.OsVersion());
+    }
+
+    [Theory]
+    [InlineData(Architecture.X64, "x64")]
+    [InlineData(Architecture.Arm64, "arm64")]
+    [InlineData(Architecture.X86, "x86")]
+    [InlineData(Architecture.Arm, "arm")]
+    [InlineData(Architecture.Armv6, "other")]
+    [InlineData(Architecture.RiscV64, "other")]
+    [InlineData(Architecture.Wasm, "other")]
+    [InlineData(Architecture.S390x, "other")]
+    public void TheArch_IsTheEnginesArchitecture_OrOther(Architecture architecture, string expected) =>
+        Assert.Equal(expected, ReadEndpoints.ArchOf(architecture));
 
     [Fact]
     public async Task Session_ReportsTheRegionalFormatTheEngineRead()

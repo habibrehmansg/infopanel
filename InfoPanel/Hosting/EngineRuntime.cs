@@ -6,9 +6,9 @@ using System.Text;
 namespace InfoPanel.Hosting;
 
 /// <summary>
-/// What the running engine is: its loopback port, session token and allowed origins. The port is chosen before
-/// the server starts (a free one when <c>--port 0</c>) so the allowed origins are known when the pipeline is
-/// built; <see cref="EngineLifetime"/> confirms it from the server once it is listening.
+/// What the running engine is: its loopback port, session token, allowed origins and when it started. The port is
+/// chosen before the server starts (a free one when <c>--port 0</c>) so the allowed origins are known when the
+/// pipeline is built; <see cref="EngineLifetime"/> confirms it from the server once it is listening.
 /// </summary>
 public sealed class EngineRuntime
 {
@@ -40,6 +40,12 @@ public sealed class EngineRuntime
     }
 
     public string Token { get; }
+
+    /// <summary>
+    /// When this run of the engine started (the session's <c>started</c>): <c>Program</c> takes it before it opens the
+    /// data folder. The same for the whole run.
+    /// </summary>
+    public DateTimeOffset Started { get; init; } = DateTimeOffset.UtcNow;
 
     public IReadOnlyList<string> DevOrigins { get; }
 

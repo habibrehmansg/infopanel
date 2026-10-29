@@ -1,0 +1,38 @@
+<Project>
+
+  <!-- The engine's build, which GET /api/session reports (engineBuild): the commit it is built from, abbreviated to 7
+       characters (more when git finds 7 ambiguous), "-dirty" when git lists changes not yet committed (untracked files
+       included), recorded as the assembly metadata InfoPanel.Build. Without git or a repository (a source archive), or
+       when git fails, "unknown". Git's errors are dropped and its exit codes only read, so git never fails the build or
+       warns; a shell that can't be launched (none on the PATH) is a warning, and the build "unknown". -->
+  <Target Name="RecordEngineBuild" BeforeTargets="GetAssemblyAttributes">
+    <PropertyGroup>
+      <_EngineBuildNull Condition="'$(OS)' == 'Windows_NT'">nul</_EngineBuildNull>
+      <_EngineBuildNull Condition="'$(OS)' != 'Windows_NT'">/dev/null</_EngineBuildNull>
+    </PropertyGroup>
+    <Exec Command="git rev-parse --short=7 HEAD 2&gt;$(_EngineBuildNull)" WorkingDirectory="$(MSBuildProjectDirectory)" EchoOff="true"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low"
+          ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_EngineBuildHead" />
+      <Output TaskParameter="ExitCode" PropertyName="_EngineBuildHeadExit" />
+    </Exec>
+    <Exec Condition="'$(_EngineBuildHeadExit)' == '0'" Command="git --no-optional-locks status --porcelain 2&gt;$(_EngineBuildNull)"
+          WorkingDirectory="$(MSBuildProjectDirectory)" EchoOff="true" ConsoleToMSBuild="true" IgnoreExitCode="true"
+          IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_EngineBuildChanges" />
+      <Output TaskParameter="ExitCode" PropertyName="_EngineBuildChangesExit" />
+    </Exec>
+    <PropertyGroup>
+      <_EngineBuild>unknown</_EngineBuild>
+      <_EngineBuild Condition="'$(_EngineBuildHeadExit)' == '0' And '$(_EngineBuildChangesExit)' == '0' And $([System.Text.RegularExpressions.Regex]::IsMatch('$(_EngineBuildHead)', '^[0-9a-f]{7,64}$'))">$(_EngineBuildHead)</_EngineBuild>
+      <_EngineBuild Condition="'$(_EngineBuild)' != 'unknown' And '$(_EngineBuildChanges)' != ''">$(_EngineBuild)-dirty</_EngineBuild>
+    </PropertyGroup>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>InfoPanel.Build</_Parameter1>
+        <_Parameter2>$(_EngineBuild)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+
+</Project>

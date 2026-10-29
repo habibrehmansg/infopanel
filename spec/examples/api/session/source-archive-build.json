@@ -1,0 +1,18 @@
+{
+  "engineVersion": "2.0.0",
+  "engineBuild": "unknown",
+  "protocol": 2,
+  "instance": "5f0c2a7e91d84b36a0e4c8f1d2b97e30",
+  "started": "2026-10-29T01:05:42Z",
+  "features": [],
+  "platform": "windows",
+  "osVersion": "10.0.26100",
+  "arch": "x64",
+  "dataDir": "C:\\Users\\me\\AppData\\Local\\InfoPanel\\v2",
+  "locale": {"tag": "en-GB", "decimalSeparator": ".", "groupSeparator": ","},
+  "formatSupport": {
+    "infopanel.archive/1": {"version": "1.0", "capabilities": [], "limits": {"archiveBytes": 536870912, "manifestBytes": 65536}},
+    "infopanel.document/1": {"version": "1.0", "capabilities": [], "limits": {"documentBytes": 16777216, "items": 2000, "ops": 1000}},
+    "infopanel.scene/1": {"version": "1.0", "capabilities": [], "limits": {"sceneBytes": 1048576, "nodes": 2000, "mediaBytes": 33554432}}
+  }
+}

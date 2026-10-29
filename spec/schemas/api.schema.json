@@ -6,16 +6,22 @@
     "session": {
       "description": "GET /api/session: the engine, this run of it and what it supports.",
       "type": "object",
-      "required": ["engineVersion", "protocol", "instance", "features", "platform", "dataDir", "locale", "formatSupport"],
+      "required": ["engineVersion", "engineBuild", "protocol", "instance", "started", "features", "platform", "osVersion", "arch", "dataDir", "locale", "formatSupport"],
       "additionalProperties": false,
       "properties": {
         "engineVersion": { "description": "The engine's version, such as \"2.0.0\".", "type": "string", "minLength": 1, "maxLength": 64 },
+        "engineBuild": {
+          "description": "The source revision the engine was built from, for a bug report (docs/api.md#session): the commit's abbreviated id as git writes it, such as \"004cf52\", followed by \"-dirty\" when the build had changes not yet committed; \"unknown\" when the build couldn't tell (built without git or outside a repository, as from a source archive). A client shows it as given.",
+          "type": "string",
+          "pattern": "^(unknown|[0-9a-f]{7,64}(-dirty)?)$"
+        },
         "protocol": {
           "description": "The engine API's version: 2 for the API these schemas describe. It goes up only when the API changes in a way a client can't ignore (a member or endpoint removed or changed); members and endpoints are added without changing it.",
           "type": "integer",
           "minimum": 1
         },
         "instance": { "$ref": "#/$defs/instanceId", "description": "This run of the engine: new every time the engine starts, so a client that sees another knows the engine restarted (and that every document tag it read before is stale). Not a document's tag: a commit names its document's (documentResponse)." },
+        "started": { "$ref": "#/$defs/timestamp", "description": "When this run of the engine started, in UTC to the second. The same for the whole run, like `instance`." },
         "features": {
           "description": "The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines none, so the list is empty. A client ignores a name it doesn't know.",
           "type": "array",
@@ -23,6 +29,13 @@
           "uniqueItems": true
         },
         "platform": { "description": "The operating system the engine runs on. A client treats a platform it doesn't know as `other`.", "enum": ["macos", "windows", "linux", "other"] },
+        "osVersion": {
+          "description": "The operating system's version as it reports it, for a bug report: on macOS its product version (\"26.1\", \"15.6.1\"), on Windows major.minor.build (\"10.0.26100\"), on Linux the kernel release (\"6.8.0-45-generic\"); \"unknown\" when the engine can't read it. Each system writes its own: a client shows it as given.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "arch": { "description": "The processor architecture the engine runs as: the engine's own, so an engine emulated on another architecture reports the one it was built for. A client treats an architecture it doesn't know as `other`.", "enum": ["x64", "arm64", "x86", "arm", "other"] },
         "dataDir": { "description": "The folder the engine keeps its data in: an absolute path on the engine's machine.", "type": "string", "minLength": 1 },
         "locale": { "$ref": "#/$defs/sessionLocale" },
         "formatSupport": { "$ref": "#/$defs/formatSupport" }
