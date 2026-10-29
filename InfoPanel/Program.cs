@@ -145,8 +145,12 @@ try
         Log.Information("Wiped the data folder {DataDir} (--fresh)", paths.Root);
 
     // The stores are opened and their blobs swept before anything changes them (behind the marker, checked again); the
-    // first run stores the example.
-    var workspace = Workspace.Start(paths, new WorkspaceOptions { Logger = engineLogger.ForContext<Workspace>() }, DateTimeOffset.UtcNow);
+    // first run stores the example for this platform and sensor source.
+    var workspace = Workspace.Start(paths, new WorkspaceOptions
+    {
+        Logger = engineLogger.ForContext<Workspace>(),
+        Examples = Workspace.FirstRunExamples(OperatingSystem.IsMacOS(), options.Mock),
+    }, DateTimeOffset.UtcNow);
     // The engine settings: a file that can't be read is logged, leaves the defaults in effect and is never rewritten.
     var settings = SettingsStore.Open(paths, engineLogger.ForContext<SettingsStore>());
     logLevel.MinimumLevel = LevelOf(settings.Current.Settings.LogLevel);

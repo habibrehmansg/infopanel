@@ -7,20 +7,24 @@ using InfoPanel.Documents;
 using InfoPanel.Persistence;
 using InfoPanel.Scenes;
 using InfoPanel.Spec;
+using Serilog;
+using Serilog.Core;
+using Serilog.Events;
 using Xunit;
 using static InfoPanel.Core.Tests.Documents.DocKit;
 
 namespace InfoPanel.Core.Tests.Documents;
 
 /// <summary>
-/// The engine's workspace over the 2.0 store: start-up (sweep, first-run example, step-1 data left alone), the profile
-/// list with its statuses, opening on demand, create, duplicate, delete, export and blobs.
+/// The engine's workspace over the 2.0 store: start-up (sweep, first-run example by platform with its blobs, step-1 data
+/// left alone), the profile list with its statuses, opening on demand, create, duplicate, delete, export and blobs.
 /// </summary>
 public sealed class WorkspaceTests : IDisposable
 {
     private const string A = "0a000000-0000-4000-8000-000000000000";
     private const string B = "0b000000-0000-4000-8000-000000000000";
     private const string ExampleId = "3682945e-c157-4ed7-a6b3-60e651328cf5";
+    private const string MacOSExampleId = "a4ebc700-a380-49d9-9ceb-f3660527ba4a";
 
     private readonly TempDirectory _temp = new();
     private readonly List<Workspace> _open = [];
@@ -34,11 +38,34 @@ public sealed class WorkspaceTests : IDisposable
         _temp.Dispose();
     }
 
-    private Workspace StartWorkspace()
+    private Workspace StartWorkspace(IReadOnlyList<string>? examples = null, DateTimeOffset? now = null, ILogger? logger = null)
     {
-        var workspace = Workspace.Start(Paths, new WorkspaceOptions { Instance = Instance, HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes) }, Start);
+        var options = new WorkspaceOptions { Instance = Instance, HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes), Logger = logger };
+        var workspace = Workspace.Start(Paths, examples is null ? options : new WorkspaceOptions
+        {
+            Instance = options.Instance,
+            HistoryBudget = options.HistoryBudget,
+            Logger = logger,
+            Examples = examples,
+        }, now ?? Start);
         _open.Add(workspace);
         return workspace;
+    }
+
+    /// <summary>A scene that shows the blob <paramref name="id"/>.</summary>
+    private static JsonObject Picture(string id) => new()
+    {
+        ["format"] = "infopanel.scene/1",
+        ["nodes"] = new JsonArray(new JsonObject { ["kind"] = "media", ["source"] = new JsonObject { ["asset"] = id }, ["w"] = 8, ["h"] = 8 }),
+    };
+
+    private sealed class CollectingSink(List<LogEvent> events) : ILogEventSink
+    {
+        public void Emit(LogEvent logEvent)
+        {
+            lock (events)
+                events.Add(logEvent);
+        }
     }
 
     /// <summary>A workspace whose store already exists (no example), holding the given stored documents.</summary>
@@ -79,10 +106,113 @@ public sealed class WorkspaceTests : IDisposable
 
             static IEnumerable<Item> All(IEnumerable<Item> items) => items.SelectMany(i => i is GroupItem g ? [i, .. All(g.Children)] : new[] { i });
             Assert.All(All(check.Document!.Items).OfType<SceneItem>(), item => Assert.Null(item.Source));
+            // As the first run loads it.
+            Assert.NotNull(Generation.Load(json.RootElement, 1, SpecLimits.Default, EngineSupport.Base).Generation);
         }
 
         // The embedded examples are these files.
         Assert.Equal(files.Select(Path.GetFileName).Order(StringComparer.Ordinal), Workspace.ExampleDocuments().Select(e => e.Name));
+
+        // The blobs they name, by the blob sweep's rule, are the embedded ones: the files in blobs/, each a picture named
+        // by its hash; none is left over.
+        var named = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in files)
+            BlobSweep.CollectReferences(File.ReadAllBytes(file), named);
+        var blobFiles = Directory.Exists(Path.Combine(folder, "blobs")) ? Directory.GetFiles(Path.Combine(folder, "blobs")) : [];
+        var blobs = Workspace.ExampleBlobs();
+        Assert.Equal(named.Order(StringComparer.Ordinal), blobs.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(blobFiles.Select(f => BlobStore.IdPrefix + Path.GetFileName(f).Split('.')[0]).Order(StringComparer.Ordinal), blobs.Keys.Order(StringComparer.Ordinal));
+        foreach (var (id, bytes) in blobs)
+        {
+            Assert.Equal(id, BlobStore.IdOf(bytes));
+            var media = MediaValidator.Check(bytes, SpecLimits.Default);
+            Assert.True(media.Errors.Count == 0 && media.Info is not null, $"{id}: {string.Join("; ", media.Errors.Select(e => e.Code))}");
+        }
+    }
+
+    [Theory]
+    [InlineData(true, false, Workspace.MacOSExample)]
+    [InlineData(true, true, Workspace.WideBarExample)]
+    [InlineData(false, false, Workspace.WideBarExample)]
+    [InlineData(false, true, Workspace.WideBarExample)]
+    public void FirstRunExamples_FollowThePlatformAndTheSensorSource(bool macOS, bool mockSensors, string example)
+    {
+        Assert.Equal([example], Workspace.FirstRunExamples(macOS, mockSensors));
+        Assert.Contains(example, Workspace.ExampleDocuments().Select(e => e.Name));
+        // Not set, the options create Wide bar, as mock mode does.
+        Assert.Equal([Workspace.WideBarExample], new WorkspaceOptions().Examples);
+    }
+
+    [Fact]
+    public void FirstRun_OnMacOSWithItsSensors_StoresItsPicture_ThenMacOverviewOnly()
+    {
+        var workspace = StartWorkspace(Workspace.FirstRunExamples(macOS: true, mockSensors: false));
+
+        var entry = Assert.Single(workspace.List());
+        Assert.Equal((MacOSExampleId, "ok", "Mac overview", 800, 480, 1L, false), (entry.Id, entry.Status, entry.Name, entry.Width, entry.Height, entry.Rev, entry.Dirty));
+        // It opens (Generation.Load) and draws its picture: stored as an upload is, and named by the stored document.
+        var document = workspace.Open(MacOSExampleId)!;
+        Assert.Equal(800, document.Current.Document.Profile.Width);
+        var (id, bytes) = Assert.Single(Workspace.ExampleBlobs());
+        Assert.Equal(bytes, workspace.Blobs.ReadVerified(id));
+        Assert.Contains(id, File.ReadAllText(Paths.DocumentFile(MacOSExampleId)));
+        Assert.All(workspace.List(), e => Assert.NotEqual(ExampleId, e.Id));
+        workspace.Dispose();
+
+        // The next start's sweep, past the grace period, keeps it: the profile refers to it. No example is created again.
+        // The blob's own time is real time, so age it explicitly past the grace period: only the reference can keep it.
+        File.SetLastWriteTimeUtc(Paths.BlobFile(id), (Start - BlobSweep.GracePeriod - TimeSpan.FromDays(30)).UtcDateTime);
+        var later = StartWorkspace(Workspace.FirstRunExamples(macOS: true, mockSensors: false), Start + BlobSweep.GracePeriod + TimeSpan.FromHours(1));
+        Assert.Equal([MacOSExampleId], later.List().Select(e => e.Id));
+        Assert.Equal(bytes, later.Blobs.ReadVerified(id));
+    }
+
+    [Fact]
+    public void NotAFirstRun_CreatesNoExample_AndStoresNoBlob()
+    {
+        Directory.CreateDirectory(Paths.ProfilesDirectory);
+        File.WriteAllText(Paths.ProfileOrderFile, """{"order":[]}""");
+
+        var workspace = StartWorkspace(Workspace.FirstRunExamples(macOS: true, mockSensors: false));
+
+        Assert.Empty(workspace.List());
+        var (id, _) = Assert.Single(Workspace.ExampleBlobs());
+        Assert.False(workspace.Blobs.Exists(id));
+        Assert.Empty(Directory.Exists(Paths.BlobsDirectory) ? Directory.GetFiles(Paths.BlobsDirectory) : []);
+    }
+
+    [Fact]
+    public void AnExampleWhoseBlobIsMissingOrWrong_IsSkippedAndLogged_AndTheOthersAreCreated()
+    {
+        var log = new List<LogEvent>();
+        var logger = new LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(log)).CreateLogger();
+        // A store that exists already, so start-up creates nothing itself.
+        Directory.CreateDirectory(Paths.ProfilesDirectory);
+        File.WriteAllText(Paths.ProfileOrderFile, """{"order":[]}""");
+        var workspace = StartWorkspace(logger: logger);
+
+        byte[] picture = [1, 2, 3], other = [4, 5, 6];
+        var pictureId = BlobStore.IdOf(picture);
+        var missingId = BlobStore.IdOf(other);
+        const string C = "0c000000-0000-4000-8000-000000000000";
+        byte[] Example(string id, string blob) => Encoding.UTF8.GetBytes(DocJson(id, Scene("pic", scene: Picture(blob))));
+        var documents = new Dictionary<string, byte[]>
+        {
+            ["missing.document.json"] = Example(A, missingId),
+            ["wrong.document.json"] = Example(B, pictureId),
+            ["good.document.json"] = Example(C, pictureId),
+        };
+
+        // Wrong: the bytes given for the picture's id are another blob's.
+        workspace.StoreExamples(["missing.document.json", "wrong.document.json", "absent.document.json"], documents, new Dictionary<string, byte[]> { [pictureId] = other });
+        Assert.Empty(workspace.List());
+        Assert.False(workspace.Blobs.Exists(pictureId));
+        Assert.False(workspace.Blobs.Exists(missingId));
+        Assert.Equal(3, log.Count(e => e.Level == LogEventLevel.Error));
+
+        workspace.StoreExamples(["good.document.json"], documents, new Dictionary<string, byte[]> { [pictureId] = picture });
+        Assert.Equal([C], workspace.List().Select(e => e.Id));
+        Assert.Equal(picture, workspace.Blobs.ReadVerified(pictureId));
     }
 
     [Fact]

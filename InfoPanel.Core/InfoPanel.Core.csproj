@@ -29,6 +29,8 @@
     <EmbeddedResource Include="..\spec\schemas\*.schema.json" LogicalName="InfoPanel.Spec.Schemas.%(Filename)%(Extension)" />
     <!-- Example documents created on first run (Workspace). Resource names: InfoPanel.Documents.Examples.<file>. -->
     <EmbeddedResource Include="Documents\Examples\*.document.json" LogicalName="InfoPanel.Documents.Examples.%(Filename)%(Extension)" />
+    <!-- The blobs those documents name, stored before them. Resource names: InfoPanel.Documents.ExampleBlobs.<64 hex>.<extension>. -->
+    <EmbeddedResource Include="Documents\Examples\blobs\*" LogicalName="InfoPanel.Documents.ExampleBlobs.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

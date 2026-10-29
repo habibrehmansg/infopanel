@@ -40,6 +40,12 @@ public sealed class WorkspaceOptions
     /// runs more than one engine (the host's tests); the process's logger when null.
     /// </summary>
     public ILogger? Logger { get; init; }
+
+    /// <summary>
+    /// The example documents a first run creates, by file name (<see cref="Workspace.ExampleDocuments"/>): the engine
+    /// gives <see cref="Workspace.FirstRunExamples"/> for its platform and sensor source. Wide bar when not set.
+    /// </summary>
+    public IReadOnlyList<string> Examples { get; init; } = [Workspace.WideBarExample];
 }
 
 /// <summary>Raised when profiles are created or deleted. <see cref="Version"/> goes up by one each time.</summary>
@@ -124,6 +130,13 @@ public sealed class Workspace : IDisposable
     private const string IdOnlySchema = SpecSchemas.Api + "#/$defs/duplicateProfileRequest";
     private const string DocumentIdSchema = SpecSchemas.Common + "#/$defs/documentId";
     private const string ExampleResourcePrefix = "InfoPanel.Documents.Examples.";
+    private const string ExampleBlobResourcePrefix = "InfoPanel.Documents.ExampleBlobs.";
+
+    /// <summary>The example a first run creates on an engine without the platform's own sensors: Wide bar (1920×480).</summary>
+    public const string WideBarExample = "wide-bar.document.json";
+
+    /// <summary>The example a first run creates on macOS with the Mac's own sensors: Mac overview (800×480).</summary>
+    public const string MacOSExample = "macos.document.json";
 
     private readonly WorkspaceOptions _options;
     private readonly Lock _lock = new();
@@ -172,8 +185,8 @@ public sealed class Workspace : IDisposable
     /// <summary>
     /// Checks the data folder's marker (<see cref="StoreMarker.Open"/>: nothing is repaired, swept or written in a folder
     /// this engine can't honour), opens the stores in <paramref name="paths"/>, sweeps the blobs, and on the first run (no
-    /// profile order file and no profile folder before) stores the example documents. Logs once when the folder holds
-    /// step-1 data.
+    /// profile order file and no profile folder before) stores the example documents <see cref="WorkspaceOptions.Examples"/>
+    /// names, each with its blobs. Logs once when the folder holds step-1 data.
     /// </summary>
     /// <exception cref="StoreMarkerException">The marker stops start-up; nothing in the folder was changed.</exception>
     /// <exception cref="IOException">A store can't be opened.</exception>
@@ -202,9 +215,17 @@ public sealed class Workspace : IDisposable
 
         var workspace = new Workspace(documents, blobs, options);
         if (firstRun)
-            workspace.StoreExamples();
+            workspace.StoreExamples(options.Examples, ExampleDocuments().ToDictionary(e => e.Name, e => e.Bytes, StringComparer.Ordinal), ExampleBlobs());
         return workspace;
     }
+
+    /// <summary>
+    /// The examples a first run creates (<see cref="WorkspaceOptions.Examples"/>): on macOS reading the Mac's own sensors,
+    /// Mac overview, a panel of them; otherwise (mock mode, whose sensors Wide bar shows, or a platform without a sensor
+    /// source) Wide bar.
+    /// </summary>
+    public static IReadOnlyList<string> FirstRunExamples(bool macOS, bool mockSensors) =>
+        macOS && !mockSensors ? [MacOSExample] : [WideBarExample];
 
     /// <summary>Whether step-1 data is in the folder; false when that can't be told (it only decides a warning).</summary>
     private static bool HasStep1Data(DataPaths paths)
@@ -236,10 +257,41 @@ public sealed class Workspace : IDisposable
         return result;
     }
 
-    private void StoreExamples()
+    /// <summary>
+    /// The blobs embedded for the example documents (<c>Documents/Examples/blobs/{64 hex}.{extension}</c>), by id: the
+    /// pictures they show.
+    /// </summary>
+    public static IReadOnlyDictionary<string, byte[]> ExampleBlobs()
     {
-        foreach (var (name, bytes) in ExampleDocuments())
+        var assembly = typeof(Workspace).Assembly;
+        var result = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith(ExampleBlobResourcePrefix, StringComparison.Ordinal)))
         {
+            using var stream = assembly.GetManifestResourceStream(name)!;
+            using var copy = new MemoryStream();
+            stream.CopyTo(copy);
+            var file = name[ExampleBlobResourcePrefix.Length..];
+            result.Add(BlobStore.IdPrefix + file.Split('.')[0], copy.ToArray());
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Creates the examples named in <paramref name="names"/>, in that order, from <paramref name="documents"/> (by file
+    /// name), each after storing the blobs its text names from <paramref name="blobs"/> (by id) through
+    /// <see cref="PutBlob"/>, as a client uploads them. An example that isn't there or doesn't load, or one of whose blobs
+    /// isn't there, doesn't hash to its id or can't be stored, is skipped and logged; the others are still created.
+    /// </summary>
+    internal void StoreExamples(IReadOnlyList<string> names, IReadOnlyDictionary<string, byte[]> documents, IReadOnlyDictionary<string, byte[]> blobs)
+    {
+        foreach (var name in names)
+        {
+            if (!documents.TryGetValue(name, out var bytes))
+            {
+                Logger.Error("There is no example document {Name}", name);
+                continue;
+            }
+
             using var json = JsonDocument.Parse(bytes, SpecJson.DocumentOptions);
             var load = Generation.Load(json.RootElement, 1, Limits, Support);
             if (load.Generation is not { } generation)
@@ -247,6 +299,10 @@ public sealed class Workspace : IDisposable
                 Logger.Error("The example document {Name} doesn't load: {Errors}", name, string.Join("; ", load.Check.Errors.Select(e => $"{e.Path} {e.Code}")));
                 continue;
             }
+
+            // Its blobs first, so the stored document never names one that isn't there.
+            if (!StoreExampleBlobs(name, bytes, blobs))
+                continue;
 
             var id = generation.Document.Id;
             try
@@ -259,6 +315,38 @@ public sealed class Workspace : IDisposable
                 Logger.Error(ex, "Could not create the example profile {ProfileId}", id);
             }
         }
+    }
+
+    /// <summary>Stores every blob the example's text names (the blob sweep's rule); false, logged, when one can't be.</summary>
+    private bool StoreExampleBlobs(string name, byte[] document, IReadOnlyDictionary<string, byte[]> blobs)
+    {
+        var named = new HashSet<string>(StringComparer.Ordinal);
+        BlobSweep.CollectReferences(document, named);
+        foreach (var id in named.Order(StringComparer.Ordinal))
+        {
+            if (!blobs.TryGetValue(id, out var bytes))
+            {
+                Logger.Error("The example document {Name} names the blob {BlobId}, which isn't embedded; it isn't created", name, id);
+                return false;
+            }
+
+            if (BlobStore.IdOf(bytes) != id)
+            {
+                Logger.Error("The example blob {BlobId} doesn't hash to its id; the example document {Name} isn't created", id, name);
+                return false;
+            }
+
+            try
+            {
+                PutBlob(bytes);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentOutOfRangeException)
+            {
+                Logger.Error(ex, "Could not store the example blob {BlobId}; the example document {Name} isn't created", id, name);
+                return false;
+            }
+        }
+        return true;
     }
 
     // ---- reading ---------------------------------------------------------------------------------------------------
