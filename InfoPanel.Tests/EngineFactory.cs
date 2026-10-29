@@ -1,17 +1,20 @@
 using System.Net.Http.Headers;
+using InfoPanel.Hosting;
 using InfoPanel.Scenes;
 using InfoPanel.Tests.Contract;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace InfoPanel.Tests;
 
 /// <summary>
 /// The engine on a <c>TestServer</c>, with a temp data folder, a temp web root holding an <c>index.html</c>,
 /// a fixed token, port, dev origin and cross origin, seeded mock sensors and a fixed PC regional format (en-US), so
-/// frames don't depend on the machine's region. Its 1.x folder is its own (<see cref="V1Dir"/>, empty unless a test puts
+/// frames don't depend on the machine's region. Its folder opener only records (<see cref="Folders"/>), so no test engine
+/// opens a file manager, and its browser launcher starts nothing. Its 1.x folder is its own (<see cref="V1Dir"/>, empty unless a test puts
 /// 1.x data there), so no test engine reads the 1.x data of the user running the tests. Every response it gives, on the TestServer
 /// or on Kestrel (<c>LiveEngine</c>), is checked against spec/openapi.json (<see cref="ContractCheck"/>), except in
 /// <c>Category=Performance</c> tests; <see cref="Contract"/> holds what the check saw, and disposing the factory fails on
@@ -52,6 +55,9 @@ public class EngineFactory : WebApplicationFactory<Program>
     /// <summary>What the contract check saw of this engine's responses.</summary>
     public ContractLog Contract { get; } = new();
 
+    /// <summary>The folders this engine was asked to open (<c>POST /api/folders/{folder}/open</c>), in order: none is opened.</summary>
+    public RecordingFolderOpener Folders { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         // Outermost, ahead of every other startup filter, so it sees each response as the client gets it.
@@ -67,7 +73,14 @@ public class EngineFactory : WebApplicationFactory<Program>
         builder.UseSetting("Engine:MockSeed", "42");
         builder.UseSetting("Engine:DevOrigins:0", DevOrigin);
         builder.UseSetting("Engine:AllowOrigins:0", CrossOrigin);
-        builder.ConfigureTestServices(services => services.AddSingleton(Regional));
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton(Regional);
+            services.AddSingleton<IFolderOpener>(Folders);
+            // Every test engine has --no-browser; one that turns it off gets a launcher that opens nothing.
+            services.AddSingleton(sp => new BrowserLauncher(sp.GetRequiredService<ILogger<BrowserLauncher>>(),
+                _ => throw new InvalidOperationException("No test engine opens a browser.")));
+        });
     }
 
     /// <summary>A client that doesn't follow redirects or keep cookies.</summary>
@@ -97,5 +110,32 @@ public class EngineFactory : WebApplicationFactory<Program>
             if (Interlocked.Exchange(ref _asserted, 1) == 0)
                 Contract.AssertConformed(TimeSpan.FromSeconds(10));
         }
+    }
+}
+
+/// <summary>A folder opener for tests: it records each folder it is asked to open and opens none, or throws <see cref="Failure"/>.</summary>
+public sealed class RecordingFolderOpener : IFolderOpener
+{
+    private readonly Lock _lock = new();
+    private readonly List<string> _opened = [];
+
+    /// <summary>When set, every open is recorded and then throws it, as a file manager that can't be started.</summary>
+    public Exception? Failure { get; init; }
+
+    public IReadOnlyList<string> Opened
+    {
+        get
+        {
+            lock (_lock)
+                return [.. _opened];
+        }
+    }
+
+    public void Open(string folder)
+    {
+        lock (_lock)
+            _opened.Add(folder);
+        if (Failure != null)
+            throw Failure;
     }
 }

@@ -1,0 +1,1 @@
+{"seq": 42, "time": "2026-10-30T09:30:01.003+08:00", "level": "warning", "source": "InfoPanel.Settings.SettingsStore", "message": "The stored setting at /frameRate is out of range; its default applies", "exception": "System.IO.IOException: The process cannot access the file\n   at InfoPanel.Documents.AtomicFile.Write(String path, ReadOnlySpan`1 bytes)"}

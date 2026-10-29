@@ -281,6 +281,7 @@ try
         sp.GetService<RenderServiceOptions>()));
     builder.Services.AddSingleton(new PreviewSocketOptions());
     builder.Services.AddSingleton<BrowserLauncher>();
+    builder.Services.AddSingleton<IFolderOpener>(sp => new FolderOpener(sp.GetRequiredService<ILogger<FolderOpener>>()));
     builder.Services.AddHostedService<SensorService>();
     builder.Services.AddHostedService<EngineLifetime>();
 
@@ -310,6 +311,8 @@ try
     app.MapImportEndpoints();
     app.MapTokenEndpoints();
     app.MapSettingsEndpoints();
+    app.MapLogEndpoints();
+    app.MapFolderEndpoints();
     app.MapPreviewSocket();
     app.MapClientFallback(webRoot);
 

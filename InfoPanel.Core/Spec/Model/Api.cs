@@ -592,6 +592,33 @@ public sealed record SettingsStatusProblem
     public required ValidationErrorBody Problem { get; init; }
 }
 
+// The engine's recent log entries (GET /api/logs).
+
+/// <summary>
+/// The recent log entries after the request's <c>after</c>, oldest first, and <see cref="Latest"/>, the <c>seq</c> of the
+/// newest entry the run has logged (0 before the first).
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/logPage")]
+public sealed record LogPage
+{
+    public required IReadOnlyList<LogEntryBody> Entries { get; init; }
+    public required long Latest { get; init; }
+}
+
+/// <summary>One recent log entry: <see cref="Source"/>, <see cref="Message"/> and <see cref="Exception"/> are text for people.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/logEntry")]
+public sealed record LogEntryBody
+{
+    public required long Seq { get; init; }
+    /// <summary>RFC 3339 with milliseconds and the engine's offset from UTC.</summary>
+    public required string Time { get; init; }
+    /// <summary><c>verbose</c>, <c>debug</c>, <c>information</c>, <c>warning</c>, <c>error</c> or <c>fatal</c>.</summary>
+    public required string Level { get; init; }
+    public required string Source { get; init; }
+    public required string Message { get; init; }
+    public string? Exception { get; init; }
+}
+
 // The preview socket's text messages (the schema's clientMessage and serverMessage; docEvent is above).
 
 /// <summary>The first message on <c>/ws</c> when the token wasn't offered as a subprotocol. <see cref="Type"/> is always <c>auth</c>.</summary>

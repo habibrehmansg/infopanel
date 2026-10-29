@@ -14,6 +14,8 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `GET /api/sensors/values` | | An array of `sensorValue`; 400 for a `history` that isn't a whole number from −2,147,483,648 to 2,147,483,647 |
 | `GET /api/settings` | | `engineSettings` ([below](#settings)) |
 | `PATCH /api/settings` | `settingsChange` | `engineSettings`; 409 `settingsStatusProblem`; 422 `invalidProblem` ([below](#changing-settings)) |
+| `GET /api/logs` | | `logPage`; 400 for an `after` that isn't a whole number from 0 to 9,007,199,254,740,991 ([below](#logs)) |
+| `POST /api/folders/{folder}/open` | | 204; 404 for a `folder` other than `data` and `logs`; 500 when the engine can't open it ([below](#folders)) |
 | `GET /api/profiles` | | An array of `profileEntry`, in display order |
 | `POST /api/profiles` | `createProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` ([below](#creating-and-duplicating)) |
 | `POST /api/profiles/{id}/duplicate` | `duplicateProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` |
@@ -52,8 +54,8 @@ Every error under `/api` is `application/problem+json`: the definition the reque
 
 - 401 `problem` without a valid token, on every request under `/api` and on `/ws`;
 - 403 `scopeProblem` to a token without the scope a request that changes something needs (`edit`), or that only the session token may make (`session`); every token has `read`;
-- 404 `problem` on a request that names a profile, blob or token that doesn't exist;
-- 400 `problem` for a query parameter that isn't a whole number from −2,147,483,648 to 2,147,483,647 (`w`, `history`), and for a `DELETE` of a profile without one `instance` of 1–64 characters ([below](#deleting));
+- 404 `problem` on a request that names a profile, blob, token or folder that doesn't exist;
+- 400 `problem` for a query parameter that isn't a whole number from −2,147,483,648 to 2,147,483,647 (`w`, `history`), for an `after` that isn't one from 0 to 9,007,199,254,740,991 ([below](#logs)), and for a `DELETE` of a profile without one `instance` of 1–64 characters ([below](#deleting));
 - 500 `problem` when the engine fails; the error is in its log.
 
 A path under `/api` that isn't a request above, or a method a path doesn't take, is answered 404 (or 405) `problem`. Under `/ws/` and `/auth`, a path that isn't `/ws` or `/auth/{token}` is answered 404 with no body.
@@ -72,7 +74,7 @@ Every request under `/api` carries a token, as `Authorization: Bearer {token}`. 
 | `read` | Every `GET` and `HEAD` under `/api` but the session token's own (below): the session, fonts, sensors, the profile list, documents, exports and archives, thumbnails, blobs, the 1.x migration's state; and the preview socket, `doc` messages and frames included |
 | `edit` | Every request that changes a profile, a document or a blob, or the engine's data: creating, duplicating and deleting profiles, commits, undo, redo, revert, save, `POST /api/blobs`, opening a profile archive, and the 1.x import's reads (which store blobs) and record. `edit` implies `read`: a token made with `edit` has both |
 
-Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token), uses the token endpoints, and reads and changes the engine settings ([below](#settings)). Scopes fail closed: a request that neither scope covers needs the session token.
+Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token), uses the token endpoints, reads and changes the engine settings ([below](#settings)), reads the engine's recent log entries ([below](#logs)) and opens the engine's folders ([below](#folders)). Scopes fail closed: a request that neither scope covers needs the session token.
 
 Narrower access, such as a token that sees only some profiles, would come as a token kind of its own in a later version: `read` and `edit` keep allowing everything this table says.
 
@@ -159,6 +161,18 @@ After each change that changed the stored settings, every preview socket authent
 ### Client preferences
 
 `clients` keeps each client's own preferences with the engine, by a name the client picks (1–64 letters, digits, dots, underscores and hyphens), so that they last as long as the engine's data, whatever the client's own storage keeps. Each is any JSON value but `null`, and the engine stores it as the same value and never reads it. A change sets a client's preferences whole, or removes them with `null`, and keeps the other clients'. A client changes only its own name's.
+
+## Logs
+
+`GET /api/logs?after={seq}` answers the engine's recent log entries, `logPage`: `entries`, oldest first, and `latest`, the `seq` of the newest entry this run of the engine has logged, kept or not (0 before the first). Only the session token reads them ([authentication](#authentication)). The engine keeps this run's newest 2,000 entries, and at most 2 MiB of their text, dropping the oldest first. They are exactly what it writes to its log file, at the `logLevel` setting ([settings](#settings)): never what it shows only on its console, such as the sign-in and pairing links, which carry the session token.
+
+Each entry (`logEntry`) has `seq`, its number (1 for the run's first entry, one more for each after it); `time`, when it was logged, in RFC 3339 with milliseconds and the engine's offset from UTC (`2026-10-30T09:30:00.125+08:00`); `level`, `verbose`, `debug`, `information`, `warning`, `error` or `fatal`; `source`, the part of the engine that logged it, or empty; `message`; and `exception`, the error it records, when there is one. `source`, `message` and `exception` are text for people, never a contract: a client shows them as given and never parses them. A source longer than 256 characters, a message longer than 4,096 and an exception longer than 8,192 are cut, ending in "…". A client treats a level it doesn't know as `information`.
+
+With `after`, only the entries whose `seq` is greater are answered; without it, every kept entry. A client polls with `after` set to the `latest` it last read and adds what comes to what it has; when the first entry answered isn't `after` + 1, the engine dropped the entries between. `seq` and `latest` belong to the run the session's `instance` names: after a restart they start again, so a client that sees another `instance` (here or in `hello`) reads the entries from the start. An `after` beyond `latest` answers no entries. An `after` that isn't a whole number from 0 to 9,007,199,254,740,991 written in decimal digits, or that is given more than once, is answered 400 `problem`.
+
+## Folders
+
+`POST /api/folders/{folder}/open` opens one of the engine's own folders in the file manager of the computer the engine runs on, and answers 204: `data`, the folder it keeps its data in (the session's `dataDir`), or `logs`, the folder of its log files. Only the session token opens them ([authentication](#authentication)). Any other `folder` is answered 404 `problem`: the engine opens only its own folders, never a path a client gives. The 204 says the engine asked the system to open the folder; what the system shows is its own. A request for a folder the engine asked to open less than a second before, or one made while four file managers it started haven't exited, is answered 204 without asking again: repeated requests open one window, and file managers that don't exit don't pile up. When the engine can't (the folder isn't there, or the file manager can't be started) it logs why and answers 500 `problem`.
 
 ## Profiles
 

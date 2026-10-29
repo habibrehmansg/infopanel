@@ -126,6 +126,65 @@
         }
       }
     },
+    "/api/logs": {
+      "get": {
+        "operationId": "listLogs",
+        "summary": "The engine's recent log entries after a given one, oldest first.",
+        "description": "docs/api.md#logs.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "The `seq` of the last entry the client has: only newer entries are answered. Every kept entry when absent.",
+            "schema": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}
+          }
+        ],
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "200": {
+            "description": "The entries and the newest entry's seq.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/logPage"}}}
+          },
+          "400": {
+            "description": "`after` isn't a whole number from 0 to 9,007,199,254,740,991 in decimal digits, or is given more than once.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"}
+        }
+      }
+    },
+    "/api/folders/{folder}/open": {
+      "parameters": [
+        {
+          "name": "folder",
+          "in": "path",
+          "required": true,
+          "description": "Which of the engine's own folders: `data`, its data folder (the session's dataDir), or `logs`, the folder of its log files.",
+          "schema": {"enum": ["data", "logs"]}
+        }
+      ],
+      "post": {
+        "operationId": "openFolder",
+        "summary": "Opens one of the engine's own folders in the file manager of the computer it runs on.",
+        "description": "docs/api.md#folders.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "204": {"description": "The engine asked the system's file manager to open the folder; a repeat within a second, or a request while four file managers it started haven't exited, asks nothing and is answered the same (docs/api.md#folders)."},
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {
+            "description": "No such folder: `folder` is neither `data` nor `logs`. The engine opens no other path.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "500": {
+            "description": "The engine couldn't open the folder: it isn't there, or the file manager couldn't be started. The error is in the engine's log.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
     "/api/profiles": {
       "get": {
         "operationId": "listProfiles",

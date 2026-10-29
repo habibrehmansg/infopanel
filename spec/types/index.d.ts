@@ -765,7 +765,7 @@ export type TokenScopes = ("read" | "edit")[];
  */
 export type Timestamp = string;
 
-/** 403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication). */
+/** 403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings, the recent log entries, opening the engine's folders). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication). */
 export interface ScopeProblem {
   type?: string;
   title?: string;
@@ -776,7 +776,7 @@ export interface ScopeProblem {
   scope: "read" | "edit" | "session";
 }
 
-/** application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept), 404 (no such profile, blob, token or endpoint), 405, 413 (a blob over mediaBytes) and 500 (an engine error). Its members are for people; a client acts on the status (docs/api.md#errors). */
+/** application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept), 404 (no such profile, blob, token, folder or endpoint), 405, 413 (a blob over mediaBytes) and 500 (an engine error, or a folder the engine couldn't open). Its members are for people; a client acts on the status (docs/api.md#errors). */
 export interface Problem {
   /** A URI for the kind of error: the HTTP status's section of RFC 9110. */
   type?: string;
@@ -959,6 +959,51 @@ export interface SettingsStatusProblem {
   code: "unreadable" | "unsupported";
   /** The settings' `problem` (engineSettings). */
   problem: ValidationError;
+}
+
+/** GET /api/logs: the engine's recent log entries newer than the request's `after`, oldest first, and the `seq` of the newest entry it has logged (docs/api.md#logs). A client polls with `after` set to the `latest` it last read. Read tolerantly: a client ignores members it doesn't know. */
+export interface LogPage {
+  /**
+   * The kept entries whose `seq` is greater than `after` (every kept entry without it), oldest first: at most the newest 2,000 of the run. When the first one's `seq` isn't `after` + 1, the engine dropped the entries between.
+   * Items: ≤ 2000.
+   */
+  entries: LogEntry[];
+  /**
+   * The `seq` of the newest entry this run of the engine has logged, kept or not; 0 before the first. It belongs to the run the session's and hello's `instance` name.
+   * Range: 0–9007199254740991.
+   */
+  latest: number;
+}
+
+/** One of the engine's recent log entries, as its log file has it (docs/api.md#logs). `source`, `message` and `exception` are text for people, never a contract: a client shows them and never parses them. */
+export interface LogEntry {
+  /**
+   * The entry's number: 1 for the run's first entry, one more for each entry after it, within the run the session's and hello's `instance` name.
+   * Range: 1–9007199254740991.
+   */
+  seq: number;
+  /**
+   * When it was logged: RFC 3339 with milliseconds and the engine's offset from UTC, such as "2026-10-30T09:30:00.125+08:00".
+   * Pattern: `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}(Z|[+-][0-9]{2}:[0-9]{2})$`.
+   */
+  time: string;
+  /** How severe it is, from `verbose` through `debug`, `information` and `warning` to `error` and `fatal`. A client treats a level it doesn't know as `information`. */
+  level: "verbose" | "debug" | "information" | "warning" | "error" | "fatal";
+  /**
+   * The part of the engine that logged it, for people, or empty; one longer than 256 characters is cut, ending in "…".
+   * Length: ≤ 256.
+   */
+  source: string;
+  /**
+   * What it says, for people; one longer than 4,096 characters is cut, ending in "…".
+   * Length: ≤ 4096.
+   */
+  message: string;
+  /**
+   * The error it records, as text for people, when there is one; one longer than 8,192 characters is cut, ending in "…".
+   * Length: ≤ 8192.
+   */
+  exception?: string;
 }
 
 /** A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket). */
@@ -3527,6 +3572,54 @@ export interface ApiOperations {
       409: SettingsStatusProblem;
       /** The body breaks its definition or a limit (limit.settingsRequestBytes, limit.settingsDepth, limit.settingsClientBytes), or the settings it makes would be over a limit (limit.settingsClients, limit.settingsBytes); nothing was changed. */
       422: InvalidProblem;
+    };
+  };
+  /**
+   * listLogs: The engine's recent log entries after a given one, oldest first.
+   *
+   * docs/api.md#logs.
+   */
+  "GET /api/logs": {
+    params: { [key: string]: never };
+    query: {
+      /** The `seq` of the last entry the client has: only newer entries are answered. Every kept entry when absent. */
+      after?: number;
+    };
+    request: never;
+    responses: {
+      /** The entries and the newest entry's seq. */
+      200: LogPage;
+      /** `after` isn't a whole number from 0 to 9,007,199,254,740,991 in decimal digits, or is given more than once. */
+      400: Problem;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+    };
+  };
+  /**
+   * openFolder: Opens one of the engine's own folders in the file manager of the computer it runs on.
+   *
+   * docs/api.md#folders.
+   */
+  "POST /api/folders/{folder}/open": {
+    params: {
+      /** Which of the engine's own folders: `data`, its data folder (the session's dataDir), or `logs`, the folder of its log files. */
+      folder: "data" | "logs";
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The engine asked the system's file manager to open the folder; a repeat within a second, or a request while four file managers it started haven't exited, asks nothing and is answered the same (docs/api.md#folders). */
+      204: null;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such folder: `folder` is neither `data` nor `logs`. The engine opens no other path. */
+      404: Problem;
+      /** The engine couldn't open the folder: it isn't there, or the file manager couldn't be started. The error is in the engine's log. */
+      500: Problem;
     };
   };
   /**

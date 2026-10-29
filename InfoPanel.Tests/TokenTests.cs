@@ -374,8 +374,9 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
         foreach (var (pattern, methods, scope) in endpoints)
         {
             var name = $"{string.Join(",", methods)} {pattern}";
-            // The token endpoints and the engine settings are the session token's alone.
-            var sessionEndpoint = pattern is "/api/tokens" or "/api/settings" || pattern.StartsWith("/api/tokens/", StringComparison.Ordinal);
+            // The token endpoints, the engine settings, the recent log entries and the engine's folders are the session token's alone.
+            var sessionEndpoint = pattern is "/api/tokens" or "/api/settings" or "/api/logs" or "/api/folders/{folder}/open"
+                || pattern.StartsWith("/api/tokens/", StringComparison.Ordinal);
             var reads = methods.All(m => m is "GET" or "HEAD") || pattern == "/api/{**rest}";
             ApiScope? expected = sessionEndpoint ? ApiScope.Session : reads ? ApiScope.Read : ApiScope.Edit;
             if (scope != expected)
@@ -459,6 +460,10 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
 
             foreach (var path in Variants($"/api/tokens/{readId}"))
                 cases.Add((token, "DELETE", path));
+            foreach (var path in Variants("/api/logs"))
+                cases.Add((token, "GET", path));
+            foreach (var path in Variants("/api/folders/data/open").Concat(Variants("/api/folders/logs/open")))
+                cases.Add((token, "POST", path));
         }
 
         foreach (var path in Variants("/api/profiles").Concat(Variants($"/api/profiles/{profile}/save")))
@@ -486,6 +491,7 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
         }
 
         Assert.Empty(served);
+        Assert.Empty(engine.Folders.Opened);
         Assert.Equal(tokensBefore, await TokenIds());
         Assert.Equal(profilesBefore, (await session.GetFromJsonAsync<JsonElement>("/api/profiles", Ct)).GetArrayLength());
 

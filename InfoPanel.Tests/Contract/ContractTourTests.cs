@@ -7,6 +7,8 @@ using InfoPanel.Hosting;
 using InfoPanel.Spec;
 using InfoPanel.Tests.Preview;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using static InfoPanel.Tests.TestDocs;
 
@@ -83,7 +85,7 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         // Every operation that needs a token: none is 401, and one without the scope 403.
         foreach (var op in Contract.Operations.Where(o => o.Scope != null && o.Path != "/ws"))
         {
-            var path = op.Path.Replace("{id}", AbsentProfile).Replace("{v1Id}", AbsentProfile);
+            var path = op.Path.Replace("{id}", AbsentProfile).Replace("{v1Id}", AbsentProfile).Replace("{folder}", "data");
             HttpContent? Empty() => op.Method == "POST" ? Body("{}") : null;
             await Send(anonymous, op.Method, path, 401, Empty());
             if (op.Scope == "edit")
@@ -122,6 +124,24 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         {
             refusingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
             await Send(refusingSession, "PATCH", "/api/settings", 409, Body("""{"frameRate":30}"""));
+        }
+
+        // The recent log entries and the engine's folders, the session token's; a folder the engine can't open (an
+        // engine of its own, whose opener fails) is 500. No file manager opens: the test engines' openers only record.
+        await Send(session, "GET", "/api/logs", 200);
+        await Send(session, "GET", "/api/logs?after=1", 200);
+        await Send(session, "GET", "/api/logs?after=-1", 400);
+        await Send(session, "POST", "/api/folders/data/open", 204);
+        await Send(session, "POST", "/api/folders/logs/open", 204);
+        await Send(session, "POST", "/api/folders/profiles/open", 404);
+        Assert.Equal([factory.DataDir, Path.Combine(factory.DataDir, "logs")], factory.Folders.Opened);
+        var failingFolders = Path.Combine(factory.Root, "folders-failing");
+        using (var failing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", failingFolders)
+                   .ConfigureTestServices(s => s.AddSingleton<IFolderOpener>(new RecordingFolderOpener { Failure = new IOException("no file manager") }))))
+        using (var failingSession = failing.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            failingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            await Send(failingSession, "POST", "/api/folders/data/open", 500);
         }
 
         // Profiles: create (from a document and empty), duplicate, list.

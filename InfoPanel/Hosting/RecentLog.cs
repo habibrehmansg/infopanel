@@ -56,10 +56,16 @@ public sealed class RecentLog : ILogEventSink
     }
 
     /// <summary>The kept entries newer than <paramref name="after"/>, oldest first.</summary>
-    public IReadOnlyList<RecentLogEntry> After(long after)
+    public IReadOnlyList<RecentLogEntry> After(long after) => Page(after).Entries;
+
+    /// <summary>
+    /// The kept entries newer than <paramref name="after"/>, oldest first, with <see cref="Latest"/> read at the same
+    /// moment, so the newest entry answered is never past it.
+    /// </summary>
+    public (IReadOnlyList<RecentLogEntry> Entries, long Latest) Page(long after)
     {
         lock (_lock)
-            return _entries.Where(e => e.Entry.Seq > after).Select(e => e.Entry).ToList();
+            return (_entries.Where(e => e.Entry.Seq > after).Select(e => e.Entry).ToList(), _seq);
     }
 
     public void Emit(LogEvent logEvent)
