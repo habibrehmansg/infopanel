@@ -30,7 +30,24 @@ export interface Session {
    * Length: ≥ 1.
    */
   dataDir: string;
+  locale: SessionLocale;
   formatSupport: FormatSupport;
+}
+
+/** The PC's regional format as the engine read it when it started (docs/api.md#session): a profile without a `locale` draws numbers and dates with it, and a client that formats readings of its own uses it so they match the frames. It changes only when the engine restarts. */
+export interface SessionLocale {
+  /** Its language and region, such as en-SG; `und` when the engine knows no language for it. */
+  tag: LocaleTag;
+  /**
+   * Written between a number's integer digits and its decimals.
+   * Length: 1–4.
+   */
+  decimalSeparator: string;
+  /**
+   * Written between groups of three integer digits.
+   * Length: 1–4.
+   */
+  groupSeparator: string;
 }
 
 /** The name of an optional API feature (session.features), written as a capability is: lower-case words joined by dots. */

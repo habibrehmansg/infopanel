@@ -131,6 +131,8 @@ A profile's regional format is its `locale` ([document](document.md#profile)), o
 
 So an explicit separator on `format` comes first, then `formatTime`'s `locale`, then the profile's `locale`, then the PC's format. A profile's `locale` is looked up in the engine's locale data with no user changes, so a profile that sets one gives the same text on every PC whose locale data agrees; a tag the engine doesn't know is drawn in the PC's format and reported ([unsupported](unsupported.md#what-is-not-unsupported)). A change of the profile's `locale` takes effect at the next tick. A separator from the PC's settings that is empty or longer than 4 characters is replaced by its language's own.
 
+The engine reports the PC's format as the session's `locale` ([API](api.md#session)).
+
 ## Named values
 
 `values` maps names to expressions. A value is evaluated at most once per tick, however often it is read, which keeps shared work (a percentage that several nodes use) cheap. Values may read other values, but not in a cycle (`cycle.value`, reported once per cycle, at the reference that closes it when the values are searched in the order they are written). A value's type is inferred from its expression.

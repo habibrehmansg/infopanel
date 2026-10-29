@@ -1,6 +1,7 @@
 using InfoPanel.Documents;
 using InfoPanel.Drawing;
 using InfoPanel.Persistence;
+using InfoPanel.Scenes;
 using InfoPanel.Security;
 using InfoPanel.Sensors;
 using InfoPanel.Spec;
@@ -23,7 +24,7 @@ public static class ReadEndpoints
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/session", (DataPaths paths, Workspace workspace) => ApiResults.Json(new Session
+        api.MapGet("/session", (DataPaths paths, Workspace workspace, RegionalFormat regional) => ApiResults.Json(new Session
         {
             EngineVersion = EngineVersion(),
             Protocol = Protocol,
@@ -31,6 +32,13 @@ public static class ReadEndpoints
             Features = Features,
             Platform = Platform(),
             DataDir = paths.Root,
+            // The PC's regional format, read once at start-up (the format a profile without a locale draws with).
+            Locale = new SessionLocale
+            {
+                Tag = regional.Tag,
+                DecimalSeparator = regional.DecimalSeparator,
+                GroupSeparator = regional.GroupSeparator,
+            },
             FormatSupport = FormatSupportOf(workspace),
         })).RequireScope(ApiScope.Read);
 

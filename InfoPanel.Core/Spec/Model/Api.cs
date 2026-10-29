@@ -18,8 +18,20 @@ public sealed record Session
     /// <summary><c>macos</c>, <c>windows</c>, <c>linux</c> or <c>other</c>.</summary>
     public required string Platform { get; init; }
     public required string DataDir { get; init; }
+    /// <summary>The PC's regional format as the engine read it when it started.</summary>
+    public required SessionLocale Locale { get; init; }
     /// <summary>The schema's <c>formatSupport</c>: every format the engine reads, by format string.</summary>
     public required IReadOnlyDictionary<string, SupportedFormat> FormatSupport { get; init; }
+}
+
+/// <summary>The session's <c>locale</c>: the PC's regional format as the engine read it when it started.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/sessionLocale")]
+public sealed record SessionLocale
+{
+    /// <summary>A BCP 47 tag (<c>und</c> when the engine knows no language for it).</summary>
+    public required string Tag { get; init; }
+    public required string DecimalSeparator { get; init; }
+    public required string GroupSeparator { get; init; }
 }
 
 /// <summary>

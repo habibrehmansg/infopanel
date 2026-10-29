@@ -4,8 +4,11 @@ using System.Text.Json.Nodes;
 using InfoPanel.Api;
 using InfoPanel.Documents;
 using InfoPanel.Persistence;
+using InfoPanel.Scenes;
 using InfoPanel.Spec;
 using InfoPanel.Tests.Contract;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using SkiaSharp;
 using Xunit;
 
@@ -62,6 +65,29 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal(SpecLimits.Default.Nodes, support.GetProperty("infopanel.scene/1").GetProperty("limits").GetProperty("nodes").GetInt32());
         Assert.Equal(SpecLimits.Default.Items, support.GetProperty("infopanel.document/1").GetProperty("limits").GetProperty("items").GetInt32());
         Assert.Equal("[]", session.GetProperty("features").GetRawText());
+
+        // The PC's regional format as the engine read it at start-up (every test engine's is en-US).
+        Assert.Equal("""{"tag":"en-US","decimalSeparator":".","groupSeparator":","}""", session.GetProperty("locale").GetRawText());
+    }
+
+    [Fact]
+    public async Task Session_ReportsTheRegionalFormatTheEngineRead()
+    {
+        // A custom number format (as a macOS number format or a Windows Region override gives) is reported as read, not
+        // rebuilt from its tag: the separators a profile without a locale draws with.
+        var custom = RegionalFormat.Create(System.Globalization.CultureInfo.GetCultureInfo("de-CH"), ";", " ");
+        using var fresh = new EngineFactory();
+        using var engine = fresh.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.AddSingleton(custom)));
+        using var client = engine.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+        using var response = await client.GetAsync("/api/session", Ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var session = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct)).RootElement;
+
+        Assert.True(Valid(session, "session"));
+        var locale = session.GetProperty("locale");
+        Assert.Equal(("de-CH", ";", " "), (locale.GetProperty("tag").GetString(), locale.GetProperty("decimalSeparator").GetString(),
+            locale.GetProperty("groupSeparator").GetString()));
     }
 
     /// <summary>The limits.md sections whose limits are the scene format's; every other section's are the document format's.</summary>

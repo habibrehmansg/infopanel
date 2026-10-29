@@ -6,7 +6,7 @@
     "session": {
       "description": "GET /api/session: the engine, this run of it and what it supports.",
       "type": "object",
-      "required": ["engineVersion", "protocol", "instance", "features", "platform", "dataDir", "formatSupport"],
+      "required": ["engineVersion", "protocol", "instance", "features", "platform", "dataDir", "locale", "formatSupport"],
       "additionalProperties": false,
       "properties": {
         "engineVersion": { "description": "The engine's version, such as \"2.0.0\".", "type": "string", "minLength": 1, "maxLength": 64 },
@@ -24,7 +24,19 @@
         },
         "platform": { "description": "The operating system the engine runs on. A client treats a platform it doesn't know as `other`.", "enum": ["macos", "windows", "linux", "other"] },
         "dataDir": { "description": "The folder the engine keeps its data in: an absolute path on the engine's machine.", "type": "string", "minLength": 1 },
+        "locale": { "$ref": "#/$defs/sessionLocale" },
         "formatSupport": { "$ref": "#/$defs/formatSupport" }
+      }
+    },
+    "sessionLocale": {
+      "description": "The PC's regional format as the engine read it when it started (docs/api.md#session): a profile without a `locale` draws numbers and dates with it, and a client that formats readings of its own uses it so they match the frames. It changes only when the engine restarts.",
+      "type": "object",
+      "required": ["tag", "decimalSeparator", "groupSeparator"],
+      "additionalProperties": false,
+      "properties": {
+        "tag": { "$ref": "urn:infopanel:common:1#/$defs/localeTag", "description": "Its language and region, such as en-SG; `und` when the engine knows no language for it." },
+        "decimalSeparator": { "description": "Written between a number's integer digits and its decimals.", "type": "string", "minLength": 1, "maxLength": 4 },
+        "groupSeparator": { "description": "Written between groups of three integer digits.", "type": "string", "minLength": 1, "maxLength": 4 }
       }
     },
     "apiFeature": {

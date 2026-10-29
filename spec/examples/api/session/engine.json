@@ -5,6 +5,7 @@
   "features": [],
   "platform": "macos",
   "dataDir": "/Users/me/Library/Application Support/InfoPanel/v2",
+  "locale": {"tag": "de-CH", "decimalSeparator": ".", "groupSeparator": "'"},
   "formatSupport": {
     "infopanel.document/1": {"version": "1.0", "capabilities": [], "limits": {"documentBytes": 16777216, "items": 2000, "ops": 1000}},
     "infopanel.scene/1": {"version": "1.0", "capabilities": [], "limits": {"sceneBytes": 1048576, "nodes": 2000, "mediaBytes": 33554432}}
