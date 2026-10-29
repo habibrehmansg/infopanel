@@ -44,7 +44,7 @@ An input without a reading reads 0 (numbers), "" (text) and an empty table; a sc
 
 ## History
 
-A `number` input's history is the sensor's samples, oldest first, taken at the engine's history interval (this engine: one sample a second), at most 4,096 of them. The engine keeps history for the keys that are read; the first read of a key may start with fewer samples. `history` aggregates the last `count` samples and `series` draws them. History is part of the tick snapshot, like every other input ([identity](identity.md)).
+A `number` input's history is the sensor's samples, oldest first, taken every `graphRate` milliseconds, an engine setting (one a second by default, [API](api.md#settings)), at most 4,096 of them. A change of `graphRate` keeps the samples taken before it. The engine keeps history for the keys that are read; the first read of a key may start with fewer samples. `history` aggregates the last `count` samples and `series` draws them. History is part of the tick snapshot, like every other input ([identity](identity.md)).
 
 ## Time is not a binding
 

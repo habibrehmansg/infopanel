@@ -374,9 +374,10 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
         foreach (var (pattern, methods, scope) in endpoints)
         {
             var name = $"{string.Join(",", methods)} {pattern}";
-            var tokenEndpoint = pattern == "/api/tokens" || pattern.StartsWith("/api/tokens/", StringComparison.Ordinal);
+            // The token endpoints and the engine settings are the session token's alone.
+            var sessionEndpoint = pattern is "/api/tokens" or "/api/settings" || pattern.StartsWith("/api/tokens/", StringComparison.Ordinal);
             var reads = methods.All(m => m is "GET" or "HEAD") || pattern == "/api/{**rest}";
-            ApiScope? expected = tokenEndpoint ? ApiScope.Session : reads ? ApiScope.Read : ApiScope.Edit;
+            ApiScope? expected = sessionEndpoint ? ApiScope.Session : reads ? ApiScope.Read : ApiScope.Edit;
             if (scope != expected)
                 wrong.Add($"{name}: declares {scope?.ToString() ?? "nothing"}, needs {expected}");
         }

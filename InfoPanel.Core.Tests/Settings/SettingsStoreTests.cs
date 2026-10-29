@@ -300,7 +300,8 @@ public sealed class SettingsStoreTests : IDisposable
 
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"Took {clock.Elapsed}.");
         var error = Assert.Single(refused.Errors);
-        Assert.Equal(("", "json"), (error.Path, error.Code));
+        // Nested deeper than the settings are read at: the limit's code, as spec/docs/limits.md names it.
+        Assert.Equal(("", "limit.settingsDepth"), (error.Path, error.Code));
         Assert.Equal(hash, Hash());
         Assert.Equal((500, 1), (store.Current.Settings.GraphRate, store.Current.Version));
     }
@@ -448,7 +449,19 @@ public sealed class SettingsStoreTests : IDisposable
         { """{"format":"infopanel.settings/1","clients":{"web":{"n":1e400}}}""", "json", "/clients/web/n" },
         { """{"format":"infopanel.settings/1","future":{"n":-1e400}}""", "json", "/future/n" },
         { """{"format":"infopanel.settings/1","future":[0,[1,-1e400]]}""", "json", "/future/1/1" },
+        // Nested deeper than the settings are read at (settingsDepth, 64): the limit's code, at the root.
+        { """{"format":"infopanel.settings/1","future":""" + Nested(64) + "}", "limit.settingsDepth", "" },
     };
+
+    [Fact]
+    public void AFileNested64Deep_IsRead()
+    {
+        File.WriteAllText(File_, """{"format":"infopanel.settings/1","frameRate":30,"future":""" + Nested(63) + "}");
+
+        var store = Open();
+
+        Assert.Equal((SettingsStatus.Ok, 30), (store.Status, store.Current.Settings.FrameRate));
+    }
 
     [Theory]
     [MemberData(nameof(UnreadableFiles))]
@@ -676,38 +689,55 @@ public sealed class SettingsStoreTests : IDisposable
         var tooLong = Assert.Throws<SettingsChangeException>(() => store.Apply(Clients(name64 + "b", "1")));
         Assert.Equal(($"/clients/{name64}b", "schema"), (tooLong.Errors[0].Path, tooLong.Errors[0].Code));
         var tooBig = Assert.Throws<SettingsChangeException>(() => store.Apply(Clients("b", Quoted(atLimit + "x"))));
-        Assert.Equal(("/clients/b", "limit.clientBytes"), (tooBig.Errors[0].Path, tooBig.Errors[0].Code));
+        Assert.Equal(("/clients/b", "limit.settingsClientBytes"), (tooBig.Errors[0].Path, tooBig.Errors[0].Code));
 
         for (var i = 1; i < SettingsLimits.Clients; i++)
             store.Apply(Clients("c" + i, i.ToString()));
         var tooMany = Assert.Throws<SettingsChangeException>(() => store.Apply(Change("""{"clients":{"one-more":1}}""")));
-        Assert.Equal(("/clients", "limit.clients"), (tooMany.Errors[0].Path, tooMany.Errors[0].Code));
+        Assert.Equal(("/clients", "limit.settingsClients"), (tooMany.Errors[0].Path, tooMany.Errors[0].Code));
         // Replacing one and removing one in the same change stays within the count.
         Assert.Equal(SettingsLimits.Clients, store.Apply(Change("""{"clients":{"c1":null,"one-more":1}}""")).Settings.Clients.Count);
         Assert.Equal(SettingsLimits.Clients, Open().Current.Settings.Clients.Count);
     }
 
-    public static TheoryData<string> PreferencesOverTheLimitAsStored => new()
+    public static TheoryData<string> PreferencesUnderTheLimitOnTheirCanonicalForm => new()
     {
-        // Sent unescaped (11,002 and 60,002 bytes as given), but each '<' and each CJK character is stored as a six-byte
-        // \u escape, so these are over 64 KiB as the file holds them.
+        // 11,002 and 60,002 bytes on their canonical form (RFC 8785: '<' and CJK characters as they are), though the
+        // file stores each '<' and each CJK character as a six-byte \u escape, over 64 KiB there.
         Unescaped(new string('<', 11_000)),
         """{"notes":""" + Unescaped(new string('<', 11_000)) + "}",
         Unescaped(new string('\u6587', 20_000)),
+        // Sent with an escape for every character (six bytes each, 65,540 bytes as sent), 10,925 on the canonical form.
+        "\"" + string.Concat(Enumerable.Repeat("\\u0041", 10_923)) + "\"",
     };
 
     /// <summary>A JSON string of text that needs no escape in JSON, written as it is (<see cref="Quoted"/> escapes more).</summary>
     private static string Unescaped(string text) => "\"" + text + "\"";
 
     [Theory]
-    [MemberData(nameof(PreferencesOverTheLimitAsStored))]
-    public void ClientPreferences_AreMeasuredAsStored_SoOnesOverTheLimitThereAreRefused(string valueJson)
+    [MemberData(nameof(PreferencesUnderTheLimitOnTheirCanonicalForm))]
+    public void ClientPreferences_AreMeasuredOnTheirCanonicalForm_NotAsSentOrStored(string valueJson)
     {
+        var value = Change(valueJson);
+
+        Open().Apply(Clients("web", valueJson));
+
+        var reopened = Open();
+        Assert.True(JsonElement.DeepEquals(value, reopened.Current.Settings.Clients["web"]));
+        Assert.Empty(Warnings);
+    }
+
+    [Fact]
+    public void ClientPreferences_OverTheLimitOnTheirCanonicalForm_AreRefused_HoweverShortAsSent()
+    {
+        // 3,200 numbers of 4 characters as sent (16,001 bytes), each the 21 digits of 1e20 on the canonical form:
+        // 70,401 bytes, over 64 KiB.
+        var valueJson = "[" + string.Join(",", Enumerable.Repeat("1e20", 3_200)) + "]";
         var store = Open();
 
         var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(Clients("web", valueJson)));
 
-        Assert.Equal(("/clients/web", "limit.clientBytes"), (refused.Errors[0].Path, refused.Errors[0].Code));
+        Assert.Equal(("/clients/web", "limit.settingsClientBytes"), (refused.Errors[0].Path, refused.Errors[0].Code));
         Assert.False(File.Exists(File_));
     }
 
@@ -730,9 +760,6 @@ public sealed class SettingsStoreTests : IDisposable
     public static TheoryData<string> ChangesTheFileCouldntHold => new()
     {
         """{"clients":{"web":{"x":1,"x":2}}}""",
-        // The file reads 64 deep; a client's value sits two below the root, so 62 is its deepest.
-        """{"clients":{"web":""" + Nested(63) + "}}",
-        """{"clients":{"web":""" + Nested(65) + "}}",
         """{"clients":{"web":"\uD800"}}""",
         """{"logLevel":"\uD800"}""",
     };
@@ -756,6 +783,31 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal((0, 1), (raised, store.Current.Version));
         var reopened = Open();
         Assert.Equal((SettingsStatus.Ok, 30), (reopened.Status, reopened.Current.Settings.FrameRate));
+    }
+
+    /// <summary>Changes nested deeper than the settings are read at (<c>settingsDepth</c>, 64): a client's value sits two below the root, so 62 is its deepest.</summary>
+    public static TheoryData<string> ChangesNestedTooDeep => new()
+    {
+        """{"clients":{"web":""" + Nested(63) + "}}",
+        """{"clients":{"web":""" + Nested(65) + "}}",
+        """{"future":""" + Nested(64) + "}",
+    };
+
+    [Theory]
+    [MemberData(nameof(ChangesNestedTooDeep))]
+    public void AChangeNestedDeeperThanSettingsDepth_IsRefused_WithTheLimitsCode_AndWritesNothing(string change)
+    {
+        var store = Open();
+        store.Apply(Change("""{"frameRate":30}"""));
+        var hash = Hash();
+        var parsed = JsonDocument.Parse(change, SpecJson.DocumentOptions).RootElement.Clone();
+
+        var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(parsed));
+
+        var error = Assert.Single(refused.Errors);
+        Assert.Equal(("", "limit.settingsDepth"), (error.Path, error.Code));
+        Assert.Equal(hash, Hash());
+        Assert.Equal(1, store.Current.Version);
     }
 
     [Fact]

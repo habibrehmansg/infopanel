@@ -98,6 +98,27 @@ public class LimitsTests
     }
 
     [Fact]
+    public void The_settings_limits_are_named()
+    {
+        // The engine settings' caps, held by the settings store, are limits of the format (spec/docs/limits.md, "Settings
+        // limits"), each with the code a refusal gives.
+        var code = SpecLimits.Default.ToDictionary();
+        var expected = new Dictionary<string, double>
+        {
+            ["settingsRequestBytes"] = 524_288,
+            ["settingsDepth"] = 64,
+            ["settingsClientBytes"] = 65_536,
+            ["settingsClients"] = 16,
+            ["settingsBytes"] = 1_048_576,
+        };
+        foreach (var (name, value) in expected)
+        {
+            Assert.True(code.TryGetValue(name, out var actual) && actual == value, $"{name}: expected {value}, SpecLimits has {(code.TryGetValue(name, out var a) ? a : "none")}");
+            Assert.Equal(SpecSchemas.DocumentFormat, SpecLimits.FormatOf(name));
+        }
+    }
+
+    [Fact]
     public void The_svg_directory_record_and_socket_message_caps_are_named()
     {
         // Each was a constant in the engine's code with its number in prose only; each is now a limit of its own.

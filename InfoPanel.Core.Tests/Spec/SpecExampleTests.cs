@@ -262,7 +262,7 @@ public class SpecExampleTests
         else
         {
             Assert.True(result.IsValid, $"{rel}: a rule example must match {def}: {string.Join("; ", result.Errors.Select(e => $"{e.InstancePath} {e.Message}"))}");
-            var errors = ApiBodyRules.Check(def, json);
+            var errors = ApiBodyRules.Check(def, json, Limits(expected));
             Assert.True(errors.SequenceEqual([(path, code)]), $"{rel}: expected only {code} at '{path}', got: {string.Join("; ", errors)}");
         }
     }
@@ -626,16 +626,22 @@ public class SpecSchemaAgreementTests
 
 /// <summary>
 /// What an engine API body must satisfy beyond its schema definition (spec/docs/api.md, "Checks beyond the schema"):
-/// revisions that agree (<c>rev.mismatch</c>) and ids listed once (<c>id.duplicate</c>). Run on bodies that match their
-/// definition; each error is a JSON pointer into the body and a code, as in spec/examples/expected.json.
+/// revisions that agree (<c>rev.mismatch</c>) and ids listed once (<c>id.duplicate</c>); and a settings change's own
+/// limits (spec/docs/limits.md, "Settings limits"), as the engine checks them. Run on bodies that match their definition;
+/// each error is a JSON pointer into the body and a code, as in spec/examples/expected.json.
 /// </summary>
 internal static class ApiBodyRules
 {
-    public static IReadOnlyList<(string Path, string Code)> Check(string def, JsonElement body)
+    public static IReadOnlyList<(string Path, string Code)> Check(string def, JsonElement body, SpecLimits? limits = null)
     {
         var errors = new List<(string, string)>();
         switch (def)
         {
+            case "settingsChange":
+                // The limits a change is held to on its own, before the settings it makes are (settingsDepth,
+                // settingsClientBytes): the engine's own check, which the settings store runs on every change.
+                errors.AddRange(InfoPanel.Settings.SettingsStore.CheckChange(body, limits ?? SpecLimits.Default).Select(e => (e.Path, e.Code)));
+                break;
             case "documentResponse":
             {
                 // The state's rev is the document's, and nothing in the document changed after it.

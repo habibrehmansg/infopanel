@@ -9,6 +9,7 @@
   "osVersion": "26.1",
   "arch": "arm64",
   "dataDir": "/Users/me/Library/Application Support/InfoPanel/v2",
+  "mock": false,
   "locale": {"tag": "de-CH", "decimalSeparator": ".", "groupSeparator": "'"},
   "formatSupport": {
     "infopanel.archive/1": {"version": "1.0", "capabilities": [], "limits": {"archiveBytes": 536870912, "manifestBytes": 65536}},

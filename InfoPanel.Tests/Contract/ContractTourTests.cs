@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using InfoPanel.Hosting;
 using InfoPanel.Spec;
 using InfoPanel.Tests.Preview;
+using Microsoft.AspNetCore.Hosting;
 using Xunit;
 using static InfoPanel.Tests.TestDocs;
 
@@ -107,6 +108,21 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "GET", "/api/sensors/values?history=2147483648", 400);
         await Send(session, "GET", "/api/sensors/values?history=-2147483648", 200);
         await Send(session, "GET", "/api/sensors/values?history=-2147483649", 400);
+
+        // The engine settings, the session token's: read, changed, a change refused; refused while they can't be read
+        // (an engine of their own, started on settings it can't read: its answers are checked and seen like this one's).
+        await Send(session, "GET", "/api/settings", 200);
+        await Send(session, "PATCH", "/api/settings", 200, Body("""{"frameRate":20}"""));
+        await Send(session, "PATCH", "/api/settings", 422, Body("""{"frameRate":0}"""));
+        var unreadable = Path.Combine(factory.Root, "settings-unreadable");
+        Directory.CreateDirectory(unreadable);
+        File.WriteAllText(Path.Combine(unreadable, "settings.json"), "{ not json");
+        using (var refusing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", unreadable)))
+        using (var refusingSession = refusing.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            refusingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            await Send(refusingSession, "PATCH", "/api/settings", 409, Body("""{"frameRate":30}"""));
+        }
 
         // Profiles: create (from a document and empty), duplicate, list.
         var id = NewId();
@@ -215,6 +231,8 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await socket.ReceiveFrameAsync(Ct, header => header.Scale == 0.25);
         await Send(session, "POST", "/api/profiles", 201, Body($$"""{"id":"{{NewId()}}","name":"Tour, listed","width":100,"height":50}"""));
         await socket.ReceiveTextAsync("profiles", Ct);
+        await Send(session, "PATCH", "/api/settings", 200, Body("""{"frameRate":25}"""));
+        await socket.ReceiveTextAsync("settings", Ct);
         await socket.SendAsync(new { type = "subscribe", profileId = AbsentProfile }, Ct);
         await socket.ReceiveTextAsync("error", Ct);
         await socket.SendAsync(new { type = "unsubscribe" }, Ct);

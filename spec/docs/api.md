@@ -12,6 +12,8 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `GET /api/fonts` | | An array of font family names ([below](#fonts-and-sensors)) |
 | `GET /api/sensors` | | An array of `sensorEntry` ([below](#fonts-and-sensors)) |
 | `GET /api/sensors/values` | | An array of `sensorValue`; 400 for a `history` that isn't a whole number from −2,147,483,648 to 2,147,483,647 |
+| `GET /api/settings` | | `engineSettings` ([below](#settings)) |
+| `PATCH /api/settings` | `settingsChange` | `engineSettings`; 409 `settingsStatusProblem`; 422 `invalidProblem` ([below](#changing-settings)) |
 | `GET /api/profiles` | | An array of `profileEntry`, in display order |
 | `POST /api/profiles` | `createProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` ([below](#creating-and-duplicating)) |
 | `POST /api/profiles/{id}/duplicate` | `duplicateProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` |
@@ -42,7 +44,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 
 A request on a profile is checked in this order, and the first failure answers: its query parameters (else 400 `problem`); the profile exists (else 404); a request that reads, changes or draws its document needs a profile that can be opened (else 409 `profileStatusProblem`, [below](#profiles)); the body matches its definition and the formats (else 422 `invalidProblem`, at most 100 errors and then one `more`, [validation](validation.md)); then what the request itself checks.
 
-A request body is held to its size limit as received, whitespace around the JSON value included, before it is parsed ([limits](limits.md#request-limits)): an undo's, redo's, revert's, save's or duplicate's to `requestBytes` (64 KiB), a token create's to `tokenRequestBytes` (4 KiB), a 1.x migration record's to `recordBytes` (1 MiB) and a commit's to `commitBytes`. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""`. A create's body is read up to `documentBytes` plus 64 KiB, then its document is held to `documentBytes` ([sizes](limits.md#sizes)); a blob's bytes are held to `mediaBytes` and an archive's to `archiveBytes` (413).
+A request body is held to its size limit as received, whitespace around the JSON value included, before it is parsed ([limits](limits.md#request-limits)): an undo's, redo's, revert's, save's or duplicate's to `requestBytes` (64 KiB), a token create's to `tokenRequestBytes` (4 KiB), a settings change's to `settingsRequestBytes` (512 KiB), a 1.x migration record's to `recordBytes` (1 MiB) and a commit's to `commitBytes`. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""`. A create's body is read up to `documentBytes` plus 64 KiB, then its document is held to `documentBytes` ([sizes](limits.md#sizes)); a blob's bytes are held to `mediaBytes` and an archive's to `archiveBytes` (413).
 
 ## Errors
 
@@ -67,10 +69,10 @@ Every request under `/api` carries a token, as `Authorization: Bearer {token}`. 
 
 | Scope | Allows |
 |---|---|
-| `read` | Every `GET` and `HEAD` under `/api` (the session, fonts, sensors, the profile list, documents, exports and archives, thumbnails, blobs, the 1.x migration's state) and the preview socket, `doc` messages and frames included |
+| `read` | Every `GET` and `HEAD` under `/api` but the session token's own (below): the session, fonts, sensors, the profile list, documents, exports and archives, thumbnails, blobs, the 1.x migration's state; and the preview socket, `doc` messages and frames included |
 | `edit` | Every request that changes a profile, a document or a blob, or the engine's data: creating, duplicating and deleting profiles, commits, undo, redo, revert, save, `POST /api/blobs`, opening a profile archive, and the 1.x import's reads (which store blobs) and record. `edit` implies `read`: a token made with `edit` has both |
 
-Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token) and uses the token endpoints. Scopes fail closed: a request that neither scope covers needs the session token.
+Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token), uses the token endpoints, and reads and changes the engine settings ([below](#settings)). Scopes fail closed: a request that neither scope covers needs the session token.
 
 Narrower access, such as a token that sees only some profiles, would come as a token kind of its own in a later version: `read` and `edit` keep allowing everything this table says.
 
@@ -104,6 +106,7 @@ The engine listens on the loopback interface only, and answers a request whose `
 - `features` lists the optional API features the engine has, by name, each once, named as capabilities are. An operation added after this version of the API comes under one, and a client uses the operation only when the session lists its name ([versioning](versioning.md#four-markers-four-questions)). This version defines none, so the list is empty. A client ignores a name it doesn't know.
 - `locale` is the PC's regional format as the engine read it when it started: `tag` (its language and region, `und` when the engine knows no language for it), `decimalSeparator` and `groupSeparator` (each 1–4 characters). A profile without `locale` draws numbers and dates with it ([expressions](expressions.md#regional-format)); a client that formats readings of its own uses it so they match the frames. It changes only when the engine restarts.
 - `started` is when this run of the engine started, in UTC to the second (`2026-10-29T09:30:00Z`). Like `instance`, it changes only when the engine restarts.
+- `mock` is true when the engine was started in mock mode: its sensors are simulated (a mock source's, and `simulated` ones for keys no source has, [below](#fonts-and-sensors)) rather than the computer's, so a client can say its readings aren't real. It changes only when the engine restarts.
 - `engineVersion`, `engineBuild`, `platform`, `osVersion`, `arch` and `dataDir` describe the engine, for people and for bug reports:
   - `engineBuild` is the source revision the engine was built from: the commit's abbreviated id as git writes it (`004cf52`), followed by `-dirty` when the build had changes not yet committed, or `unknown` when the build couldn't tell (built without git or outside a repository, as from a source archive);
   - `platform` is the operating system (`macos`, `windows`, `linux` or `other`), and `osVersion` its version as it reports it: macOS's product version (`26.1`), Windows's major.minor.build (`10.0.26100`), Linux's kernel release (`6.8.0-45-generic`), or `unknown` when the engine can't read it;
@@ -118,7 +121,44 @@ The engine listens on the loopback interface only, and answers a request whose `
 
 `GET /api/sensors` answers every sensor the engine's sources offer, as an array of `sensorEntry`: its `key`, which a binding names ([bindings](bindings.md#bindings)); its `source`, `group`, `name` and `unit`, for people; and its `status` now: `live`, `stale` (the last value kept), `unavailable`, `denied` (the operating system refused the engine access to it), `simulated` or `missing` (the key isn't well formed). These are a scene input's spellings where the meaning is the same; [bindings](bindings.md#status) maps each to the status an input bound to the sensor reads. A client treats a status it doesn't know as no reading.
 
-`GET /api/sensors/values?history={n}` answers a `sensorValue` for every listed sensor that has a reading now, in list order: its `key`, `now`, `min`, `max` and `avg` (a value that isn't a finite number is 0), `unit`, `text` for a text or table sensor, and `status`, `live` or `stale`. `history` is a whole number, clamped to 0–4,096 (0 when absent): with 1 or more, each number sensor also has its last `history` samples at most, oldest first, one a second ([bindings](bindings.md#history)). A `history` that isn't a whole number from −2,147,483,648 to 2,147,483,647 is answered 400 `problem`.
+`GET /api/sensors/values?history={n}` answers a `sensorValue` for every listed sensor that has a reading now, in list order: its `key`, `now`, `min`, `max` and `avg` (a value that isn't a finite number is 0), `unit`, `text` for a text or table sensor, and `status`, `live` or `stale`. `history` is a whole number, clamped to 0–4,096 (0 when absent): with 1 or more, each number sensor also has its last `history` samples at most, oldest first, one every `graphRate` milliseconds ([settings](#settings), one a second by default; [bindings](bindings.md#history)). A `history` that isn't a whole number from −2,147,483,648 to 2,147,483,647 is answered 400 `problem`.
+
+## Settings
+
+`GET /api/settings` answers the engine settings in effect, `engineSettings`: each setting's value, or its default when none is set. Only the session token reads and changes them ([authentication](#authentication)).
+
+| Setting | Values | Default | What it does |
+|---|---|---|---|
+| `frameRate` | 1–60 | 15 | Frames a second for every output without a rate of its own (a profile's desktop window). The preview socket keeps its own rate, a subscription's `maxFps` |
+| `graphRate` | 100–3000 | 1000 | Milliseconds between the samples of the sensor history ([bindings](bindings.md#history), a sensor value's `history`) |
+| `logLevel` | `debug`, `information`, `warning`, `error` | `information` | The least severe entries the engine writes to its log |
+| `sources.libre.enabled` | `true`, `false` | `true` | Whether the LibreHardwareMonitor sensor source (on Windows) reads sensors |
+| `sources.libre.storage` | `true`, `false` | `true` | Whether it reads storage drives |
+| `sources.libre.storageInterval` | 1–300 | 30 | Seconds between its reads of storage drives |
+| `clients.{name}` | Any JSON value but `null` | none | A client's own preferences ([below](#client-preferences)) |
+
+A change takes effect at once: outputs re-time to the new frame rate, the history takes its next sample at the new rate and keeps the samples it has, and the log follows the new level. An engine keeps the source settings whether or not it has that source.
+
+`version` counts the changes this run of the engine made to the stored settings: 0 when it starts, one more after each change that changed them ([below](#changing-settings)). It belongs to the run the session's `instance` names: after a restart it starts again at 0, so a client that sees another `instance` (here or in `hello`) reads the settings again.
+
+`status` says whether the engine could read its stored settings when it started: `ok`; `unreadable` when it couldn't (`problem` says why, with a JSON pointer into them: `io`, `json`, `schema`, `limit.settingsBytes`, `limit.settingsDepth`); or `unsupported` when they are another major version's (`unsupported.format` at `/format`). Unless it is `ok`, the defaults are in effect, the engine leaves the stored settings as they are, and every change is refused with 409 `settingsStatusProblem` (its `code` is the status and its `problem` the settings') until they are fixed or removed and the engine restarts. A client treats a status it doesn't know as settings it can't change, and shows the `problem` when one comes.
+
+### Changing settings
+
+`PATCH /api/settings` changes the settings its body (`settingsChange`) names and answers the settings in effect, as `GET` does. A value sets a setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre` and `clients` are merged member by member. The change is stored before the answer, all of it or none of it. No revision guards it: two changes to different settings never conflict, and of two changes to the same setting the later one stays. A change is one to the stored settings, not only to the values in effect: a value equal to its setting's default is stored, and from then on the setting keeps it rather than following the default (an engine with another default keeps it too); `null` removes a stored value, so the default applies again. Either changes the stored settings, and counts in `version`, though the value in effect stays the same. A change that leaves the stored settings as they were (a setting given the value it already has, the same number spelled otherwise included, `null` for a setting that isn't set, or `{}`) keeps `version` as it was and sends no message; it rewrites the stored file only to finish an earlier write whose folder flush failed.
+
+The engine checks, in order, and the first failure answers, nothing changed:
+
+1. The settings can be changed (`status` is `ok`), else 409 `settingsStatusProblem`.
+2. The body, as every body: within `settingsRequestBytes` as received, then JSON as the formats read it and `settingsChange` ([validation](validation.md#order)); closed, so a member the engine doesn't know is `schema` at that member. Else 422 `invalidProblem`.
+3. The body's nesting within `settingsDepth` (`limit.settingsDepth` at `""`), and each client's preferences within `settingsClientBytes` (`limit.settingsClientBytes` at `/clients/{name}`), else 422.
+4. The settings it makes: at most `settingsClients` clients (`limit.settingsClients` at `/clients`), and within `settingsBytes` as the engine stores them (`limit.settingsBytes` at `""`), else 422 ([limits](limits.md#settings-limits)).
+
+After each change that changed the stored settings, every preview socket authenticated with the session token gets a `settings` message ([below](#messages)).
+
+### Client preferences
+
+`clients` keeps each client's own preferences with the engine, by a name the client picks (1–64 letters, digits, dots, underscores and hyphens), so that they last as long as the engine's data, whatever the client's own storage keeps. Each is any JSON value but `null`, and the engine stores it as the same value and never reads it. A change sets a client's preferences whole, or removes them with `null`, and keeps the other clients'. A client changes only its own name's.
 
 ## Profiles
 
@@ -232,6 +272,7 @@ The engine sends (`serverMessage`):
 - `hello` (`helloMessage`): first, once the socket is authenticated, with `protocol` and the run's `instance` ([session](#session)).
 - `doc` (`docEvent`): the subscribed document's state ([below](#change-events)).
 - `profiles` (`profilesMessage`): the profile list changed (a profile was created, duplicated or deleted, by any client); the client reads `GET /api/profiles`. `version` is greater for a later change; the engine keeps only the newest to send.
+- `settings` (`settingsMessage`): the engine settings changed, by any client; the client reads `GET /api/settings`. Only a socket authenticated with the session token gets it. `version` is the settings' `version` after the change; the engine keeps only the newest to send. The order of `settings` and `profiles` messages relative to each other is unspecified: a client doesn't rely on one coming before the other.
 - `error` (`errorMessage`): a message the engine couldn't act on, or a subscription to a profile that doesn't exist, can't be opened or previewed, or was deleted (which also ends the subscription), with its `code` and `path` ([below](#errors-on-the-socket)) and a `message` for people.
 
 #### Errors on the socket

@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:infopanel:api:1",
-  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, integration tokens, sensors and their readings, and the preview socket's messages, frame headers (with item bounds) and change events. spec/openapi.json says which request carries which. See docs/api.md, docs/commit.md and docs/geometry.md.",
+  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, integration tokens, sensors and their readings, the engine settings, and the preview socket's messages, frame headers (with item bounds) and change events. spec/openapi.json says which request carries which. See docs/api.md, docs/commit.md and docs/geometry.md.",
   "$defs": {
     "session": {
       "description": "GET /api/session: the engine, this run of it and what it supports.",
       "type": "object",
-      "required": ["engineVersion", "engineBuild", "protocol", "instance", "started", "features", "platform", "osVersion", "arch", "dataDir", "locale", "formatSupport"],
+      "required": ["engineVersion", "engineBuild", "protocol", "instance", "started", "features", "platform", "osVersion", "arch", "dataDir", "mock", "locale", "formatSupport"],
       "additionalProperties": false,
       "properties": {
         "engineVersion": { "description": "The engine's version, such as \"2.0.0\".", "type": "string", "minLength": 1, "maxLength": 64 },
@@ -37,6 +37,7 @@
         },
         "arch": { "description": "The processor architecture the engine runs as: the engine's own, so an engine emulated on another architecture reports the one it was built for. A client treats an architecture it doesn't know as `other`.", "enum": ["x64", "arm64", "x86", "arm", "other"] },
         "dataDir": { "description": "The folder the engine keeps its data in: an absolute path on the engine's machine.", "type": "string", "minLength": 1 },
+        "mock": { "description": "Whether the engine runs in mock mode, started to simulate its sensors (docs/api.md#session): its readings come from simulated sources, not the computer's, so a client can say they aren't real. It changes only when the engine restarts.", "type": "boolean" },
         "locale": { "$ref": "#/$defs/sessionLocale" },
         "formatSupport": { "$ref": "#/$defs/formatSupport" }
       }
@@ -878,7 +879,7 @@
     "tokenScopes": { "type": "array", "items": { "description": "A scope (docs/api.md#authentication). In what the engine sends, a client shows a scope it doesn't know by its name.", "enum": ["read", "edit"] }, "minItems": 1, "maxItems": 2, "uniqueItems": true },
     "timestamp": { "description": "A UTC time to the second (RFC 3339), such as \"2026-10-27T09:30:00Z\".", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
     "scopeProblem": {
-      "description": "403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication).",
+      "description": "403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication).",
       "type": "object",
       "required": ["status", "code", "scope"],
       "additionalProperties": false,
@@ -936,12 +937,150 @@
         "unit": { "description": "The unit of its values, for people; empty when it has none.", "type": "string" },
         "text": { "description": "A text or table sensor's text (\"\" for a table without one); absent for a number sensor.", "type": "string" },
         "history": {
-          "description": "With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one a second (docs/bindings.md#history). Absent otherwise, and for a text or table sensor.",
+          "description": "With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one every `graphRate` milliseconds (engineSettings; one a second by default, docs/bindings.md#history). Absent otherwise, and for a text or table sensor.",
           "type": "array",
           "items": { "type": "number" },
           "maxItems": 4096
         },
         "status": { "description": "`live`, or `stale` for the last value of a sensor that has stopped updating. A client treats a status it doesn't know as no reading.", "enum": ["live", "stale"] }
+      }
+    },
+
+    "engineSettings": {
+      "description": "GET /api/settings, and the answer to PATCH /api/settings: the engine settings in effect, each the value set or its default, with how many changes this run made to the stored settings and whether the engine could read them (docs/api.md#settings). `status` tells the two shapes apart: `ok` without a `problem` (engineSettingsOk), or the settings the engine couldn't read with the `problem` (engineSettingsProblem). Read tolerantly: a later engine may add settings, and a client ignores members it doesn't know. A client treats a status it doesn't know as settings it can't change, and shows the `problem` when one comes.",
+      "oneOf": [
+        { "$ref": "#/$defs/engineSettingsOk" },
+        { "$ref": "#/$defs/engineSettingsProblem" }
+      ]
+    },
+    "engineSettingsOk": {
+      "description": "The engine read its stored settings (or had none), and they can be changed: no `problem`.",
+      "type": "object",
+      "required": ["status", "version", "frameRate", "graphRate", "logLevel", "sources", "clients"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "const": "ok" },
+        "version": {
+          "description": "How many changes this run of the engine made to the stored settings: 0 when it starts, one more after each change that changed them. A value equal to its default is stored, and `null` removes one, so either counts though the value in effect stays the same; a change that leaves the stored settings as they were (the value a setting already has, `null` for one that isn't set, `{}`) doesn't count. It counts within the run the session's and hello's `instance` name, and starts again at 0 when the engine restarts.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "frameRate": { "description": "Frames a second for every output without a rate of its own: 1 to 60, 15 by default. The preview socket keeps its own (subscribeMessage's `maxFps`).", "type": "integer", "minimum": 1, "maximum": 60 },
+        "graphRate": { "description": "Milliseconds between the samples of the sensor history: 100 to 3000, 1000 by default.", "type": "integer", "minimum": 100, "maximum": 3000 },
+        "logLevel": { "$ref": "#/$defs/logLevel" },
+        "sources": { "$ref": "#/$defs/settingsSources" },
+        "clients": {
+          "description": "Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any.",
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": { "$ref": "#/$defs/clientName" },
+          "additionalProperties": { "description": "A client's preferences: any JSON value but null.", "type": ["object", "array", "string", "number", "boolean"] }
+        }
+      }
+    },
+    "engineSettingsProblem": {
+      "description": "The engine couldn't read its stored settings when it started: the defaults are in effect, `problem` says why, and every change is refused (409 settingsStatusProblem) until the stored settings are fixed or removed and the engine restarts.",
+      "type": "object",
+      "required": ["status", "problem", "version", "frameRate", "graphRate", "logLevel", "sources", "clients"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "description": "`unreadable`: the engine couldn't read its stored settings; `unsupported`: they are another major version's. A client treats a status it doesn't know as settings it can't change.",
+          "enum": ["unreadable", "unsupported"]
+        },
+        "problem": { "$ref": "#/$defs/validationError", "description": "Why the engine couldn't read its stored settings, with a JSON pointer into them." },
+        "version": {
+          "description": "How many changes this run of the engine made to the stored settings: 0 when it starts, one more after each change that changed them. A value equal to its default is stored, and `null` removes one, so either counts though the value in effect stays the same; a change that leaves the stored settings as they were (the value a setting already has, `null` for one that isn't set, `{}`) doesn't count. It counts within the run the session's and hello's `instance` name, and starts again at 0 when the engine restarts.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "frameRate": { "description": "Frames a second for every output without a rate of its own: 1 to 60, 15 by default. The preview socket keeps its own (subscribeMessage's `maxFps`).", "type": "integer", "minimum": 1, "maximum": 60 },
+        "graphRate": { "description": "Milliseconds between the samples of the sensor history: 100 to 3000, 1000 by default.", "type": "integer", "minimum": 100, "maximum": 3000 },
+        "logLevel": { "$ref": "#/$defs/logLevel" },
+        "sources": { "$ref": "#/$defs/settingsSources" },
+        "clients": {
+          "description": "Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any.",
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": { "$ref": "#/$defs/clientName" },
+          "additionalProperties": { "description": "A client's preferences: any JSON value but null.", "type": ["object", "array", "string", "number", "boolean"] }
+        }
+      }
+    },
+    "settingsSources": {
+      "description": "The settings of the engine's sensor sources, by source.",
+      "type": "object",
+      "required": ["libre"],
+      "additionalProperties": false,
+      "properties": {
+        "libre": { "$ref": "#/$defs/libreSettings" }
+      }
+    },
+    "libreSettings": {
+      "description": "The settings of the LibreHardwareMonitor sensor source (on Windows): whether it reads sensors, whether it reads storage drives, and how often. An engine keeps them whether or not it has the source.",
+      "type": "object",
+      "required": ["enabled", "storage", "storageInterval"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "description": "Whether the source reads sensors; true by default.", "type": "boolean" },
+        "storage": { "description": "Whether it reads storage drives' sensors; true by default.", "type": "boolean" },
+        "storageInterval": { "description": "Seconds between its reads of storage drives: 1 to 300, 30 by default.", "type": "integer", "minimum": 1, "maximum": 300 }
+      }
+    },
+    "logLevel": {
+      "description": "How much the engine logs: the least severe entries it writes to its log, from `debug` (everything) through `information` and `warning` to `error` (errors only). A client shows a level it doesn't know by its name.",
+      "enum": ["debug", "information", "warning", "error"]
+    },
+    "clientName": {
+      "description": "A client's name for its preferences (engineSettings' `clients`): 1 to 64 letters, digits, dots, underscores and hyphens. A client picks a name of its own, such as its product's name in lower case.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "settingsChange": {
+      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frameRate": { "description": "Frames a second, 1 to 60 (engineSettings).", "type": ["integer", "null"], "minimum": 1, "maximum": 60 },
+        "graphRate": { "description": "Milliseconds between history samples, 100 to 3000 (engineSettings).", "type": ["integer", "null"], "minimum": 100, "maximum": 3000 },
+        "logLevel": { "oneOf": [{ "$ref": "#/$defs/logLevel" }, { "type": "null" }] },
+        "sources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "libre": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": ["boolean", "null"] },
+                "storage": { "type": ["boolean", "null"] },
+                "storageInterval": { "description": "Seconds, 1 to 300 (libreSettings).", "type": ["integer", "null"], "minimum": 1, "maximum": 300 }
+              }
+            }
+          }
+        },
+        "clients": {
+          "description": "Client preferences to set, each whole, or to remove (`null`), by client name; the other clients' are kept.",
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/clientName" },
+          "additionalProperties": { "description": "A client's preferences: any JSON value, or null to remove them.", "type": ["object", "array", "string", "number", "boolean", "null"] }
+        }
+      }
+    },
+    "settingsStatusProblem": {
+      "description": "409 application/problem+json to PATCH /api/settings: the engine couldn't read its stored settings when it started (`unreadable`), or they are another major version's (`unsupported`), so it changes none of them until they are fixed or removed and the engine restarts. Nothing was changed.",
+      "type": "object",
+      "required": ["status", "code", "problem"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "const": 409 },
+        "code": { "description": "The settings' status (engineSettings). A client treats a status it doesn't know as settings it can't change.", "enum": ["unreadable", "unsupported"] },
+        "problem": { "$ref": "#/$defs/validationError", "description": "The settings' `problem` (engineSettings)." }
       }
     },
 
@@ -1014,6 +1153,7 @@
         { "$ref": "#/$defs/helloMessage" },
         { "$ref": "#/$defs/docEvent" },
         { "$ref": "#/$defs/profilesMessage" },
+        { "$ref": "#/$defs/settingsMessage" },
         { "$ref": "#/$defs/errorMessage" }
       ]
     },
@@ -1036,6 +1176,16 @@
       "properties": {
         "type": { "const": "profiles" },
         "version": { "description": "How many times the list has changed in this run of the engine: greater for a later change.", "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "settingsMessage": {
+      "description": "The engine settings changed: a change that changed the stored settings, by any client (PATCH /api/settings). Sent to every socket authenticated with the session token, the only token that reads the settings. The client reads GET /api/settings. The engine keeps only the newest to send.",
+      "type": "object",
+      "required": ["type", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "settings" },
+        "version": { "description": "The settings' `version` after the change (engineSettings): greater for a later change, within the run hello names.", "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
       }
     },
     "errorMessage": {

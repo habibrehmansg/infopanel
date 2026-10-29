@@ -9,6 +9,7 @@
   "osVersion": "10.0.26100",
   "arch": "x64",
   "dataDir": "C:\\Users\\me\\AppData\\Local\\InfoPanel\\v2",
+  "mock": true,
   "locale": {"tag": "en-GB", "decimalSeparator": ".", "groupSeparator": ","},
   "formatSupport": {
     "infopanel.archive/1": {"version": "1.0", "capabilities": [], "limits": {"archiveBytes": 536870912, "manifestBytes": 65536}},

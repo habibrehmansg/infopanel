@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Text.Json;
+using InfoPanel.Spec;
 
 namespace InfoPanel.Settings;
 
@@ -25,7 +26,8 @@ public readonly record struct SettingRange(int Min, int Max, int Default)
 /// <summary>
 /// The limits of the engine settings (<see cref="SettingsStore"/>): each setting's range and default (1.4.x's), the
 /// settings file's size, and the client preferences'. The store, the 1.x settings reader's clamp and the API's checks
-/// read them from here.
+/// read them from here; the sizes and counts are the format's settings limits (<see cref="SpecLimits"/>, their one home,
+/// spec/docs/limits.md "Settings limits").
 /// </summary>
 public static class SettingsLimits
 {
@@ -52,17 +54,17 @@ public static class SettingsLimits
     /// <summary>The log level when none is set: 1.4.x's level outside debug builds.</summary>
     public const EngineLogLevel LogLevel = EngineLogLevel.Information;
 
-    /// <summary>The largest settings file the engine reads, and so the largest it writes.</summary>
-    public const int MaxFileBytes = 1024 * 1024;
+    /// <summary>The largest settings file the engine reads, and so the largest it writes (<c>settingsBytes</c>).</summary>
+    public static int MaxFileBytes => SpecLimits.Default.SettingsBytes;
 
-    /// <summary>The most clients that keep preferences.</summary>
-    public const int Clients = 16;
+    /// <summary>The most clients that keep preferences (<c>settingsClients</c>).</summary>
+    public static int Clients => SpecLimits.Default.SettingsClients;
 
     /// <summary>The longest client name; names are 1 or more of <c>A–Z a–z 0–9 . _ -</c>.</summary>
     public const int ClientNameLength = 64;
 
-    /// <summary>The largest preferences value one client keeps, in bytes as the file stores it: compact JSON in UTF-8, escaped as the file writer escapes.</summary>
-    public const int ClientBytes = 64 * 1024;
+    /// <summary>The largest preferences value one client keeps, in bytes on its canonical form (<c>settingsClientBytes</c>).</summary>
+    public static int ClientBytes => SpecLimits.Default.SettingsClientBytes;
 
     /// <summary>A log level's name in the settings: <c>debug</c>, <c>information</c>, <c>warning</c>, <c>error</c>.</summary>
     public static string NameOf(EngineLogLevel level) => level switch
@@ -127,7 +129,7 @@ public sealed record EngineSettings(
     public TimeSpan GraphInterval => TimeSpan.FromMilliseconds(GraphRate);
 }
 
-/// <summary>The settings in effect and how many effective changes this run made before them (from 0).</summary>
+/// <summary>The settings in effect and how many changes to the stored settings this run made before them (from 0).</summary>
 public sealed record SettingsSnapshot(EngineSettings Settings, long Version);
 
 /// <summary>Whether the settings file could be read.</summary>

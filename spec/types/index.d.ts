@@ -44,6 +44,8 @@ export interface Session {
    * Length: ≥ 1.
    */
   dataDir: string;
+  /** Whether the engine runs in mock mode, started to simulate its sensors (docs/api.md#session): its readings come from simulated sources, not the computer's, so a client can say they aren't real. It changes only when the engine restarts. */
+  mock: boolean;
   locale: SessionLocale;
   formatSupport: FormatSupport;
 }
@@ -763,7 +765,7 @@ export type TokenScopes = ("read" | "edit")[];
  */
 export type Timestamp = string;
 
-/** 403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication). */
+/** 403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication). */
 export interface ScopeProblem {
   type?: string;
   title?: string;
@@ -830,12 +832,133 @@ export interface SensorValue {
   /** A text or table sensor's text ("" for a table without one); absent for a number sensor. */
   text?: string;
   /**
-   * With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one a second (docs/bindings.md#history). Absent otherwise, and for a text or table sensor.
+   * With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one every `graphRate` milliseconds (engineSettings; one a second by default, docs/bindings.md#history). Absent otherwise, and for a text or table sensor.
    * Items: ≤ 4096.
    */
   history?: number[];
   /** `live`, or `stale` for the last value of a sensor that has stopped updating. A client treats a status it doesn't know as no reading. */
   status: "live" | "stale";
+}
+
+/** GET /api/settings, and the answer to PATCH /api/settings: the engine settings in effect, each the value set or its default, with how many changes this run made to the stored settings and whether the engine could read them (docs/api.md#settings). `status` tells the two shapes apart: `ok` without a `problem` (engineSettingsOk), or the settings the engine couldn't read with the `problem` (engineSettingsProblem). Read tolerantly: a later engine may add settings, and a client ignores members it doesn't know. A client treats a status it doesn't know as settings it can't change, and shows the `problem` when one comes. */
+export type EngineSettings = EngineSettingsOk | EngineSettingsProblem;
+
+/** The engine read its stored settings (or had none), and they can be changed: no `problem`. */
+export interface EngineSettingsOk {
+  status: "ok";
+  /**
+   * How many changes this run of the engine made to the stored settings: 0 when it starts, one more after each change that changed them. A value equal to its default is stored, and `null` removes one, so either counts though the value in effect stays the same; a change that leaves the stored settings as they were (the value a setting already has, `null` for one that isn't set, `{}`) doesn't count. It counts within the run the session's and hello's `instance` name, and starts again at 0 when the engine restarts.
+   * Range: 0–9007199254740991.
+   */
+  version: number;
+  /**
+   * Frames a second for every output without a rate of its own: 1 to 60, 15 by default. The preview socket keeps its own (subscribeMessage's `maxFps`).
+   * Range: 1–60.
+   */
+  frameRate: number;
+  /**
+   * Milliseconds between the samples of the sensor history: 100 to 3000, 1000 by default.
+   * Range: 100–3000.
+   */
+  graphRate: number;
+  logLevel: LogLevel;
+  sources: SettingsSources;
+  /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
+  clients: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean };
+}
+
+/** The engine couldn't read its stored settings when it started: the defaults are in effect, `problem` says why, and every change is refused (409 settingsStatusProblem) until the stored settings are fixed or removed and the engine restarts. */
+export interface EngineSettingsProblem {
+  /** `unreadable`: the engine couldn't read its stored settings; `unsupported`: they are another major version's. A client treats a status it doesn't know as settings it can't change. */
+  status: "unreadable" | "unsupported";
+  /** Why the engine couldn't read its stored settings, with a JSON pointer into them. */
+  problem: ValidationError;
+  /**
+   * How many changes this run of the engine made to the stored settings: 0 when it starts, one more after each change that changed them. A value equal to its default is stored, and `null` removes one, so either counts though the value in effect stays the same; a change that leaves the stored settings as they were (the value a setting already has, `null` for one that isn't set, `{}`) doesn't count. It counts within the run the session's and hello's `instance` name, and starts again at 0 when the engine restarts.
+   * Range: 0–9007199254740991.
+   */
+  version: number;
+  /**
+   * Frames a second for every output without a rate of its own: 1 to 60, 15 by default. The preview socket keeps its own (subscribeMessage's `maxFps`).
+   * Range: 1–60.
+   */
+  frameRate: number;
+  /**
+   * Milliseconds between the samples of the sensor history: 100 to 3000, 1000 by default.
+   * Range: 100–3000.
+   */
+  graphRate: number;
+  logLevel: LogLevel;
+  sources: SettingsSources;
+  /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
+  clients: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean };
+}
+
+/** The settings of the engine's sensor sources, by source. */
+export interface SettingsSources {
+  libre: LibreSettings;
+}
+
+/** The settings of the LibreHardwareMonitor sensor source (on Windows): whether it reads sensors, whether it reads storage drives, and how often. An engine keeps them whether or not it has the source. */
+export interface LibreSettings {
+  /** Whether the source reads sensors; true by default. */
+  enabled: boolean;
+  /** Whether it reads storage drives' sensors; true by default. */
+  storage: boolean;
+  /**
+   * Seconds between its reads of storage drives: 1 to 300, 30 by default.
+   * Range: 1–300.
+   */
+  storageInterval: number;
+}
+
+/** How much the engine logs: the least severe entries it writes to its log, from `debug` (everything) through `information` and `warning` to `error` (errors only). A client shows a level it doesn't know by its name. */
+export type LogLevel = "debug" | "information" | "warning" | "error";
+
+/**
+ * A client's name for its preferences (engineSettings' `clients`): 1 to 64 letters, digits, dots, underscores and hyphens. A client picks a name of its own, such as its product's name in lower case.
+ * Pattern: `^[A-Za-z0-9._-]{1,64}$`.
+ */
+export type ClientName = string;
+
+/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
+export interface SettingsChange {
+  /**
+   * Frames a second, 1 to 60 (engineSettings).
+   * Range: 1–60.
+   */
+  frameRate?: number | null;
+  /**
+   * Milliseconds between history samples, 100 to 3000 (engineSettings).
+   * Range: 100–3000.
+   */
+  graphRate?: number | null;
+  logLevel?: LogLevel | null;
+  sources?: {
+    libre?: {
+      enabled?: boolean | null;
+      storage?: boolean | null;
+      /**
+       * Seconds, 1 to 300 (libreSettings).
+       * Range: 1–300.
+       */
+      storageInterval?: number | null;
+    };
+  };
+  /** Client preferences to set, each whole, or to remove (`null`), by client name; the other clients' are kept. */
+  clients?: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean | null };
+}
+
+/** 409 application/problem+json to PATCH /api/settings: the engine couldn't read its stored settings when it started (`unreadable`), or they are another major version's (`unsupported`), so it changes none of them until they are fixed or removed and the engine restarts. Nothing was changed. */
+export interface SettingsStatusProblem {
+  type?: string;
+  title?: string;
+  detail?: string;
+  status: 409;
+  /** The settings' status (engineSettings). A client treats a status it doesn't know as settings it can't change. */
+  code: "unreadable" | "unsupported";
+  /** The settings' `problem` (engineSettings). */
+  problem: ValidationError;
 }
 
 /** A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket). */
@@ -881,7 +1004,7 @@ export type FrameRequestScale = number;
 export type FrameRequestFps = number;
 
 /** A text message the engine sends on /ws (docs/api.md#the-preview-socket): a JSON object with a `type`. Frames are binary messages (frameHeader). Read tolerantly (docs/versioning.md#unknown-members-and-values): a client ignores a type and members it doesn't know. */
-export type ServerMessage = HelloMessage | DocEvent | ProfilesMessage | ErrorMessage;
+export type ServerMessage = HelloMessage | DocEvent | ProfilesMessage | SettingsMessage | ErrorMessage;
 
 /** The engine's first message on /ws, once the connection is authenticated. */
 export interface HelloMessage {
@@ -900,6 +1023,16 @@ export interface ProfilesMessage {
   type: "profiles";
   /**
    * How many times the list has changed in this run of the engine: greater for a later change.
+   * Range: 1–9007199254740991.
+   */
+  version: number;
+}
+
+/** The engine settings changed: a change that changed the stored settings, by any client (PATCH /api/settings). Sent to every socket authenticated with the session token, the only token that reads the settings. The client reads GET /api/settings. The engine keeps only the newest to send. */
+export interface SettingsMessage {
+  type: "settings";
+  /**
+   * The settings' `version` after the change (engineSettings): greater for a later change, within the run hello names.
    * Range: 1–9007199254740991.
    */
   version: number;
@@ -3354,6 +3487,46 @@ export interface ApiOperations {
       400: Problem;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
+    };
+  };
+  /**
+   * getSettings: The engine settings in effect, with their version and whether the engine could read them.
+   *
+   * docs/api.md#settings.
+   */
+  "GET /api/settings": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The settings. */
+      200: EngineSettings;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+    };
+  };
+  /**
+   * changeSettings: Changes the settings the body names, stores them and answers the settings in effect.
+   *
+   * docs/api.md#changing-settings.
+   */
+  "PATCH /api/settings": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: SettingsChange;
+    responses: {
+      /** The change is stored (or changed nothing); the settings in effect. */
+      200: EngineSettings;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** The engine couldn't read its stored settings when it started, or they are another major version's: it changes none until they are fixed or removed and it restarts. Nothing was changed. */
+      409: SettingsStatusProblem;
+      /** The body breaks its definition or a limit (limit.settingsRequestBytes, limit.settingsDepth, limit.settingsClientBytes), or the settings it makes would be over a limit (limit.settingsClients, limit.settingsBytes); nothing was changed. */
+      422: InvalidProblem;
     };
   };
   /**

@@ -7,7 +7,7 @@
   "infopanel.document/1": {
     "version": "1.0",
     "capabilities": [],
-    "limits": {"bindings": 32, "commitBytes": 16777216, "diagnostics": 1000, "documentBytes": 16777216, "documentEffectCost": 512, "documentNodes": 20000, "documentTextNodes": 1000, "documentWork": 200000, "editorBytes": 65536, "itemDepth": 8, "items": 2000, "jsonDepth": 256, "ops": 1000, "originBytes": 4096, "profileListBytes": 16777216, "recordBytes": 1048576, "recordOutcomes": 1000, "recordReasonLength": 256, "requestBytes": 65536, "socketMessageBytes": 4096, "sourceBytes": 262144, "tokenRequestBytes": 4096, "tokensBytes": 16777216, "v1DeviceFields": 64, "v1Devices": 64, "v1Hotkeys": 256, "v1ItemsXmlBytes": 16777216, "v1ProfileXmlBytes": 4194304, "v1Profiles": 1000, "v1SettingLength": 1024, "v1XmlDepth": 64, "v1XmlElements": 500000}
+    "limits": {"bindings": 32, "commitBytes": 16777216, "diagnostics": 1000, "documentBytes": 16777216, "documentEffectCost": 512, "documentNodes": 20000, "documentTextNodes": 1000, "documentWork": 200000, "editorBytes": 65536, "itemDepth": 8, "items": 2000, "jsonDepth": 256, "ops": 1000, "originBytes": 4096, "profileListBytes": 16777216, "recordBytes": 1048576, "recordOutcomes": 1000, "recordReasonLength": 256, "requestBytes": 65536, "settingsBytes": 1048576, "settingsClientBytes": 65536, "settingsClients": 16, "settingsDepth": 64, "settingsRequestBytes": 524288, "socketMessageBytes": 4096, "sourceBytes": 262144, "tokenRequestBytes": 4096, "tokensBytes": 16777216, "v1DeviceFields": 64, "v1Devices": 64, "v1Hotkeys": 256, "v1ItemsXmlBytes": 16777216, "v1ProfileXmlBytes": 4194304, "v1Profiles": 1000, "v1SettingLength": 1024, "v1XmlDepth": 64, "v1XmlElements": 500000}
   },
   "infopanel.scene/1": {
     "version": "1.0",

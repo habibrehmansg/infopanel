@@ -153,13 +153,4 @@ public static class ImportEndpoints
     /// <summary>An import refused as a whole: 422 <c>invalidProblem</c> with its errors (spec/docs/import.md).</summary>
     internal static IResult Refused(ImportRefusal refusal) =>
         InvalidBody([.. refusal.Errors.Select(e => new ValidationErrorBody { Path = e.Path, Code = e.Code, Message = e.Message })]);
-
-    private static IResult InvalidBody(List<ValidationErrorBody> errors) => Problem(new InvalidProblem
-    {
-        Title = "Invalid request",
-        Detail = errors.Count == 1 ? errors[0].Message : "The request breaks the formats; see errors.",
-        Status = StatusCodes.Status422UnprocessableEntity,
-        Code = "invalid",
-        Errors = errors,
-    }, StatusCodes.Status422UnprocessableEntity);
 }

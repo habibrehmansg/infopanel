@@ -27,7 +27,7 @@ public static partial class ReadEndpoints
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/session", (DataPaths paths, Workspace workspace, RegionalFormat regional, EngineRuntime runtime) => ApiResults.Json(new Session
+        api.MapGet("/session", (DataPaths paths, Workspace workspace, RegionalFormat regional, EngineRuntime runtime, EngineOptions options) => ApiResults.Json(new Session
         {
             EngineVersion = EngineVersion(),
             EngineBuild = EngineBuild(),
@@ -39,6 +39,8 @@ public static partial class ReadEndpoints
             OsVersion = OsVersion(),
             Arch = Arch(),
             DataDir = paths.Root,
+            // Mock mode (--mock, --mock-seed): simulated sensors, for the run.
+            Mock = options.Mock,
             // The PC's regional format, read once at start-up (the format a profile without a locale draws with).
             Locale = new SessionLocale
             {

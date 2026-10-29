@@ -87,6 +87,45 @@
         }
       }
     },
+    "/api/settings": {
+      "get": {
+        "operationId": "getSettings",
+        "summary": "The engine settings in effect, with their version and whether the engine could read them.",
+        "description": "docs/api.md#settings.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "200": {
+            "description": "The settings.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/engineSettings"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"}
+        }
+      },
+      "patch": {
+        "operationId": "changeSettings",
+        "summary": "Changes the settings the body names, stores them and answers the settings in effect.",
+        "description": "docs/api.md#changing-settings.",
+        "security": [{"bearer": ["session"]}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/settingsChange"}}}},
+        "responses": {
+          "200": {
+            "description": "The change is stored (or changed nothing); the settings in effect.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/engineSettings"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "409": {
+            "description": "The engine couldn't read its stored settings when it started, or they are another major version's: it changes none until they are fixed or removed and it restarts. Nothing was changed.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/settingsStatusProblem"}}}
+          },
+          "422": {
+            "description": "The body breaks its definition or a limit (limit.settingsRequestBytes, limit.settingsDepth, limit.settingsClientBytes), or the settings it makes would be over a limit (limit.settingsClients, limit.settingsBytes); nothing was changed.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          }
+        }
+      }
+    },
     "/api/profiles": {
       "get": {
         "operationId": "listProfiles",

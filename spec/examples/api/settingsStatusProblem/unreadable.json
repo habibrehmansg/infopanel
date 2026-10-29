@@ -1,0 +1,8 @@
+{
+  "type": "https://www.rfc-editor.org/rfc/rfc9110#section-15.5.10",
+  "title": "Settings can't be changed",
+  "status": 409,
+  "detail": "The engine couldn't read its stored settings when it started; fix or remove them, then restart it.",
+  "code": "unreadable",
+  "problem": {"path": "", "code": "limit.settingsBytes", "message": "The file has 1048577 bytes; at most 1048576 are read."}
+}

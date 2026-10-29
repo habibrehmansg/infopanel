@@ -2,6 +2,7 @@ using InfoPanel.Documents;
 using InfoPanel.Hosting;
 using InfoPanel.Output;
 using InfoPanel.Security;
+using InfoPanel.Settings;
 using InfoPanel.Spec;
 using InfoPanel.Spec.Schema;
 using System.Net.WebSockets;
@@ -43,7 +44,9 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// <item>Server → client (the spec's <c>serverMessage</c>, written from its models): <c>hello</c> on connect
 /// (<c>protocol</c> 2 and the run's <c>instance</c>); <c>doc</c> (<c>docEvent</c>, with the document's tag)
 /// on subscribe and after every change of the subscribed document's revision or state, whichever client made it;
-/// <c>profiles</c> on every <see cref="Workspace.ProfilesChanged"/>; <c>error</c> for a bad message, an unknown profile,
+/// <c>profiles</c> on every <see cref="Workspace.ProfilesChanged"/>; <c>settings</c> after every change to the stored
+/// engine settings (<see cref="SettingsStore.Changed"/>), on a connection authenticated with the session token only,
+/// since only it reads them; <c>error</c> for a bad message, an unknown profile,
 /// one that can't be opened or a deleted one, each with its code and its path into the message it answers
 /// (spec/docs/api.md#errors-on-the-socket); binary frames (<see cref="FrameCodec"/>).</item>
 /// </list>
@@ -68,7 +71,8 @@ public static class PreviewSocketHandler
     public static void MapPreviewSocket(this IEndpointRouteBuilder app) => app.Map("/ws", HandleAsync).RequireScope(ApiScope.Read);
 
     private static async Task HandleAsync(HttpContext context, Workspace workspace, RenderService render,
-        IHostApplicationLifetime lifetime, ILoggerFactory loggers, EngineRuntime runtime, TokenStore tokens, PreviewSocketOptions options)
+        IHostApplicationLifetime lifetime, ILoggerFactory loggers, EngineRuntime runtime, TokenStore tokens, PreviewSocketOptions options,
+        SettingsStore settings)
     {
         if (!context.WebSockets.IsWebSocketRequest)
         {
@@ -94,7 +98,8 @@ public static class PreviewSocketHandler
             }
         }
 
-        var session = new PreviewSession(socket, workspace, render, logger);
+        // The settings' changes go to the session token's connections alone: an integration token can't read the settings.
+        var session = new PreviewSession(socket, workspace, render, logger, caller?.Allows(ApiScope.Session) == true ? settings : null);
         var tokenId = caller?.TokenId;
         void OnRevoked(string id)
         {
@@ -340,6 +345,8 @@ internal readonly record struct PreviewError(string Code, string Path, string Me
 /// document's state when it sends, so the last <c>doc</c> a client gets is always the current state (a save's
 /// <c>dirty:false</c> can't be overtaken by an older state of the same revision). Unchanged states aren't resent,
 /// except right after a subscribe.</item>
+/// <item><c>settings</c> (a session token's connection only): a slot holding the newest settings version seen; sent when it
+/// is newer than the last one sent, and ahead of <c>profiles</c>.</item>
 /// <item><c>profiles</c>: a slot holding the newest workspace version seen; sent when it is newer than the last one sent.</item>
 /// <item>The newest frame of the current subscription (each subscription has its own sink and one-slot channel).</item>
 /// </list>
@@ -353,6 +360,9 @@ internal sealed class PreviewSession
     private readonly Workspace _workspace;
     private readonly RenderService _render;
     private readonly ILogger _logger;
+
+    /// <summary>The settings whose changes this connection is told of: the session token's connections only, else null.</summary>
+    private readonly SettingsStore? _settings;
     /// <summary>How many <c>error</c> messages wait at most; the oldest is dropped beyond that.</summary>
     internal const int MaxQueuedErrors = 64;
 
@@ -370,17 +380,19 @@ internal sealed class PreviewSession
     private int _docChanged;
     private int _docSubscribed;
     private long _profilesVersion;
+    private long _settingsVersion;
     private volatile bool _closing;
     private WebSocketCloseStatus _closeStatus = WebSocketCloseStatus.NormalClosure;
     private string _closeDescription = "";
     private CancellationTokenSource? _abort;
 
-    public PreviewSession(WebSocket socket, Workspace workspace, RenderService render, ILogger logger)
+    public PreviewSession(WebSocket socket, Workspace workspace, RenderService render, ILogger logger, SettingsStore? settings = null)
     {
         _socket = socket;
         _workspace = workspace;
         _render = render;
         _logger = logger;
+        _settings = settings;
     }
 
     /// <summary>Tests: called with the profile's id after a subscribe found its document, before frames are attached.</summary>
@@ -406,6 +418,8 @@ internal sealed class PreviewSession
         if (_closing)
             abort.CancelAfter(CloseTimeout);
         _workspace.ProfilesChanged += OnProfilesChanged;
+        if (_settings != null)
+            _settings.Changed += OnSettingsChanged;
         using var onStopping = stopping.Register(() => BeginClose(WebSocketCloseStatus.EndpointUnavailable, "The engine is stopping."));
 
         var sending = SendLoopAsync(abort.Token);
@@ -424,6 +438,8 @@ internal sealed class PreviewSession
         finally
         {
             _workspace.ProfilesChanged -= OnProfilesChanged;
+            if (_settings != null)
+                _settings.Changed -= OnSettingsChanged;
             Unsubscribe();
             BeginClose(_closeStatus, _closeDescription);
 
@@ -727,6 +743,21 @@ internal sealed class PreviewSession
         Wake();
     }
 
+    /// <summary>Raised under the settings store's lock: only keeps the newest version and wakes the send loop.</summary>
+    private void OnSettingsChanged(SettingsSnapshot snapshot)
+    {
+        var seen = Volatile.Read(ref _settingsVersion);
+        while (snapshot.Version > seen)
+        {
+            var previous = Interlocked.CompareExchange(ref _settingsVersion, snapshot.Version, seen);
+            if (previous == seen)
+                break;
+            seen = previous;
+        }
+
+        Wake();
+    }
+
     private void OnSinkClosed(WebPreviewSink sink, FrameSinkClosedReason reason)
     {
         long ends;
@@ -847,6 +878,7 @@ internal sealed class PreviewSession
     private async Task SendLoopAsync(CancellationToken ct)
     {
         string? lastDoc = null;
+        long settingsSent = 0;
         long profilesSent = 0;
         await SendTextAsync(JsonSerializer.Serialize(new HelloMessage { Type = "hello", Protocol = Api.ReadEndpoints.Protocol, Instance = _workspace.Instance }, SpecJson.Options), ct);
 
@@ -879,6 +911,15 @@ internal sealed class PreviewSession
                     return;
                 await SendTextAsync(doc, ct);
                 lastDoc = doc;
+            }
+
+            var settings = Volatile.Read(ref _settingsVersion);
+            if (settings > settingsSent)
+            {
+                if (!CanSend)
+                    return;
+                await SendTextAsync(JsonSerializer.Serialize(new SettingsMessage { Type = "settings", Version = settings }, SpecJson.Options), ct);
+                settingsSent = settings;
             }
 
             var profiles = Volatile.Read(ref _profilesVersion);

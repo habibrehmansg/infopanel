@@ -309,6 +309,7 @@ try
     app.MapBlobEndpoints();
     app.MapImportEndpoints();
     app.MapTokenEndpoints();
+    app.MapSettingsEndpoints();
     app.MapPreviewSocket();
     app.MapClientFallback(webRoot);
 

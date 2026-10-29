@@ -32,7 +32,7 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         Assert.Equal(SpecSchemas.Api + "#/$defs/serverMessage", socket.ServerMessage);
         Assert.Equal(SpecSchemas.Api + "#/$defs/frameHeader", socket.FrameHeader);
         Assert.Equal(["auth", "subscribe", "view", "unsubscribe"], ApiContract.MessageTypes(socket.ClientMessage));
-        Assert.Equal(["hello", "doc", "profiles", "error"], ApiContract.MessageTypes(socket.ServerMessage));
+        Assert.Equal(["hello", "doc", "profiles", "settings", "error"], ApiContract.MessageTypes(socket.ServerMessage));
     }
 
     [Fact]
@@ -43,6 +43,7 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
                  {
                      new HelloMessage { Type = "hello", Protocol = ReadEndpoints.Protocol, Instance = "7c2f9a41d0e34b8f9e6a5b3c1d2e4f60" },
                      new ProfilesMessage { Type = "profiles", Version = 1 },
+                     new SettingsMessage { Type = "settings", Version = 1 },
                      new ErrorMessage { Type = "error", Code = "profile.missing", Path = "/profileId", Message = "No profile 'x'." },
                      new ErrorMessage { Type = "error", Code = "profile.deleted", Path = "", Message = "Profile 'x' was deleted." },
                      new DocEvent { Type = "doc", ProfileId = "3dd19c0e-675a-4591-b096-83417853861f", Instance = "0f1e2d3c4b5a69788796a5b4c3d2e1f0", Rev = 1, Dirty = false, CanUndo = false, CanRedo = false },

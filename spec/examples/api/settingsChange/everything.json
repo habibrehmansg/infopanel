@@ -1,0 +1,7 @@
+{
+  "frameRate": 60,
+  "graphRate": 100,
+  "logLevel": "warning",
+  "sources": {"libre": {"enabled": false, "storage": null, "storageInterval": 1}},
+  "clients": {"web-client": {"theme": "light"}, "old.client": null}
+}

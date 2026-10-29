@@ -1,6 +1,6 @@
 # Limits and budgets
 
-**Limits** are part of the format: every engine that reads version 1 accepts all content and requests within them and refuses what is beyond them, with `limit.<name>` or the code a table gives ([validation](validation.md)). They are fixed for a major version ([versioning](versioning.md)) and an engine reports each by its name in `GET /api/session`, in the `limits` of the format it belongs to (`formatSupport`, [API](api.md#session)): the scene, media and run-time limits are the scene format's (`infopanel.scene/1`), the archive limits the profile archive's (`infopanel.archive/1`, [archive](archive.md)), and every other limit on this page is the document format's (`infopanel.document/1`). They bound the worst case: what hostile or careless content can cost. Every limit that decides whether an engine accepts content or a request is on this page, once, grouped by what it bounds: scenes, documents, commits, request bodies, the profile list, the preview socket's messages, media, archives, and the 1.x import with its record. Bounds on a single member (a list's length, a string's, a number's range) are in the schemas; the main ones are repeated below their format's table.
+**Limits** are part of the format: every engine that reads version 1 accepts all content and requests within them and refuses what is beyond them, with `limit.<name>` or the code a table gives ([validation](validation.md)). They are fixed for a major version ([versioning](versioning.md)) and an engine reports each by its name in `GET /api/session`, in the `limits` of the format it belongs to (`formatSupport`, [API](api.md#session)): the scene, media and run-time limits are the scene format's (`infopanel.scene/1`), the archive limits the profile archive's (`infopanel.archive/1`, [archive](archive.md)), and every other limit on this page is the document format's (`infopanel.document/1`). They bound the worst case: what hostile or careless content can cost. Every limit that decides whether an engine accepts content or a request is on this page, once, grouped by what it bounds: scenes, documents, commits, request bodies, the profile list, the engine settings, the preview socket's messages, media, archives, and the 1.x import with its record. Bounds on a single member (a list's length, a string's, a number's range) are in the schemas; the main ones are repeated below their format's table.
 
 **Budgets** are what an engine guarantees beyond the limits, for content within them: each states a floor that every engine meets and may exceed (undo steps kept, `opId`s remembered, the work a tick may do). Content is never refused for a budget, and budgets are not part of the format: an engine's values may change from release to release, never below the floor. **Performance targets** are what this engine is measured against for ordinary content; they promise nothing. Costs marked as estimated are measured when the scene runtime exists, and these numbers are revised if they are wrong.
 
@@ -27,7 +27,7 @@ The numbers below are justified from measurements of the current renderer on its
 
 ## Sizes
 
-The five content sizes, `sceneBytes`, `documentBytes`, `sourceBytes`, `originBytes` and `editorBytes`, are measured on the content's **canonical form**: [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (the JSON Canonicalization Scheme) in UTF-8, every number written as the double it reads as ([validation](validation.md#numbers)). That is: no whitespace; members sorted by their names' UTF-16 code units; strings that escape only `"` and `\` (as `\"` and `\\`) and the control characters U+0000 to U+001F (`\b`, `\t`, `\n`, `\f`, `\r`, the others as `\u00xx` in lower case), every other character in UTF-8 as it is; numbers in ECMAScript's shortest form (`1.0` is `1`, `1e2` is `100`, `-0` is `0`, `0.0000001` is `1e-7`). How the content was sent doesn't count: whitespace, escapes (`"\u00e9"` is the two bytes of `é`) and a number's spelling (`1e20` is 21 digits) are measured as the canonical form has them.
+The content sizes, `sceneBytes`, `documentBytes`, `sourceBytes`, `originBytes`, `editorBytes` and `settingsClientBytes`, are measured on the content's **canonical form**: [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (the JSON Canonicalization Scheme) in UTF-8, every number written as the double it reads as ([validation](validation.md#numbers)). That is: no whitespace; members sorted by their names' UTF-16 code units; strings that escape only `"` and `\` (as `\"` and `\\`) and the control characters U+0000 to U+001F (`\b`, `\t`, `\n`, `\f`, `\r`, the others as `\u00xx` in lower case), every other character in UTF-8 as it is; numbers in ECMAScript's shortest form (`1.0` is `1`, `1e2` is `100`, `-0` is `0`, `0.0000001` is `1e-7`). How the content was sent doesn't count: whitespace, escapes (`"\u00e9"` is the two bytes of `é`) and a number's spelling (`1e20` is 21 digits) are measured as the canonical form has them.
 
 `documentBytes` measures the document without its revision metadata: the `rev` member of the document, of `profile` and of every item (groups' children included), and nothing else; a `rev` inside an opaque member (`scene`, `source`, `origin`, `editor`) is content and is measured. The engine stores documents in the canonical form without those members, so a stored document's size is its measured size, and a document read with its revisions (a copy of one the API returned) is measured as it will be stored.
 
@@ -93,7 +93,7 @@ Every request body is held to a size as received, whitespace around the JSON val
 | `requestBytes` | 64 KiB | An undo, redo, revert, save or duplicate (a few members; [API](api.md)) |
 | `tokenRequestBytes` | 4 KiB | A token create (a name and its scopes) |
 
-A commit's body is held to `commitBytes` ([commit limits](#commit-limits)), a create's is read up to `documentBytes` plus 64 KiB and its document then held to `documentBytes` ([sizes](#sizes)), a 1.x migration record's to `recordBytes` ([1.x import limits](#1x-import-limits)), a blob's bytes to `mediaBytes` and an archive's to `archiveBytes` (413, nothing read further or stored). Every body is nested at most `jsonDepth` deep. A body is read only as far as its limit plus one byte, whether or not it states its length.
+A commit's body is held to `commitBytes` ([commit limits](#commit-limits)), a create's is read up to `documentBytes` plus 64 KiB and its document then held to `documentBytes` ([sizes](#sizes)), a 1.x migration record's to `recordBytes` ([1.x import limits](#1x-import-limits)), a settings change's to `settingsRequestBytes` ([settings limits](#settings-limits)), a blob's bytes to `mediaBytes` and an archive's to `archiveBytes` (413, nothing read further or stored). Every body is nested at most `jsonDepth` deep. A body is read only as far as its limit plus one byte, whether or not it states its length.
 
 ## Stored list limits
 
@@ -103,6 +103,20 @@ A commit's body is held to `commitBytes` ([commit limits](#commit-limits)), a cr
 | `tokensBytes` | 16 MiB | The integration tokens as the engine stores them: each token's id, name, scopes, times and secret's hash. This engine stores them as JSON, about 210 bytes a token, so about 80,000 tokens |
 
 An engine never stores a list over its limit, and reads every list within it: a create or duplicate that would take the profile list over `profileListBytes` is answered 422 `invalidProblem` with one error, `limit.profileListBytes` at `""`, and creates nothing ([API](api.md#creating-and-duplicating)); a token create that would take the stored tokens over `tokensBytes` is answered 422 `invalidProblem` with one error, `limit.tokensBytes` at `""`, and creates nothing ([API](api.md#integration-tokens)). Deleting a profile or revoking a token makes room again.
+
+## Settings limits
+
+What the engine settings hold ([API](api.md#settings)): a change's body, the settings it makes, and the preferences clients keep with them.
+
+| Limit | Value | What it bounds |
+|---|---|---|
+| `settingsRequestBytes` | 512 KiB | A settings change's body, as received (`limit.settingsRequestBytes` at `""`) |
+| `settingsDepth` | 64 levels | The settings' nesting as `jsonDepth` counts it, and so a change's (`limit.settingsDepth` at `""`). A client's preferences sit two levels down, so they nest at most 62 levels deep |
+| `settingsClientBytes` | 64 KiB | One client's preferences, on their canonical form ([sizes](#sizes)) (`limit.settingsClientBytes` at `/clients/{name}`) |
+| `settingsClients` | 16 | The clients whose preferences the engine keeps (`limit.settingsClients` at `/clients`) |
+| `settingsBytes` | 1 MiB | The settings as the engine stores them: every setting set, every client's preferences, and whatever a later engine stored with them (`limit.settingsBytes` at `""`) |
+
+A change is checked in this order, and the first failure is answered 422 `invalidProblem` with nothing changed: its body's size as received, then the JSON-level pass and the schema, as every body ([validation](validation.md#order)); then its nesting and each client's preferences; then the settings it would make: their clients and their stored size. An engine reads its stored settings only within `settingsBytes` and `settingsDepth`, and never stores settings beyond them.
 
 ## Socket limits
 

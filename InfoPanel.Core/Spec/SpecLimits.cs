@@ -6,8 +6,8 @@ namespace InfoPanel.Spec;
 
 /// <summary>
 /// Every acceptance limit of format version 1, and their one home in code (spec/docs/limits.md lists each once, with the
-/// reason for its number): scenes, documents, commits, request bodies, the profile list and the tokens, media, archives, the 1.x import
-/// and its record, and the preview socket's messages.
+/// reason for its number): scenes, documents, commits, request bodies, the profile list and the tokens, the engine settings,
+/// media, archives, the 1.x import and its record, and the preview socket's messages.
 /// Every engine that reads infopanel.scene/1, infopanel.document/1 and infopanel.archive/1 accepts everything within them; the numbers never
 /// change within major version 1. Each member's camelCase name is the limit's name in docs, error codes
 /// (<c>limit.{name}</c>, where its refusal has a code of that form) and the session's <c>limits</c> of the format it
@@ -77,6 +77,23 @@ public sealed record SpecLimits
 
     /// <summary>The stored integration tokens' bytes; a token create that would take them over is refused.</summary>
     public int TokensBytes { get; init; } = 16_777_216;
+
+    // The engine settings (InfoPanel.Settings.SettingsStore): a change's body, the settings it makes, the client preferences.
+
+    /// <summary>The body of a settings change, as received.</summary>
+    public int SettingsRequestBytes { get; init; } = 524_288;
+
+    /// <summary>The settings' nesting as <c>jsonDepth</c> counts it, stored and in a change; a client's preferences sit two levels down.</summary>
+    public int SettingsDepth { get; init; } = 64;
+
+    /// <summary>One client's preferences, on their canonical form.</summary>
+    public int SettingsClientBytes { get; init; } = 65_536;
+
+    /// <summary>The clients whose preferences the settings keep.</summary>
+    public int SettingsClients { get; init; } = 16;
+
+    /// <summary>The settings as stored; a change that would take them over is refused, and a larger file isn't read.</summary>
+    public int SettingsBytes { get; init; } = 1_048_576;
 
     // Per media asset, from its header (MediaProbe), before decoding.
     public int MediaBytes { get; init; } = 33_554_432;
@@ -204,7 +221,7 @@ public sealed record SpecLimits
     /// <summary>
     /// The format a limit belongs to (spec/docs/limits.md): the scene, media and run-time limits are the scene format's;
     /// the archive limits the profile archive's; every other limit (nesting, documents, commits, request bodies, the profile
-    /// list and the tokens, the socket's messages, the 1.x import and its record) is the document format's.
+    /// list and the tokens, the engine settings, the socket's messages, the 1.x import and its record) is the document format's.
     /// </summary>
     public static string FormatOf(string name) =>
         SceneLimits.Contains(name) ? SpecSchemas.SceneFormat : ArchiveLimits.Contains(name) ? SpecSchemas.ArchiveFormat : SpecSchemas.DocumentFormat;

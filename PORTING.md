@@ -108,7 +108,7 @@ The 1.x import already reads guides from the raw XML and reports `RefreshInterva
 | UpdateChecker and toasts | later | `InfoPanel/Services/UpdateChecker.cs` |
 | Sentry | later | `InfoPanel/App.xaml.cs` |
 | AIDA64 SensorPanel import | later | `InfoPanel/Models/SharedModel.SensorPanelImport.cs` |
-| ConfigModel / Settings (app settings) | later | `InfoPanel/Models/ConfigModel.cs`, `InfoPanel/Models/Settings.cs` |
+| ConfigModel / Settings (app settings) | the engine settings (`SettingsStore`, `GET`/`PATCH /api/settings`) hold the frame rate, graph rate, log level and the Libre source's settings; the devices', tray's, autostart's, hotkeys', autosave's and web server's settings later, each with its feature | `InfoPanel/Models/ConfigModel.cs`, `InfoPanel/Models/Settings.cs` |
 | PawnIO driver setup | later (Windows adapter) | `InfoPanel/Utils/PawnIoHelper.cs`, `InfoPanel/Resources/PawnIO_setup.exe` |
 | JobObject (plugin host lifetime) | later (plugin host on macOS) | `InfoPanel/Utils/JobObject.cs` |
 | Installer | later | `InnoSetup/setup.iss` |

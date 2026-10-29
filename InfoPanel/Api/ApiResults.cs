@@ -44,6 +44,16 @@ internal static class ApiResults
         Errors = [new ValidationErrorBody { Path = path, Code = code, Message = message }],
     }, StatusCodes.Status422UnprocessableEntity);
 
+    /// <summary>422 <c>invalidProblem</c> with <paramref name="errors"/>, each at its path.</summary>
+    public static IResult InvalidBody(List<ValidationErrorBody> errors) => Problem(new InvalidProblem
+    {
+        Title = "Invalid request",
+        Detail = errors.Count == 1 ? errors[0].Message : "The request breaks the formats; see errors.",
+        Status = StatusCodes.Status422UnprocessableEntity,
+        Code = "invalid",
+        Errors = errors,
+    }, StatusCodes.Status422UnprocessableEntity);
+
     /// <summary>
     /// A schema error as every body reports it (spec/docs/validation.md#codes): <c>schema</c> (a repeated member name
     /// included), except the count of the errors not listed after the first 100 (<c>more</c>, at <c>""</c>), a number that

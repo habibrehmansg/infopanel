@@ -1,0 +1,10 @@
+{
+  "status": "unsupported",
+  "problem": {"path": "/format", "code": "unsupported.format", "message": "The settings are infopanel.settings/2; this engine reads infopanel.settings/1."},
+  "version": 0,
+  "frameRate": 15,
+  "graphRate": 1000,
+  "logLevel": "information",
+  "sources": {"libre": {"enabled": true, "storage": true, "storageInterval": 30}},
+  "clients": {}
+}

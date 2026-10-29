@@ -40,9 +40,10 @@ public sealed class SettingsUnavailableException(SettingsStatus status, SpecErro
 /// default is never frozen into a user's file.
 /// <list type="bullet">
 /// <item>Opened once at start-up (<see cref="Open(DataPaths, ILogger?)"/>). No file: the defaults, nothing written. A
-/// file over <see cref="SettingsLimits.MaxFileBytes"/>, not JSON (duplicate member names, over 64 deep, or a string or
-/// name that doesn't decode to text included), not an object, without a <c>format</c> string of this kind, or holding a
-/// number whose text rounds to ±∞ anywhere (unknown members included; <c>json</c> at the number) is <see cref="SettingsStatus.Unreadable"/>; another major version is
+/// file over <c>settingsBytes</c> (<see cref="SettingsLimits.MaxFileBytes"/>), nested deeper than <c>settingsDepth</c>
+/// (64), not JSON (duplicate member names, or a string or name that doesn't decode to text included), not an object,
+/// without a <c>format</c> string of this kind, or holding a number whose text rounds to ±∞ anywhere (unknown members
+/// included; <c>json</c> at the number) is <see cref="SettingsStatus.Unreadable"/>; another major version is
 /// <see cref="SettingsStatus.Unsupported"/>. Either way the defaults apply, the problem is logged once, the file is
 /// never rewritten in this run, and every change throws <see cref="SettingsUnavailableException"/>. A known member
 /// with the wrong type or out of range gets its default with one warning naming it, and the next write drops it.</item>
@@ -53,9 +54,11 @@ public sealed class SettingsUnavailableException(SettingsStatus status, SpecErro
 /// with <see cref="AtomicFile"/>, under the store's lock, before it returns. A change that leaves the file's content as
 /// it is (numbers compared as the doubles nearest their text, so stored spellings stay) writes nothing and raises nothing, unless the last write's folder flush failed: then it writes again (no new
 /// version) and throws if that fails. A failed write leaves the file and the values as they were and throws.</item>
-/// <item><see cref="Changed"/> follows every effective change, in order.</item>
+/// <item><see cref="Changed"/> follows every change to the stored settings, in order.</item>
 /// </list>
-/// A task that adds a setting adds it to <see cref="EngineSettings"/>, <see cref="SettingsLimits"/> and the checks here.
+/// The limits it keeps are the format's settings limits (spec/docs/limits.md, "Settings limits"), each refusal with its
+/// <c>limit.*</c> code. A task that adds a setting adds it to <see cref="EngineSettings"/>, <see cref="SettingsLimits"/>,
+/// the checks here and the API schema's <c>engineSettings</c> and <c>settingsChange</c>.
 /// </summary>
 public sealed class SettingsStore
 {
@@ -64,7 +67,8 @@ public sealed class SettingsStore
 
     private static readonly Regex FormatString = new(@"\Ainfopanel\.settings/([0-9]{1,4})\z", RegexOptions.CultureInvariant);
 
-    private static readonly JsonDocumentOptions ReadOptions = new() { AllowDuplicateProperties = false, MaxDepth = 64 };
+    /// <summary>How the file and a change's result are read: no duplicate member names, at most <c>settingsDepth</c> deep.</summary>
+    private static readonly JsonDocumentOptions ReadOptions = new() { AllowDuplicateProperties = false, MaxDepth = SpecLimits.Default.SettingsDepth };
 
     private readonly string _path;
     private readonly string? _root;
@@ -112,7 +116,7 @@ public sealed class SettingsStore
     public SettingsSnapshot Current => _current;
 
     /// <summary>
-    /// Raised after each effective change, under the store's lock so the order is the changes' order. A handler must be
+    /// Raised after each change to the stored settings, under the store's lock so the order is the changes' order. A handler must be
     /// quick and must not call <see cref="Apply"/>.
     /// </summary>
     public event Action<SettingsSnapshot>? Changed;
@@ -150,11 +154,10 @@ public sealed class SettingsStore
     /// <returns>The settings in effect afterwards (the same version when nothing changed).</returns>
     /// <exception cref="SettingsUnavailableException">The file couldn't be read at start-up (checked first).</exception>
     /// <exception cref="SettingsChangeException">
-    /// The change breaks a rule (nesting deeper than the file is read at is <c>json</c> at the root, checked before anything
-    /// else; a number whose text rounds to ±∞ anywhere in it, client preferences and unknown members
-    /// included, is <c>json</c> at the number, and then no other rule is checked), or makes settings the file couldn't
-    /// hold and read back (<c>json</c>: duplicate member
-    /// names, a client value over 62 deep, text that doesn't decode); nothing was applied.
+    /// The change breaks a rule (<see cref="CheckChange"/>), or makes settings over a limit (more clients than
+    /// <c>settingsClients</c>, <c>limit.settingsClients</c> at <c>/clients</c>; over <c>settingsBytes</c> as stored,
+    /// <c>limit.settingsBytes</c> at the root) or that the file couldn't hold and read back (<c>json</c>: duplicate member
+    /// names, text that doesn't decode); nothing was applied.
     /// </exception>
     /// <exception cref="IOException">
     /// The write failed: nothing changed. Or the file was replaced but its folder couldn't be flushed: the new values are
@@ -165,10 +168,10 @@ public sealed class SettingsStore
         if (Status != SettingsStatus.Ok)
             throw new SettingsUnavailableException(Status, Problem!);
 
-        List<SpecError> errors;
+        IReadOnlyList<SpecError> errors;
         try
         {
-            errors = Check(change);
+            errors = CheckChange(change, SpecLimits.Default);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
@@ -188,11 +191,11 @@ public sealed class SettingsStore
                 Merge(next, change);
 
                 if (next["clients"] is JsonObject clients && clients.Count > SettingsLimits.Clients)
-                    throw new SettingsChangeException([new SpecError("/clients", "limit.clients", $"At most {SettingsLimits.Clients} clients keep preferences; this change would make {clients.Count}.")]);
+                    throw new SettingsChangeException([new SpecError("/clients", "limit.settingsClients", $"At most {SettingsLimits.Clients} clients keep preferences (settingsClients); this change would make {clients.Count}.")]);
 
                 content = Serialize(next);
                 if (content.Length > SettingsLimits.MaxFileBytes)
-                    throw new SettingsChangeException([new SpecError("", "limit.settingsBytes", $"The settings would take {content.Length} bytes; at most {SettingsLimits.MaxFileBytes} are kept.")]);
+                    throw new SettingsChangeException([new SpecError("", "limit.settingsBytes", $"The settings would take {content.Length} bytes as stored; at most {SettingsLimits.MaxFileBytes} are kept (settingsBytes).")]);
 
                 // Only what the next start can read is written: read the result back as the file is read.
                 ParseTree(content, out var problem);
@@ -316,6 +319,11 @@ public sealed class SettingsStore
         if (json.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]))
             json = json[3..];
 
+        // Its nesting first, as the formats' JSON-level pass checks it: deeper than the settings are read at is the
+        // limit's code, not json. Text that isn't JSON at all is the parse's to report.
+        if (DepthOf(json) is { } depth && depth > ReadOptions.MaxDepth)
+            return Unreadable("", "limit.settingsDepth", $"The settings nest {depth} levels deep; they are read at most {ReadOptions.MaxDepth} deep (settingsDepth).");
+
         var root = ParseTree(json, out var parseProblem);
         if (parseProblem != null)
             return (SettingsStatus.Unreadable, parseProblem, null);
@@ -341,6 +349,19 @@ public sealed class SettingsStore
             return Unreadable(infinite, "json", InfiniteMessage);
 
         return (SettingsStatus.Ok, null, tree);
+    }
+
+    /// <summary>How deeply <paramref name="json"/> nests, as <c>jsonDepth</c> counts it, read without recursion; null when it isn't JSON.</summary>
+    private static int? DepthOf(ReadOnlySpan<byte> json)
+    {
+        try
+        {
+            return SpecJson.Depth(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -415,7 +436,7 @@ public sealed class SettingsStore
                 var pointer = "/clients/" + Escape(name);
                 var problem = !SettingsLimits.IsClientName(name) ? "whose name isn't a client name"
                     : node is null ? "that is null"
-                    : ClientBytesProblem(ElementOf(node))
+                    : ClientBytesProblem(ElementOf(node), SettingsLimits.ClientBytes)
                     ?? (kept == SettingsLimits.Clients ? $"beyond the first {SettingsLimits.Clients} clients" : null);
                 if (problem == null)
                 {
@@ -459,8 +480,16 @@ public sealed class SettingsStore
 
     // ---- changing ---------------------------------------------------------------------------------------------------
 
-    /// <summary>Every rule <paramref name="change"/> breaks on its own, each at its path.</summary>
-    private static List<SpecError> Check(JsonElement change)
+    /// <summary>
+    /// Every rule <paramref name="change"/> breaks on its own, each at its path, in the formats' order: its nesting first
+    /// (deeper than <c>settingsDepth</c> is <c>limit.settingsDepth</c> at the root, and nothing else is checked); then a
+    /// number whose text rounds to ±∞ anywhere in it, client preferences and unknown members included (<c>json</c> at the
+    /// number, and nothing else is checked); then each member, as the API schema's <c>settingsChange</c> has it
+    /// (<c>schema</c>), and each client's preferences within <c>settingsClientBytes</c> on their canonical form
+    /// (<c>limit.settingsClientBytes</c> at <c>/clients/{name}</c>). <paramref name="limits"/> are the store's
+    /// <see cref="SpecLimits.Default"/>; a test may tighten them.
+    /// </summary>
+    internal static IReadOnlyList<SpecError> CheckChange(JsonElement change, SpecLimits limits)
     {
         var errors = new List<SpecError>();
 
@@ -480,11 +509,12 @@ public sealed class SettingsStore
 
         void Unknown(string pointer) => errors.Add(new SpecError(pointer, "schema", "Not a setting."));
 
-        // Bounded first: a change nested deeper than the file is read (MaxDepth) can't be stored whatever it holds, and
-        // the scan below descends once per level.
-        if (SpecJson.Depth(change) > ReadOptions.MaxDepth)
+        // Bounded first: a change nested deeper than the settings are read at can't be stored whatever it holds (a change
+        // nests as the settings it makes do), and the scan below descends once per level.
+        var depth = SpecJson.Depth(change);
+        if (depth > limits.SettingsDepth)
         {
-            errors.Add(new SpecError("", "json", $"The change nests deeper than the {ReadOptions.MaxDepth} levels the settings are read at."));
+            errors.Add(new SpecError("", "limit.settingsDepth", $"The change nests {depth} levels deep; the settings are read at most {limits.SettingsDepth} deep (settingsDepth)."));
             return errors;
         }
 
@@ -558,9 +588,9 @@ public sealed class SettingsStore
                             errors.Add(new SpecError(clientPointer, "schema",
                                 $"A client name is 1–{SettingsLimits.ClientNameLength} of A–Z, a–z, 0–9, '.', '_' and '-'."));
                         }
-                        else if (client.Value.ValueKind != JsonValueKind.Null && ClientBytesProblem(client.Value) is { } problem)
+                        else if (client.Value.ValueKind != JsonValueKind.Null && ClientBytesProblem(client.Value, limits.SettingsClientBytes) is { } problem)
                         {
-                            errors.Add(new SpecError(clientPointer, "limit.clientBytes", $"The preferences {problem}."));
+                            errors.Add(new SpecError(clientPointer, "limit.settingsClientBytes", $"The preferences {problem}."));
                         }
                     }
 
@@ -658,22 +688,15 @@ public sealed class SettingsStore
             ? null
             : "isn't one of debug, information, warning and error";
 
-    private static string? ClientBytesProblem(JsonElement e)
-    {
-        var bytes = StoredBytes(e);
-        return bytes <= SettingsLimits.ClientBytes ? null : $"take {bytes} bytes; at most {SettingsLimits.ClientBytes} are kept";
-    }
-
     /// <summary>
-    /// A value's size as the file stores it: written compactly with the file writer's escaping. Writing is a fixed point
-    /// (writing what was read back writes the same bytes), so a change and the next start measure a value alike.
+    /// A client's preferences over <paramref name="limit"/> bytes on their canonical form (spec/docs/limits.md#sizes), the
+    /// size every content limit measures: the same however the value was sent or is stored, so a change and the next
+    /// start measure it alike.
     /// </summary>
-    private static int StoredBytes(JsonElement e)
+    private static string? ClientBytesProblem(JsonElement e, int limit)
     {
-        var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Encoder = WriterOptions.Encoder }))
-            e.WriteTo(writer);
-        return buffer.WrittenCount;
+        var bytes = CanonicalJson.Size(e);
+        return bytes <= limit ? null : $"take {bytes} bytes on their canonical form; at most {limit} are kept (settingsClientBytes)";
     }
 
     // ---- numbers ----------------------------------------------------------------------------------------------------
@@ -760,7 +783,7 @@ public sealed class SettingsStore
         return document.RootElement.Clone();
     }
 
-    /// <summary>How the file is written; its encoder is the one <see cref="StoredBytes"/> measures with.</summary>
+    /// <summary>How the file is written.</summary>
     private static readonly JsonWriterOptions WriterOptions = new() { Indented = true };
 
     private static byte[] Serialize(JsonObject tree)

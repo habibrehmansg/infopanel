@@ -94,7 +94,7 @@ Each code is reported at the value it is about ([versioning](versioning.md#error
 
 The 1.x import's codes (`import.*`, and the `archive.*` codes of the archive guards) are on its own page ([1.x import](import.md#diagnostics)): `import.version`, `import.archive`, `import.xml` and `archive.*` refuse a request, every other `import.*` code is a diagnostic in an answer that succeeded. A profile archive's own codes (`archive.manifest`, `archive.document`, `archive.unreferenced`, `archive.hash`, `archive.v1`) are on its page ([archive](archive.md#importing)); its manifest is checked in this page's order, its errors under `/manifest`.
 
-Conflicts and other refusals that depend on the document's state (409: `conflictProblem`, `expiredProblem`, `existsProblem`, `profileStatusProblem`) are not validation errors: see [commits](commit.md) and the [API](api.md).
+Conflicts and other refusals that depend on the document's or the engine's state (409: `conflictProblem`, `expiredProblem`, `existsProblem`, `profileStatusProblem`, `settingsStatusProblem`) are not validation errors: see [commits](commit.md) and the [API](api.md).
 
 ## The examples
 

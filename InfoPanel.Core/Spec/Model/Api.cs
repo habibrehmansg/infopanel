@@ -26,6 +26,8 @@ public sealed record Session
     /// <summary><c>x64</c>, <c>arm64</c>, <c>x86</c>, <c>arm</c> or <c>other</c>: the architecture the engine runs as.</summary>
     public required string Arch { get; init; }
     public required string DataDir { get; init; }
+    /// <summary>Whether the engine runs in mock mode: its sensors are simulated, not the computer's.</summary>
+    public required bool Mock { get; init; }
     /// <summary>The PC's regional format as the engine read it when it started.</summary>
     public required SessionLocale Locale { get; init; }
     /// <summary>The schema's <c>formatSupport</c>: every format the engine reads, by format string.</summary>
@@ -504,6 +506,92 @@ public sealed record SensorValue
     public required InfoPanel.Sensors.SensorStatus Status { get; init; }
 }
 
+// The engine settings (GET and PATCH /api/settings).
+
+/// <summary>
+/// The engine settings in effect (the schema's <c>engineSettings</c>, a union of one definition per shape):
+/// <see cref="Status"/> <c>ok</c> without <see cref="Problem"/>, or <c>unreadable</c> or <c>unsupported</c> with it; the
+/// run's change count, and each setting's value or default.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/engineSettingsOk", "urn:infopanel:api:1#/$defs/engineSettingsProblem")]
+public sealed record EngineSettingsBody
+{
+    public required string Status { get; init; }
+    public ValidationErrorBody? Problem { get; init; }
+    public required long Version { get; init; }
+    public required int FrameRate { get; init; }
+    public required int GraphRate { get; init; }
+    /// <summary><c>debug</c>, <c>information</c>, <c>warning</c> or <c>error</c>.</summary>
+    public required string LogLevel { get; init; }
+    public required SettingsSources Sources { get; init; }
+    /// <summary>Each client's preferences by client name, as the client set them.</summary>
+    public required IReadOnlyDictionary<string, JsonElement> Clients { get; init; }
+}
+
+/// <summary>The settings of the engine's sensor sources (<c>settingsSources</c>, engineSettings' <c>sources</c>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsSources")]
+public sealed record SettingsSources
+{
+    public required LibreSettingsBody Libre { get; init; }
+}
+
+[SpecDef("urn:infopanel:api:1#/$defs/libreSettings")]
+public sealed record LibreSettingsBody
+{
+    public required bool Enabled { get; init; }
+    public required bool Storage { get; init; }
+    public required int StorageInterval { get; init; }
+}
+
+/// <summary>
+/// <c>PATCH /api/settings</c> (<c>settingsChange</c>): the settings to change; one given as <c>null</c> goes back to its
+/// default (<see cref="IRemovesMembers"/>), and a client's preferences given as <c>null</c> are removed. The engine
+/// applies the body as JSON (InfoPanel.Settings.SettingsStore); this model mirrors it.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange")]
+public sealed record SettingsChange : IRemovesMembers
+{
+    public int? FrameRate { get; init; }
+    public int? GraphRate { get; init; }
+    public string? LogLevel { get; init; }
+    public SettingsChangeSources? Sources { get; init; }
+    public IReadOnlyDictionary<string, JsonElement>? Clients { get; init; }
+    /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
+
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/sources")]
+public sealed record SettingsChangeSources
+{
+    public LibreSettingsChange? Libre { get; init; }
+}
+
+/// <summary>The Libre source's settings to change; one given as <c>null</c> goes back to its default (<see cref="IRemovesMembers"/>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/sources/properties/libre")]
+public sealed record LibreSettingsChange : IRemovesMembers
+{
+    public bool? Enabled { get; init; }
+    public bool? Storage { get; init; }
+    public int? StorageInterval { get; init; }
+    /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
+
+/// <summary>409: the settings couldn't be read at start-up, so none can be changed. <see cref="Code"/> is their status.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsStatusProblem")]
+public sealed record SettingsStatusProblem
+{
+    public string? Type { get; init; }
+    public string? Title { get; init; }
+    public string? Detail { get; init; }
+    public required int Status { get; init; }
+    /// <summary><c>unreadable</c> or <c>unsupported</c>.</summary>
+    public required string Code { get; init; }
+    public required ValidationErrorBody Problem { get; init; }
+}
+
 // The preview socket's text messages (the schema's clientMessage and serverMessage; docEvent is above).
 
 /// <summary>The first message on <c>/ws</c> when the token wasn't offered as a subprotocol. <see cref="Type"/> is always <c>auth</c>.</summary>
@@ -553,6 +641,14 @@ public sealed record HelloMessage
 /// <summary>The profile list changed (<see cref="Version"/> grows with each change). <see cref="Type"/> is always <c>profiles</c>.</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/profilesMessage")]
 public sealed record ProfilesMessage
+{
+    public required string Type { get; init; }
+    public required long Version { get; init; }
+}
+
+/// <summary>The engine settings changed (<see cref="Version"/> is theirs after the change). <see cref="Type"/> is always <c>settings</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsMessage")]
+public sealed record SettingsMessage
 {
     public required string Type { get; init; }
     public required long Version { get; init; }
