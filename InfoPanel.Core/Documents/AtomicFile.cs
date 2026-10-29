@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Microsoft.Win32.SafeHandles;
 using Serilog;
 
 namespace InfoPanel.Documents;
@@ -17,6 +18,9 @@ internal enum StorageStep
 
     /// <summary>Flushing the temp file to disk.</summary>
     FlushTemp,
+
+    /// <summary>Flushing a file that is kept as it is to disk (its content, on the handle it was read through).</summary>
+    FlushFile,
 
     /// <summary>Renaming the temp file over its target.</summary>
     ReplaceFile,
@@ -57,6 +61,12 @@ internal interface IStorageFaults
     /// <paramref name="folder"/> to report instead of calling it; 0 calls it.
     /// </summary>
     int FullSyncError(string folder) => 0;
+
+    /// <summary>
+    /// Unix: an <c>errno</c> for flushing the content of <paramref name="path"/>, a file kept as it is, to report instead
+    /// of calling the native flush; 0 calls it.
+    /// </summary>
+    int FileSyncError(string path) => 0;
 }
 
 /// <summary>
@@ -100,11 +110,15 @@ public static class AtomicFile
     /// <summary>Set by the first folder whose file system can't take a full flush (macOS), which is logged; the later ones aren't.</summary>
     private static int _fullSyncWarned;
 
+    /// <summary>Set by the first kept file whose file system can't take a full flush (macOS), which is logged; the later ones aren't.</summary>
+    private static int _fileFullSyncWarned;
+
     /// <summary>Lets a test see the warnings again.</summary>
     internal static void ResetFolderSyncWarning()
     {
         Volatile.Write(ref _folderSyncWarned, 0);
         Volatile.Write(ref _fullSyncWarned, 0);
+        Volatile.Write(ref _fileFullSyncWarned, 0);
     }
 
     /// <summary>Replaces <paramref name="path"/> with <paramref name="content"/>, creating its folder when missing.</summary>
@@ -341,6 +355,73 @@ public static class AtomicFile
         {
             Logger.Warning("A full flush (F_FULLFSYNC) of {Folder} failed ({Error}, errno {Errno}); folders there get a plain fsync, which a power loss can undo",
                 folder, Marshal.GetPInvokeErrorMessage(errno), errno);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Flushes the content of a file that is kept as it is (<paramref name="handle"/>, opened on <paramref name="path"/>) to
+    /// disk, and checks the result. Unix: <c>fcntl(F_FULLFSYNC)</c> on macOS, falling back to <c>fsync</c> when it fails
+    /// (logged once per process), <c>fsync</c> elsewhere, retried on <c>EINTR</c>; any other failure, <c>EINVAL</c> and
+    /// <c>ENOTSUP</c> included (which .NET's own file flush ignores), is an error, since a file that can't be flushed is
+    /// not known to be on disk. Windows: <see cref="RandomAccess.FlushToDisk"/>, which reports every failure.
+    /// </summary>
+    /// <exception cref="IOException">The flush failed.</exception>
+    internal static void FlushFile(SafeFileHandle handle, string path, IStorageFaults? faults)
+    {
+        faults?.Before(StorageStep.FlushFile, path);
+        if (OperatingSystem.IsWindows())
+        {
+            RandomAccess.FlushToDisk(handle);
+            return;
+        }
+
+        var errno = faults?.FileSyncError(path) ?? 0;
+        if (errno == 0)
+        {
+            var added = false;
+            try
+            {
+                handle.DangerousAddRef(ref added);
+                var fd = (int)handle.DangerousGetHandle();
+                if (OperatingSystem.IsMacOS() && FullSyncFile(path, fd))
+                    return;
+                int result;
+                do
+                {
+                    result = Posix.fsync(fd);
+                    errno = result != 0 ? Marshal.GetLastPInvokeError() : 0;
+                }
+                while (result != 0 && errno == Posix.EINTR);
+            }
+            finally
+            {
+                if (added)
+                    handle.DangerousRelease();
+            }
+        }
+
+        if (errno != 0)
+            throw new IOException($"Could not flush {path} to disk: {Marshal.GetPInvokeErrorMessage(errno)} (errno {errno}).");
+    }
+
+    /// <summary>macOS: <c>fcntl(F_FULLFSYNC)</c> on a file, retried on <c>EINTR</c>; whether it succeeded (the caller falls back to <c>fsync</c>; the first failure is logged).</summary>
+    private static bool FullSyncFile(string path, int fd)
+    {
+        int result, errno;
+        do
+        {
+            result = Posix.fcntl(fd, Posix.F_FULLFSYNC);
+            errno = result == -1 ? Marshal.GetLastPInvokeError() : 0;
+        }
+        while (result == -1 && errno == Posix.EINTR);
+
+        if (errno == 0)
+            return true;
+        if (Interlocked.Exchange(ref _fileFullSyncWarned, 1) == 0)
+        {
+            Logger.Warning("A full flush (F_FULLFSYNC) of {Path} failed ({Error}, errno {Errno}); files there get a plain fsync, which a power loss can undo",
+                path, Marshal.GetPInvokeErrorMessage(errno), errno);
         }
         return false;
     }

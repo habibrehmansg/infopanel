@@ -215,13 +215,16 @@ public sealed class DocumentPerformanceTests(ITestOutputHelper output)
 
     /// <summary>
     /// A profile's Save as the store does it, flushes included (on macOS every folder flush is a full flush): at a compact
-    /// 30-item document's size (120 KiB) and at 1 MiB. Commits never wait for it: Save writes outside the document's lock.
+    /// 30-item document's size (120 KiB) and at 1 MiB, a save that changed the content (it keeps the document it replaces
+    /// as a version, and drops the oldest past ten) and one of the same bytes (it keeps none). Commits never wait for it:
+    /// Save writes outside the document's lock.
     /// </summary>
     [Fact]
     public void A_save_writes_and_flushes_the_document()
     {
         using var temp = new InfoPanel.Core.Tests.Persistence.TempDirectory();
-        var store = new DocumentStore(new InfoPanel.Persistence.DataPaths(temp.Path));
+        var paths = new InfoPanel.Persistence.DataPaths(temp.Path);
+        var store = new DocumentStore(paths);
         store.Open();
         foreach (var size in new[] { 120 * 1024, 1024 * 1024 })
         {
@@ -229,17 +232,22 @@ public sealed class DocumentPerformanceTests(ITestOutputHelper output)
             var content = new byte[size];
             new Random(size).NextBytes(content);
             store.Create(id, content);
-            List<double> times = [];
-            for (var i = 0; i < 50; i++)
+            foreach (var changed in new[] { true, false })
             {
-                content[i] ^= 1;
-                var t0 = Stopwatch.GetTimestamp();
-                store.Save(id, content);
-                if (i >= 10) times.Add(Stopwatch.GetElapsedTime(t0).TotalMilliseconds);
+                List<double> times = [];
+                for (var i = 0; i < 50; i++)
+                {
+                    if (changed)
+                        content[i] ^= 1;
+                    var t0 = Stopwatch.GetTimestamp();
+                    store.Save(id, content);
+                    if (i >= 10) times.Add(Stopwatch.GetElapsedTime(t0).TotalMilliseconds);
+                }
+                var (p50, p95, p99) = ScenePerformanceTests.Percentiles(times);
+                output.WriteLine($"Save {size / 1024} KiB, {(changed ? "keeping a version" : "the same bytes, no version")}: p50 {p50:0.000} ms, p95 {p95:0.000} ms, p99 {p99:0.000} ms");
+                Assert.True(p95 < 500, "Save p95");
             }
-            var (p50, p95, p99) = ScenePerformanceTests.Percentiles(times);
-            output.WriteLine($"Save {size / 1024} KiB: p50 {p50:0.000} ms, p95 {p95:0.000} ms, p99 {p99:0.000} ms");
-            Assert.True(p95 < 500, "Save p95");
+            Assert.Equal(DocumentStore.VersionsKept, Directory.GetFiles(Path.Combine(paths.ProfileFolder(id), "versions")).Length);
         }
     }
 }

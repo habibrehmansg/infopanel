@@ -105,6 +105,21 @@ public static class RegularFile
         return new FileStream(Verified(fd, path), FileAccess.Read, bufferSize: 0);
     }
 
+    /// <summary>
+    /// Opens <paramref name="path"/> to read and then flush to disk (<see cref="InfoPanel.Documents.AtomicFile.FlushFile"/>), when it is a
+    /// regular file, as <see cref="OpenRead"/>; nothing is written through it. On Windows the handle may write too, since a
+    /// file is flushed only through such a handle; on macOS and Linux it is read-only.
+    /// </summary>
+    /// <exception cref="NotARegularFileException">A FIFO, socket or device is at the path; it wasn't read.</exception>
+    /// <exception cref="IOException">As <see cref="OpenRead"/>.</exception>
+    /// <exception cref="UnauthorizedAccessException">As <see cref="OpenRead"/>, or on Windows it may not be written.</exception>
+    internal static FileStream OpenToFlush(string path)
+    {
+        if (IsUnix)
+            return OpenRead(path);
+        return new FileStream(OpenWindows(path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read), FileAccess.ReadWrite, bufferSize: 0);
+    }
+
     /// <summary>Reads <paramref name="path"/> whole, a regular file only (<see cref="OpenRead"/>), reading at most <paramref name="maxBytes"/> + 1 bytes of it.</summary>
     /// <exception cref="InvalidDataException">The file is larger than <paramref name="maxBytes"/>.</exception>
     /// <exception cref="IOException">As <see cref="OpenRead"/>, or the read failed.</exception>

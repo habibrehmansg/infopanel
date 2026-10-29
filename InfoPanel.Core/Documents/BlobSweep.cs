@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -18,10 +19,14 @@ public sealed record BlobSweepResult(int Documents, int Blobs, int Referenced, i
 /// Removes blobs no saved file refers to, at start-up only (nothing is deleted while the engine runs, so a blob only
 /// the undo history or an unsaved change refers to stays until the next start). The roots are chosen by the root rule of
 /// docs/2.0/data-folder.md (<see cref="DocumentStore.SweepRoots"/>), so what a later engine keeps in a profile's folder
-/// counts without being understood. A reference is any <c>sha256:</c> followed by 64 hex digits anywhere in a root's
-/// text, as it is or with its JSON escapes decoded, whether or not the root is JSON; only a profile's
-/// <c>document.json</c> must also be well-formed JSON. An unreferenced blob is deleted only when it was last written more
-/// than <see cref="GracePeriod"/> ago. When any root can't be read (missing, unreadable, not a regular file, larger than
+/// counts without being understood, the earlier saved versions the store keeps there (<c>versions/{n}.json</c>)
+/// included. A reference is any <c>sha256:</c> followed by 64 hex digits anywhere in a root's text, as it is or with
+/// its JSON escapes decoded, whether or not the root is JSON; only a profile's <c>document.json</c> must also be
+/// well-formed JSON. An unreferenced blob is deleted only when it was last written more than <see cref="GracePeriod"/>
+/// ago, and only once <c>profiles/</c> and every profile's folder and <c>versions</c> folder is flushed to disk
+/// (<see cref="DocumentStore.FlushBeforeBlobsGo"/>), so a dropped version, a replaced document or a deleted profile that
+/// a power loss could bring back never comes back without its blobs; a flush that fails deletes nothing. When any root can't be read
+/// (missing, unreadable, not a regular file, larger than
 /// <see cref="DocumentStore.MaxBytes"/>, a document that isn't JSON), or what the roots are can't be told (a folder that
 /// can't be listed, a link whose target can't be reached), nothing is deleted at all. The sweep is bounded: it looks at
 /// most at <see cref="MaxEntries"/> entries (the profiles' files and folders and the blobs) and reads at most
@@ -103,6 +108,21 @@ public static partial class BlobSweep
             {
                 Logger.Warning(ex, "Skipped the blob sweep: {Path} can't be read", file);
                 return new BlobSweepResult(files.Count, stored.Count, 0, 0, $"{file} can't be read ({ex.Message})");
+            }
+        }
+
+        // What a power loss could still undo (a dropped version, a replaced document) goes on disk before any blob it may
+        // refer to can go; when it can't, nothing is deleted.
+        if (stored.Any(id => !references.Contains(id)))
+        {
+            try
+            {
+                documents.FlushBeforeBlobsGo();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Logger.Warning(ex, "Skipped the blob sweep: the profiles' folders can't be flushed to disk");
+                return new BlobSweepResult(files.Count, stored.Count, 0, 0, $"the profiles' folders can't be flushed to disk ({ex.Message})");
             }
         }
 

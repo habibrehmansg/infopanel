@@ -50,6 +50,76 @@ public class CrashSafetyTests
         Assert.True(steps >= 8, $"{steps} steps");
     }
 
+    /// <summary>
+    /// A save with ten earlier saves kept (s0 to s9 as versions 1 to 10, s10 saved), failed at every step: the saved
+    /// document is s10 or s11; every version file is a whole earlier save; once s11 is in place s10 is among the
+    /// versions, and while s10 is still the saved document no version has been dropped; an I/O failure before the
+    /// document's own write still saves; and after a reopen a sweep keeps every blob the document or a version refers to.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public void Save_WithVersion_IsOldOrNew(bool crash)
+    {
+        static byte[] Saved(int i) => Document(A, $"s{i}", BlobId($"b{i}"));
+        var steps = ForEveryStep(crash,
+            arrange: s =>
+            {
+                for (var i = 0; i <= 11; i++)
+                    s.Blobs.Put(Encoding.UTF8.GetBytes($"b{i}"));
+                s.Documents.Create(A, Saved(0));
+                for (var i = 1; i <= 10; i++)
+                    s.Documents.Save(A, Saved(i));
+            },
+            act: s => s.Documents.Save(A, Saved(11)),
+            check: (faults, live, reopened, completed) =>
+            {
+                var paths = reopened.Documents.Paths;
+                var saved = reopened.Documents.Read(A);
+                Assert.True(saved.SequenceEqual(Saved(10)) || saved.SequenceEqual(Saved(11)));
+                Assert.Equal(saved, live.Documents.Read(A));
+
+                var folder = Path.Combine(paths.ProfileFolder(A), "versions");
+                var files = Directory.GetFileSystemEntries(folder);
+                var held = files.Select(file =>
+                {
+                    var bytes = File.ReadAllBytes(file);
+                    var which = Enumerable.Range(0, 11).Where(i => bytes.SequenceEqual(Saved(i))).ToArray();
+                    Assert.True(which.Length == 1, $"{file} is not a whole earlier save");
+                    Assert.Equal($"{which[0] + 1}.json", Path.GetFileName(file));
+                    return which[0];
+                }).ToHashSet();
+                // An I/O failure before the document's own write is the version's: logged, and the save goes on without
+                // it. Each write starts with flushing the data folder (its folders' parents, from the top); the version's
+                // is the first, so the document's starts at the second.
+                var documentWrite = faults.Steps.FindIndex(1, s => s.Step == StorageStep.SyncFolder && s.Path == paths.Root);
+                var versionFailed = !crash && faults.Fired && (documentWrite < 0 || faults.FailAt - 1 < documentWrite);
+                if (versionFailed)
+                    Assert.True(completed, $"an I/O failure at {faults.Steps[faults.FailAt - 1]}, before the document's write, failed the save");
+
+                if (saved.SequenceEqual(Saved(11)) && !versionFailed)
+                    Assert.Contains(10, held); // the save it replaced is kept
+                if (saved.SequenceEqual(Saved(10)))
+                    Assert.Superset(Enumerable.Range(0, 10).ToHashSet(), held); // nothing dropped before the new save is in place
+
+                if (completed)
+                {
+                    Assert.Equal(Saved(11), saved);
+                    if (!faults.Fired)
+                        Assert.Equal(Enumerable.Range(1, 10).ToHashSet(), held);
+                }
+
+                AgeAllBlobs(reopened);
+                var result = BlobSweep.Run(reopened.Documents, reopened.Blobs, DateTimeOffset.UtcNow);
+                Assert.Null(result.SkippedBecause);
+                var references = new HashSet<string>();
+                BlobSweep.CollectReferences(saved, references);
+                foreach (var file in files)
+                    BlobSweep.CollectReferences(File.ReadAllBytes(file), references);
+                Assert.All(references, id => Assert.True(reopened.Blobs.Exists(id), $"{id} is missing"));
+            });
+        Assert.True(steps >= 15, $"{steps} steps");
+    }
+
     [Theory]
     [MemberData(nameof(Modes))]
     public void Create_IsAllOrNothing(bool crash)
@@ -227,7 +297,8 @@ public class CrashSafetyTests
                 var result = BlobSweep.Run(reopened.Documents, reopened.Blobs, DateTimeOffset.UtcNow);
                 Assert.Null(result.SkippedBecause);
                 AssertReferencedBlobsExist(reopened);
-                Assert.Single(reopened.Blobs.List()); // the other one is old and unreferenced
+                // What is left is what the saved document or the earlier save it keeps refers to; an old unreferenced one goes.
+                Assert.Equal(References(reopened).Order(StringComparer.Ordinal), reopened.Blobs.List());
             });
     }
 
@@ -250,7 +321,7 @@ public class CrashSafetyTests
                 BlobSweep.Run(reopened.Documents, reopened.Blobs, DateTimeOffset.UtcNow);
                 Assert.Equal([BlobId("kept")], reopened.Blobs.List());
             });
-        Assert.Equal(3, steps);
+        Assert.Equal(5, steps); // flush profiles/ and the profile's folder, then delete the three blobs
     }
 
     /// <summary>A crash during start-up reconciliation leaves a folder the next start reconciles the same way.</summary>
@@ -285,11 +356,23 @@ public class CrashSafetyTests
             File.SetLastWriteTimeUtc(stores.Blobs.Paths.BlobFile(id), DateTime.UtcNow.AddDays(-2));
     }
 
-    private static void AssertReferencedBlobsExist(Stores stores)
+    private static void AssertReferencedBlobsExist(Stores stores) =>
+        Assert.All(References(stores), id => Assert.True(stores.Blobs.Exists(id), $"{id} is missing"));
+
+    /// <summary>The blobs every profile's saved document and earlier saved versions refer to.</summary>
+    private static HashSet<string> References(Stores stores)
     {
         var references = new HashSet<string>();
         foreach (var id in stores.Documents.List())
+        {
             BlobSweep.CollectReferences(stores.Documents.Read(id), references);
-        Assert.All(references, id => Assert.True(stores.Blobs.Exists(id), $"{id} is missing"));
+            var versions = Path.Combine(stores.Documents.Paths.ProfileFolder(id), "versions");
+            if (Directory.Exists(versions))
+            {
+                foreach (var file in Directory.GetFiles(versions))
+                    BlobSweep.CollectReferences(File.ReadAllBytes(file), references);
+            }
+        }
+        return references;
     }
 }

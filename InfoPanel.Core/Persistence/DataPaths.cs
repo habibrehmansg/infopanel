@@ -11,7 +11,8 @@ namespace InfoPanel.Persistence;
 /// The engine's data folder. It keeps the 1.x layout (<c>profiles.xml</c>, <c>profiles/{guid}.xml</c>,
 /// <c>assets/{guid}/</c>) and adds <c>fonts/</c>, <c>logs/</c>, <c>runtime.json</c> and <c>engine.lock</c>.
 /// The 2.0 document store (<see cref="DocumentStore"/>, <see cref="BlobStore"/>) adds <c>profiles.json</c>,
-/// <c>profiles/{id}/document.json</c> and <c>blobs/{sha256 hex}</c>; the engine adds <c>store.json</c> (the folder's
+/// <c>profiles/{id}/document.json</c> (with its earlier saved versions, <c>profiles/{id}/versions/{n}.json</c>) and
+/// <c>blobs/{sha256 hex}</c>; the engine adds <c>store.json</c> (the folder's
 /// marker, <see cref="StoreMarker"/>), <c>tokens.json</c> and <c>settings.json</c>, and the 1.x import its run-once record
 /// <c>import-v1.json</c>. <see cref="EngineFiles"/> and <see cref="EngineFolders"/> list them (docs/2.0/data-folder.md).
 /// </summary>
@@ -112,6 +113,18 @@ public sealed class DataPaths
     /// <summary>A stored document's saved generation.</summary>
     /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid profile id.</exception>
     public string DocumentFile(string id) => Path.Combine(ProfileFolder(id), DocumentStore.DocumentFileName);
+
+    /// <summary>A stored document's earlier saved versions (<see cref="DocumentStore"/>): <c>profiles/{id}/versions</c>.</summary>
+    /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid profile id.</exception>
+    public string VersionsFolder(string id) => Path.Combine(ProfileFolder(id), DocumentStore.VersionsFolderName);
+
+    /// <summary>One earlier saved version, <c>profiles/{id}/versions/{n}.json</c>: <paramref name="n"/> from 1, in decimal.</summary>
+    /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid profile id.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="n"/> is 0 or has more digits than a version's name holds.</exception>
+    public string VersionFile(string id, ulong n) =>
+        n is >= 1 and <= DocumentStore.MaxVersionNumber
+            ? Path.Combine(VersionsFolder(id), n.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".json")
+            : throw new ArgumentOutOfRangeException(nameof(n), n, "A version's number is from 1 to 19 digits.");
 
     /// <summary>The integration tokens: their records and the SHA-256 of each secret, never a secret.</summary>
     public string TokensFile => Path.Combine(Root, "tokens.json");

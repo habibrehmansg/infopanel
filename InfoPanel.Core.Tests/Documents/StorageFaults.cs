@@ -97,6 +97,11 @@ internal sealed class MatchFaults : IStorageFaults
 
     public int FolderSyncError(string folder) => FolderSyncErrno;
 
+    /// <summary>The <c>errno</c> a kept file's native flush reports when it is set.</summary>
+    public int FileSyncErrno { get; set; }
+
+    public int FileSyncError(string path) => FileSyncErrno;
+
     public int FullSyncErrno { get; set; }
 
     /// <summary>The folders a full flush (<c>F_FULLFSYNC</c>, macOS) was asked for, in order.</summary>

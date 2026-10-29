@@ -456,6 +456,173 @@ public class BlobSweepTests
         Assert.True(File.Exists(notes));
     }
 
+    /// <summary>
+    /// The earlier saves the store keeps are roots: a blob only a kept version refers to stays; once its version is
+    /// dropped (an eleventh save drops the first), the blob goes, but only past the grace period.
+    /// </summary>
+    [Fact]
+    public void ABlobOnlyAKeptVersionRefersTo_IsKept_UntilTheVersionIsDropped()
+    {
+        using var temp = new TempDirectory();
+        var stores = new Stores(new DataPaths(temp.Path)).Open();
+        var blobs = Enumerable.Range(0, 12).Select(i => Put(stores, $"save {i}", Now.AddDays(-30))).ToArray();
+        stores.Documents.Create(A, Document(A, "s0", blobs[0]));
+        for (var i = 1; i <= 11; i++)
+            stores.Documents.Save(A, Document(A, $"s{i}", blobs[i]));
+        File.SetLastWriteTimeUtc(stores.Blobs.Paths.BlobFile(blobs[0]), Now.AddHours(-1).UtcDateTime);
+
+        // Versions 2 to 11 hold s1 to s10; version 1 (s0) was dropped, but its blob is within the grace period.
+        var result = Sweep(stores, Now);
+        Assert.Null(result.SkippedBecause);
+        Assert.Equal(0, result.Deleted);
+        Assert.All(blobs, b => Assert.True(stores.Blobs.Exists(b)));
+
+        result = Sweep(stores, Now.AddDays(2));
+        Assert.Null(result.SkippedBecause);
+        Assert.Equal(1, result.Deleted);
+        Assert.False(stores.Blobs.Exists(blobs[0]));
+        Assert.All(blobs[1..], b => Assert.True(stores.Blobs.Exists(b)));
+    }
+
+    /// <summary>A kept version that can't be read stops the sweep's deletions, as a document that can't be.</summary>
+    [Fact]
+    public void AKeptVersionThatCantBeRead_DeletesNothing()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // Unix permissions
+
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        var old = Put(stores, "old", Now.AddDays(-30));
+        stores.Documents.Create(A, Document(A, "a"));
+        stores.Documents.Save(A, Document(A, "b"));
+        var version = Path.Combine(paths.ProfileFolder(A), "versions", "1.json");
+        File.SetUnixFileMode(version, UnixFileMode.None);
+        if (CanRead(version))
+            return; // running with privileges that ignore the mode
+
+        var result = Sweep(stores, Now);
+
+        Assert.NotNull(result.SkippedBecause);
+        Assert.Contains("1.json", result.SkippedBecause);
+        Assert.Equal(0, result.Deleted);
+        Assert.True(stores.Blobs.Exists(old));
+    }
+
+    /// <summary>
+    /// A dropped version's removal is on disk before any blob is deleted: the sweep flushes each profile's versions folder
+    /// first, and deletes nothing while that flush fails, so a dropped version that a power loss brings back (its folder
+    /// on another drive than blobs/, say) still has its blobs.
+    /// </summary>
+    [Fact]
+    public void ADroppedVersionsBlobs_GoOnlyOnceItsRemovalIsFlushed()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        var blobs = Enumerable.Range(0, 12).Select(i => Put(stores, $"save {i}", Now.AddDays(-30))).ToArray();
+        stores.Documents.Create(A, Document(A, "s0", blobs[0]));
+        for (var i = 1; i <= 11; i++)
+            stores.Documents.Save(A, Document(A, $"s{i}", blobs[i]));
+        Assert.False(File.Exists(paths.VersionFile(A, 1))); // dropped: nothing refers to blobs[0] now
+
+        var failing = new MatchFaults { Fail = (step, path) => step == StorageStep.SyncFolder && path == paths.VersionsFolder(A) };
+        var result = SweepWith(paths, failing);
+        Assert.NotNull(result.SkippedBecause);
+        Assert.Equal(0, result.Deleted);
+        Assert.All(blobs, b => Assert.True(stores.Blobs.Exists(b)));
+
+        var flushing = new MatchFaults();
+        result = SweepWith(paths, flushing);
+        Assert.Null(result.SkippedBecause);
+        Assert.Equal(1, result.Deleted);
+        Assert.False(stores.Blobs.Exists(blobs[0]));
+        AssertFlushedBefore(flushing.Steps, paths.VersionsFolder(A), paths.BlobFile(blobs[0]));
+    }
+
+    /// <summary>
+    /// A save whose document's rename couldn't be flushed may come back after a power loss as the document it replaced:
+    /// the sweep flushes each profile's folder before deleting anything, and deletes nothing while that fails, so the
+    /// replaced document's blobs are kept.
+    /// </summary>
+    [Fact]
+    public void ASavesUnflushedRename_KeepsTheReplacedDocumentsBlobs_UntilItsFolderIsFlushed()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        var old = Put(stores, "old", Now.AddDays(-30));
+        stores.Documents.Create(A, Document(A, "a", old));
+        bool ProfileFlush(StorageStep step, string path) => step == StorageStep.SyncFolder && path == paths.ProfileFolder(A);
+        // The profile's folder can't be flushed: no version is kept (versions/ is new), and the document's rename isn't on disk.
+        var live = new Stores(paths, new MatchFaults { Fail = ProfileFlush }).Open();
+        Assert.Throws<IOException>(() => live.Documents.Save(A, Document(A, "b")));
+        Assert.Equal(Document(A, "b"), live.Documents.Read(A));
+        Assert.False(File.Exists(paths.VersionFile(A, 1)));
+
+        var result = SweepWith(paths, new MatchFaults { Fail = ProfileFlush });
+        Assert.NotNull(result.SkippedBecause);
+        Assert.Equal(0, result.Deleted);
+        Assert.True(stores.Blobs.Exists(old));
+
+        var flushing = new MatchFaults();
+        result = SweepWith(paths, flushing);
+        Assert.Null(result.SkippedBecause);
+        Assert.Equal(1, result.Deleted);
+        Assert.False(stores.Blobs.Exists(old));
+        AssertFlushedBefore(flushing.Steps, paths.ProfileFolder(A), paths.BlobFile(old));
+    }
+
+    /// <summary>
+    /// A delete whose flush of <c>profiles/</c> failed, then failed again at the next start, leaves the deleted profile's
+    /// folder, which isn't a root, while its rename may not be on disk: the sweep flushes <c>profiles/</c> before it deletes
+    /// anything, and deletes nothing while that fails, so a power loss can't bring the profile back without its blobs.
+    /// </summary>
+    [Fact]
+    public void ADeletedProfilesBlobs_GoOnlyOnceItsRenameIsFlushed()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        var old = Put(stores, "old", Now.AddDays(-30));
+        stores.Documents.Create(A, Document(A, "a", old));
+        bool ProfilesFlush(StorageStep step, string path) => step == StorageStep.SyncFolder && path == paths.ProfilesDirectory;
+        var live = new Stores(paths, new MatchFaults { Fail = ProfilesFlush }).Open();
+        Assert.Throws<IOException>(() => live.Documents.Delete(A));
+        var deleted = Assert.Single(Directory.GetDirectories(paths.ProfilesDirectory));
+        Assert.StartsWith(A + ".deleted-", Path.GetFileName(deleted), StringComparison.Ordinal);
+
+        // The next start can't flush profiles/ either: the deleted profile's folder is left, its rename maybe not on disk.
+        var result = SweepWith(paths, new MatchFaults { Fail = ProfilesFlush });
+        Assert.True(Directory.Exists(deleted));
+        Assert.NotNull(result.SkippedBecause);
+        Assert.Equal(0, result.Deleted);
+        Assert.True(stores.Blobs.Exists(old));
+
+        var flushing = new MatchFaults();
+        result = SweepWith(paths, flushing);
+        Assert.Null(result.SkippedBecause);
+        Assert.Equal(1, result.Deleted);
+        Assert.False(Directory.Exists(deleted));
+        Assert.False(stores.Blobs.Exists(old));
+        AssertFlushedBefore(flushing.Steps, paths.ProfilesDirectory, paths.BlobFile(old));
+    }
+
+    /// <summary>Sweeps at the next start, on stores given <paramref name="faults"/>.</summary>
+    private static BlobSweepResult SweepWith(DataPaths paths, MatchFaults faults)
+    {
+        var next = new Stores(paths, faults).Open();
+        return BlobSweep.Run(next.Documents, next.Blobs, Now);
+    }
+
+    private static void AssertFlushedBefore(List<(StorageStep Step, string Path)> steps, string folder, string deleted)
+    {
+        var flushed = steps.FindIndex(s => s.Step == StorageStep.SyncFolder && s.Path == folder);
+        var deletedAt = steps.FindIndex(s => s.Step == StorageStep.DeleteFile && s.Path == deleted);
+        Assert.True(0 <= flushed && flushed < deletedAt, string.Join(", ", steps));
+    }
+
     private static bool CanRead(string file)
     {
         try

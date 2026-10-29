@@ -31,7 +31,9 @@ public sealed class ProfileListFullException(long bytes, long limit)
 /// bytes (parsing and validation are the caller's; the workspace writes the canonical form, spec/docs/limits.md#sizes,
 /// so a file's size is its document's measured <c>documentBytes</c>), <c>profiles.json</c> only the display order
 /// (<c>{"order":[ids]}</c>, read tolerantly: members it doesn't know are kept when it is rewritten), within its own byte
-/// bound, <see cref="ProfileListBytes"/>, so every order file the store writes reads back.
+/// bound, <see cref="ProfileListBytes"/>, so every order file the store writes reads back. A save keeps the document it
+/// replaces as an earlier saved version, <c>profiles/{id}/versions/{n}.json</c> (<see cref="Save"/>; docs/2.0/data-folder.md,
+/// "Earlier saves").
 /// The folders are the source of truth: <see cref="Open"/> appends a folder missing from the order, drops a listed id
 /// with no folder, and removes what an interrupted operation left (temp files, staging folders, deleted folders), so
 /// there is no consistency between files to keep. Every write goes through <see cref="AtomicFile"/>; a new profile is
@@ -53,8 +55,33 @@ public sealed partial class DocumentStore
     /// <summary>The length of a profile id.</summary>
     private const int IdLength = 36;
 
+    /// <summary>The folder of a profile's earlier saved versions, in its folder: <c>versions/{n}.json</c>.</summary>
+    public const string VersionsFolderName = "versions";
+
+    /// <summary>The most earlier saved versions a profile keeps.</summary>
+    public const int VersionsKept = 10;
+
+    /// <summary>The most bytes a profile's earlier saved versions take, all together; the newest is kept even when it alone is larger.</summary>
+    public const long VersionsKeptBytes = 64L * 1024 * 1024;
+
+    /// <summary>The largest version number a name holds: 19 digits.</summary>
+    public const ulong MaxVersionNumber = 9_999_999_999_999_999_999;
+
+    /// <summary>The versions a profile keeps (<see cref="VersionsKept"/>); tests set it lower.</summary>
+    internal int MaxVersions { get; set; } = VersionsKept;
+
+    /// <summary>The bytes the versions take (<see cref="VersionsKeptBytes"/>); tests set it lower.</summary>
+    internal long MaxVersionBytes { get; set; } = VersionsKeptBytes;
+
     private readonly Lock _lock = new();
     private readonly IStorageFaults? _faults;
+
+    /// <summary>
+    /// The profiles whose <c>versions</c> folder is known to be on disk with every folder above it this run: a flush of the
+    /// data folder, <c>profiles/</c> and the profile's folder succeeded after it existed (<see cref="TryKeepVersion"/>).
+    /// A folder that merely exists isn't known to be, after a flush that failed.
+    /// </summary>
+    private readonly HashSet<string> _versionsOnDisk = new(StringComparer.Ordinal);
     private List<string>? _order;
     private bool _changed;
 
@@ -270,7 +297,13 @@ public sealed partial class DocumentStore
         }
     }
 
-    /// <summary>Replaces a profile's saved document.</summary>
+    /// <summary>
+    /// Replaces a profile's saved document, keeping the one it replaces as an earlier saved version
+    /// (<see cref="TryKeepVersion"/>) unless it holds the same bytes. The version is whole and on disk before the document
+    /// is replaced, and versions past <see cref="VersionsKept"/> or <see cref="VersionsKeptBytes"/> are dropped once the new
+    /// document is in place, after every save that wrote it (<see cref="TryDropVersions"/>); a version that can't be kept
+    /// or dropped is logged, and the save goes on.
+    /// </summary>
     /// <exception cref="KeyNotFoundException">No profile has this id.</exception>
     /// <exception cref="IOException">
     /// The write failed (the previous saved document is unchanged), or the document was replaced but its folder could
@@ -285,9 +318,230 @@ public sealed partial class DocumentStore
             var folder = Paths.ProfileFolder(id);
             if (!Directory.Exists(folder))
                 throw new KeyNotFoundException($"Profile {id} has no folder.");
+            TryKeepVersion(id, document);
             AtomicFile.Write(Path.Combine(folder, DocumentFileName), document, Paths.Root, _faults);
+            TryDropVersions(id);
         }
     }
+
+    /// <summary>
+    /// Whether <paramref name="name"/> is an earlier saved version's: <c>{n}.json</c>, <c>n</c> from 1 in decimal, without
+    /// leading zeros, at most 19 digits (<see cref="MaxVersionNumber"/>); exactly, so every other name is left alone.
+    /// </summary>
+    internal static bool IsVersionName(string name) => VersionName().IsMatch(name);
+
+    [GeneratedRegex("^[1-9][0-9]{0,18}\\.json\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex VersionName();
+
+    /// <summary>A version's name in any letter case, which numbering steps past (a case-insensitive drive holds one of them only).</summary>
+    [GeneratedRegex("^[1-9][0-9]{0,18}\\.json\\z", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex VersionNameAnyCase();
+
+    private static ulong VersionNumber(string name) => ulong.Parse(name.AsSpan(0, name.IndexOf('.')), System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Keeps the saved document that <paramref name="document"/> replaces as the next version, <c>versions/{n}.json</c>,
+    /// its bytes as they are, through <see cref="AtomicFile"/>: whole, its file and <c>versions</c> flushed before this
+    /// returns. When the newest version already holds those bytes (a save that failed after keeping it), that one is
+    /// reused, its content and <c>versions</c> flushed again, rather than kept twice; when its flush fails, a new one is kept. The folders above are flushed only when
+    /// <c>versions</c> isn't yet known to be on disk this run (<see cref="_versionsOnDisk"/>): created now, or found but
+    /// not yet flushed into the profile's folder with everything above it. None is kept when the saved document holds
+    /// the same bytes, when it can't be read (missing, not a regular file, over <see cref="MaxBytes"/>), or when
+    /// <c>versions</c> is anything but a folder of the profile's own (a link, to a folder or to nothing, or a file is never
+    /// followed or written). Returns whether a version holds the replaced document; a failure is logged.
+    /// </summary>
+    private bool TryKeepVersion(string id, ReadOnlyMemory<byte> document)
+    {
+        byte[] previous;
+        try
+        {
+            previous = ReadAtMost(Paths.DocumentFile(id), MaxBytes);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            Logger.Warning(ex, "Kept no earlier version of profile {ProfileId}: its saved document can't be read", id);
+            return false;
+        }
+
+        if (previous.AsSpan().SequenceEqual(document.Span))
+            return false;
+
+        var folder = Paths.VersionsFolder(id);
+        try
+        {
+            if (!IsOwnFolderOrAbsent(folder))
+            {
+                Logger.Warning("Kept no earlier version of profile {ProfileId}: {Folder} isn't a folder of its own (a link or a file), so it is left alone", id, folder);
+                return false;
+            }
+
+            // Every entry with a version's name, of any type and in any letter case, holds its number.
+            ulong highest = 0;
+            var entries = RegularFile.List(folder, new ListingBudget(RegularFile.MaxListing, $"Listing {folder}")).ToList();
+            foreach (var entry in entries)
+            {
+                if (VersionNameAnyCase().IsMatch(entry.Name))
+                    highest = Math.Max(highest, VersionNumber(entry.Name));
+            }
+
+            var newest = highest == 0 ? null : entries.Find(entry => entry.Name == VersionName(highest));
+            var reuse = newest is FileInfo { LinkTarget: null } file && file.Length == previous.Length && HoldsBytesOnDisk(file.FullName, previous);
+            if (!reuse && highest >= MaxVersionNumber)
+            {
+                Logger.Warning("Kept no earlier version of profile {ProfileId}: {Folder} holds the highest version number a name can", id, folder);
+                return false;
+            }
+
+            if (!_versionsOnDisk.Contains(id))
+            {
+                AtomicFile.CreateFolder(folder, Paths.Root, _faults);
+                _versionsOnDisk.Add(id);
+            }
+
+            if (reuse)
+                AtomicFile.SyncFolder(folder, _faults);
+            else
+                AtomicFile.Write(Paths.VersionFile(id, highest + 1), previous, root: null, _faults);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Logger.Warning(ex, "Could not keep the earlier version of profile {ProfileId}; the save goes on", id);
+            return false;
+        }
+    }
+
+    /// <summary>The name of version <paramref name="n"/>: <c>{n}.json</c>.</summary>
+    private static string VersionName(ulong n) => n.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".json";
+
+    /// <summary>
+    /// Whether the regular file at <paramref name="path"/> holds exactly <paramref name="bytes"/>, on disk: its content is
+    /// then flushed through the handle it was read on (<see cref="RegularFile.OpenToFlush"/>) with the store's checked flush (<see cref="AtomicFile.FlushFile"/>: any failure counts, <c>EINVAL</c> and <c>ENOTSUP</c> too), since a file that holds them
+    /// may have been written without a flush. False when it can't be read, holds other bytes, or can't be flushed (logged).
+    /// </summary>
+    private bool HoldsBytesOnDisk(string path, byte[] bytes)
+    {
+        try
+        {
+            using var stream = RegularFile.OpenToFlush(path);
+            var content = new byte[bytes.Length + 1];
+            var read = stream.ReadAtLeast(content, content.Length, throwOnEndOfStream: false);
+            if (!content.AsSpan(0, read).SequenceEqual(bytes))
+                return false;
+            AtomicFile.FlushFile(stream.SafeFileHandle, path, _faults);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Logger.Warning(ex, "Could not reuse {Path} as an earlier saved version; a new one is kept", path);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The length of the file at <paramref name="path"/> when it is a regular file, its type checked on an open handle
+    /// (<see cref="RegularFile.OpenRead"/>, which never waits on a FIFO); null when it isn't one or can't be opened.
+    /// </summary>
+    private static long? RegularLength(string path)
+    {
+        try
+        {
+            using var stream = RegularFile.OpenRead(path);
+            return stream.Length;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Drops a profile's oldest versions until at most <see cref="MaxVersions"/> are left within
+    /// <see cref="MaxVersionBytes"/>, the newest always kept; only regular files of a version's exact name (the type
+    /// checked on an open handle, <see cref="RegularLength"/>) count, and only they are removed; any other entry is left
+    /// alone. Not flushed here: the blob sweep flushes <c>versions</c> before it deletes any blob
+    /// (<see cref="FlushBeforeBlobsGo"/>), and a dropped version that comes back after a power loss is dropped at the
+    /// next save. A failure is logged.
+    /// </summary>
+    private void TryDropVersions(string id)
+    {
+        var folder = Paths.VersionsFolder(id);
+        try
+        {
+            if (!IsOwnFolderOrAbsent(folder))
+                return;
+            var versions = new List<(ulong Number, string Path, long Length)>();
+            foreach (var entry in RegularFile.List(folder, new ListingBudget(RegularFile.MaxListing, $"Listing {folder}")))
+            {
+                if (entry is FileInfo && entry.LinkTarget == null && IsVersionName(entry.Name) && RegularLength(entry.FullName) is { } length)
+                    versions.Add((VersionNumber(entry.Name), entry.FullName, length));
+            }
+
+            versions.Sort((x, y) => y.Number.CompareTo(x.Number));
+            var keep = 0;
+            long bytes = 0;
+            foreach (var version in versions)
+            {
+                bytes += version.Length;
+                if (keep > 0 && (keep >= MaxVersions || bytes > MaxVersionBytes))
+                    break;
+                keep++;
+            }
+
+            for (var i = versions.Count - 1; i >= keep; i--)
+            {
+                var path = versions[i].Path;
+                try
+                {
+                    _faults?.Before(StorageStep.DeleteFile, path);
+                    File.Delete(path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Logger.Warning(ex, "Could not drop {Path}, an earlier saved version; it is dropped at a later save", path);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Logger.Warning(ex, "Could not drop profile {ProfileId}'s oldest saved versions; they are dropped at a later save", id);
+        }
+    }
+
+    /// <summary>
+    /// For <see cref="BlobSweep"/>, before it deletes any blob: flushes <c>profiles/</c>, then each listed profile's
+    /// folder, and its <c>versions</c> folder when it is one of its own, so that a version's removal, a document's
+    /// replacement or a profile's delete (its folder renamed, and left when that rename couldn't be flushed) that a power
+    /// loss could still undo is on disk before a blob the undone file refers to can go.
+    /// </summary>
+    /// <exception cref="IOException">A folder couldn't be flushed; the sweep then deletes nothing.</exception>
+    /// <exception cref="UnauthorizedAccessException">A folder couldn't be opened to flush it.</exception>
+    internal void FlushBeforeBlobsGo()
+    {
+        lock (_lock)
+        {
+            if (RegularFile.StateOf(Paths.ProfilesDirectory) != PathState.Absent)
+                AtomicFile.SyncFolder(Paths.ProfilesDirectory, _faults);
+            foreach (var id in Order)
+            {
+                var folder = Paths.ProfileFolder(id);
+                if (RegularFile.StateOf(folder) != PathState.Folder)
+                    continue;
+                var versions = Paths.VersionsFolder(id);
+                if (RegularFile.StateOf(versions) == PathState.Folder && IsOwnFolderOrAbsent(versions))
+                    AtomicFile.SyncFolder(versions, _faults);
+                AtomicFile.SyncFolder(folder, _faults);
+            }
+        }
+    }
+
+    /// <summary>Whether nothing is at <paramref name="folder"/> or a folder that isn't a link is: never one reached through a link.</summary>
+    private static bool IsOwnFolderOrAbsent(string folder) => RegularFile.StateOf(folder) switch
+    {
+        PathState.Absent => true,
+        PathState.Folder => new DirectoryInfo(folder).LinkTarget == null,
+        _ => false,
+    };
 
     /// <summary>
     /// Deletes a profile: its folder is renamed to <c>{id}.deleted-{random}</c> and <c>profiles/</c> flushed to disk (the
@@ -310,6 +564,7 @@ public sealed partial class DocumentStore
 
             var folder = Paths.ProfileFolder(id);
             var deleted = Path.Combine(Paths.ProfilesDirectory, $"{id}{DeletedMarker}{AtomicFile.NewRandom()}");
+            _versionsOnDisk.Remove(id);
             var state = RegularFile.StateOf(folder);
             if (state != PathState.Absent)
             {
@@ -569,7 +824,32 @@ public sealed partial class DocumentStore
                     if (file is FileInfo && AtomicFile.IsTempFile(file.Name, name => name == DocumentFileName))
                         TryDeleteTree(file.FullName);
                 }
+
+                RemoveVersionLeftovers(Path.Combine(entry.FullName, VersionsFolderName));
             }
+        }
+    }
+
+    /// <summary>
+    /// Removes the temp files an interrupted version write left in a profile's <c>versions</c> folder
+    /// (<c>{n}.json.{32 hex}.tmp</c>), only in a folder of the profile's own (never through a link); a folder that can't be
+    /// listed is logged and left, and start-up goes on.
+    /// </summary>
+    private void RemoveVersionLeftovers(string folder)
+    {
+        try
+        {
+            if (!IsOwnFolderOrAbsent(folder))
+                return;
+            foreach (var file in RegularFile.List(folder, new ListingBudget(RegularFile.MaxListing, $"Listing {folder}")))
+            {
+                if (file is FileInfo && AtomicFile.IsTempFile(file.Name, IsVersionName))
+                    TryDeleteTree(file.FullName);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Logger.Warning(ex, "Could not remove what interrupted writes left in {Folder}; it is removed at a later start", folder);
         }
     }
 
