@@ -134,6 +134,9 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         if (!OperatingSystem.IsWindows())
             await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.NoAccess}/document", 409);
         await Send(session, "GET", $"/api/profiles/{AbsentProfile}/document", 404);
+        await Send(session, "GET", $"/api/profiles/{id}/archive", 200);
+        await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.Unsupported}/archive", 409);
+        await Send(session, "GET", $"/api/profiles/{AbsentProfile}/archive", 404);
         await Send(session, "GET", $"/api/profiles/{id}/thumbnail?w=64", 200);
         await Send(session, "GET", $"/api/profiles/{id}/thumbnail?w=wide", 400);
         await Send(session, "GET", $"/api/profiles/{id}/thumbnail?w=2147483647", 200);
@@ -186,6 +189,12 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "POST", "/api/import/v1/archive", 200, new ByteArrayContent(File.ReadAllBytes(Import.V1Fixture.AllKindsArchive)));
         await Send(session, "POST", "/api/import/v1/archive", 413, new ByteArrayContent(new byte[SeededEngineFactory.ArchiveBytes + 1]));
         await Send(session, "POST", "/api/import/v1/archive", 422, new ByteArrayContent("not a zip"u8.ToArray()));
+
+        // A profile archive: one this engine exported, opened again.
+        using (var exported = await session.GetAsync($"/api/profiles/{id}/archive", Ct))
+            await Send(session, "POST", "/api/import/archive", 200, new ByteArrayContent(await exported.Content.ReadAsByteArrayAsync(Ct)));
+        await Send(session, "POST", "/api/import/archive", 413, new ByteArrayContent(new byte[SeededEngineFactory.ArchiveBytes + 1]));
+        await Send(session, "POST", "/api/import/archive", 422, new ByteArrayContent("not a zip"u8.ToArray()));
 
         // Deleting: with the profile's tag, required, and never another's.
         await Send(session, "DELETE", $"/api/profiles/{copy}", 400);

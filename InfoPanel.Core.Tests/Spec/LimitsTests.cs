@@ -195,6 +195,7 @@ public class LimitsTests
         [nameof(ImportLimits.ExpandedBytes)] = "expandedBytes",
         [nameof(ImportLimits.EntryNameBytes)] = "entryNameBytes",
         [nameof(ImportLimits.EntryRecordBytes)] = "entryRecordBytes",
+        [nameof(ImportLimits.ManifestBytes)] = "manifestBytes",
         [nameof(ImportLimits.ProfileXmlBytes)] = "v1ProfileXmlBytes",
         [nameof(ImportLimits.ItemsXmlBytes)] = "v1ItemsXmlBytes",
         [nameof(ImportLimits.XmlDepth)] = "v1XmlDepth",

@@ -1,0 +1,58 @@
+{
+  "document": {
+    "format": "infopanel.document/1",
+    "profile": {
+      "name": "Desk",
+      "width": 200,
+      "height": 100,
+      "background": "#000000"
+    },
+    "items": [
+      {
+        "kind": "scene",
+        "id": "logo",
+        "placement": {
+          "x": 10,
+          "y": 10
+        },
+        "scene": {
+          "format": "infopanel.scene/1",
+          "nodes": [
+            {
+              "kind": "media",
+              "w": 64,
+              "h": 64,
+              "source": {
+                "asset": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+              }
+            },
+            {
+              "kind": "media",
+              "w": 64,
+              "h": 64,
+              "source": {
+                "asset": "sha256:60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "blobs": [
+    {
+      "id": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "bytes": 1024,
+      "media": {
+        "format": "png",
+        "width": 64,
+        "height": 64,
+        "frames": 1,
+        "duration": 0
+      }
+    }
+  ],
+  "missing": [
+    "sha256:60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752"
+  ]
+}

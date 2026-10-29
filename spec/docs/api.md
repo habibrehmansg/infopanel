@@ -18,6 +18,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `DELETE /api/profiles/{id}` | | 204; 400 `problem` without `instance`, the document's tag; 409 `deleteConflictProblem` for another tag ([below](#deleting)) |
 | `GET /api/profiles/{id}` | | `documentResponse` ([below](#documents)) |
 | `GET /api/profiles/{id}/document` | | The document, to keep or import elsewhere ([below](#exporting)) |
+| `GET /api/profiles/{id}/archive` | | The profile archive (`.infopanel2`): its manifest, document and blobs; 409 `profileStatusProblem` or `exportProblem` ([archive](archive.md#exporting)) |
 | `GET /api/profiles/{id}/thumbnail` | | A PNG; 400 for a `w` that isn't a whole number from −2,147,483,648 to 2,147,483,647 ([below](#thumbnails)) |
 | `POST /api/profiles/{id}/commit` | `commitRequest` | `commitResult`; 409 `conflictProblem` or `expiredProblem`; 422 `invalidProblem` ([commits](commit.md)) |
 | `POST /api/profiles/{id}/undo` | `historyRequest` | `commitResult`; 409 `conflictProblem`; 422 `invalidProblem` ([commits](commit.md#undo-redo-revert-and-save)) |
@@ -30,6 +31,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `GET /api/import/v1` | | `v1Migration`: the 1.x migration's state and the 1.x folder ([1.x import](import.md#migrating-a-1x-folder)) |
 | `PUT /api/import/v1` | `v1MigrationRequest` | `v1Migration`; 422 `invalidProblem` ([1.x import](import.md#the-record)) |
 | `POST /api/import/v1/profiles/{v1Id}` | | `v1Profile`; 404 when the 1.x folder has no such profile; 422 `invalidProblem` for 1.1.x data ([1.x import](import.md#the-envelope)) |
+| `POST /api/import/archive` | A profile archive's bytes | `archiveContents`; 413 over `archiveBytes`; 422 `invalidProblem` ([archive](archive.md#importing)) |
 | `POST /api/import/v1/archive` | A 1.x `.infopanel` file's bytes | `v1Profile`; 413 over `archiveBytes`; 422 `invalidProblem` ([1.x import](import.md#reading-a-infopanel-file)) |
 | `POST /api/tokens` | `createTokenRequest` | 201 `createdToken`; 422 `invalidProblem` ([below](#integration-tokens)) |
 | `GET /api/tokens` | | An array of `tokenInfo`, oldest first |
@@ -65,8 +67,8 @@ Every request under `/api` carries a token, as `Authorization: Bearer {token}`. 
 
 | Scope | Allows |
 |---|---|
-| `read` | Every `GET` and `HEAD` under `/api` (the session, fonts, sensors, the profile list, documents, exports, thumbnails, blobs, the 1.x migration's state) and the preview socket, `doc` messages and frames included |
-| `edit` | Every request that changes a profile, a document or a blob, or the engine's data: creating, duplicating and deleting profiles, commits, undo, redo, revert, save, `POST /api/blobs`, and the 1.x import's reads (which store blobs) and record. `edit` implies `read`: a token made with `edit` has both |
+| `read` | Every `GET` and `HEAD` under `/api` (the session, fonts, sensors, the profile list, documents, exports and archives, thumbnails, blobs, the 1.x migration's state) and the preview socket, `doc` messages and frames included |
+| `edit` | Every request that changes a profile, a document or a blob, or the engine's data: creating, duplicating and deleting profiles, commits, undo, redo, revert, save, `POST /api/blobs`, opening a profile archive, and the 1.x import's reads (which store blobs) and record. `edit` implies `read`: a token made with `edit` has both |
 
 Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token) and uses the token endpoints. Scopes fail closed: a request that neither scope covers needs the session token.
 
@@ -98,7 +100,7 @@ The engine listens on the loopback interface only, and answers a request whose `
 
 - `protocol` is the engine API's version: 2 for the API these schemas describe. It goes up only when the API changes in a way a client can't ignore; members and endpoints are added without changing it ([versioning](versioning.md#the-engine-api)).
 - `instance` is new every time the engine starts: a client that sees another (here or in the preview socket's `hello`) knows the engine restarted, and that the document tags and revisions it read before mean nothing now. It is the run's, not a document's: a commit names the tag of the document it changes ([below](#a-documents-tag)).
-- `formatSupport` is what the engine reads, by format string: for each format, `version`, the newest minor version of it the engine reads (and every earlier one of that major version); `capabilities`, the format's optional capabilities the engine has; and `limits`, the format's limits by name ([limits](limits.md), which says which format each belongs to). An engine of this specification lists `infopanel.document/1` and `infopanel.scene/1`, each at 1.0 or later. Before it sends content, a client checks that its format string is listed, that every capability in its `requires` is in that format's `capabilities` ([versioning](versioning.md#capabilities-and-requires)), and that it is within that format's limits. A client ignores a format string it doesn't know.
+- `formatSupport` is what the engine reads, by format string (the profile archive's manifest names one too, [archive](archive.md)): for each format, `version`, the newest minor version of it the engine reads (and every earlier one of that major version); `capabilities`, the format's optional capabilities the engine has; and `limits`, the format's limits by name ([limits](limits.md), which says which format each belongs to). An engine of this specification lists `infopanel.document/1`, `infopanel.scene/1` and `infopanel.archive/1`, each at 1.0 or later. Before it sends content, a client checks that its format string is listed, that every capability in its `requires` is in that format's `capabilities` ([versioning](versioning.md#capabilities-and-requires)), and that it is within that format's limits. A client ignores a format string it doesn't know.
 - `features` lists the optional API features the engine has, by name, each once, named as capabilities are. An operation added after this version of the API comes under one, and a client uses the operation only when the session lists its name ([versioning](versioning.md#four-markers-four-questions)). This version defines none, so the list is empty. A client ignores a name it doesn't know.
 - `locale` is the PC's regional format as the engine read it when it started: `tag` (its language and region, `und` when the engine knows no language for it), `decimalSeparator` and `groupSeparator` (each 1–4 characters). A profile without `locale` draws numbers and dates with it ([expressions](expressions.md#regional-format)); a client that formats readings of its own uses it so they match the frames. It changes only when the engine restarts.
 - `engineVersion`, `platform` (`macos`, `windows`, `linux` or `other`) and `dataDir` (the folder the engine keeps its data in) describe the engine.
@@ -155,6 +157,8 @@ A client that lost the answer and deletes again gets 404 for the profile it dele
 ### Exporting
 
 `GET /api/profiles/{id}/document` answers the profile's current document (its latest revision, saved or not), for a client to keep or to create a profile from elsewhere, as `application/json`: `infopanel.document/1` without its `rev` members, every scene and every other opaque member (`source` data, `origin`, `editor`) exactly as stored. An engine exports only a document it opened, so a create accepts what it exports. A profile that isn't `ok` (`unsupported` or `unreadable`) is not exported: 409 `profileStatusProblem`, as for every other request on its document.
+
+`GET /api/profiles/{id}/archive` answers the same document in a profile archive (`.infopanel2`, `application/zip`) with every blob it refers to, and `POST /api/import/archive` opens one, verifies it and stores its blobs, for a client to create the profile from; the format, its checks and its limits are on their own page ([archive](archive.md)).
 
 ### Thumbnails
 

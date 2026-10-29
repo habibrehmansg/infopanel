@@ -1,0 +1,13 @@
+{
+  "title": "Conflict",
+  "detail": "The archive would have more than 10000 entries, which an import refuses.",
+  "status": 409,
+  "code": "export",
+  "errors": [
+    {
+      "path": "",
+      "code": "archive.entries",
+      "message": "The archive would have more than 10000 entries, which an import refuses."
+    }
+  ]
+}

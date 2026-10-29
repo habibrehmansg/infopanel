@@ -56,7 +56,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         // What the engine reads, by format string: majors 1 at 1.0, no optional capabilities (no media providers), and
         // each format's own limits. No optional API features.
         var support = session.GetProperty("formatSupport");
-        Assert.Equal(new[] { "infopanel.document/1", "infopanel.scene/1" }, support.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new[] { "infopanel.archive/1", "infopanel.document/1", "infopanel.scene/1" }, support.EnumerateObject().Select(p => p.Name));
         foreach (var format in support.EnumerateObject())
         {
             Assert.Equal("1.0", format.Value.GetProperty("version").GetString());
@@ -90,8 +90,10 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
             locale.GetProperty("groupSeparator").GetString()));
     }
 
-    /// <summary>The limits.md sections whose limits are the scene format's; every other section's are the document format's.</summary>
+    /// <summary>The limits.md sections whose limits are the scene format's, and the archive's; every other section's are the document format's.</summary>
     private static readonly string[] SceneSections = ["Scene limits", "Media limits", "Run-time limits"];
+
+    private const string ArchiveSection = "Archive limits";
 
     /// <summary>Each limit spec/docs/limits.md lists in a table headed <c>| Limit |</c>, with the section it is under.</summary>
     private static Dictionary<string, string> DocumentedLimitSections()
@@ -124,10 +126,11 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
                 Assert.Equal(all[limit.Name], limit.Value.GetDouble());
             }
 
-        // limits.md's scene, media and run-time limits are the scene format's, every other limit the document format's:
-        // the request bodies', the socket's, the archives' and the 1.x import's among them.
+        // limits.md's scene, media and run-time limits are the scene format's, the archive limits the profile archive's,
+        // every other limit the document format's: the request bodies', the socket's and the 1.x import's among them.
         var expected = DocumentedLimitSections().ToDictionary(p => p.Key,
-            p => SceneSections.Any(s => p.Value.StartsWith(s, StringComparison.Ordinal)) ? SpecSchemas.SceneFormat : SpecSchemas.DocumentFormat);
+            p => SceneSections.Any(s => p.Value.StartsWith(s, StringComparison.Ordinal)) ? SpecSchemas.SceneFormat
+                : p.Value == ArchiveSection ? SpecSchemas.ArchiveFormat : SpecSchemas.DocumentFormat);
         Assert.Equal(all.Keys.Order(StringComparer.Ordinal), expected.Keys.Order(StringComparer.Ordinal));
         Assert.Equal(expected.OrderBy(p => p.Key, StringComparer.Ordinal), reported.OrderBy(p => p.Key, StringComparer.Ordinal));
         Assert.Equal((SpecSchemas.SceneFormat, SpecSchemas.SceneFormat, SpecSchemas.DocumentFormat, SpecSchemas.DocumentFormat),

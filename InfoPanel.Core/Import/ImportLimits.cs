@@ -24,6 +24,9 @@ public sealed class ImportLimits
     /// </summary>
     public long ExpandedBytes { get; init; } = SpecLimits.Default.ExpandedBytes;
 
+    /// <summary>The largest <c>manifest.json</c> of a profile archive, as stored (<c>limit.manifestBytes</c>, unread over it).</summary>
+    public int ManifestBytes { get; init; } = SpecLimits.Default.ManifestBytes;
+
     /// <summary>The longest entry name, in UTF-8 bytes (<c>archive.name</c>).</summary>
     public int EntryNameBytes { get; init; } = SpecLimits.Default.EntryNameBytes;
 

@@ -104,6 +104,15 @@ internal static class ZipKit
         return copy;
     }
 
+    /// <summary>Changes only entry <paramref name="index"/>'s local header: the 16-bit field at <paramref name="localOffset"/>.</summary>
+    public static byte[] WithLocalField(byte[] zip, int localOffset, Func<ushort, ushort> change, int index = 0)
+    {
+        var copy = (byte[])zip.Clone();
+        var local = (int)BinaryPrimitives.ReadUInt32LittleEndian(copy.AsSpan(CentralRecords(copy)[index] + 42));
+        BinaryPrimitives.WriteUInt16LittleEndian(copy.AsSpan(local + localOffset), change(BinaryPrimitives.ReadUInt16LittleEndian(copy.AsSpan(local + localOffset))));
+        return copy;
+    }
+
     /// <summary>Makes entry <paramref name="index"/>'s headers claim <paramref name="size"/> uncompressed bytes.</summary>
     public static byte[] ClaimingSize(byte[] zip, uint size, int index = 0)
     {

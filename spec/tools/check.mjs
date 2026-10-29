@@ -5,7 +5,7 @@
 // or the preview socket in openapi.json; that every enumeration in what the engine sends says what a client does with a
 // value it doesn't know (docs/versioning.md#unknown-members-and-values); and that docs/api.md's request table lists
 // exactly openapi.json's operations, one row each. With TSC set to a TypeScript compiler (TSC=path/to/tsc), also type-checks the types, every valid example
-// against them (each scene, document, commit and API body under examples/ is assigned to its type as an object
+// against them (each scene, document, commit, archive manifest and API body under examples/ is assigned to its type as an object
 // literal, so excess or misspelt members fail), and ApiOperations: its keys are the operations, and every example of a
 // definition an operation names is assigned to that operation's request or response. Examples nested deeper than tsc
 // can compare with the recursive JSON types (the jsonDepth examples) are left to the engine's tests.
@@ -200,6 +200,7 @@ const all = [
   ...list('scene/valid').map((f) => [f, 'Scene']),
   ...list('document/valid').map((f) => [f, 'Document']),
   ...list('commit/valid').map((f) => [f, 'CommitRequest']),
+  ...list('archive/valid').map((f) => [f, 'ArchiveManifest']),
   ...readdirSync(join(examples, 'api')).sort().flatMap((def) => list(`api/${def}`).map((f) => [f, pascalCase(def)])),
 ];
 // Nesting as jsonDepth counts it ([] is 1), without recursion.

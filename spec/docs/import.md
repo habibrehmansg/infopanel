@@ -109,7 +109,7 @@ An archive is refused (422 `invalidProblem`) before any entry is read when:
 
 | Code | When |
 |---|---|
-| `archive.zip` | It isn't a zip archive, its directory can't be read, or an entry's data doesn't decompress |
+| `archive.zip` | It isn't a zip archive, its directory can't be read, or an entry's data doesn't decompress or, read to its end, isn't the size its headers claim |
 | `archive.entries` | It has more than `archiveEntries` entries, as its directory declares them or as they are read, or an entry's directory record is over `entryRecordBytes` |
 | `archive.expanded` | Reading it decompresses more than `expandedBytes`, counted as read, whatever the entries' headers claim |
 | `archive.name` | An entry's name is over `entryNameBytes`, holds NUL or `:`, is rooted (`/`, `\`), or has an empty, `.` or `..` segment |

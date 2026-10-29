@@ -1,6 +1,6 @@
 # Limits and budgets
 
-**Limits** are part of the format: every engine that reads version 1 accepts all content and requests within them and refuses what is beyond them, with `limit.<name>` or the code a table gives ([validation](validation.md)). They are fixed for a major version ([versioning](versioning.md)) and an engine reports each by its name in `GET /api/session`, in the `limits` of the format it belongs to (`formatSupport`, [API](api.md#session)): the scene, media and run-time limits are the scene format's (`infopanel.scene/1`), and every other limit on this page is the document format's (`infopanel.document/1`). They bound the worst case: what hostile or careless content can cost. Every limit that decides whether an engine accepts content or a request is on this page, once, grouped by what it bounds: scenes, documents, commits, request bodies, the profile list, the preview socket's messages, media, archives, and the 1.x import with its record. Bounds on a single member (a list's length, a string's, a number's range) are in the schemas; the main ones are repeated below their format's table.
+**Limits** are part of the format: every engine that reads version 1 accepts all content and requests within them and refuses what is beyond them, with `limit.<name>` or the code a table gives ([validation](validation.md)). They are fixed for a major version ([versioning](versioning.md)) and an engine reports each by its name in `GET /api/session`, in the `limits` of the format it belongs to (`formatSupport`, [API](api.md#session)): the scene, media and run-time limits are the scene format's (`infopanel.scene/1`), the archive limits the profile archive's (`infopanel.archive/1`, [archive](archive.md)), and every other limit on this page is the document format's (`infopanel.document/1`). They bound the worst case: what hostile or careless content can cost. Every limit that decides whether an engine accepts content or a request is on this page, once, grouped by what it bounds: scenes, documents, commits, request bodies, the profile list, the preview socket's messages, media, archives, and the 1.x import with its record. Bounds on a single member (a list's length, a string's, a number's range) are in the schemas; the main ones are repeated below their format's table.
 
 **Budgets** are what an engine guarantees beyond the limits, for content within them: each states a floor that every engine meets and may exceed (undo steps kept, `opId`s remembered, the work a tick may do). Content is never refused for a budget, and budgets are not part of the format: an engine's values may change from release to release, never below the floor. **Performance targets** are what this engine is measured against for ordinary content; they promise nothing. Costs marked as estimated are measured when the scene runtime exists, and these numbers are revised if they are wrong.
 
@@ -131,7 +131,7 @@ Bytes over `mediaBytes` are refused when they are added, and not stored. An asse
 
 ## Archive limits
 
-An import reads an archive, a profile archive or a 1.x `.infopanel` export, within these, and refuses one beyond them; an export that would be beyond them isn't made. The codes are those given.
+An import reads an archive, a profile archive ([archive](archive.md)) or a 1.x `.infopanel` export ([1.x import](import.md)), within these, and refuses one beyond them; an export that would be beyond them isn't made (409 `exportProblem` with the code its import would give). The codes are those given.
 
 | Limit | Value | What it bounds |
 |---|---|---|
@@ -140,6 +140,7 @@ An import reads an archive, a profile archive or a 1.x `.infopanel` export, with
 | `expandedBytes` | 512 MiB | The bytes one import decompresses or reads, counted as they are read, whatever the entries' headers claim; a 1.x folder's assets count too (`archive.expanded`) |
 | `entryNameBytes` | 1,024 bytes | An entry's name, in UTF-8 (`archive.name`) |
 | `entryRecordBytes` | 4 KiB | An entry's directory record: its name, extra field and comment, and 46 fixed bytes (`archive.entries`) |
+| `manifestBytes` | 64 KiB | A profile archive's `manifest.json`, as stored (`limit.manifestBytes`, unread over it) |
 
 ## 1.x import limits
 

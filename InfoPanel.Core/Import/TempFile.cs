@@ -29,7 +29,8 @@ public static class TempFile
 
     /// <summary>
     /// Copies <paramref name="body"/> into a new temporary file (<see cref="Create"/>) and returns it positioned at its
-    /// start, for <see cref="ArchiveReader"/>. Nothing more than <paramref name="maxBytes"/> plus one buffer is written.
+    /// start, for <see cref="ArchiveReader"/>. Nothing more than <paramref name="maxBytes"/> plus one byte is read, whether
+    /// or not the body states its length, and nothing over <paramref name="maxBytes"/> is written.
     /// </summary>
     /// <exception cref="ImportBodyTooLargeException">The body is longer than <paramref name="maxBytes"/>; the file is gone.</exception>
     public static FileStream Buffer(Stream body, long maxBytes)
@@ -37,10 +38,11 @@ public static class TempFile
         var file = Create();
         try
         {
-            var chunk = new byte[81920];
+            var chunk = new byte[(int)Math.Min(81920, maxBytes + 1)];
             long total = 0;
             int read;
-            while ((read = body.Read(chunk, 0, chunk.Length)) > 0)
+            // Never more than the allowance left plus one byte: the extra byte is what tells a body is over.
+            while ((read = body.Read(chunk, 0, (int)Math.Min(chunk.Length, maxBytes + 1 - total))) > 0)
             {
                 total += read;
                 if (total > maxBytes)
@@ -60,7 +62,7 @@ public static class TempFile
 
     /// <summary>
     /// <see cref="Buffer"/>, reading <paramref name="body"/> asynchronously (a request's body): nothing more than
-    /// <paramref name="maxBytes"/> plus one buffer is written, and the file is gone when the body is too long.
+    /// <paramref name="maxBytes"/> plus one byte is read, and the file is gone when the body is too long.
     /// </summary>
     /// <exception cref="ImportBodyTooLargeException">The body is longer than <paramref name="maxBytes"/>.</exception>
     public static async Task<FileStream> BufferAsync(Stream body, long maxBytes, CancellationToken ct)
@@ -68,10 +70,11 @@ public static class TempFile
         var file = Create();
         try
         {
-            var chunk = new byte[81920];
+            var chunk = new byte[(int)Math.Min(81920, maxBytes + 1)];
             long total = 0;
             int read;
-            while ((read = await body.ReadAsync(chunk, ct)) > 0)
+            // Never more than the allowance left plus one byte: the extra byte is what tells a body is over.
+            while ((read = await body.ReadAsync(chunk.AsMemory(0, (int)Math.Min(chunk.Length, maxBytes + 1 - total)), ct)) > 0)
             {
                 total += read;
                 if (total > maxBytes)

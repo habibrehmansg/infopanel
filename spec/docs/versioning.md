@@ -6,6 +6,7 @@
 |---|---|---|
 | Document | `infopanel.document/1` | `urn:infopanel:document:1` |
 | Scene | `infopanel.scene/1` | `urn:infopanel:scene:1` |
+| Profile archive (its manifest, [archive](archive.md)) | `infopanel.archive/1` | `urn:infopanel:archive:1` |
 | Expressions, shared definitions | (part of the scene and document formats) | `urn:infopanel:expression:1`, `urn:infopanel:common:1` |
 | Engine API: its bodies, requests, the preview socket's messages and the frame header; the 1.x items of a 1.x import's answer | (versioned with the engine API, [below](#the-engine-api)) | `urn:infopanel:api:1`, `urn:infopanel:v1item:1` |
 
@@ -40,7 +41,7 @@ Each addition ships with:
 
 ## Capabilities and `requires`
 
-A capability is a lower-case dotted name (`media.provider`). A scene lists in `requires` (at most 32, each once) every capability it uses beyond version 1.0, and a document every document capability; an engine refuses a scene that uses one without listing it (`requires.missing`), so `requires` is always complete.
+A capability is a lower-case dotted name (`media.provider`). A scene lists in `requires` (at most 32, each once) every capability it uses beyond version 1.0, a document every document capability, and a profile archive's manifest every archive capability ([archive](archive.md#the-manifest)); an engine refuses a scene that uses one without listing it (`requires.missing`), so `requires` is always complete.
 
 An engine that lacks a capability in `requires` doesn't try to read the rest: the item (or document) is **unsupported** ([unsupported content](unsupported.md)). That is why unknown members can always be refused as invalid: any member a newer minor version adds comes with a capability, which an older engine sees first.
 
@@ -50,7 +51,7 @@ Capabilities defined by version 1.0:
 |---|---|---|
 | `media.provider` | scene | Media from providers configured on the engine (`{ "provider", "ref" }` sources). Optional: an engine may lack it. |
 
-Everything else in version 1.0 is the base every engine supports.
+Everything else in version 1.0 is the base every engine supports. Version 1.0 defines no document or archive capability.
 
 An engine reports what it supports in `GET /api/session` (`urn:infopanel:api:1#/$defs/formatSupport`), by format string: for each format it reads, the newest minor version, the format's optional capabilities it has and the format's limits. So an engine that read `infopanel.scene/1` at 1.2 and `infopanel.scene/2` at 2.0 would list each with its own. A client checks the format's entry before writing content that needs a capability.
 
@@ -98,7 +99,7 @@ Four markers say what a reader may do, each answering its own question; folding 
 | A document's tag (`instance`) in a request, with `baseRev` | Is this request about the document I read? |
 | `protocol`, and named API features | Can this engine do this operation? |
 
-- **Content `requires`.** A scene that draws media from a provider configured on the engine lists `media.provider`; an engine without it draws the item as a placeholder and keeps the scene exactly as stored. An engine lists the capabilities it has, per format, in `formatSupport`.
+- **Content `requires`** (a scene's, a document's, a profile archive's manifest's). A scene that draws media from a provider configured on the engine lists `media.provider`; an engine without it draws the item as a placeholder and keeps the scene exactly as stored. An engine lists the capabilities it has, per format, in `formatSupport`.
 - **The data folder's marker.** The data folder isn't part of these formats: it is the engine's own, documented with the engine (its `docs/2.0/data-folder.md`). Its marker, `store.json` at the folder's root (`{"format": "infopanel.store/1", "requires": []}`), lists what an engine must understand before it repairs, sweeps or writes anything there: a later engine that kept blob references outside the profiles' folders would list a capability, so an earlier engine stops at start-up, changing nothing, instead of deleting blobs it doesn't see referenced. A file a later engine keeps in a profile's own folder needs none: an engine counts every file there as referring to the blobs it names. Version 1.0 of the folder defines no capabilities.
 - **A document's tag.** Every document has a lifetime tag, `instance`, new every time the engine creates or opens it ([API](api.md#a-documents-tag)). A commit, undo, redo, revert or delete names the tag of the document it read; one that names another is refused (409, reason `instance`) instead of acting on a document it never saw. A profile deleted and imported again under the same id has a new tag, so a delayed commit or delete carrying the old one is refused instead of acting on the new profile. The session's `instance` answers another question: did the engine restart?
 - **API features.** `protocol` goes up only for a change a client can't ignore. An operation added after version 1 comes under a feature name, listed in `GET /api/session` (`features`, [API](api.md#session)), and a client offers it only when the engine lists it: an operation that restored a profile's earlier save, say, would come as `profiles.restore`, and an engine that predates it neither lists the name nor serves the request. Version 1 defines no features, so the list is empty.

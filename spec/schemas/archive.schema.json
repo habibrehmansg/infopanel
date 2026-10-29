@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:infopanel:archive:1",
+  "title": "ArchiveManifest",
+  "description": "infopanel.archive/1: the manifest of a profile archive (`.infopanel2`), its entry `manifest.json`, which an engine reads before anything else in the archive (docs/archive.md). Closed: a member this version doesn't define is refused; additions come under a capability in `requires`.",
+  "type": "object",
+  "required": ["format", "requires", "profiles"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "description": "The archive format and its major version. An engine that doesn't read the major version refuses the archive as unsupported.", "const": "infopanel.archive/1" },
+    "requires": {
+      "description": "Every archive capability beyond version 1.0 the archive uses (docs/versioning.md#capabilities-and-requires): an engine that lacks one refuses the archive as unsupported before reading the rest. Version 1.0 defines none.",
+      "type": "array",
+      "items": { "$ref": "urn:infopanel:common:1#/$defs/capability" },
+      "uniqueItems": true,
+      "maxItems": 32
+    },
+    "profiles": {
+      "description": "The entries that hold the archive's profile documents: in version 1.0 exactly one, `document.json`. More than one would come under a capability.",
+      "type": "array",
+      "items": { "const": "document.json" },
+      "minItems": 1,
+      "maxItems": 1
+    }
+  }
+}

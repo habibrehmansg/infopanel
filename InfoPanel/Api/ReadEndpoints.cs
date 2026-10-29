@@ -108,6 +108,7 @@ public static class ReadEndpoints
         {
             [SpecSchemas.DocumentFormat] = Supported(workspace, SpecSchemas.DocumentFormat, "1.0", workspace.Support.DocumentCapabilities),
             [SpecSchemas.SceneFormat] = Supported(workspace, SpecSchemas.SceneFormat, "1.0", workspace.Support.SceneCapabilities),
+            [SpecSchemas.ArchiveFormat] = Supported(workspace, SpecSchemas.ArchiveFormat, "1.0", InfoPanel.Import.ProfileArchive.Capabilities),
         };
 
     private static SupportedFormat Supported(Workspace workspace, string format, string version, IReadOnlySet<string> capabilities) => new()

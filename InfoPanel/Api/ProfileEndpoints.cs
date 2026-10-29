@@ -1,4 +1,5 @@
 using InfoPanel.Documents;
+using InfoPanel.Import;
 using InfoPanel.Output;
 using InfoPanel.Security;
 using InfoPanel.Spec;
@@ -8,8 +9,8 @@ using static InfoPanel.Api.ApiResults;
 namespace InfoPanel.Api;
 
 /// <summary>
-/// Profiles and their documents (spec/docs/api.md, commit.md): list, create, duplicate, delete, read, export,
-/// thumbnail, commit, undo, redo, revert and save. All under <c>/api</c>, behind the Origin and Bearer checks of
+/// Profiles and their documents (spec/docs/api.md, commit.md): list, create, duplicate, delete, read, export (the
+/// document, and the profile archive of spec/docs/archive.md), thumbnail, commit, undo, redo, revert and save. All under <c>/api</c>, behind the Origin and Bearer checks of
 /// <c>SecurityMiddleware</c>; reads need the <c>read</c> scope, and every request that changes a profile <c>edit</c>. A request on a profile is checked in order: the profile exists (404), it can be opened
 /// (409 <c>profileStatusProblem</c>), the body (422), then what the request itself checks. Errors are
 /// <c>application/problem+json</c>.
@@ -81,6 +82,36 @@ public static class ProfileEndpoints
 
             context.Response.Headers.CacheControl = "no-store";
             return Results.Bytes(document, "application/json");
+        }).RequireScope(ApiScope.Read);
+
+        // The profile archive (spec/docs/archive.md): built in a temporary file before anything is sent, which goes when the
+        // answer has been written. 409 for a profile that can't be opened, and for an archive its import would refuse.
+        api.MapGet("/{id}/archive", (string id, Workspace workspace, ImportLimits limits, HttpContext context) =>
+        {
+            ExportedArchive? archive;
+            ProfileStatusProblem? problem;
+            try
+            {
+                (archive, problem) = ProfileArchive.Export(workspace, id, DateTimeOffset.UtcNow, limits);
+            }
+            catch (ImportRefusal refusal)
+            {
+                return Problem(new ExportProblem
+                {
+                    Title = "Conflict",
+                    Detail = refusal.Message,
+                    Status = StatusCodes.Status409Conflict,
+                    Code = "export",
+                    Errors = [.. refusal.Errors.Select(e => new ValidationErrorBody { Path = e.Path, Code = e.Code, Message = e.Message })],
+                }, StatusCodes.Status409Conflict);
+            }
+            if (problem != null)
+                return Problem(problem, StatusCodes.Status409Conflict);
+            if (archive == null)
+                return ProfileNotFound(id);
+
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.File(archive.Content, "application/zip", archive.FileName);
         }).RequireScope(ApiScope.Read);
 
         api.MapGet("/{id}/thumbnail", (string id, int? w, Workspace workspace, RenderService render, HttpContext context) =>

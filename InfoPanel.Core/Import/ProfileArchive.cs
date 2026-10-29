@@ -22,16 +22,17 @@ public sealed record ExportedArchive(FileStream Content, string FileName, IReadO
 }
 
 /// <summary>
-/// The 2.0 profile archive, <c>.infopanel2</c>: a zip of exactly <c>document.json</c> (a profile's export document) and
-/// <c>blobs/{64 lower-case hex}</c>, one per blob the document refers to, named by its SHA-256. No manifest, no
+/// The 2.0 profile archive, <c>.infopanel2</c> (<c>infopanel.archive/1</c>, spec/docs/archive.md): a zip of exactly
+/// <c>manifest.json</c> (the format, the capabilities it requires, its one profile), <c>document.json</c> (a profile's
+/// export document) and <c>blobs/{64 lower-case hex}</c>, one per blob the document refers to, named by its SHA-256. No
 /// directories, nothing else; entries stored or deflated.
 /// <list type="bullet">
-/// <item><b>Export</b> (<see cref="Export(Workspace, string, DateTimeOffset, ImportLimits?)"/>) writes the document as the JSON export gives it (the current generation;
-/// a profile the engine can't open is not exported) and every blob it refers to that is stored and whose bytes hash to
-/// its name, in id order, into a temporary file before anything is sent. The no-image id and missing or corrupt blobs
-/// are left out.</item>
-/// <item><b>Import</b> (<see cref="Open"/>) is strict, and only unpacks: exact names, the document checked as a create
-/// checks one, every blob referenced by it and hashed against its name, then stored. A client creates the profile from
+/// <item><b>Export</b> (<see cref="Export(Workspace, string, DateTimeOffset, ImportLimits?)"/>) writes the manifest, then
+/// the document as the JSON export gives it (the current generation; a profile the engine can't open is not exported) and
+/// every blob it refers to that is stored and whose bytes hash to its name, in id order, into a temporary file before
+/// anything is sent. The no-image id and missing or corrupt blobs are left out.</item>
+/// <item><b>Import</b> (<see cref="Open"/>) is strict, and only unpacks: the manifest read first, exact names, the
+/// document checked as a create checks one, every blob referenced by it and hashed against its name, then stored. A client creates the profile from
 /// the answer through the normal create, so nothing is published before everything is checked; an import cut short
 /// leaves only blobs, which the start-up sweep reclaims after its grace period.</item>
 /// </list>
@@ -41,6 +42,31 @@ public static partial class ProfileArchive
 {
     public const string FileExtension = ".infopanel2";
     public const string DocumentEntry = "document.json";
+    public const string ManifestEntry = "manifest.json";
+
+    /// <summary>
+    /// The manifest an export writes, in its canonical form: <c>infopanel.archive/1</c>, no capability required, one
+    /// profile, <c>document.json</c>.
+    /// </summary>
+    public static ReadOnlySpan<byte> Manifest => """{"format":"infopanel.archive/1","profiles":["document.json"],"requires":[]}"""u8;
+
+    /// <summary>The archive capabilities this engine has: none (version 1.0 defines none).</summary>
+    public static IReadOnlySet<string> Capabilities { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// What is wrong with a manifest, at paths into it (spec/docs/archive.md), in the order every reader checks: the
+    /// JSON-level pass, then its format (another major version is <c>unsupported.format</c>) and each capability it
+    /// requires (one this engine lacks is <c>unsupported.capability</c>), then its schema, closed. Empty when it is valid.
+    /// </summary>
+    public static IReadOnlyList<SpecError> CheckManifest(JsonElement manifest, int jsonDepth = 256)
+    {
+        if (ValidationText.CheckJson(manifest, jsonDepth) is { } json)
+            return json;
+        if (ValidationText.CheckFormat(manifest, "archive", Capabilities) is { } format)
+            return [format.Error];
+        var result = SpecSchemas.Strict.Validate(manifest, SpecSchemas.Archive, jsonDepth);
+        return result.IsValid ? [] : ValidationText.Cap([.. ValidationText.FromSchema(result)]);
+    }
     public const string BlobsFolder = "blobs/";
 
     /// <summary>"No image": never a blob, never exported, never missing.</summary>
@@ -64,8 +90,8 @@ public static partial class ProfileArchive
     /// The archive of profile <paramref name="id"/>, built in a temporary file: null and no problem when there is no such
     /// profile; its status problem (409), and no file, when it isn't <c>ok</c>. An archive its own import would refuse under
     /// <paramref name="limits"/> isn't exported: more entries than <see cref="ImportLimits.Entries"/>
-    /// (<c>archive.entries</c>; the document is one, with or without blobs), more bytes read than
-    /// <see cref="ImportLimits.ExpandedBytes"/> (the document's own bytes count), or a file over
+    /// (<c>archive.entries</c>; the manifest and the document are two, with or without blobs), more bytes read than
+    /// <see cref="ImportLimits.ExpandedBytes"/> (the manifest's and the document's own bytes count), or a file over
     /// <see cref="ImportLimits.ArchiveBytes"/> (both <c>archive.expanded</c>); the temporary file is gone.
     /// </summary>
     /// <exception cref="ImportRefusal">The archive couldn't be imported back.</exception>
@@ -86,19 +112,20 @@ public static partial class ProfileArchive
             var written = new List<string>();
             using (var zip = new ZipArchive(file, ZipArchiveMode.Create, leaveOpen: true))
             {
-                // What its own import counts: the entries, and every byte it reads (the document, then each blob).
-                if (limits.Entries < 1)
+                // What its own import counts: the entries, and every byte it reads (the manifest, the document, then each blob).
+                if (limits.Entries < 2)
                     throw TooManyEntries(limits);
-                long expanded = document.Length;
+                long expanded = Manifest.Length + document.Length;
                 if (expanded > limits.ExpandedBytes)
                     throw TooManyBytes(limits.ExpandedBytes);
+                WriteEntry(zip, ManifestEntry, Manifest.ToArray(), now);
                 WriteEntry(zip, DocumentEntry, document, now);
                 foreach (var blob in References(document).Where(r => r != NoImage).Order(StringComparer.Ordinal))
                 {
                     // Hashed here, not taken on the store's remembered verdict: these are the bytes the archive carries.
                     if (workspace.Blobs.ReadHashed(blob) is not { } bytes)
                         continue;
-                    if (1 + written.Count + 1 > limits.Entries)
+                    if (2 + written.Count + 1 > limits.Entries)
                         throw TooManyEntries(limits);
                     expanded += bytes.Length;
                     if (expanded > limits.ExpandedBytes)
@@ -173,8 +200,11 @@ public static partial class ProfileArchive
     /// stored file that doesn't hash to its id counts as not stored).
     /// </summary>
     /// <exception cref="ImportRefusal">
-    /// A guard (<c>archive.*</c>, <see cref="ArchiveReader"/>); a 1.x archive (<c>archive.v1</c>); an entry other than
-    /// <c>document.json</c> and <c>blobs/{64 hex}</c> (<c>archive.name</c>); no document (<c>archive.document</c>); a
+    /// A guard (<c>archive.*</c>, <see cref="ArchiveReader"/>); a 1.x archive (<c>archive.v1</c>); no manifest
+    /// (<c>archive.manifest</c>), or one over <see cref="ImportLimits.ManifestBytes"/> (<c>limit.manifestBytes</c>) or that
+    /// <see cref="CheckManifest"/> refuses (its errors under <c>/manifest</c>: <c>json</c>, <c>unsupported.*</c>,
+    /// <c>schema</c>); an entry other than the manifest, <c>document.json</c> and <c>blobs/{64 hex}</c>
+    /// (<c>archive.name</c>); no document (<c>archive.document</c>); a
     /// document over <c>documentBytes</c> (in its canonical form; or over <see cref="DocumentStore.ReadCap"/> as stored, not
     /// read), not JSON, or one a create would refuse (its errors under <c>/document</c>); a
     /// blob the document doesn't refer to (<c>archive.unreferenced</c>), over <c>mediaBytes</c>
@@ -183,23 +213,42 @@ public static partial class ProfileArchive
     public static ArchiveContents Open(Stream archive, Workspace workspace, ImportLimits? limits = null)
     {
         limits ??= ImportLimits.Default;
-        using var reader = ArchiveReader.Open(archive, limits, new ImportBudget(limits.ExpandedBytes));
+        using var reader = ArchiveReader.Open(archive, limits, new ImportBudget(limits.ExpandedBytes), storedOrDeflatedOnly: true);
 
         if (!reader.Entries.Any(e => e.Name == DocumentEntry) && reader.Entries.Any(e => e.Segments.Count == 1
                 && (e.Name.Equals("Profile.xml", StringComparison.OrdinalIgnoreCase) || e.Name.Equals("DisplayItems.xml", StringComparison.OrdinalIgnoreCase))))
             throw new ImportRefusal("archive.v1", "This is a 1.x .infopanel file, not a 2.0 profile archive: import it as a 1.x profile.");
 
+        // The manifest, read before anything else in the archive: its format and the capabilities it requires decide
+        // whether this engine reads the rest at all.
+        var manifestEntry = reader.Entries.FirstOrDefault(e => e.Name == ManifestEntry)
+            ?? throw new ImportRefusal("archive.manifest", $"The archive has no {ManifestEntry}: it isn't a profile archive.");
+        var manifestBytes = reader.Read(manifestEntry, limits.ManifestBytes)
+            ?? throw ImportRefusal.Entry("limit.manifestBytes", ManifestEntry, $"The manifest is larger than {limits.ManifestBytes} bytes (manifestBytes).");
+        try
+        {
+            using var manifest = JsonDocument.Parse(manifestBytes, SpecJson.DocumentOptions);
+            if (CheckManifest(manifest.RootElement, workspace.Limits.JsonDepth) is { Count: > 0 } manifestErrors)
+                throw new ImportRefusal([.. manifestErrors.Select(e => e.Under("/manifest"))]);
+        }
+        catch (JsonException ex)
+        {
+            throw new ImportRefusal("json", $"The manifest isn't JSON: {ex.Message}", "/manifest", ex);
+        }
+
         ArchiveEntry? documentEntry = null;
         var blobEntries = new List<ArchiveEntry>();
         foreach (var entry in reader.Entries)
         {
+            if (entry == manifestEntry)
+                continue;
             if (entry.Name == DocumentEntry)
                 documentEntry = entry;
             else if (BlobEntry().IsMatch(entry.Name))
                 blobEntries.Add(entry);
             else
                 throw ImportRefusal.Entry("archive.name", entry.Name,
-                    $"A profile archive holds only {DocumentEntry} and {BlobsFolder}{{64 lower-case hex}} entries.");
+                    $"A profile archive holds only {ManifestEntry}, {DocumentEntry} and {BlobsFolder}{{64 lower-case hex}} entries.");
         }
         if (documentEntry is null)
             throw new ImportRefusal("archive.document", $"The archive has no {DocumentEntry}.");

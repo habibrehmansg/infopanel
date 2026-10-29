@@ -1,0 +1,8 @@
+{
+  "format": "infopanel.archive/2",
+  "requires": [],
+  "profiles": [
+    "document.json",
+    "second.json"
+  ]
+}

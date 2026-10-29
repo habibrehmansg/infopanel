@@ -1293,6 +1293,31 @@
         "file": { "description": "The 1.x file it was found in, as the folder or the archive names it (`profiles/{guid}.xml`, `Profile.xml`), when known.", "type": "string" },
         "line": { "description": "The line in `file`, from 1, when known.", "type": "integer", "minimum": 1, "maximum": 2147483647 }
       }
+    },
+    "archiveContents": {
+      "description": "POST /api/import/archive: a profile archive opened and verified (docs/archive.md#importing): its document, to create a profile from with POST /api/profiles, the blobs it carried, each stored, and the blobs the document refers to that are neither in the archive nor stored here. Nothing else is stored or created. Read tolerantly: a client ignores members it doesn't know.",
+      "type": "object",
+      "required": ["document", "blobs", "missing"],
+      "additionalProperties": false,
+      "properties": {
+        "document": { "$ref": "#/$defs/importDocument", "description": "The archive's document, as it holds it: the shape a create takes." },
+        "blobs": { "description": "Each blob the archive carried, stored, as POST /api/blobs answers it, in the archive's order.", "type": "array", "items": { "$ref": "#/$defs/blobInfo" } },
+        "missing": { "description": "Blob ids the document refers to that the archive didn't carry and this engine doesn't store, in order: media naming one draws the missing-media placeholder until it is stored.", "type": "array", "items": { "$ref": "urn:infopanel:common:1#/$defs/blobId" } }
+      }
+    },
+    "exportProblem": {
+      "description": "409 application/problem+json to GET /api/profiles/{id}/archive: the profile's archive would be one its own import refuses, so it isn't made (docs/archive.md#exporting). Its errors carry the codes the import would give (`archive.entries`, `archive.expanded`), at \"\".",
+      "type": "object",
+      "required": ["status", "code", "errors"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "const": 409 },
+        "code": { "const": "export" },
+        "errors": { "type": "array", "items": { "$ref": "#/$defs/validationError" }, "minItems": 1, "maxItems": 101 }
+      }
     }
   }
 }

@@ -8,7 +8,7 @@ namespace InfoPanel.Spec;
 /// Every acceptance limit of format version 1, and their one home in code (spec/docs/limits.md lists each once, with the
 /// reason for its number): scenes, documents, commits, request bodies, the profile list and the tokens, media, archives, the 1.x import
 /// and its record, and the preview socket's messages.
-/// Every engine that reads infopanel.scene/1 and infopanel.document/1 accepts everything within them; the numbers never
+/// Every engine that reads infopanel.scene/1, infopanel.document/1 and infopanel.archive/1 accepts everything within them; the numbers never
 /// change within major version 1. Each member's camelCase name is the limit's name in docs, error codes
 /// (<c>limit.{name}</c>, where its refusal has a code of that form) and the session's <c>limits</c> of the format it
 /// belongs to (<see cref="FormatOf"/>). Other options take their values from here (<c>ImportLimits</c>). Tests may tighten
@@ -117,6 +117,9 @@ public sealed record SpecLimits
     /// <summary>An entry's central directory record: 46 fixed bytes, its name, extra field and comment (<c>archive.entries</c>).</summary>
     public int EntryRecordBytes { get; init; } = 4_096;
 
+    /// <summary>A profile archive's <c>manifest.json</c>, as stored (<c>limit.manifestBytes</c>, unread over it).</summary>
+    public int ManifestBytes { get; init; } = 65_536;
+
     // Per 1.x import: what the engine reads of 1.x files, and what an import answer lists.
 
     /// <summary>A 1.x <c>Profile.xml</c>, <c>profiles.xml</c> or <c>settings.xml</c>.</summary>
@@ -200,10 +203,16 @@ public sealed record SpecLimits
 
     /// <summary>
     /// The format a limit belongs to (spec/docs/limits.md): the scene, media and run-time limits are the scene format's;
-    /// every other limit (nesting, documents, commits, request bodies, the profile list and the tokens, the socket's messages, archives,
-    /// the 1.x import and its record) is the document format's.
+    /// the archive limits the profile archive's; every other limit (nesting, documents, commits, request bodies, the profile
+    /// list and the tokens, the socket's messages, the 1.x import and its record) is the document format's.
     /// </summary>
-    public static string FormatOf(string name) => SceneLimits.Contains(name) ? SpecSchemas.SceneFormat : SpecSchemas.DocumentFormat;
+    public static string FormatOf(string name) =>
+        SceneLimits.Contains(name) ? SpecSchemas.SceneFormat : ArchiveLimits.Contains(name) ? SpecSchemas.ArchiveFormat : SpecSchemas.DocumentFormat;
+
+    private static readonly HashSet<string> ArchiveLimits = new(System.StringComparer.Ordinal)
+    {
+        "archiveBytes", "archiveEntries", "expandedBytes", "entryNameBytes", "entryRecordBytes", "manifestBytes",
+    };
 
     private static readonly HashSet<string> SceneLimits = new(System.StringComparer.Ordinal)
     {

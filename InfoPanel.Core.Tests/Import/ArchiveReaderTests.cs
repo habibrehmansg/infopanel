@@ -259,8 +259,8 @@ public class ArchiveReaderTests
     [Fact]
     public void DeflateBomb_WhoseHeaderUnderstatesItsSize_NeverExpandsPastTheBudget()
     {
-        // 4 MiB of zeros deflate to a few KiB; the headers claim 100 bytes. .NET stops a deflated entry at its claimed
-        // size; whichever stops it first, no more than the budget is ever decompressed.
+        // 4 MiB of zeros deflate to a few KiB; the headers claim 100 bytes. The entry is read to the end of its data, not
+        // to the claim, and no more than the budget is ever decompressed.
         var zip = ClaimingSize(Zip(("assets/bomb.png", new byte[4 * 1024 * 1024])), 100);
         var budget = new ImportBudget(1024 * 1024);
         using var reader = Open(zip, budget: budget);
@@ -277,14 +277,76 @@ public class ArchiveReaderTests
     }
 
     [Fact]
-    public void EntryWhoseHeaderOverstatesItsSize_IsReadAtItsRealSize()
+    public void EntryWhoseHeaderOverstatesItsSize_IsReadAtItsRealSize_AndRefused()
     {
-        // Ten real bytes claiming 900,000: two of them fit a 1,000,000-byte budget, since what counts is what is read.
+        // Ten real bytes claiming 900,000: read at their real size, and charged only that (what counts is what is read),
+        // then refused, as their size isn't the one claimed.
         var zip = ClaimingSize(ClaimingSize(Zip(("a", new byte[10]), ("b", new byte[10])), 900_000, index: 0), 900_000, index: 1);
-        using var reader = Open(zip, budget: new ImportBudget(1_000_000));
+        var budget = new ImportBudget(1_000_000);
+        using var reader = Open(zip, budget: budget);
 
-        Assert.Equal(10, reader.Read(reader.Entries[0], long.MaxValue)!.Length);
-        Assert.Equal(10, reader.Read(reader.Entries[1], long.MaxValue)!.Length);
+        var error = Refused(() => reader.Read(reader.Entries[0], long.MaxValue));
+        Assert.Equal(("archive.zip", "/entries/a"), (error.Code, error.Errors[0].Path));
+        Assert.Equal("archive.zip", Refused(() => reader.Read(reader.Entries[1], long.MaxValue)).Code);
+        Assert.Equal(1_000_000 - 2 * 10, budget.Remaining);
+    }
+
+    [Fact]
+    public void EntryWhoseHeaderUnderstatesItsSize_IsReadToTheEndOfItsData_AndRefused()
+    {
+        // A deflated entry claiming fewer bytes than it holds is read to the end of its data, not to the claim; stored too.
+        foreach (var level in new[] { CompressionLevel.Optimal, CompressionLevel.NoCompression })
+        {
+            var zip = ClaimingSize(Zip(level, ("a", Encoding.UTF8.GetBytes("valid" + new string(' ', 1000)))), 5);
+            using var reader = Open(zip);
+            Assert.Equal(5, reader.Entries[0].DeclaredLength);
+
+            Assert.Equal("archive.zip", Refused(() => reader.Read(reader.Entries[0], long.MaxValue)).Code);
+            // Over the caller's limit first: null, as for any entry over it.
+            Assert.Null(reader.Read(reader.Entries[0], 100));
+        }
+    }
+
+    [Fact]
+    public void LocalHeaderDeclaringEncryption_OverACentralCleartextRecord_IsArchiveZip()
+    {
+        // Only the local header says the data is encrypted (bit 0); the central record says cleartext, method 0.
+        var zip = WithLocalField(Zip(CompressionLevel.NoCompression, Text("a", "valid")), 6, flags => (ushort)(flags | 1));
+        using var reader = Open(zip);
+
+        var error = Refused(() => reader.Read(reader.Entries[0], long.MaxValue));
+
+        Assert.Equal(("archive.zip", "/entries/a"), (error.Code, error.Errors[0].Path));
+    }
+
+    [Fact]
+    public void LocalHeaderWithAnotherMethod_OverACentralStoredRecord_IsArchiveZip()
+    {
+        var zip = WithLocalField(Zip(CompressionLevel.NoCompression, Text("a", "valid")), 8, _ => 99);
+        using var reader = Open(zip);
+
+        var error = Refused(() => reader.Read(reader.Entries[0], long.MaxValue));
+
+        Assert.Equal(("archive.zip", "/entries/a"), (error.Code, error.Errors[0].Path));
+    }
+
+    [Fact]
+    public void LocalHeaderWithAnotherNameLength_IsArchiveZip()
+    {
+        var zip = WithLocalField(Zip(CompressionLevel.NoCompression, Text("a", "valid")), 26, length => (ushort)(length + 1));
+        using var reader = Open(zip);
+
+        Assert.Equal("archive.zip", Refused(() => reader.Read(reader.Entries[0], long.MaxValue)).Code);
+    }
+
+    [Fact]
+    public void LocalHeaderWithDataDescriptor_ItsCentralRecordLacksAndItsOwnSizesZero_IsStillRead()
+    {
+        // Bit 3 (data descriptor) is the legitimate difference: the local flags carry it, the central flags may not.
+        var zip = WithLocalField(Zip(CompressionLevel.NoCompression, Text("a", "valid")), 6, flags => (ushort)(flags | 8));
+        using var reader = Open(zip);
+
+        Assert.Equal("valid"u8.ToArray(), reader.Read(reader.Entries[0], long.MaxValue));
     }
 
     [Fact]
@@ -334,5 +396,46 @@ public class ArchiveReaderTests
         Assert.False(File.Exists(path));
 
         Assert.Throws<ImportBodyTooLargeException>(() => TempFile.Buffer(new MemoryStream(new byte[1001]), maxBytes: 1000));
+    }
+
+    [Fact]
+    public async Task TempFile_ReadsABodyWithoutADeclaredLength_OnlyToItsLimitPlusOneByte()
+    {
+        // A body that never ends and states no length: at most the limit plus one byte is ever asked of it.
+        var body = new EndlessBody();
+        Assert.Throws<ImportBodyTooLargeException>(() => TempFile.Buffer(body, maxBytes: 128));
+        Assert.Equal(129, body.Supplied);
+
+        var later = new EndlessBody();
+        await Assert.ThrowsAsync<ImportBodyTooLargeException>(() => TempFile.BufferAsync(later, maxBytes: 128, TestContext.Current.CancellationToken));
+        Assert.Equal(129, later.Supplied);
+
+        // Within it, the whole body.
+        using var file = TempFile.Buffer(new EndlessBody(128), maxBytes: 128);
+        Assert.Equal(128, file.Length);
+    }
+
+    /// <summary>A body of <paramref name="length"/> bytes (endless by default), not seekable, that counts what it supplied.</summary>
+    private sealed class EndlessBody(long length = long.MaxValue) : Stream
+    {
+        public long Supplied { get; private set; }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var n = (int)Math.Min(count, length - Supplied);
+            Array.Clear(buffer, offset, n);
+            Supplied += n;
+            return n;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

@@ -13,9 +13,10 @@ using static InfoPanel.Core.Tests.Import.ZipKit;
 namespace InfoPanel.Core.Tests.Import;
 
 /// <summary>
-/// The 2.0 profile archive: export (the document and every blob it refers to, verified, in id order, built before
-/// anything is sent), and the strict import that only unpacks: exact names, the document checked as a create checks
-/// one, every blob referenced and hashed against its name, then stored. A client creates the profile afterwards.
+/// The 2.0 profile archive: export (its manifest, the document and every blob it refers to, verified, in id order, built
+/// before anything is sent), and the strict import that only unpacks: the manifest read first, exact names, the document
+/// checked as a create checks one, every blob referenced and hashed against its name, then stored. A client creates the
+/// profile afterwards.
 /// </summary>
 public sealed class ProfileArchiveTests : IDisposable
 {
@@ -112,6 +113,15 @@ public sealed class ProfileArchiveTests : IDisposable
 
     private static string Hex(byte[] bytes) => BlobStore.IdOf(bytes)[BlobStore.IdPrefix.Length..];
 
+    /// <summary>The manifest every profile archive of version 1.0 starts with, as an export writes it.</summary>
+    private static readonly byte[] Manifest = Encoding.UTF8.GetBytes("""{"format":"infopanel.archive/1","profiles":["document.json"],"requires":[]}""");
+
+    /// <summary>
+    /// A profile archive of these entries after the manifest every archive carries (<c>ZipKit.Zip</c>
+    /// writes the entries alone: the manifest tests use it).
+    /// </summary>
+    private static byte[] Zip(params (string Name, byte[] Bytes)[] entries) => ZipKit.Zip([(ProfileArchive.ManifestEntry, Manifest), .. entries]);
+
     // ---- export, import and create ------------------------------------------------------------------------------
 
     /// <summary>The source's export at the default limits: its entries, the bytes an import reads, and the file's length.</summary>
@@ -119,7 +129,7 @@ public sealed class ProfileArchiveTests : IDisposable
     {
         var (archive, _) = ProfileArchive.Export(source, Id, Now);
         using (archive)
-            return (1 + archive!.Blobs.Count, ExportBytes(source, Id).Length + Png.Length + Gif.Length + Template.Length, archive.Content.Length);
+            return (2 + archive!.Blobs.Count, Manifest.Length + ExportBytes(source, Id).Length + Png.Length + Gif.Length + Template.Length, archive.Content.Length);
     }
 
     [Theory]
@@ -178,7 +188,7 @@ public sealed class ProfileArchiveTests : IDisposable
         Assert.Equal(3, Open(zip, target, new ImportLimits { ArchiveBytes = zip.Length }).Blobs.Count);
     }
 
-    /// <summary>A workspace holding one profile whose document refers to no blob, and that document's export length.</summary>
+    /// <summary>A workspace holding one profile whose document refers to no blob, and the bytes its export holds (the manifest and the document).</summary>
     private (Workspace Source, long Length) DocumentOnly()
     {
         var workspace = NewWorkspace("document-only");
@@ -191,7 +201,7 @@ public sealed class ProfileArchiveTests : IDisposable
         };
         var created = workspace.Create(Encoding.UTF8.GetBytes(new JsonObject { ["id"] = Id, ["document"] = document }.ToJsonString()));
         Assert.True(created.Entry is not null, string.Join("; ", created.Invalid?.Errors.Select(e => $"{e.Code} {e.Path} {e.Message}") ?? []));
-        return (workspace, ExportBytes(workspace, Id).Length);
+        return (workspace, Manifest.Length + ExportBytes(workspace, Id).Length);
     }
 
     [Theory]
@@ -203,7 +213,7 @@ public sealed class ProfileArchiveTests : IDisposable
         var (source, length) = DocumentOnly();
         var limits = limit switch
         {
-            "entries" => new ImportLimits { Entries = 0 },
+            "entries" => new ImportLimits { Entries = 1 },
             "expanded" => new ImportLimits { ExpandedBytes = length - 1 },
             _ => new ImportLimits { ExpandedBytes = 0 },
         };
@@ -223,7 +233,7 @@ public sealed class ProfileArchiveTests : IDisposable
     public void Export_DocumentOnly_AtTheImportLimits_Exports_AndImportsWithThem()
     {
         var (source, length) = DocumentOnly();
-        var limits = new ImportLimits { Entries = 1, ExpandedBytes = length };
+        var limits = new ImportLimits { Entries = 2, ExpandedBytes = length };
 
         var (archive, problem) = ProfileArchive.Export(source, Id, Now, limits);
         Assert.Null(problem);
@@ -231,7 +241,7 @@ public sealed class ProfileArchiveTests : IDisposable
         using (archive)
             zip = Bytes(archive!);
 
-        Assert.Equal([ProfileArchive.DocumentEntry], Names(zip));
+        Assert.Equal([ProfileArchive.ManifestEntry, ProfileArchive.DocumentEntry], Names(zip));
         Assert.Empty(Open(zip, NewWorkspace("target"), limits).Blobs);
     }
 
@@ -245,10 +255,11 @@ public sealed class ProfileArchiveTests : IDisposable
         using (archive)
             zip = Bytes(archive!);
 
-        // document.json first, then each referenced blob once, in id order: the template dependency included, the
-        // no-image id never.
+        // The manifest first, in its canonical form, then document.json, then each referenced blob once, in id order: the
+        // template dependency included, the no-image id never.
         var blobs = new[] { Png, Gif, Template }.Select(b => BlobStore.IdOf(b)).Order(StringComparer.Ordinal).ToList();
-        Assert.Equal(new[] { "document.json" }.Concat(blobs.Select(b => "blobs/" + b[7..])), Names(zip));
+        Assert.Equal(new[] { "manifest.json", "document.json" }.Concat(blobs.Select(b => "blobs/" + b[7..])), Names(zip));
+        Assert.Equal(Manifest, Entry(zip, "manifest.json"));
         Assert.Equal(blobs, archive!.Blobs);
         var exported = ExportBytes(source, Id);
         Assert.Equal(exported, Entry(zip, "document.json"));
@@ -538,6 +549,38 @@ public sealed class ProfileArchiveTests : IDisposable
         Assert.False(target.Blobs.Exists(BlobStore.IdOf(Png)));
     }
 
+    /// <summary>
+    /// An entry is read to the end of its data, whatever its headers claim: a deflated blob whose headers understate its
+    /// size, so that a reader stopping at the claim would hash only the prefix named, is refused.
+    /// </summary>
+    [Fact]
+    public void ABlobWhoseHeadersUnderstateItsSize_IsArchiveZip_AndItIsNotStored()
+    {
+        var target = NewWorkspace("target");
+        var longer = (byte[])[.. Png, .. new byte[1000]];
+        var zip = ClaimingSize(WithDocument(Document(), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Png), longer)), (uint)Png.Length, index: 3);
+
+        var refusal = Assert.Throws<ImportRefusal>(() => Open(zip, target));
+
+        Assert.Equal(("archive.zip", ImportRefusal.EntryPath("blobs/" + Hex(Png))), (refusal.Code, refusal.Errors[0].Path));
+        Assert.False(target.Blobs.Exists(BlobStore.IdOf(Png)));
+    }
+
+    /// <summary>Profile archives hold stored or deflated entries only (archive.md): any other method is <c>archive.method</c>, before any entry is read.</summary>
+    [Theory]
+    [InlineData(9)]  // Deflate64, which .NET would read
+    [InlineData(12)] // bzip2, which it wouldn't
+    public void AnEntryNeitherStoredNorDeflated_IsArchiveMethod(int method)
+    {
+        var target = NewWorkspace("target");
+        var zip = WithMethod(WithDocument(Document(), ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template)), (ushort)method, index: 2);
+
+        var refusal = Assert.Throws<ImportRefusal>(() => Open(zip, target));
+
+        Assert.Equal(("archive.method", ImportRefusal.EntryPath("blobs/" + Hex(Png))), (refusal.Code, refusal.Errors[0].Path));
+        Assert.All(new[] { Png, Gif, Template }, blob => Assert.False(target.Blobs.Exists(BlobStore.IdOf(blob))));
+    }
+
     [Fact]
     public void AnUnreferencedBlob_IsRefused_BeforeAnyBlobIsStored()
     {
@@ -701,6 +744,76 @@ public sealed class ProfileArchiveTests : IDisposable
 
         using var kit = new ImportKit();
         Assert.Equal("archive.v2", Assert.Throws<ImportRefusal>(() => kit.ReadArchive(Exported())).Code);
+    }
+
+    // ---- the manifest -------------------------------------------------------------------------------------------
+
+    private static (string Name, byte[] Bytes) ManifestOf(string json) => (ProfileArchive.ManifestEntry, Encoding.UTF8.GetBytes(json));
+
+    private (string Code, string Path) RefusalOf(byte[] zip)
+    {
+        var refusal = Assert.Throws<ImportRefusal>(() => Open(zip, NewWorkspace("target")));
+        return (refusal.Code, refusal.Errors[0].Path);
+    }
+
+    [Fact]
+    public void TheManifest_IsRequired()
+    {
+        var document = ("document.json", Encoding.UTF8.GetBytes(Document().ToJsonString()));
+
+        Assert.Equal(("archive.manifest", ""), RefusalOf(ZipKit.Zip(document)));
+        // Read first: an archive without one is refused before its other entries are looked at.
+        Assert.Equal(("archive.manifest", ""), RefusalOf(ZipKit.Zip(document, ("readme.txt", [1]))));
+    }
+
+    [Theory]
+    [InlineData("""{"format":"infopanel.archive/2","requires":[],"profiles":["document.json"]}""", "unsupported.format", "/manifest/format")]
+    [InlineData("""{"format":"infopanel.archive/1","requires":["profiles.many"],"profiles":["document.json","b.json"]}""", "unsupported.capability", "/manifest/requires/0")]
+    [InlineData("""{"format":"infopanel.document/1","requires":[],"profiles":["document.json"]}""", "schema", "/manifest/format")]
+    [InlineData("""{"format":"infopanel.archive/1","requires":[],"profiles":["document.json"],"fonts":[]}""", "schema", "/manifest/fonts")]
+    [InlineData("""{"format":"infopanel.archive/1","requires":[],"profiles":["other.json"]}""", "schema", "/manifest/profiles/0")]
+    [InlineData("""{"format":"infopanel.archive/1","requires":[]}""", "schema", "/manifest")]
+    [InlineData("""{ nope""", "json", "/manifest")]
+    public void TheManifest_IsReadAsTheArchiveFormatsFirstEntry(string manifest, string code, string path)
+    {
+        // A major version or a capability this engine lacks is unsupported before anything else of the manifest is read;
+        // the rest is held to its schema, closed.
+        Assert.Equal((code, path), RefusalOf(ZipKit.Zip(ManifestOf(manifest), ("document.json", Encoding.UTF8.GetBytes(Document().ToJsonString())))));
+    }
+
+    [Fact]
+    public void TheManifest_IsHeldToManifestBytes()
+    {
+        var padded = """{"format":"infopanel.archive/1","requires":[],"profiles":["document.json"]}""" + new string(' ', 100);
+        var zip = ZipKit.Zip(ManifestOf(padded), ("document.json", Encoding.UTF8.GetBytes(Document().ToJsonString())),
+            ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template));
+
+        var refusal = Assert.Throws<ImportRefusal>(() => Open(zip, NewWorkspace("small"), new ImportLimits { ManifestBytes = padded.Length - 1 }));
+        Assert.Equal(("limit.manifestBytes", ImportRefusal.EntryPath(ProfileArchive.ManifestEntry)), (refusal.Code, refusal.Errors[0].Path));
+        Assert.Empty(Open(zip, NewWorkspace("enough"), new ImportLimits { ManifestBytes = padded.Length }).Missing);
+    }
+
+    [Fact]
+    public void AManifestWhoseHeadersUnderstateItsSize_IsReadWhole()
+    {
+        // A valid manifest deflated with spaces after it, its headers claiming only the manifest: a reader stopping at the
+        // claim would see a small valid manifest. Read whole, it differs from its claim (archive.zip), or is over
+        // manifestBytes (limit.manifestBytes).
+        var document = ("document.json", Encoding.UTF8.GetBytes(Document().ToJsonString()));
+        byte[] Padded(int spaces) => ClaimingSize(ZipKit.Zip((ProfileArchive.ManifestEntry, [.. Manifest, .. Encoding.UTF8.GetBytes(new string(' ', spaces))]), document,
+            ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template)), (uint)Manifest.Length);
+
+        Assert.Equal(("archive.zip", ImportRefusal.EntryPath(ProfileArchive.ManifestEntry)), RefusalOf(Padded(100)));
+        Assert.Equal(("limit.manifestBytes", ImportRefusal.EntryPath(ProfileArchive.ManifestEntry)), RefusalOf(Padded(70 * 1024)));
+    }
+
+    [Fact]
+    public void CheckManifest_ReportsAtPathsInTheManifest()
+    {
+        using var valid = JsonDocument.Parse(Manifest);
+        Assert.Empty(ProfileArchive.CheckManifest(valid.RootElement));
+        using var future = JsonDocument.Parse("""{"format":"infopanel.archive/3","requires":[],"profiles":["document.json"]}""");
+        Assert.Equal([("unsupported.format", "/format")], ProfileArchive.CheckManifest(future.RootElement).Select(e => (e.Code, e.Path)));
     }
 
     [Fact]

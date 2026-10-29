@@ -1,0 +1,16 @@
+{
+  "document": {
+    "format": "infopanel.document/1",
+    "profile": {
+      "name": "Desk",
+      "width": 200,
+      "height": 100,
+      "background": "#000000"
+    },
+    "items": []
+  },
+  "blobs": [],
+  "missing": [
+    "logo.png"
+  ]
+}

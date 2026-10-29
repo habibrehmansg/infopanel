@@ -1,6 +1,6 @@
 # InfoPanel formats
 
-The formats an InfoPanel engine reads and writes, specified so that any client can produce them: the **document** (a profile and its items), the **scene** each item draws, and the engine API that carries them: its requests and bodies (the session, sensors, the profile list, documents, blobs, commits, conflicts, problems, the preview socket's messages, frames and their bounds). A client writes or generates scenes against this specification; the engine validates, stores and renders them. How a client produces a scene is up to the client.
+The formats an InfoPanel engine reads and writes, specified so that any client can produce them: the **document** (a profile and its items), the **scene** each item draws, the **profile archive** that carries a profile and its blobs between engines, and the engine API that carries them: its requests and bodies (the session, sensors, the profile list, documents, blobs, commits, conflicts, problems, the preview socket's messages, frames and their bounds). A client writes or generates scenes against this specification; the engine validates, stores and renders them. How a client produces a scene is up to the client.
 
 **Status: draft** until the first engine release, which freezes every format here at once; from then on they change only as [versioning](docs/versioning.md#what-freezes) allows.
 
@@ -8,7 +8,7 @@ The formats an InfoPanel engine reads and writes, specified so that any client c
 
 | Path | What |
 |---|---|
-| `schemas/` | JSON Schemas (draft 2020-12): `common`, `expression`, `scene` (`infopanel.scene/1`), `document` (`infopanel.document/1`), `api` (session and format support, sensors and readings, profile list, profile creation and duplication, document, blob, commit request, undo, redo and revert request and result, problems, integration tokens, the 1.x import's answers and migration record, the preview socket's messages, frame header with item bounds, change event), `v1item` (the 1.x items of a 1.x import's answer, generated from the engine's 1.x kind manifest by `npm run gen`). Ids are `urn:infopanel:<name>:1`. |
+| `schemas/` | JSON Schemas (draft 2020-12): `common`, `expression`, `scene` (`infopanel.scene/1`), `document` (`infopanel.document/1`), `api` (session and format support, sensors and readings, profile list, profile creation and duplication, document, blob, commit request, undo, redo and revert request and result, problems, integration tokens, the 1.x import's answers and migration record, the preview socket's messages, frame header with item bounds, change event), `v1item` (the 1.x items of a 1.x import's answer, generated from the engine's 1.x kind manifest by `npm run gen`), `archive` (`infopanel.archive/1`: a profile archive's manifest). Ids are `urn:infopanel:<name>:1`. |
 | `openapi.json` | The engine API's requests ([below](#the-request-index)): every operation, its parameters and each status it answers, with its bodies' definitions in `schemas/`. |
 | `types/index.d.ts` | TypeScript types, generated from the schemas (`npm run gen`), and `ApiOperations`, generated from `openapi.json`: each request, keyed `'METHOD /path'`, with its `params`, `query`, `request` and `responses` by status. |
 | `docs/` | The specification in prose (below). |
@@ -27,12 +27,13 @@ The formats an InfoPanel engine reads and writes, specified so that any client c
 7. [Identity and state](docs/identity.md): instance ids, what keeps and what resets state, the tick snapshot.
 8. [Commits](docs/commit.md): per-item per-field ops, what a change stamps, `baseRev`, `opId` and the retry window, coalescing, 409 and 422; undo, redo, revert and save.
 9. [Engine API](docs/api.md): the requests, errors and tokens, the session, fonts and sensors, the profile list and its statuses, creating, duplicating, deleting and exporting profiles, documents, blobs, the preview socket's messages, frames and change events.
-10. [1.x import](docs/import.md): reading a 1.x data folder and a 1.x `.infopanel` file, the migration's state and run-once record, the envelope (items, guides, assets, settings), the archive guards and the diagnostics.
-11. [Unsupported content](docs/unsupported.md): placeholders, never rewriting what an engine can't read.
-12. [Versioning](docs/versioning.md): formats, what freezes, minor versions and what each ships with, capabilities and `requires`, major versions, unknown members and values, the engine API and its identifiers, the four markers.
-13. [Validation](docs/validation.md): the order of checks and every error code.
-14. [Limits and budgets](docs/limits.md): every acceptance limit, the budgets an engine guarantees, and the performance targets.
-15. [SVG profile](docs/svg.md): the restricted SVG that media assets may use.
+10. [Profile archive](docs/archive.md): the `.infopanel2` format, its manifest, exporting a profile and importing an archive.
+11. [1.x import](docs/import.md): reading a 1.x data folder and a 1.x `.infopanel` file, the migration's state and run-once record, the envelope (items, guides, assets, settings), the archive guards and the diagnostics.
+12. [Unsupported content](docs/unsupported.md): placeholders, never rewriting what an engine can't read.
+13. [Versioning](docs/versioning.md): formats, what freezes, minor versions and what each ships with, capabilities and `requires`, major versions, unknown members and values, the engine API and its identifiers, the four markers.
+14. [Validation](docs/validation.md): the order of checks and every error code.
+15. [Limits and budgets](docs/limits.md): every acceptance limit, the budgets an engine guarantees, and the performance targets.
+16. [SVG profile](docs/svg.md): the restricted SVG that media assets may use.
 
 ## The request index
 

@@ -261,12 +261,40 @@ public sealed record V1MigrationOutcome
 }
 
 /// <summary>
+/// The manifest of a profile archive (<c>infopanel.archive/1</c>): the format, the archive capabilities it requires, and
+/// the entries that hold its profile documents (exactly <c>document.json</c> in version 1.0).
+/// </summary>
+[SpecDef("urn:infopanel:archive:1")]
+public sealed record ArchiveManifest
+{
+    public required string Format { get; init; }
+    public required IReadOnlyList<string> Requires { get; init; }
+    public required IReadOnlyList<string> Profiles { get; init; }
+}
+
+/// <summary>
 /// A profile archive opened and verified: its document (to create the profile with), the blobs it carried (stored), and
 /// the ids the document refers to that are neither in the archive nor stored here.
 /// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/archiveContents")]
 public sealed record ArchiveContents
 {
     public required JsonElement Document { get; init; }
     public required IReadOnlyList<BlobInfo> Blobs { get; init; }
     public required IReadOnlyList<string> Missing { get; init; }
+}
+
+/// <summary>
+/// 409 to <c>GET /api/profiles/{id}/archive</c>: the profile's archive would be one its own import refuses (more entries
+/// or more bytes than the import reads); its errors carry the codes the import would give.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/exportProblem")]
+public sealed record ExportProblem
+{
+    public string? Type { get; init; }
+    public string? Title { get; init; }
+    public string? Detail { get; init; }
+    public required int Status { get; init; }
+    public required string Code { get; init; }
+    public required IReadOnlyList<ValidationErrorBody> Errors { get; init; }
 }

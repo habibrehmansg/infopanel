@@ -231,6 +231,27 @@
         }
       }
     },
+    "/api/profiles/{id}/archive": {
+      "parameters": [{"$ref": "#/components/parameters/profileId"}],
+      "get": {
+        "operationId": "exportArchive",
+        "summary": "The profile as a profile archive (.infopanel2): its manifest, its document and every blob it refers to.",
+        "description": "docs/archive.md#exporting.",
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {"description": "The archive, with Content-Disposition naming it.", "content": {"application/zip": {}}},
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "404": {"$ref": "#/components/responses/notFound"},
+          "409": {
+            "description": "The profile can't be opened (profileStatusProblem), or its archive would be one its import refuses (exportProblem): no archive is made.",
+            "content": {"application/problem+json": {"schema": {"oneOf": [
+              {"$ref": "urn:infopanel:api:1#/$defs/profileStatusProblem"},
+              {"$ref": "urn:infopanel:api:1#/$defs/exportProblem"}
+            ]}}}
+          }
+        }
+      }
+    },
     "/api/profiles/{id}/thumbnail": {
       "parameters": [{"$ref": "#/components/parameters/profileId"}],
       "get": {
@@ -488,6 +509,31 @@
           "200": {"description": "The bytes.", "content": {"application/octet-stream": {}}},
           "401": {"$ref": "#/components/responses/unauthorized"},
           "404": {"$ref": "#/components/responses/notFound"}
+        }
+      }
+    },
+    "/api/import/archive": {
+      "post": {
+        "operationId": "openArchive",
+        "summary": "Opens a profile archive (.infopanel2): checks it, stores its blobs and answers its document; creates nothing.",
+        "description": "docs/archive.md#importing.",
+        "security": [{"bearer": ["edit"]}],
+        "requestBody": {"required": true, "description": "The archive's bytes, of any content type.", "content": {"application/octet-stream": {}}},
+        "responses": {
+          "200": {
+            "description": "The archive's document, the blobs it carried (stored) and the ones it lacks.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/archiveContents"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "413": {
+            "description": "The bytes are over archiveBytes; nothing was read or stored.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "422": {
+            "description": "The archive breaks a guard or its format (archive.*), needs a newer engine (unsupported.*, under /manifest or /document), breaks a limit (limit.*) or holds a document a create would refuse (under /document): nothing is created, and only blobs verified before the refusal may be stored.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          }
         }
       }
     },

@@ -24,6 +24,12 @@ public static class SpecSchemas
     public const string V1Item = "urn:infopanel:v1item:1";
 
     public const string SceneFormat = "infopanel.scene/1";
+
+    /// <summary>The profile archive (<c>.infopanel2</c>), named by its manifest.</summary>
+    public const string ArchiveFormat = "infopanel.archive/1";
+
+    /// <summary>The profile archive's manifest.</summary>
+    public const string Archive = "urn:infopanel:archive:1";
     public const string DocumentFormat = "infopanel.document/1";
 
     public const string CommitRequest = Api + "#/$defs/commitRequest";

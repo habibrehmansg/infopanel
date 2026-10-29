@@ -34,7 +34,7 @@ public sealed record EngineSupport(IReadOnlySet<string> SceneCapabilities, IRead
 
 internal static class ValidationText
 {
-    internal static readonly Regex FormatString = new(@"^infopanel\.(scene|document)/([0-9]{1,4})\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
+    internal static readonly Regex FormatString = new(@"^infopanel\.(scene|document|archive)/([0-9]{1,4})\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     internal static readonly Regex Capability = new(@"^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*)*\z", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     /// <summary>
@@ -78,13 +78,14 @@ internal static class ValidationText
     /// </summary>
     internal static (CheckStatus Status, SpecError Error)? CheckFormat(JsonElement e, string kind, IReadOnlySet<string> capabilities)
     {
+        var a = kind.StartsWith('a') ? "An" : "A";
         if (e.ValueKind != JsonValueKind.Object)
-            return (CheckStatus.Invalid, new SpecError("", "schema", $"A {kind} is a JSON object."));
+            return (CheckStatus.Invalid, new SpecError("", "schema", $"{a} {kind} is a JSON object."));
         // Missing: at the object it is missing from; not a string: at the member.
         if (!e.TryGetProperty("format", out var format))
-            return (CheckStatus.Invalid, new SpecError("", "schema", $"A {kind} needs a string \"format\"."));
+            return (CheckStatus.Invalid, new SpecError("", "schema", $"{a} {kind} needs a string \"format\"."));
         if (format.ValueKind != JsonValueKind.String)
-            return (CheckStatus.Invalid, new SpecError("/format", "schema", $"A {kind} needs a string \"format\"."));
+            return (CheckStatus.Invalid, new SpecError("/format", "schema", $"{a} {kind} needs a string \"format\"."));
         var match = FormatString.Match(format.GetString()!);
         if (!match.Success || match.Groups[1].Value != kind)
             return (CheckStatus.Invalid, new SpecError("/format", "schema", $"\"{format.GetString()}\" is not a {kind} format."));

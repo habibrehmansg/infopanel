@@ -1198,6 +1198,50 @@ export interface ImportDiagnostic {
   line?: number;
 }
 
+/** POST /api/import/archive: a profile archive opened and verified (docs/archive.md#importing): its document, to create a profile from with POST /api/profiles, the blobs it carried, each stored, and the blobs the document refers to that are neither in the archive nor stored here. Nothing else is stored or created. Read tolerantly: a client ignores members it doesn't know. */
+export interface ArchiveContents {
+  /** The archive's document, as it holds it: the shape a create takes. */
+  document: ImportDocument;
+  /** Each blob the archive carried, stored, as POST /api/blobs answers it, in the archive's order. */
+  blobs: BlobInfo[];
+  /** Blob ids the document refers to that the archive didn't carry and this engine doesn't store, in order: media naming one draws the missing-media placeholder until it is stored. */
+  missing: BlobId[];
+}
+
+/** 409 application/problem+json to GET /api/profiles/{id}/archive: the profile's archive would be one its own import refuses, so it isn't made (docs/archive.md#exporting). Its errors carry the codes the import would give (`archive.entries`, `archive.expanded`), at "". */
+export interface ExportProblem {
+  type?: string;
+  title?: string;
+  detail?: string;
+  status: 409;
+  code: "export";
+  /** Items: 1–101. */
+  errors: ValidationError[];
+}
+
+// archive.schema.json (urn:infopanel:archive:1)
+
+/**
+ * ArchiveManifest
+ *
+ * infopanel.archive/1: the manifest of a profile archive (`.infopanel2`), its entry `manifest.json`, which an engine reads before anything else in the archive (docs/archive.md). Closed: a member this version doesn't define is refused; additions come under a capability in `requires`.
+ */
+export interface ArchiveManifest {
+  /** The archive format and its major version. An engine that doesn't read the major version refuses the archive as unsupported. */
+  format: "infopanel.archive/1";
+  /**
+   * Every archive capability beyond version 1.0 the archive uses (docs/versioning.md#capabilities-and-requires): an engine that lacks one refuses the archive as unsupported before reading the rest. Version 1.0 defines none.
+   * Items: ≤ 32.
+   * Unique items.
+   */
+  requires: Capability[];
+  /**
+   * The entries that hold the archive's profile documents: in version 1.0 exactly one, `document.json`. More than one would come under a capability.
+   * Items: 1–1.
+   */
+  profiles: "document.json"[];
+}
+
 // common.schema.json (urn:infopanel:common:1)
 
 /**
@@ -3440,6 +3484,29 @@ export interface ApiOperations {
     };
   };
   /**
+   * exportArchive: The profile as a profile archive (.infopanel2): its manifest, its document and every blob it refers to.
+   *
+   * docs/archive.md#exporting.
+   */
+  "GET /api/profiles/{id}/archive": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The archive, with Content-Disposition naming it. */
+      200: "application/zip";
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile can't be opened (profileStatusProblem), or its archive would be one its import refuses (exportProblem): no archive is made. */
+      409: ProfileStatusProblem | ExportProblem;
+    };
+  };
+  /**
    * getThumbnail: A PNG of the current document.
    *
    * docs/api.md#thumbnails.
@@ -3666,6 +3733,29 @@ export interface ApiOperations {
       401: null;
       /** No such profile, blob or token. */
       404: null;
+    };
+  };
+  /**
+   * openArchive: Opens a profile archive (.infopanel2): checks it, stores its blobs and answers its document; creates nothing.
+   *
+   * docs/archive.md#importing.
+   */
+  "POST /api/import/archive": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    /** The archive's bytes, of any content type. */
+    request: "application/octet-stream";
+    responses: {
+      /** The archive's document, the blobs it carried (stored) and the ones it lacks. */
+      200: ArchiveContents;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** The bytes are over archiveBytes; nothing was read or stored. */
+      413: Problem;
+      /** The archive breaks a guard or its format (archive.*), needs a newer engine (unsupported.*, under /manifest or /document), breaks a limit (limit.*) or holds a document a create would refuse (under /document): nothing is created, and only blobs verified before the refusal may be stored. */
+      422: InvalidProblem;
     };
   };
   /**

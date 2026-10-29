@@ -296,6 +296,32 @@ public class SpecExampleTests
         return SpecSchemaAgreementTests.ModelTypes.Single(t => branches.All(t.Refs.Contains)).Type;
     }
 
+    // ---- profile archive manifests ------------------------------------------------------------------------------
+
+    [Theory]
+    [MemberData(nameof(Files), "archive/valid")]
+    public void ValidManifest_PassesAndRoundTrips(string rel)
+    {
+        var json = Load(rel);
+        Assert.Empty(InfoPanel.Import.ProfileArchive.CheckManifest(json));
+        var model = json.Deserialize<ArchiveManifest>(SpecJson.Options)!;
+        AssertJsonEqual(json, JsonSerializer.SerializeToElement(model, SpecJson.Options), rel);
+    }
+
+    [Theory]
+    [MemberData(nameof(Files), "archive/unsupported")]
+    public void UnsupportedManifest_IsUnsupported(string rel)
+    {
+        var expected = Expect(rel);
+        Assert.StartsWith("unsupported.", (string)expected["code"]!);
+        AssertHas(InfoPanel.Import.ProfileArchive.CheckManifest(Load(rel)), expected, rel);
+    }
+
+    [Theory]
+    [MemberData(nameof(Files), "archive/invalid")]
+    public void InvalidManifest_FailsForItsReason(string rel) =>
+        AssertHas(InfoPanel.Import.ProfileArchive.CheckManifest(Load(rel)), Expect(rel), rel);
+
     // ---- media -------------------------------------------------------------------------------------------------
 
     [Theory]
@@ -327,7 +353,7 @@ public class SpecExampleTests
             .ToList();
         string[] folders = ["scene/valid/", "scene/unsupported/", "scene/invalid/", "document/valid/", "document/placeholder/",
             "document/unsupported/", "document/invalid/", "commit/valid/", "commit/warning/", "commit/invalid/", "api/",
-            "media/valid/", "media/invalid/", "expressions/"];
+            "media/valid/", "media/invalid/", "archive/valid/", "archive/unsupported/", "archive/invalid/", "expressions/"];
         Assert.Empty(files.Where(f => !folders.Any(f.StartsWith)));
         // The expression vectors (run by ExpressionVectorTests) are the only file there; it carries its own results.
         Assert.Equal(["expressions/vectors.json"], files.Where(f => f.StartsWith("expressions/", StringComparison.Ordinal)));
@@ -346,7 +372,8 @@ public class SpecExampleTests
         var declared = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var (name, text) in SpecSchemas.Files)
         {
-            var defs = JsonNode.Parse(text)!["$defs"]!.AsObject();
+            // A schema without definitions (the archive manifest's) declares no kind, type or op of its own.
+            var defs = JsonNode.Parse(text)!["$defs"]?.AsObject() ?? new JsonObject();
             foreach (var (_, def) in defs)
             {
                 if (def?["properties"] is not JsonObject props) continue;

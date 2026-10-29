@@ -36,7 +36,8 @@ public sealed class ImportGate : IDisposable
 /// The 1.x import (spec/docs/import.md), under <c>/api/import/v1</c>: the migration's state (<c>GET</c>, the <c>read</c>
 /// scope) and its run-once record (<c>PUT</c>), one profile of the 1.x folder and a 1.x <c>.infopanel</c> file read into
 /// their envelopes (<c>POST</c>), which store blobs (all three <c>edit</c>). The engine only reads the 1.x folder; it never
-/// installs anything: a client creates profiles from the envelopes.
+/// installs anything: a client creates profiles from the envelopes. And a profile archive opened
+/// (<c>POST /api/import/archive</c>, spec/docs/archive.md, <c>edit</c>): its blobs stored, its document answered.
 /// </summary>
 public static class ImportEndpoints
 {
@@ -100,6 +101,12 @@ public static class ImportEndpoints
 
         api.MapPost("/archive", (HttpRequest request, Workspace workspace, SensorHub sensors, ImportLimits limits, ImportGate gate, CancellationToken ct) =>
             ReadArchiveBody(request, limits, gate, archive => Json(V1Reader.ReadArchive(archive, new V1ReadContext(workspace, sensors, limits))), ct))
+            .WithOwnBodyLimit().RequireScope(ApiScope.Edit);
+
+        // A profile archive (spec/docs/archive.md): checked, its blobs stored, its document answered; a client creates
+        // the profile from it.
+        app.MapPost("/api/import/archive", (HttpRequest request, Workspace workspace, ImportLimits limits, ImportGate gate, CancellationToken ct) =>
+            ReadArchiveBody(request, limits, gate, archive => EnvelopeJson(ProfileArchive.Open(archive, workspace, limits)), ct))
             .WithOwnBodyLimit().RequireScope(ApiScope.Edit);
     }
 
