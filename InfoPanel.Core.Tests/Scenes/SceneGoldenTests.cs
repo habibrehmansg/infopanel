@@ -80,6 +80,7 @@ public sealed class SceneGoldenTests
         ["table"] = new("scene/valid/table.json", 340, 120, 0, 0, null, null, Load),
         ["table-header-only"] = new("scene/valid/table-header-only.json", 260, 40, 0, 0, null, null, Load),
         ["table-lines"] = new("scene/valid/table-lines.json", 380, 200, 0, 0, null, null, Load),
+        ["table-decorations"] = new("scene/valid/table-decorations.json", 300, 120, 0, 0, null, null, Load),
         ["text-layout"] = new("scene/valid/text-layout.json", 220, 180, 10, 10, null, null, Load),
         ["text-layout-t2"] = new("scene/valid/text-layout.json", 220, 180, 10, 10, null, null, Load, Elapsed: 2),
         ["shapes-scale2"] = new("scene/valid/shapes.json", 220, 180, 5, 5, null, null, Scale: 2),

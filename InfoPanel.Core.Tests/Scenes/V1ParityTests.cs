@@ -30,9 +30,10 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     /// A case that differs from the step-1 golden for known reasons: at most <see cref="MaxFraction"/> of its pixels may
     /// differ from the golden, and everywhere outside <see cref="Areas"/> (profile pixels, where the reasons apply) it
     /// must match within the standard tolerance: the golden, or with <see cref="Unhinted"/> (glyph hinting is one of the
-    /// reasons) the step-1 renderer drawing the case with unhinted glyphs.
+    /// reasons) the step-1 renderer drawing the case with unhinted glyphs. A null <see cref="MaxFraction"/> bounds the case
+    /// by its decoration bands instead (<see cref="DecorationBandProblems"/>).
     /// </summary>
-    private sealed record Deviation(double MaxFraction, string Reason, bool Unhinted = false, params SKRectI[] Areas);
+    private sealed record Deviation(double? MaxFraction, string Reason, bool Unhinted = false, params SKRectI[] Areas);
 
     private const string Hinting = "glyphs unhinted";
     private const string RotatedChart = "rotated chart drawn as rotated shapes, not a rotated raster";
@@ -41,6 +42,7 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     private const string HaloCut = "a scrolling text's halo cut at its box before the blur, not only after it";
     private const string FractionalRows = "rows at fractional offsets, not truncated to whole pixels";
     private const string TableGlow = "the glow drawn once for the table, not once per cell";
+    private const string Decorations = "underline and strike placed by the font's metrics as on text, not on whole pixels, and an ellipsis decorated";
 
     private static SKRectI Box(int x, int y, int w, int h) => SKRectI.Create(x, y, w, h);
 
@@ -89,6 +91,9 @@ public sealed class V1ParityTests(ITestOutputHelper output)
         ["table-missing-column"] = new(0.111, Hinting + "; " + FractionalRows, Unhinted: true, TableRows),
         ["table-rows-0"] = new(0.07, Hinting, Unhinted: true),
         ["table-single-line-no-ellipsis"] = new(0.089, Hinting + "; " + FractionalRows, Unhinted: true, TableRows),
+        // Bounded by its decoration bands (DecorationBandProblems); without decorations the case matches row by row
+        // (A_decorated_table_differs_from_step1_only_by_its_decorations).
+        ["table-underline-zero-width"] = new(null, Hinting + "; " + FractionalRows + "; " + Decorations, Unhinted: true),
         // The data rows and the lines their cells run into below them (checked line by line by the wrapped-cell test).
         ["table-wrap-off"] = new(0.121, Hinting + "; " + FractionalRows, Unhinted: true, TableRows),
         // The glow reaches the whole frame; without it the case is the table case (A_glowing_table_differs_only_by_its_glow).
@@ -144,9 +149,9 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     /// <summary>
     /// The step-1 renderer's frame of the case with unhinted glyphs: everything else as its golden. Text is laid out by
     /// the same library in both renderers; only its default glyph hinting differs, and it is a process-wide default, set
-    /// here only while the Golden collection runs alone.
+    /// here only while the Golden collection runs alone. <paramref name="change"/>, when given, changes the case's items first.
     /// </summary>
-    private static SKBitmap RenderStep1Unhinted(string name)
+    private static SKBitmap RenderStep1Unhinted(string name, Action<InfoPanel.Models.DisplayItem>? change = null)
     {
         var before = TextPaintOptions.Default.Hinting;
         TextPaintOptions.Default.Hinting = SKFontHinting.None;
@@ -154,6 +159,7 @@ public sealed class V1ParityTests(ITestOutputHelper output)
         {
             using var scene = new GoldenScene();
             var (profile, items) = GoldenTests.Cases[name]();
+            if (change is not null) items.ForEach(change);
             return scene.Render(profile, items, ScaleOf(name));
         }
         finally
@@ -168,9 +174,8 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     /// The frame against the golden; against the step-1 renderer with unhinted glyphs; and for an accepted case, outside
     /// its areas against the golden or (<see cref="Deviation.Unhinted"/>) the unhinted step-1 frame.
     /// </summary>
-    private static (ImageDiff Golden, ImageDiff Unhinted, ImageDiff? Outside) Compare(string name, bool writeOnFailure = false)
+    private static (ImageDiff Golden, ImageDiff Unhinted, ImageDiff? Outside) Compare(string name, SKBitmap frame, bool writeOnFailure = false)
     {
-        using var frame = RenderScene(name);
         var golden = GoldenImage.Measure(GoldenPath(name), frame);
         using var unhinted = RenderStep1Unhinted(name);
         var unhintedPath = Path.Combine(GoldenImage.ResultsDirectory, $"v1-parity-{name}.unhinted.png");
@@ -178,7 +183,7 @@ public sealed class V1ParityTests(ITestOutputHelper output)
         File.WriteAllBytes(unhintedPath, GoldenImage.EncodePng(unhinted));
         var vsUnhinted = GoldenImage.Measure(unhintedPath, frame);
         ImageDiff? rest = null;
-        if (Accepted.TryGetValue(name, out var accepted))
+        if (Accepted.TryGetValue(name, out var accepted) && accepted.MaxFraction is not null)
         {
             var scale = (int)ScaleOf(name);
             var areas = accepted.Areas.Select(r => new SKRectI(r.Left * scale, r.Top * scale, r.Right * scale, r.Bottom * scale)).ToArray();
@@ -194,18 +199,38 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     public void Matches_the_step1_golden(string name)
     {
         GoldenImage.RequireGoldenDirectory(GoldenImage.GoldenDirectory);
-        var (golden, unhinted, rest) = Compare(name, writeOnFailure: true);
+        using var frame = RenderScene(name);
+        var problems = ParityProblems(name, frame, writeOnFailure: true);
+        Assert.True(problems.Count == 0, string.Join("; ", problems) + $" See TestResults/golden/v1-parity-{name}.actual.png.");
+    }
+
+    /// <summary>What fails <paramref name="frame"/> as the case's frame: <see cref="Matches_the_step1_golden"/>'s comparison.</summary>
+    private List<string> ParityProblems(string name, SKBitmap frame, bool writeOnFailure = false)
+    {
+        var (golden, unhinted, rest) = Compare(name, frame, writeOnFailure);
         output.WriteLine($"{name}: against the golden {golden}; against step 1 unhinted {unhinted}; outside the accepted areas {rest}");
-        var see = $" See TestResults/golden/v1-parity-{name}.actual.png.";
+        var problems = Problems(name, frame, golden, rest);
+        foreach (var p in problems) output.WriteLine(p);
+        return problems;
+    }
+
+    /// <summary>What fails <paramref name="frame"/>, given its <see cref="Compare"/> results.</summary>
+    private static List<string> Problems(string name, SKBitmap frame, ImageDiff golden, ImageDiff? rest)
+    {
+        var problems = new List<string>();
         if (!Accepted.TryGetValue(name, out var accepted))
         {
-            Assert.True(golden.Fraction <= GoldenImage.DifferingPixelFraction, $"{name}: {golden}; at most {GoldenImage.DifferingPixelFraction * 100}% may.{see}");
-            return;
+            if (golden.Fraction > GoldenImage.DifferingPixelFraction)
+                problems.Add($"{name}: {golden}; at most {GoldenImage.DifferingPixelFraction * 100}% may.");
+            return problems;
         }
-        Assert.True(golden.Fraction <= accepted.MaxFraction, $"{name}: {golden}; at most {accepted.MaxFraction * 100:0.###}% may ({accepted.Reason}).{see}");
-        Assert.True(rest!.Value.Fraction <= GoldenImage.DifferingPixelFraction,
-            $"{name} outside its accepted areas, against {(accepted.Unhinted ? "the step-1 renderer with unhinted glyphs" : "the golden")}: {rest}; "
-            + $"at most {GoldenImage.DifferingPixelFraction * 100}% may.{see}");
+        if (accepted.MaxFraction is null) return DecorationBandProblems(name, frame);
+        if (golden.Fraction > accepted.MaxFraction)
+            problems.Add($"{name}: {golden}; at most {accepted.MaxFraction * 100:0.###}% may ({accepted.Reason}).");
+        if (rest!.Value.Fraction > GoldenImage.DifferingPixelFraction)
+            problems.Add($"{name} outside its accepted areas, against {(accepted.Unhinted ? "the step-1 renderer with unhinted glyphs" : "the golden")}: {rest}; "
+                + $"at most {GoldenImage.DifferingPixelFraction * 100}% may.");
+        return problems;
     }
 
     /// <summary>An accepted deviation that no longer differs is removed instead of carried along.</summary>
@@ -215,7 +240,8 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     {
         if (name.Length == 0) return; // none accepted
         GoldenImage.RequireGoldenDirectory(GoldenImage.GoldenDirectory);
-        var (golden, _, _) = Compare(name);
+        using var frame = RenderScene(name);
+        var (golden, _, _) = Compare(name, frame);
         Assert.True(golden.Fraction > GoldenImage.DifferingPixelFraction, $"{name} is now within the standard tolerance ({golden}); remove its deviation.");
     }
 
@@ -230,10 +256,10 @@ public sealed class V1ParityTests(ITestOutputHelper output)
         static string Cell(ImageDiff d) => $"{d.MaxDelta}, {d.Differing} ({100 * d.Fraction:0.###}%)";
         foreach (var name in Cases())
         {
-            var (golden, unhinted, rest) = Compare(name);
-            var ok = GoldenImage.DifferingPixelFraction;
-            var result = !Accepted.TryGetValue(name, out var a) ? golden.Fraction <= ok ? "within tolerance" : "FAILS"
-                : golden.Fraction <= a.MaxFraction && rest!.Value.Fraction <= ok ? $"accepted: {a.Reason}" : "FAILS";
+            using var frame = RenderScene(name);
+            var (golden, unhinted, rest) = Compare(name, frame);
+            var result = Problems(name, frame, golden, rest).Count > 0 ? "FAILS"
+                : Accepted.TryGetValue(name, out var a) ? $"accepted: {a.Reason}" : "within tolerance";
             table.Append(CultureInfo.InvariantCulture,
                 $"| {name} | {ScaleOf(name)} | {golden.MaxDelta}, {golden.Differing} / {golden.Total} ({100 * golden.Fraction:0.###}%) | {Cell(unhinted)} | {(rest is { } r ? Cell(r) : "")} | {result} |\n");
         }
@@ -463,14 +489,19 @@ public sealed class V1ParityTests(ITestOutputHelper output)
 
     private sealed record TableLayout(int[] Step1Tops, int[] Shifts);
 
-    /// <summary>The table's frame, the step-1 renderer's frame of it with unhinted glyphs, and both renderers' row offsets.</summary>
-    private static (SKBitmap Frame, SKBitmap Unhinted, TableLayout Layout) TableFrames(string name)
+    /// <summary>
+    /// The table's frame, the step-1 renderer's frame of it with unhinted glyphs, and both renderers' row offsets; for
+    /// <paramref name="document"/> and <paramref name="change"/>, when given, the case's document changed and its item changed.
+    /// </summary>
+    private static (SKBitmap Frame, SKBitmap Unhinted, TableLayout Layout) TableFrames(string name, JsonElement? document = null,
+        Action<InfoPanel.Models.DisplayItem>? change = null)
     {
         using var scene = new GoldenScene();
         using var media = FixtureMedia();
-        var document = SceneKit.Load(Path.Combine(ReferenceDir, name + ".document.json"));
-        using var snapshot = SceneRuntime.RenderOnce(document, GoldenScene.UtcNow, Options(scene, media));
+        document ??= SceneKit.Load(Path.Combine(ReferenceDir, name + ".document.json"));
+        using var snapshot = SceneRuntime.RenderOnce(document.Value, GoldenScene.UtcNow, Options(scene, media));
         var (profile, items) = GoldenTests.Cases[name]();
+        if (change is not null) items.ForEach(change);
         var table = (InfoPanel.Models.TableSensorDisplayItem)items.Single();
         var rows = table.MaxRows + (table.ShowHeader ? 1 : 0);
         // Step 1's rows are one "A" line apart (its cells can be taller); the runtime's table frame is `rows` rowHeights tall.
@@ -481,24 +512,27 @@ public sealed class V1ParityTests(ITestOutputHelper output)
         var tops = Enumerable.Range(0, rows + 1).Select(k => (int)(y + step1Line * k)).ToArray();
         var shifts = Enumerable.Range(0, rows).Select(k => (int)Math.Ceiling(y + k * rowHeight - 1e-3) - tops[k]).ToArray();
         using var rendered = snapshot.Render();
-        using var step1 = RenderStep1Unhinted(name);
+        using var step1 = RenderStep1Unhinted(name, change);
         return (GoldenImage.Normalize(rendered), GoldenImage.Normalize(step1), new TableLayout(tops, shifts));
     }
 
-    /// <summary>Each row's band of the unhinted step-1 frame against the frame's band moved by its shift, then the rest below.</summary>
-    private static List<string> TableRowProblems(SKBitmap frame, SKBitmap unhinted, TableLayout layout)
+    /// <summary>
+    /// Each row's band of the unhinted step-1 frame against the frame's band moved by its shift, then the rest below; the
+    /// frame's pixels in <paramref name="skip"/>, when given, left out.
+    /// </summary>
+    private static List<string> TableRowProblems(SKBitmap frame, SKBitmap unhinted, TableLayout layout, bool[,]? skip = null)
     {
         var problems = new List<string>();
         var rows = layout.Shifts.Length;
         for (var k = 0; k < rows; k++)
         {
             var band = SKRectI.Create(0, layout.Step1Tops[k], frame.Width, layout.Step1Tops[k + 1] - layout.Step1Tops[k]);
-            var diff = Differing(unhinted, band, frame, layout.Shifts[k]);
+            var diff = Differing(unhinted, band, frame, layout.Shifts[k], skip);
             if (diff > 0) problems.Add($"row {k} (step 1's y {band.Top}–{band.Bottom}, moved {layout.Shifts[k]}): {diff} pixels differ");
         }
         var shift = layout.Shifts[rows - 1];
         var below = layout.Step1Tops[rows];
-        var rest = Differing(unhinted, SKRectI.Create(0, below, frame.Width, frame.Height - below - Math.Max(0, shift)), frame, shift);
+        var rest = Differing(unhinted, SKRectI.Create(0, below, frame.Width, frame.Height - below - Math.Max(0, shift)), frame, shift, skip);
         if (rest > 0) problems.Add($"below the rows (step 1's y ≥ {below}, moved {shift}): {rest} pixels differ");
         return problems;
     }
@@ -641,6 +675,192 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// The decorations' reason: with underline and strike taken out of both, the table with a column without a width
+    /// matches step 1 row by row at its fractional offsets, so only the decorations differ. The runtime draws them as it
+    /// draws a text node's, from the font's metrics at the run's baseline (here the underline's centre about 0.2 px
+    /// below step 1's whole-pixel line and the strike's 0.8 to 0.9 px above it) and through an ellipsis, which step 1 leaves
+    /// undecorated.
+    /// </summary>
+    [Fact]
+    public void A_decorated_table_differs_from_step1_only_by_its_decorations()
+    {
+        GoldenImage.RequireGoldenDirectory(GoldenImage.GoldenDirectory);
+        const string name = DecoratedTable;
+        var (frame, unhinted, layout) = TableFrames(name, Undecorated(name), item =>
+        {
+            var table = (InfoPanel.Models.TableSensorDisplayItem)item;
+            Assert.True(table.Underline && table.Strikeout);
+            table.Underline = table.Strikeout = false;
+        });
+        using (frame)
+        using (unhinted)
+        {
+            Assert.Equal([0, 1, 1, 1, 1], layout.Shifts);
+            var problems = TableRowProblems(frame, unhinted, layout);
+            Assert.True(problems.Count == 0, string.Join("; ", problems));
+        }
+    }
+
+    private const string DecoratedTable = "table-underline-zero-width";
+
+    /// <summary>How far a decoration band reaches above and below its decoration's rows.</summary>
+    private const int BandReach = 2;
+
+    /// <summary>A decoration as the runtime draws it, in frame pixels: its rectangle, its band and its fill.</summary>
+    private sealed record Decoration(string What, SKRect Rect, SKRectI Band, SKColor Fill);
+
+    /// <summary>
+    /// The decorations' reason as the case's bound. From the runtime's layout of the case: each decorated line's underline
+    /// and strike rectangles, and their bands (the rectangle's rows ±<see cref="BandReach"/> px, across the line's laid-out
+    /// width, the ellipsis included). Every pixel of <paramref name="frame"/> outside the bands must match step 1 drawn
+    /// unhinted with its decorations, within the standard channel tolerance: above the table unmoved, the rows and below
+    /// them row by row at their fractional offsets (<see cref="TableRowProblems"/>). Inside, each decoration must be drawn:
+    /// every column across it (its anti-aliased ends left out) covered by at least half its thickness of its fill.
+    /// </summary>
+    private static List<string> DecorationBandProblems(string name, SKBitmap frame)
+    {
+        Assert.Equal(1f, ScaleOf(name));
+        var decorations = DecorationsOf(name);
+        Assert.NotEmpty(decorations);
+        var (rendered, unhinted, layout) = TableFrames(name);
+        using var actual = GoldenImage.Normalize(frame);
+        using (rendered)
+        using (unhinted)
+        {
+            var skip = new bool[actual.Width, actual.Height];
+            foreach (var d in decorations)
+                for (var y = Math.Max(0, d.Band.Top); y < Math.Min(actual.Height, d.Band.Bottom); y++)
+                    for (var x = Math.Max(0, d.Band.Left); x < Math.Min(actual.Width, d.Band.Right); x++)
+                        skip[x, y] = true;
+
+            var outside = new List<string>();
+            var above = Differing(unhinted, SKRectI.Create(0, 0, actual.Width, layout.Step1Tops[0]), actual, 0, skip);
+            if (above > 0) outside.Add($"above the table: {above} pixels differ");
+            outside.AddRange(TableRowProblems(actual, unhinted, layout, skip));
+            var problems = outside.Select(p => "outside the decoration bands, " + p).ToList();
+
+            var background = SKColor.Parse(GoldenScene.Background);
+            foreach (var d in decorations)
+            {
+                // The channel the fill differs most from the background in measures how much of a pixel it covers.
+                Func<SKColor, byte>[] channels = [c => c.Red, c => c.Green, c => c.Blue];
+                var channel = channels.MaxBy(c => Math.Abs(c(d.Fill) - c(background)))!;
+                double Coverage(SKColor c) => Math.Clamp((channel(c) - channel(background)) / (double)(channel(d.Fill) - channel(background)), 0, 1);
+                int left = (int)Math.Ceiling(d.Rect.Left) + 1, right = (int)Math.Floor(d.Rect.Right) - 1;
+                int top = (int)Math.Floor(d.Rect.Top), bottom = (int)Math.Ceiling(d.Rect.Bottom);
+                var uncovered = Enumerable.Range(left, Math.Max(0, right - left))
+                    .Count(x => Enumerable.Range(top, bottom - top).Sum(y => Coverage(actual.GetPixel(x, y))) < d.Rect.Height / 2);
+                if (uncovered > 0)
+                    problems.Add($"decoration missing: the {d.What} at x {d.Rect.Left:0.##}–{d.Rect.Right:0.##}, y {d.Rect.Top:0.##}–{d.Rect.Bottom:0.##} "
+                        + $"leaves {uncovered} of {right - left} columns uncovered");
+            }
+            return problems;
+        }
+    }
+
+    /// <summary>The case's decorations, from the scene runtime's layout of its reference document (a one-off snapshot).</summary>
+    private static List<Decoration> DecorationsOf(string name)
+    {
+        using var scene = new GoldenScene();
+        using var media = FixtureMedia();
+        using var snapshot = SceneRuntime.RenderOnce(SceneKit.Load(Path.Combine(ReferenceDir, name + ".document.json")), GoldenScene.UtcNow,
+            Options(scene, media));
+        // The snapshot's evaluated items aren't exposed; the test reads them rather than widen the runtime's surface.
+        var field = typeof(TickSnapshot).GetField("_items", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var items = Assert.IsType<SnapItem[]>(field?.GetValue(snapshot));
+        var found = new List<Decoration>();
+
+        void Nodes(RNode[] nodes, SKMatrix matrix)
+        {
+            foreach (var node in nodes)
+                switch (node)
+                {
+                    case RGroup g:
+                        Nodes(g.Children, matrix.PreConcat(g.Matrix));
+                        break;
+                    case RText t:
+                        foreach (var line in t.Layout.Lines)
+                        {
+                            // As SceneDrawer draws a line: its start, its baseline, and each run's decorations from there.
+                            var x = t.Left + (t.AlignWidth - line.Width) * t.AlignFraction;
+                            var y = t.Top + line.Baseline;
+                            foreach (var run in line.Runs)
+                            {
+                                var span = Math.Clamp(run.Span, 0, t.SpanFills.Length - 1);
+                                var fill = SceneColor.ToSk(Assert.IsType<RSolid>(t.SpanFills[span]).Color);
+                                var width = matrix.MapRect(new SKRect(Math.Min(x, x + run.X0), y, Math.Max(x + line.Width, x + run.X1), y));
+                                void Add(string what, SKRect local)
+                                {
+                                    var rect = matrix.MapRect(local);
+                                    var band = new SKRectI((int)Math.Floor(width.Left), (int)Math.Floor(rect.Top) - BandReach,
+                                        (int)Math.Ceiling(width.Right), (int)Math.Ceiling(rect.Bottom) + BandReach);
+                                    found.Add(new Decoration(what, rect, band, fill));
+                                }
+                                if (span < t.Underline.Length && t.Underline[span])
+                                    Add("underline", new SKRect(x + run.X0, y + run.UnderlinePosition, x + run.X1, y + run.UnderlinePosition + run.UnderlineThickness));
+                                if (span < t.Strike.Length && t.Strike[span])
+                                    Add("strike", new SKRect(x + run.X0, y + run.StrikePosition - run.StrikeThickness, x + run.X1, y + run.StrikePosition));
+                            }
+                        }
+                        break;
+                }
+        }
+
+        void Items(SnapItem[] list)
+        {
+            foreach (var item in list)
+                switch (item)
+                {
+                    case SnapGroup g: Items(g.Children); break;
+                    case SnapScene { Nodes: { } nodes } s: Nodes(nodes, s.World); break;
+                }
+        }
+
+        Items(items);
+        return found;
+    }
+
+    /// <summary>The case's reference document with underline and strike taken out of every node.</summary>
+    private static JsonElement Undecorated(string name)
+    {
+        var node = JsonNode.Parse(File.ReadAllText(Path.Combine(ReferenceDir, name + ".document.json")))!;
+        foreach (var child in node["items"]![0]!["scene"]!["nodes"]![0]!["children"]!.AsArray())
+        {
+            Assert.True(child!.AsObject().Remove("underline"));
+            Assert.True(child.AsObject().Remove("strike"));
+        }
+        return JsonSerializer.SerializeToElement(node);
+    }
+
+    /// <summary>The decorated table's parity comparison fails on a frame of the profile's background only, outside its decoration bands.</summary>
+    [Fact]
+    public void The_decorations_check_fails_on_a_blank_frame()
+    {
+        GoldenImage.RequireGoldenDirectory(GoldenImage.GoldenDirectory);
+        using var frame = RenderScene(DecoratedTable);
+        Fill(frame, SKRectI.Create(0, 0, frame.Width, frame.Height), SKColor.Parse(GoldenScene.Background));
+        var problems = ParityProblems(DecoratedTable, frame);
+        Assert.Contains(problems, p => p.StartsWith("outside the decoration bands", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The decorated table's parity comparison fails on the table drawn without its decorations, and only for them: every
+    /// decoration is missing, and nothing differs outside the bands, step 1's own decorations included.
+    /// </summary>
+    [Fact]
+    public void The_decorations_check_fails_on_a_frame_without_decorations()
+    {
+        GoldenImage.RequireGoldenDirectory(GoldenImage.GoldenDirectory);
+        using var scene = new GoldenScene();
+        using var media = FixtureMedia();
+        using var snapshot = SceneRuntime.RenderOnce(Undecorated(DecoratedTable), GoldenScene.UtcNow, Options(scene, media));
+        using var frame = snapshot.Render();
+        var problems = ParityProblems(DecoratedTable, frame);
+        Assert.NotEmpty(problems);
+        Assert.All(problems, p => Assert.StartsWith("decoration missing", p, StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// The charts' reason at scale 2: each chart's area of the scale-2 frame, reduced to scale 1 (each 2 × 2 block
     /// averaged), against the step-1 scale-1 golden, an independent full-resolution reference for where every edge is.
     /// </summary>
@@ -698,12 +918,13 @@ public sealed class V1ParityTests(ITestOutputHelper output)
     }
 
     /// <summary>Pixels of <paramref name="band"/> in <paramref name="expected"/> that differ by more than the channel tolerance from <paramref name="actual"/> <paramref name="down"/> pixels lower.</summary>
-    private static int Differing(SKBitmap expected, SKRectI band, SKBitmap actual, int down)
+    private static int Differing(SKBitmap expected, SKRectI band, SKBitmap actual, int down, bool[,]? skip = null)
     {
         var differing = 0;
         for (var y = band.Top; y < band.Bottom; y++)
             for (var x = band.Left; x < band.Right; x++)
             {
+                if (skip is not null && y + down >= 0 && y + down < actual.Height && skip[x, y + down]) continue;
                 var a = y + down >= 0 && y + down < actual.Height ? actual.GetPixel(x, y + down) : SKColors.Transparent;
                 if (Delta(a, expected.GetPixel(x, y)) > GoldenImage.ChannelTolerance) differing++;
             }

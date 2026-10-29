@@ -1,0 +1,13 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"t": {"type": "table"}},
+  "nodes": [
+    {
+      "kind": "table",
+      "input": "t",
+      "underline": "yes",
+      "columns": [{"column": 0, "w": 50}],
+      "font": {"family": "Inter", "size": 12}
+    }
+  ]
+}

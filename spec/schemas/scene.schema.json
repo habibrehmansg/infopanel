@@ -371,7 +371,7 @@
     },
 
     "tableNode": {
-      "description": "Rows of a table input as text: a header row (the column names or `title`) when `header` is true, then up to `rows` rows (0: the header only), one `rowHeight` apart. Columns sit side by side, `gap` apart. Each cell is laid out as text in its column's width (`wrap`, `maxLines`, `overflow`); its first line is centred in its row and further lines run over the rows below. See docs/smart-nodes.md.",
+      "description": "Rows of a table input as text: a header row (the column names or `title`) when `header` is true, then up to `rows` rows (0: the header only), one `rowHeight` apart. Columns sit side by side, `gap` apart. Each cell is laid out as text in its column's width (`wrap`, `maxLines`, `overflow`); its first line is centred in its row and further lines run over the rows below. `underline` and `strike` decorate every cell. See docs/smart-nodes.md.",
       "type": "object",
       "required": ["kind", "input", "columns", "font"],
       "additionalProperties": false,
@@ -395,7 +395,9 @@
         "headerFill": { "$ref": "#/$defs/paint" },
         "wrap": { "enum": ["none", "word"], "default": "none" },
         "maxLines": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 1 },
-        "overflow": { "enum": ["visible", "clip", "ellipsis"], "default": "ellipsis" }
+        "overflow": { "enum": ["visible", "clip", "ellipsis"], "default": "ellipsis" },
+        "underline": { "type": "boolean", "default": false },
+        "strike": { "type": "boolean", "default": false }
       }
     },
     "tableColumn": {
@@ -410,7 +412,7 @@
             { "type": "string", "minLength": 1, "maxLength": 128 }
           ]
         },
-        "w": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },
+        "w": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "description": "0 or less: the column takes no width and doesn't cut or wrap its cells." },
         "align": { "enum": ["start", "center", "end"], "default": "start" },
         "title": { "$ref": "urn:infopanel:expression:1#/$defs/stringExpr", "description": "Header text. Absent: the column's name." }
       }

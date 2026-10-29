@@ -871,26 +871,44 @@ internal sealed class SceneEvaluator
 
     /// <summary>
     /// A cell laid out as text in its column (the table's wrap, maxLines and overflow): its first line centred vertically
-    /// in its row, further lines below it at the font's line spacing, over the rows below.
+    /// in its row, further lines below it at the font's line spacing, over the rows below. In a column of width 0 or less
+    /// the cell is laid out as text without a width: nothing cut or wrapped, each line placed by the column's align on its
+    /// left edge.
     /// </summary>
     private RText CellNode(CTable t, int row, int column, TextRun run, RPaint fill, RStroke? stroke, float left, float y, float[] widths, float rowHeight)
     {
-        var w = widths[column];
+        float? w = widths[column] > 0 ? widths[column] : null;
+        var fraction = t.Columns[column].AlignFraction;
         var layout = Cell(t, row, column, run, w, t.Overflow);
         var first = layout.Lines.Length > 0 ? layout.Lines[0].Height : layout.Height;
-        var top = y + row * rowHeight + (rowHeight - first) / 2;
-        var cellRect = new SKRect(left, y + row * rowHeight, left + w, y + (row + 1) * rowHeight);
+        var rowTop = y + row * rowHeight;
+        var top = rowTop + (rowHeight - first) / 2;
+        var left0 = w is null ? left - layout.Width * fraction : left;
+        var alignWidth = w ?? layout.Width;
+        float cellLeft = left, cellRight = left + (w ?? 0);
+        if (w is null)
+        {
+            // Without a width the cell spans its lines, as a text node without `w` does.
+            cellLeft = cellRight = left0;
+            foreach (var line in layout.Lines)
+            {
+                var lx = left0 + (alignWidth - line.Width) * fraction;
+                cellLeft = Math.Min(cellLeft, lx);
+                cellRight = Math.Max(cellRight, lx + line.Width);
+            }
+        }
+        var cellRect = new SKRect(cellLeft, rowTop, cellRight, rowTop + rowHeight);
         return new RText
         {
             Layout = layout,
-            Left = left,
+            Left = left0,
             Top = top,
-            AlignWidth = w,
-            AlignFraction = t.Columns[column].AlignFraction,
+            AlignWidth = alignWidth,
+            AlignFraction = fraction,
             SpanFills = [fill],
             Stroke = stroke,
-            Underline = [false],
-            Strike = [false],
+            Underline = [t.Underline],
+            Strike = [t.Strike],
             ClipRect = t.Overflow == TextOverflow.Clip ? cellRect : null,
             Outline = cellRect,
         };

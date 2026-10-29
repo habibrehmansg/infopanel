@@ -240,6 +240,8 @@ public sealed record TableNode : SceneNode
     public string? Wrap { get; init; }
     public int? MaxLines { get; init; }
     public string? Overflow { get; init; }
+    public bool? Underline { get; init; }
+    public bool? Strike { get; init; }
 }
 
 [SpecDef("urn:infopanel:scene:1#/$defs/tableColumn")]

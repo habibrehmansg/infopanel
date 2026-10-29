@@ -1805,7 +1805,7 @@ export interface SeriesNode {
   stroke?: Stroke;
 }
 
-/** Rows of a table input as text: a header row (the column names or `title`) when `header` is true, then up to `rows` rows (0: the header only), one `rowHeight` apart. Columns sit side by side, `gap` apart. Each cell is laid out as text in its column's width (`wrap`, `maxLines`, `overflow`); its first line is centred in its row and further lines run over the rows below. See docs/smart-nodes.md. */
+/** Rows of a table input as text: a header row (the column names or `title`) when `header` is true, then up to `rows` rows (0: the header only), one `rowHeight` apart. Columns sit side by side, `gap` apart. Each cell is laid out as text in its column's width (`wrap`, `maxLines`, `overflow`); its first line is centred in its row and further lines run over the rows below. `underline` and `strike` decorate every cell. See docs/smart-nodes.md. */
 export interface TableNode {
   kind: "table";
   id?: NodeId;
@@ -1845,11 +1845,16 @@ export interface TableNode {
   maxLines?: number;
   /** @default "ellipsis" */
   overflow?: "visible" | "clip" | "ellipsis";
+  /** @default false */
+  underline?: boolean;
+  /** @default false */
+  strike?: boolean;
 }
 
 export interface TableColumn {
   /** The table's column by index (0 first) or by name. A column the table doesn't have is skipped: nothing drawn, no width taken. */
   column: number | string;
+  /** 0 or less: the column takes no width and doesn't cut or wrap its cells. */
   w: NumberExpr;
   /** @default "start" */
   align?: "start" | "center" | "end";

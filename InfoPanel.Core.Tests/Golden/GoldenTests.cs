@@ -99,6 +99,9 @@ public class GoldenTests
         ["table-glow"] = () => Scene(260, 130, p => [
             new TableSensorDisplayItem("Processes", p, Keys.Processes.Id) { X = 10, Y = 8, Font = "Inter", FontSize = 12, Color = "#FFE0E0E0", MaxRows = 4, TableFormat = "0:110|1:60|2:50", RightAlign = true, GlowEnabled = true, GlowRadius = 8, GlowColor = "#FF00E5FF" },
         ]),
+        ["table-underline-zero-width"] = () => Scene(260, 130, p => [
+            new TableSensorDisplayItem("Processes", p, Keys.Processes.Id) { X = 10, Y = 8, Font = "Inter", FontSize = 12, Color = "#FFE0E0E0", MaxRows = 4, TableFormat = "0:0|1:60|2:50", RightAlign = true, Underline = true, Strikeout = true },
+        ]),
         ["image-png"] = () => Scene(200, 100, p => [Image(p, "logo.png", 10, 10), Image(p, "logo.png", 116, 10, i => { i.Width = 48; i.Height = 80; })]),
         ["image-svg"] = () => Scene(200, 100, p => [Image(p, "icon.svg", 10, 10), Image(p, "icon.svg", 100, 10, i => { i.Width = 80; i.Height = 80; i.Rotation = 20; })]),
         ["image-gif-frame0"] = () => Scene(120, 84, p => [Image(p, "blink.gif", 10, 10, i => i.Scale = 200)]),

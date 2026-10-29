@@ -168,6 +168,7 @@ internal sealed class CTable : CNode
     public bool Wrap;
     public int MaxLines = 1;
     public TextOverflow Overflow = TextOverflow.Ellipsis;
+    public bool Underline, Strike;
 }
 
 internal sealed class CMediaSource
@@ -521,6 +522,8 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
                     Wrap = tb.Wrap == "word",
                     MaxLines = Math.Clamp(tb.MaxLines ?? 1, 1, 1000),
                     Overflow = Overflow(tb.Overflow, TextOverflow.Ellipsis),
+                    Underline = tb.Underline ?? false,
+                    Strike = tb.Strike ?? false,
                 };
             case MediaNode m:
                 return new CMedia

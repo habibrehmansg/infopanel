@@ -462,4 +462,127 @@ public sealed class SceneTableTests(ITestOutputHelper output)
         double P(double q) => times[(int)Math.Min(times.Count - 1, Math.Floor(q * times.Count))];
         output.WriteLine(FormattableString.Invariant($"1,600 two-line cells changing every tick: p50 {P(0.5):0.0} ms, p95 {P(0.95):0.0} ms, max {times[^1]:0.0} ms; reported: {string.Join(", ", codes)}"));
     }
+
+    // ---- underline, strike and columns without a width ---------------------------------------------------------
+
+    /// <summary>The bands of rows in <paramref name="frame"/>'s area where every pixel from x0 to x1 is ink: a drawn line across it.</summary>
+    private static List<(int Top, int Bottom)> LineBands(SKBitmap frame, int x0, int x1, int y0, int y1)
+    {
+        var rows = new List<int>();
+        for (var y = y0; y < y1; y++)
+        {
+            var full = true;
+            for (var x = x0; x < x1 && full; x++)
+            {
+                var p = frame.GetPixel(x, y);
+                full = Math.Abs(p.Red - Background.Red) > 40 || Math.Abs(p.Green - Background.Green) > 40 || Math.Abs(p.Blue - Background.Blue) > 40;
+            }
+            if (full) rows.Add(y);
+        }
+        return Bands(rows);
+    }
+
+    /// <summary>Pixels that differ between <paramref name="a"/> and <paramref name="b"/> from x0 up to x1.</summary>
+    private static int DifferingBetween(SKBitmap a, SKBitmap b, int x0, int x1)
+    {
+        var n = 0;
+        for (var y = 0; y < a.Height; y++)
+            for (var x = Math.Max(0, x0); x < Math.Min(x1, a.Width); x++)
+            {
+                var p = a.GetPixel(x, y);
+                var q = b.GetPixel(x, y);
+                if (Math.Abs(p.Red - q.Red) > 2 || Math.Abs(p.Green - q.Green) > 2 || Math.Abs(p.Blue - q.Blue) > 2 || Math.Abs(p.Alpha - q.Alpha) > 2) n++;
+            }
+        return n;
+    }
+
+    [Fact]
+    public void Underline_and_strike_draw_a_line_under_and_through_every_cell_header_included()
+    {
+        const string columns = "[{'column':0,'w':130},{'column':1,'w':60},{'column':2,'w':80}]";
+        const string members = "'gap':10,'rowHeight':24";
+        int[] lefts = [0, 140, 210];
+        var (plain, _) = Draw(Table(members, columns), Processes);
+        var (decorated, _) = Draw(Table(members + ",'underline':true,'strike':true", columns), Processes);
+        var (underlined, _) = Draw(Table(members + ",'underline':true", columns), Processes);
+        var (struck, _) = Draw(Table(members + ",'strike':true", columns), Processes);
+        using (plain)
+        using (decorated)
+        using (underlined)
+        using (struck)
+        {
+            var cells = 0;
+            for (var row = 0; row <= Processes.Rows.Count; row++)
+                for (var c = 0; c < 3; c++)
+                {
+                    var text = row == 0 ? Processes.Columns[c] : Processes.Rows[row - 1][c]!;
+                    var x0 = lefts[c] + 1;
+                    var x1 = lefts[c] + (int)Math.Floor(Measure(text).Width) - 1;
+                    int y0 = row * 24, y1 = (row + 1) * 24;
+                    Assert.Empty(LineBands(plain, x0, x1, y0, y1));
+                    var lines = LineBands(decorated, x0, x1, y0, y1);
+                    var under = Assert.Single(LineBands(underlined, x0, x1, y0, y1));
+                    var through = Assert.Single(LineBands(struck, x0, x1, y0, y1));
+                    output.WriteLine($"'{text}': strike {through}, underline {under}");
+                    Assert.Equal([through, under], lines);
+                    Assert.True(through.Bottom < under.Top, $"'{text}': the strike {through} is above the underline {under}");
+                    cells++;
+                }
+            Assert.Equal(15, cells);
+        }
+    }
+
+    [Theory]
+    [InlineData("0", "start", "ellipsis")]
+    [InlineData("0", "end", "ellipsis")]
+    [InlineData("0", "center", "ellipsis")]
+    [InlineData("0", "start", "clip")]
+    [InlineData("0", "end", "clip")]
+    [InlineData("-20", "start", "ellipsis")]
+    [InlineData("-20", "end", "clip")]
+    public void A_column_without_a_width_draws_its_cells_whole_from_its_edge_as_text_without_a_width(string w, string align, string overflow)
+    {
+        const string cell = "a cell much wider than its column";
+        var lineHeight = Measure(cell).Lines[0].Height;
+        var table = Table($"'x':300,'header':false,'rowHeight':30,'overflow':'{overflow}'", $"[{{'column':0,'w':{w},'align':'{align}'}}]");
+        var text = $"{{'kind':'text','text':'{cell}','x':300,'y':{N((30 - lineHeight) / 2)},'align':'{align}','overflow':'{overflow}','font':{{'family':'Inter','size':16}},'fill':'#ffffff'}}";
+        var (drawn, _) = Draw(table, One(cell), width: 600);
+        var (asText, _) = Draw(text, One("x"), width: 600);
+        using (drawn)
+        using (asText)
+        {
+            var bands = Bands(InkRows(asText));
+            Assert.Single(bands);
+            var inkLeft = Enumerable.Range(0, asText.Width).First(x => InkRows(asText, x, x + 1).Count > 0);
+            var inkRight = Enumerable.Range(0, asText.Width).Last(x => InkRows(asText, x, x + 1).Count > 0);
+            output.WriteLine($"{align}: ink from x {inkLeft} to {inkRight}");
+            Assert.True(inkRight - inkLeft > Measure(cell).Width - 4, "the whole text drawn");
+            Assert.Equal(0, SceneKit.DifferingPixels(asText, drawn));
+        }
+    }
+
+    [Fact]
+    public void The_column_after_a_column_without_a_width_starts_a_gap_later()
+    {
+        const string members = "'gap':10,'rowHeight':20";
+        var (both, ink) = Draw("{'kind':'table','input':'t','x':140,'columns':[{'column':0,'w':0,'align':'end'},{'column':1,'w':60}],'font':{'family':'Inter','size':16},'fill':'#ffffff'," + members + "}", Processes);
+        var (first, _) = Draw("{'kind':'table','input':'t','x':140,'columns':[{'column':0,'w':0,'align':'end'}],'font':{'family':'Inter','size':16},'fill':'#ffffff'," + members + "}", Processes);
+        var (second, _) = Draw("{'kind':'table','input':'t','x':150,'columns':[{'column':1,'w':60}],'font':{'family':'Inter','size':16},'fill':'#ffffff'," + members + "}", Processes);
+        using (both)
+        using (first)
+        using (second)
+        {
+            // The first column's cells drawn whole, ending at its edge: the widest reaches its width left of it.
+            var widest = Processes.Rows.Select(r => Measure(r[0]!).Width).Append(Measure(Processes.Columns[0]).Width).Max();
+            var inkLeft = Enumerable.Range(0, 140).First(x => InkRows(first, x, x + 1).Count > 0);
+            output.WriteLine($"widest cell {widest}; ink from x {inkLeft}");
+            Assert.InRange(inkLeft, 140 - widest - 2, 140 - widest + 4);
+            Assert.NotEmpty(InkRows(second, 150));
+            Assert.Equal(0, DifferingBetween(both, first, 0, 141));
+            Assert.Equal(0, DifferingBetween(both, second, 141, both.Width));
+            // The box spans the drawn columns: no width for the first, then the gap and the second.
+            Assert.Equal(140, ink.X, 3);
+            Assert.Equal(70, ink.W, 3);
+        }
+    }
 }

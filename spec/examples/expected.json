@@ -215,6 +215,7 @@
   "scene/invalid/table-max-lines-zero.json": {"code": "schema", "path": "/nodes/0/maxLines"},
   "scene/invalid/table-nodes.json": {"code": "limit.tableNodes", "path": "/nodes", "limits": {"tableNodes": 1}},
   "scene/invalid/table-rows-negative.json": {"code": "schema", "path": "/nodes/0/rows"},
+  "scene/invalid/table-underline-not-bool.json": {"code": "schema", "path": "/nodes/0/underline"},
   "scene/invalid/table-wrap-unknown.json": {"code": "schema", "path": "/nodes/0/wrap"},
   "scene/invalid/text-nodes.json": {"code": "limit.textNodes", "path": "/nodes", "limits": {"textNodes": 1}},
   "scene/invalid/time-pattern.json": {"code": "time.pattern", "path": "/nodes/0/text/pattern"},
