@@ -351,16 +351,65 @@ internal sealed class FormatTimeExprC(PatternToken[] tokens, string? locale, str
     }
 }
 
-/// <summary><c>format</c>; a separator the scene doesn't give is the tick's regional format's (spec/docs/expressions.md, "Regional format").</summary>
+/// <summary>
+/// <c>format</c>; a separator the scene doesn't give is the tick's regional format's (spec/docs/expressions.md, "Regional
+/// format"). A <c>value</c> that is a string at run time is a number given as text (<see cref="FormatText"/>).
+/// </summary>
 internal sealed class FormatExprC(CExpr value, CExpr? decimals, CExpr? group, string? decimalSeparator, string? groupSeparator) : CExpr
 {
     public override Val Eval(Ev e)
     {
         e.Work += CallExprC.StringWork;
-        var v = value.Num(e);
+        var v = value.Eval(e);
+        if (v.S is { } text)
+        {
+            var grouped = group?.Bool(e) ?? false;
+            return Val.Str(e.Cut(FormatText(text, grouped, decimalSeparator ?? e.Clock.Format.DecimalSeparator, groupSeparator ?? e.Clock.Format.GroupSeparator)));
+        }
         var d = decimals is null ? 0 : (int)Math.Clamp(Math.Round(decimals.Num(e), MidpointRounding.AwayFromZero), 0, 6);
         var g = group?.Bool(e) ?? false;
-        return Val.Str(e.Cut(FormatNumber(v, d, g, decimalSeparator ?? e.Clock.Format.DecimalSeparator, groupSeparator ?? e.Clock.Format.GroupSeparator)));
+        return Val.Str(e.Cut(FormatNumber(v.N, d, g, decimalSeparator ?? e.Clock.Format.DecimalSeparator, groupSeparator ?? e.Clock.Format.GroupSeparator)));
+    }
+
+    /// <summary>
+    /// A number given as text: a plain decimal (<c>-?[0-9]+(\.[0-9]+)?</c>) keeps its own digits, with
+    /// <paramref name="groupSeparator"/> between groups of three integer digits when <paramref name="group"/> and
+    /// <paramref name="decimalSeparator"/> for its point; any other text is returned unchanged.
+    /// </summary>
+    internal static string FormatText(string text, bool group, string decimalSeparator, string groupSeparator)
+    {
+        var start = text.Length > 0 && text[0] == '-' ? 1 : 0;
+        var point = -1;
+        for (var i = start; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (c == '.' && point < 0) point = i;
+            else if (c is < '0' or > '9') return text;
+        }
+        var end = point < 0 ? text.Length : point;
+        if (end == start || point == text.Length - 1) return text; // no integer digits, or none after the point
+        var sb = new StringBuilder(text.Length + 8);
+        sb.Append(text, 0, start);
+        AppendInteger(sb, text.AsSpan(start, end - start), group, groupSeparator);
+        if (point >= 0) sb.Append(decimalSeparator).Append(text, point + 1, text.Length - point - 1);
+        return sb.ToString();
+    }
+
+    /// <summary>Integer digits, with <paramref name="groupSeparator"/> between groups of three when <paramref name="group"/>.</summary>
+    private static void AppendInteger(StringBuilder sb, ReadOnlySpan<char> integer, bool group, string groupSeparator)
+    {
+        if (!group || integer.Length <= 3)
+        {
+            sb.Append(integer);
+            return;
+        }
+        var first = integer.Length % 3;
+        if (first > 0) sb.Append(integer[..first]);
+        for (var i = first; i < integer.Length; i += 3)
+        {
+            if (i > 0) sb.Append(groupSeparator);
+            sb.Append(integer.Slice(i, 3));
+        }
     }
 
     internal static string FormatNumber(double v, int decimals, bool group, string decimalSeparator, string groupSeparator)
@@ -374,20 +423,7 @@ internal sealed class FormatExprC(CExpr value, CExpr? decimals, CExpr? group, st
         if (negative && integer.TrimStart('0').Length == 0 && fraction.TrimStart('0').Length == 0) negative = false;
         var sb = new StringBuilder();
         if (negative) sb.Append('-');
-        if (group && integer.Length > 3)
-        {
-            var first = integer.Length % 3;
-            if (first > 0) sb.Append(integer, 0, first);
-            for (var i = first; i < integer.Length; i += 3)
-            {
-                if (i > 0) sb.Append(groupSeparator);
-                sb.Append(integer, i, 3);
-            }
-        }
-        else
-        {
-            sb.Append(integer);
-        }
+        AppendInteger(sb, integer, group, groupSeparator);
         if (fraction.Length > 0) sb.Append(decimalSeparator).Append(fraction);
         return sb.ToString();
     }

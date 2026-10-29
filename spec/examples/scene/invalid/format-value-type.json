@@ -1,0 +1,8 @@
+{
+  "format": "infopanel.scene/1",
+  "values": {
+    "hot": {"op": "gt", "args": [1, 2]},
+    "x": {"op": "format", "value": {"op": "value", "name": "hot"}}
+  },
+  "nodes": []
+}

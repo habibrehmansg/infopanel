@@ -342,7 +342,8 @@ internal sealed class NotRule : Rule
 /// <summary>
 /// <c>anyOf</c> / <c>oneOf</c>. Branches are tried only when their (resolved) <c>type</c> accepts the instance and, for
 /// discriminated unions, when their <c>const</c> discriminator equals the instance's value. A failure reports the single
-/// remaining branch's own errors, a discriminator error, or a generic union error.
+/// remaining branch's own errors, the errors every branch that matched the discriminator reports alike, a discriminator
+/// error, or a generic union error.
 /// </summary>
 internal sealed class UnionRule : Rule
 {
@@ -438,9 +439,21 @@ internal sealed class UnionRule : Rule
             var report = Enumerable.Range(0, cand.Count).Where(k => _allowed[cand[k]] != null).ToList();
             if (report.Count == 0) report = [.. Enumerable.Range(0, cand.Count)];
             if (report.Count == 1) errs.AddAll(trials[report[0]]);
+            // Several branches matched the discriminator (an "if" of numbers and one of strings) and all report the same
+            // errors: that is the mistake whichever was meant, so it keeps its own path.
+            else if (disc != null && cand.All(i => _allowed[i] != null) && report.Skip(1).All(k => SameErrors(trials[report[0]], trials[k])))
+                errs.AddAll(trials[report[0]]);
             else Fail(errs, path, "Value does not match any of the alternatives.");
         }
     }
+
+    /// <summary>
+    /// Whether two failed trials report the same errors: the same count, and the same paths, keywords and messages in
+    /// order. A list that was cut (past <see cref="Errs.Keep"/>) is never the same: what was dropped may differ.
+    /// </summary>
+    private static bool SameErrors(Errs a, Errs b) =>
+        a.Count == b.Count && a.Items.Count == a.Count && b.Items.Count == b.Count
+        && a.Items.Zip(b.Items).All(p => p.First.Keyword == p.Second.Keyword && p.First.Path.Equals(p.Second.Path) && p.First.Message == p.Second.Message);
 
     /// <summary>The types a schema accepts, following <c>$ref</c>; null means unconstrained.</summary>
     private static HashSet<string>? TypesOf(SchemaNode n)

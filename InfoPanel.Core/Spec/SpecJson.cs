@@ -195,17 +195,17 @@ public static class SpecJson
         Expr result = op switch
         {
             "input" => new InputExpr(Req(e, "name"), Str(e, "field")),
-            "history" => new HistoryExpr(Req(e, "input"), Req(e, "fn"), ReadInt32(e.GetProperty("count"))),
+            "history" => new HistoryExpr(Req(e, "input"), Req(e, "fn"), ReadInt32(Member(e, "count"))),
             "time" => new TimeExpr(Req(e, "field"), Str(e, "zone")),
             "formatTime" => new FormatTimeExpr(Req(e, "pattern"), Str(e, "locale"), Str(e, "zone")),
-            "format" => new FormatExpr(ReadExpr(e.GetProperty("value")), Opt(e, "decimals"), Opt(e, "group"),
+            "format" => new FormatExpr(ReadExpr(Member(e, "value")), Opt(e, "decimals"), Opt(e, "group"),
                 Str(e, "decimalSeparator"), Str(e, "groupSeparator")),
             "box" => new BoxExpr(Req(e, "field")),
             "measure" => new MeasureExpr(Req(e, "node"), Req(e, "field")),
             "dt" => new DtExpr(),
             "value" => new ValueRefExpr(Req(e, "name")),
             "state" => new StateRefExpr(Req(e, "name")),
-            "steps" => new StepsExpr(ReadExpr(e.GetProperty("value")), List(e, "at"), List(e, "out")),
+            "steps" => new StepsExpr(ReadExpr(Member(e, "value")), List(e, "at"), List(e, "out")),
             _ => new CallExpr(op, List(e, "args")),
         };
         var expected = result switch
@@ -232,6 +232,9 @@ public static class SpecJson
         e.TryGetProperty(name, out var v) ? (v.ValueKind == JsonValueKind.String ? v.GetString() : throw new JsonException($"\"{name}\" must be a string.")) : null;
 
     private static string Req(JsonElement e, string name) => Str(e, name) ?? throw new JsonException($"Missing \"{name}\".");
+
+    private static JsonElement Member(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) ? v : throw new JsonException($"Missing \"{name}\".");
 
     private static Expr? Opt(JsonElement e, string name) => e.TryGetProperty(name, out var v) ? ReadExpr(v) : null;
 

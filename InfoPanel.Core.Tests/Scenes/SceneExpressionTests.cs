@@ -212,6 +212,69 @@ public sealed class SceneExpressionTests
     [InlineData("{'op':'if','args':[false,'#ff0000',{'op':'rgba','args':[0,0,255,1]}]}", "#0000ffff")]
     public void Colors(string expr, string expected) => Assert.Equal(expected, Color(expr));
 
+    // format of a number given as text (spec/docs/expressions.md, "Number formatting"): a plain decimal keeps its own
+    // digits and takes the separators; any other string comes back unchanged.
+    [Theory]
+    [InlineData("{'op':'format','value':'1234567.5','group':true}", "en-US", "1,234,567.5")]
+    [InlineData("{'op':'format','value':'1234567.5','group':true}", "de-DE", "1.234.567,5")]
+    [InlineData("{'op':'format','value':'1234567.5'}", "de-DE", "1234567,5")]
+    [InlineData("{'op':'format','value':'1234567','group':true,'groupSeparator':'_'}", "de-DE", "1_234_567")]
+    [InlineData("{'op':'format','value':'-0.50','group':true}", "en-US", "-0.50")]
+    [InlineData("{'op':'format','value':'-0.50'}", "de-DE", "-0,50")]
+    [InlineData("{'op':'format','value':'-1234.000','group':true,'decimals':1}", "de-DE", "-1.234,000")]
+    [InlineData("{'op':'format','value':'0001234','group':true}", "en-US", "0,001,234")]
+    [InlineData("{'op':'format','value':'123','group':true}", "en-US", "123")]
+    [InlineData("{'op':'format','value':'99999999999999999999.5','group':true}", "en-US", "99,999,999,999,999,999,999.5")]
+    [InlineData("{'op':'format','value':'abc','group':true}", "de-DE", "abc")]
+    [InlineData("{'op':'format','value':'1e3','group':true}", "de-DE", "1e3")]
+    [InlineData("{'op':'format','value':'1,234','group':true}", "de-DE", "1,234")]
+    [InlineData("{'op':'format','value':' 1234','group':true}", "de-DE", " 1234")]
+    [InlineData("{'op':'format','value':'1234.','group':true}", "de-DE", "1234.")]
+    [InlineData("{'op':'format','value':'.5'}", "de-DE", ".5")]
+    [InlineData("{'op':'format','value':'+1234','group':true}", "de-DE", "+1234")]
+    [InlineData("{'op':'format','value':'-.5'}", "de-DE", "-.5")]
+    [InlineData("{'op':'format','value':'-'}", "de-DE", "-")]
+    [InlineData("{'op':'format','value':''}", "de-DE", "")]
+    [InlineData("{'op':'format','value':'١٢٣٤','group':true}", "de-DE", "١٢٣٤")]
+    [InlineData("{'op':'format','value':{'op':'input','name':'s','field':'text'},'group':true}", "de-DE", "Hello")]
+    public void Format_writes_a_number_given_as_text(string expr, string locale, string expected) =>
+        Assert.Equal(expected, Eval(expr, format: RegionalFormat.Lookup(locale)).Value.Text);
+
+    [Fact]
+    public void Format_groups_a_text_reading_that_is_a_number()
+    {
+        var (v, t, _) = Eval("{'op':'format','value':{'op':'input','name':'s','field':'text'},'group':true}",
+            f => f.Text("test:s", "1234567.25"), format: RegionalFormat.Lookup("de-DE"));
+        Assert.Equal(("1.234.567,25", Ty.String), (v.Text, t));
+        // A reading that isn't a plain decimal is drawn as sent.
+        Assert.Equal("1234 MHz", Eval("{'op':'format','value':{'op':'input','name':'s','field':'text'},'group':true}",
+            f => f.Text("test:s", "1234 MHz"), format: RegionalFormat.Lookup("de-DE")).Value.Text);
+    }
+
+    [Fact]
+    public void Format_takes_a_number_or_a_string_and_nothing_else()
+    {
+        static IReadOnlyList<(string Code, string Path)> Errors(string values)
+        {
+            var check = SceneValidator.Check(SceneKit.Json("{'format':'infopanel.scene/1','values':" + values + ",'nodes':[]}"));
+            return check.Errors.Select(e => (e.Code, e.Path)).ToList();
+        }
+
+        Assert.Empty(Errors("{'x':{'op':'format','value':'1234'}}"));
+        Assert.Empty(Errors("{'s':'1234','x':{'op':'format','value':{'op':'value','name':'s'}}}"));
+        Assert.Equal([("type.mismatch", "/values/x/value")], Errors("{'b':{'op':'lt','args':[1,2]},'x':{'op':'format','value':{'op':'value','name':'b'}}}"));
+        Assert.Equal([("type.mismatch", "/values/x/value")], Errors("{'c':{'op':'rgba','args':[1,2,3,1]},'x':{'op':'format','value':{'op':'value','name':'c'}}}"));
+    }
+
+    [Fact]
+    public void Format_of_text_is_cut_to_4096_scalar_values()
+    {
+        var digits = new string('9', 4000);
+        var text = Eval($"{{'op':'format','value':'{digits}','group':true}}", format: RegionalFormat.Lookup("en-US")).Value.Text;
+        Assert.Equal(4096, text.Length);
+        Assert.StartsWith("9,999,", text);
+    }
+
     [Fact]
     public void Types_are_inferred_as_the_validator_does()
     {

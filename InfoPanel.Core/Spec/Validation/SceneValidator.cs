@@ -493,7 +493,8 @@ public static class SceneValidator
                 }
                 case FormatExpr f:
                 {
-                    var flags = Info.Of(Ty.String).With(Arg(f.Value, path + "/value", Ty.Number));
+                    // A number, or a number given as text (spec/docs/expressions.md, "Number formatting").
+                    var flags = Info.Of(Ty.String).With(Arg(f.Value, path + "/value", Ty.Number | Ty.String));
                     if (f.Decimals is not null) flags = flags.With(Arg(f.Decimals, path + "/decimals", Ty.Number));
                     if (f.Group is not null) flags = flags.With(Arg(f.Group, path + "/group", Ty.Bool));
                     return flags;
@@ -597,6 +598,7 @@ public static class SceneValidator
             Ty.Bool => "bool",
             Ty.Color => "color",
             Ty.String | Ty.Color => "string or color",
+            Ty.Number | Ty.String => "number or string",
             Ty.None => "nothing",
             _ => "any type",
         };

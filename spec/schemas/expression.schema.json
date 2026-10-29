@@ -66,6 +66,34 @@
         { "$ref": "#/$defs/stateRefOp" }
       ]
     },
+    "numberOrStringExpr": {
+      "description": "An expression of type number or string: numberExpr's and stringExpr's alternatives in one list, so `op` selects the operation and an error inside it keeps its own path.",
+      "anyOf": [
+        { "type": "number" },
+        { "type": "string", "maxLength": 4096 },
+        { "$ref": "#/$defs/numberUnaryOp" },
+        { "$ref": "#/$defs/numberBinaryOp" },
+        { "$ref": "#/$defs/numberVariadicOp" },
+        { "$ref": "#/$defs/numberTernaryOp" },
+        { "$ref": "#/$defs/numberIfOp" },
+        { "$ref": "#/$defs/numberStepsOp" },
+        { "$ref": "#/$defs/numberInputOp" },
+        { "$ref": "#/$defs/historyOp" },
+        { "$ref": "#/$defs/timeOp" },
+        { "$ref": "#/$defs/boxOp" },
+        { "$ref": "#/$defs/measureOp" },
+        { "$ref": "#/$defs/dtOp" },
+        { "$ref": "#/$defs/concatOp" },
+        { "$ref": "#/$defs/caseOp" },
+        { "$ref": "#/$defs/formatOp" },
+        { "$ref": "#/$defs/formatTimeOp" },
+        { "$ref": "#/$defs/stringInputOp" },
+        { "$ref": "#/$defs/stringIfOp" },
+        { "$ref": "#/$defs/stringStepsOp" },
+        { "$ref": "#/$defs/valueRefOp" },
+        { "$ref": "#/$defs/stateRefOp" }
+      ]
+    },
     "anyExpr": {
       "description": "An expression of any type. Its type is inferred (see docs/expressions.md); a string literal that is a colour literal is read as a colour where a colour is expected.",
       "anyOf": [
@@ -211,14 +239,17 @@
       }
     },
     "formatOp": {
-      "description": "A number as text: rounded half away from zero to `decimals` places (0–6), with an optional group separator every three integer digits. The result is cut to its first 4,096 Unicode scalar values.",
+      "description": "A number as text: rounded half away from zero to `decimals` places (0–6), with an optional group separator every three integer digits; a number given as text keeps its own digits. The result is cut to its first 4,096 Unicode scalar values.",
       "type": "object",
       "required": ["op", "value"],
       "additionalProperties": false,
       "properties": {
         "op": { "const": "format" },
-        "value": { "$ref": "#/$defs/numberExpr" },
-        "decimals": { "$ref": "#/$defs/numberExpr", "description": "Rounded to an integer and clamped to 0–6.", "default": 0 },
+        "value": {
+          "description": "A number, or a number given as text: a string that is a plain decimal (an optional `-`, digits, and an optional `.` and digits) keeps its own digits and takes the separators; any other string is returned unchanged (see docs/expressions.md, Number formatting).",
+          "$ref": "#/$defs/numberOrStringExpr"
+        },
+        "decimals": { "$ref": "#/$defs/numberExpr", "description": "Rounded to an integer and clamped to 0–6; for a number only.", "default": 0 },
         "group": { "$ref": "#/$defs/boolExpr", "description": "Insert `groupSeparator` between groups of three integer digits.", "default": false },
         "decimalSeparator": { "description": "Absent: the regional format's (see docs/expressions.md, Regional format).", "type": "string", "maxLength": 4 },
         "groupSeparator": { "description": "Absent: the regional format's (see docs/expressions.md, Regional format).", "type": "string", "maxLength": 4 }

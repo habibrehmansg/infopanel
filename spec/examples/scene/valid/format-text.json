@@ -1,0 +1,15 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"reading": {"type": "text", "label": "A reading sent as text, such as 1234567.5"}},
+  "values": {
+    "grouped": {"op": "format", "value": {"op": "input", "name": "reading", "field": "text"}, "group": true}
+  },
+  "nodes": [
+    {
+      "kind": "text",
+      "font": {"family": "Inter", "size": 24},
+      "fill": "#ffffff",
+      "text": {"op": "value", "name": "grouped"}
+    }
+  ]
+}

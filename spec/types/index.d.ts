@@ -1236,6 +1236,9 @@ export type BoolExpr = boolean | CompareOp | EqualOp | LogicOp | NotOp | BoolInp
 /** An expression of type color. A literal is #RRGGBB or #RRGGBBAA. */
 export type ColorExpr = ColorLiteral | RgbaOp | AlphaOp | ColorLerpOp | ColorIfOp | ColorStepsOp | ValueRefOp | StateRefOp;
 
+/** An expression of type number or string: numberExpr's and stringExpr's alternatives in one list, so `op` selects the operation and an error inside it keeps its own path. */
+export type NumberOrStringExpr = number | string | NumberUnaryOp | NumberBinaryOp | NumberVariadicOp | NumberTernaryOp | NumberIfOp | NumberStepsOp | NumberInputOp | HistoryOp | TimeOp | BoxOp | MeasureOp | DtOp | ConcatOp | CaseOp | FormatOp | FormatTimeOp | StringInputOp | StringIfOp | StringStepsOp | ValueRefOp | StateRefOp;
+
 /** An expression of any type. Its type is inferred (see docs/expressions.md); a string literal that is a colour literal is read as a colour where a colour is expected. */
 export type AnyExpr = NumberExpr | StringExpr | BoolExpr | ColorExpr;
 
@@ -1308,12 +1311,13 @@ export interface CaseOp {
   args: [StringExpr];
 }
 
-/** A number as text: rounded half away from zero to `decimals` places (0–6), with an optional group separator every three integer digits. The result is cut to its first 4,096 Unicode scalar values. */
+/** A number as text: rounded half away from zero to `decimals` places (0–6), with an optional group separator every three integer digits; a number given as text keeps its own digits. The result is cut to its first 4,096 Unicode scalar values. */
 export interface FormatOp {
   op: "format";
-  value: NumberExpr;
+  /** A number, or a number given as text: a string that is a plain decimal (an optional `-`, digits, and an optional `.` and digits) keeps its own digits and takes the separators; any other string is returned unchanged (see docs/expressions.md, Number formatting). */
+  value: NumberOrStringExpr;
   /**
-   * Rounded to an integer and clamped to 0–6.
+   * Rounded to an integer and clamped to 0–6; for a number only.
    * @default 0
    */
   decimals?: NumberExpr;

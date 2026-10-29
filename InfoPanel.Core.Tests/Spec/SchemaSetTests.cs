@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using InfoPanel.Spec;
 using InfoPanel.Spec.Schema;
 using Xunit;
 
@@ -571,6 +572,64 @@ public class SchemaSetTests
         One(s, "{\"k\":\"a\",\"n\":\"x\"}", "type", "/n");
         One(s, "{\"k\":\"c\"}", "anyOf", "/k");
         One(s, "{}", "required", "");
+    }
+
+    // Two branches with the same discriminator value (an "if" of numbers and one of strings, say).
+    private const string Shared = "\"anyOf\":[" +
+        "{\"type\":\"object\",\"required\":[\"op\",\"args\"],\"additionalProperties\":false,\"properties\":{\"op\":{\"const\":\"if\"},\"args\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"boolean\"},{\"type\":\"number\"}],\"items\":false,\"minItems\":2}}}," +
+        "{\"type\":\"object\",\"required\":[\"op\",\"args\"],\"additionalProperties\":false,\"properties\":{\"op\":{\"const\":\"if\"},\"args\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"boolean\"},{\"type\":\"string\"}],\"items\":false,\"minItems\":2}}}]";
+
+    [Fact]
+    public void UnionBranchesSharingTheDiscriminator_ThatAllReportTheSameErrors_ReportThem()
+    {
+        Ok(Shared, "{\"op\":\"if\",\"args\":[true,1]}");
+        Ok(Shared, "{\"op\":\"if\",\"args\":[true,\"x\"]}");
+        One(Shared, "{\"op\":\"if\",\"args\":[true]}", "minItems", "/args");
+        Assert.Equal(new[] { ("/args", "minItems"), ("/args/0", "type") },
+            Check(Shared, "{\"op\":\"if\",\"args\":[\"c\"]}").Select(e => (e.InstancePath, e.Keyword)).Order());
+        Assert.Equal(new[] { ("/args", "minItems"), ("/x", "additionalProperties") },
+            Check(Shared, "{\"op\":\"if\",\"args\":[true],\"x\":1}").Select(e => (e.InstancePath, e.Keyword)).Order());
+    }
+
+    [Fact]
+    public void UnionBranchesSharingTheDiscriminator_ThatReportDifferentErrors_GiveTheGenericError()
+    {
+        // A branch that reports the other's error and one more (the number reading refuses "x", the string one 1).
+        Assert.Contains("any", One(Shared, "{\"op\":\"if\",\"args\":[true,\"x\"],\"y\":1}", "anyOf").Message);
+        One(Shared, "{\"op\":\"if\",\"args\":[true,1],\"y\":1}", "anyOf");
+        // The same paths and keywords, but each reading's own message (number against string at /args/1).
+        One(Shared, "{\"op\":\"if\",\"args\":[\"c\",null]}", "anyOf");
+        // The same path with a different keyword.
+        const string s = "\"anyOf\":[" +
+            "{\"type\":\"object\",\"required\":[\"op\"],\"properties\":{\"op\":{\"const\":\"a\"},\"n\":{\"type\":\"string\"}}}," +
+            "{\"type\":\"object\",\"required\":[\"op\"],\"properties\":{\"op\":{\"const\":\"a\"},\"n\":{\"minimum\":5}}}]";
+        One(s, "{\"op\":\"a\",\"n\":1}", "anyOf");
+    }
+
+    // The published expression schema: the number and string readings of steps and input share their discriminator.
+    private static List<SchemaError> NumberOrString(string instance) =>
+        [.. SpecSchemas.Strict.Validate(J(instance), SpecSchemas.Expression + "#/$defs/numberOrStringExpr").Errors];
+
+    [Fact]
+    public void UnionBranchesSharingTheDiscriminator_WhoseSharedErrorsDifferInTheirMessage_GiveTheGenericError()
+    {
+        // Each reading of input lists its own allowed fields at /field, so the same keyword and path are not the same error.
+        var errors = NumberOrString("{\"op\":\"input\",\"name\":\"x\",\"field\":\"bogus\"}");
+        var e = Assert.Single(errors);
+        Assert.Equal("", e.InstancePath);
+        Assert.Contains("any", e.Message);
+    }
+
+    [Fact]
+    public void UnionBranchesSharingTheDiscriminator_WhoseSharedErrorsWereTruncated_GiveTheGenericError()
+    {
+        // 100 extra members fill both readings' kept errors with the same 100; what each dropped after them differs
+        // (/out/1 for the number reading, /out/0 for the string one).
+        var extra = string.Join(",", Enumerable.Range(0, 100).Select(i => $"\"x{i}\":0"));
+        var errors = NumberOrString("{\"op\":\"steps\",\"value\":1,\"at\":[1],\"out\":[1,\"x\"]," + extra + "}");
+        var e = Assert.Single(errors);
+        Assert.Equal("", e.InstancePath);
+        Assert.Contains("any", e.Message);
     }
 
     private const string Exprs = """

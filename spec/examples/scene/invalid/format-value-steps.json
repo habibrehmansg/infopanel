@@ -1,0 +1,1 @@
+{"format": "infopanel.scene/1", "inputs": {"cpu": {"type": "number"}}, "values": {"n": 5}, "nodes": [{"kind": "text", "font": {"family": "Inter", "size": 24}, "fill": "#ffffff", "text": {"op": "format", "value": {"op": "steps", "value": {"op": "add", "args": [1]}, "at": [1], "out": [{"op": "value", "name": "n"}, {"op": "value", "name": "n"}]}}}]}
