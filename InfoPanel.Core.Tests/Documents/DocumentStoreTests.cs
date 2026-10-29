@@ -191,6 +191,44 @@ public class DocumentStoreTests
         Assert.All(kept, file => Assert.Contains(file, tree));
     }
 
+    /// <summary>
+    /// The start-up removal of staging and deleted profiles' folders is bounded, all of them together: past its budget it
+    /// stops, leaves the rest for the next start, and the store opens. The next start with room removes what is left.
+    /// </summary>
+    [Fact]
+    public void Open_RemovesLeftoverFolders_WithinItsBudget_AndLeavesTheRestForTheNextStart()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        WriteFolder(paths, A);
+        var hex = Guid.NewGuid().ToString("N");
+        var leftovers = new[]
+        {
+            Path.Combine(paths.ProfilesDirectory, $"{B}.{hex}.tmp"),
+            Path.Combine(paths.ProfilesDirectory, $"{C}.deleted-{hex}"),
+        };
+        foreach (var leftover in leftovers)
+        {
+            for (var i = 0; i < 10; i++)
+            {
+                Directory.CreateDirectory(Path.Combine(leftover, $"d{i}"));
+                for (var j = 0; j < 4; j++)
+                    File.WriteAllText(Path.Combine(leftover, $"d{i}", $"f{j}.json"), "x");
+            }
+        }
+        int Entries() => leftovers.Sum(l => Directory.Exists(l) ? Directory.GetFileSystemEntries(l, "*", SearchOption.AllDirectories).Length + 1 : 0);
+        Assert.Equal(102, Entries());
+
+        var store = new DocumentStore(paths) { CleanupEntries = 30 };
+        Assert.Equal([A], store.Open());
+
+        Assert.InRange(Entries(), 102 - 30, 101);
+        Assert.Equal(Document(A, "w"), store.Read(A));
+
+        Assert.Equal([A], new DocumentStore(paths).Open());
+        Assert.Equal(0, Entries());
+    }
+
     /// <summary>Only the exact names the stores write are leftovers; anything close to them is someone else's.</summary>
     [Fact]
     public void Open_RemovesOnlyTheNamesTheStoresWrite()
@@ -240,8 +278,9 @@ public class DocumentStoreTests
         Assert.Throws<InvalidDataException>(() => store.Read(A));
     }
 
+    /// <summary>The order isn't a document: a file over a document's read cap is read, within its own bound.</summary>
     [Fact]
-    public void Open_OrderLargerThanTheReadCap_ListsFoldersById()
+    public void Open_TheOrderIsNotHeldToTheDocumentLimit()
     {
         using var temp = new TempDirectory();
         var paths = new DataPaths(temp.Path);
@@ -249,8 +288,165 @@ public class DocumentStoreTests
         WriteFolder(paths, A);
         File.WriteAllText(paths.ProfileOrderFile, $"{{\"order\":[\"{B}\",\"{A}\"]}}" + new string(' ', 200 + DocumentStore.ReadAllowanceBytes));
 
-        Assert.Equal([A, B], new DocumentStore(paths, Limit(200)).Open());
-        Assert.Equal([A, B], new DocumentStore(paths).Open());
+        Assert.Equal([B, A], new DocumentStore(paths, Limit(200)).Open());
+        Assert.Equal([B, A], new DocumentStore(paths).Open());
+    }
+
+    private static SpecLimits ListBound(int bytes) => SpecLimits.Default.With(new Dictionary<string, double> { ["profileListBytes"] = bytes });
+
+    private static int OrderBytes(params string[] ids) => Encoding.UTF8.GetByteCount($"{{\"order\":[{string.Join(",", ids.Select(id => $"\"{id}\""))}]}}");
+
+    /// <summary>
+    /// The profile list has its own byte bound (<c>profileListBytes</c>), enforced before writing: a create that would take
+    /// <c>profiles.json</c> over it is refused before anything is written, so every list the store writes reads back.
+    /// </summary>
+    [Fact]
+    public void Create_PastTheProfileListBound_IsRefused_AndWritesNothing()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var limits = ListBound(OrderBytes(A, B));
+        var store = new DocumentStore(paths, limits);
+        store.Open();
+        store.Create(A, Document(A, "a"));
+        store.Create(B, Document(B, "b"));
+        var before = File.ReadAllBytes(paths.ProfileOrderFile);
+        Assert.Equal(OrderBytes(A, B), before.Length);
+
+        var refused = Assert.ThrowsAny<IOException>(() => store.Create(C, Document(C, "c")));
+
+        Assert.Contains("profileListBytes", refused.Message);
+        Assert.Equal([A, B], store.List());
+        Assert.Equal(before, File.ReadAllBytes(paths.ProfileOrderFile));
+        Assert.Equal([paths.ProfileFolder(A), paths.ProfileFolder(B)], Directory.GetFileSystemEntries(paths.ProfilesDirectory).Order(StringComparer.Ordinal));
+        Assert.Equal([A, B], new DocumentStore(paths, limits).Open());
+        // A delete makes room again.
+        Assert.True(store.Delete(A));
+        store.Create(C, Document(C, "c"));
+        Assert.Equal([B, C], store.List());
+    }
+
+    /// <summary>
+    /// The bound holds while reading too: <c>profiles.json</c> over it is not read (the profiles are listed by id), one at
+    /// it is; an order rebuilt over it is kept for the run but never written.
+    /// </summary>
+    [Fact]
+    public void Open_TheProfileListIsReadWithinItsBound()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var store = new DocumentStore(paths);
+        store.Open();
+        store.Create(A, Document(A, "a"));
+        store.Create(B, Document(B, "b"));
+        store.Reorder([B, A]);
+        var size = File.ReadAllBytes(paths.ProfileOrderFile).Length;
+
+        Assert.Equal([B, A], new DocumentStore(paths, ListBound(size)).Open());
+        Assert.Equal([A, B], new DocumentStore(paths, ListBound(size - 1)).Open());
+
+        File.Delete(paths.ProfileOrderFile);
+        var small = new DocumentStore(paths, ListBound(OrderBytes(A)));
+        Assert.Equal([A, B], small.Open());
+        Assert.False(File.Exists(paths.ProfileOrderFile));
+        Assert.ThrowsAny<IOException>(() => small.Create(C, Document(C, "c")));
+        Assert.False(Directory.Exists(paths.ProfileFolder(C)));
+    }
+
+    /// <summary>
+    /// <c>profiles.json</c> is read tolerantly: members this engine doesn't know are ignored, kept when the order is
+    /// rewritten, and count towards the bound.
+    /// </summary>
+    [Fact]
+    public void TheOrderFile_KeepsMembersThisEngineDoesntKnow()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var store = new DocumentStore(paths);
+        store.Open();
+        store.Create(A, Document(A, "a"));
+        File.WriteAllText(paths.ProfileOrderFile, $$"""{"later": {"x": [1, "two"]}, "order": ["{{A}}"], "note": "kept"}""");
+
+        var next = new DocumentStore(paths);
+        Assert.Equal([A], next.Open());
+        next.Create(B, Document(B, "b"));
+        next.Reorder([B, A]);
+        next.Create(C, Document(C, "c"));
+        next.Delete(C);
+
+        var stored = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.ProfileOrderFile))!.AsObject();
+        Assert.Equal(["later", "order", "note"], stored.Select(p => p.Key));
+        Assert.Equal("""{"x":[1,"two"]}""", stored["later"]!.ToJsonString());
+        Assert.Equal("kept", stored["note"]!.GetValue<string>());
+        Assert.Equal($"""["{B}","{A}"]""", stored["order"]!.ToJsonString());
+
+        // The members it keeps are part of the list's size.
+        var size = File.ReadAllBytes(paths.ProfileOrderFile).Length;
+        var bounded = new DocumentStore(paths, ListBound(size + 38));
+        Assert.Equal([B, A], bounded.Open());
+        Assert.ThrowsAny<IOException>(() => bounded.Create(C, Document(C, "c")));
+    }
+
+    /// <summary>
+    /// A member this engine doesn't know is kept as JSON text, whatever it holds (a string or a name that holds no text, a
+    /// value nested deeper than a default reader goes, within jsonDepth): the order is read, and each member is written
+    /// back as it was, compacted. (Changed on purpose: such a member made the file unreadable, and the rewrite then
+    /// dropped the order and every other member.)
+    /// </summary>
+    [Fact]
+    public void TheOrderFile_KeepsAMemberItCantDecode_AsItWas()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var store = new DocumentStore(paths);
+        store.Open();
+        store.Create(A, Document(A, "a"));
+        store.Create(B, Document(B, "b"));
+        var deep = new string('[', 100) + new string(']', 100);
+        File.WriteAllText(paths.ProfileOrderFile, $$"""{"order": ["{{B}}", "{{A}}"], "keep": {"x": 1}, "later": "\uD800", "\uD800": [ 1, 2 ], "deep": {{deep}}}""");
+
+        var next = new DocumentStore(paths);
+        Assert.Equal([B, A], next.Open());
+        next.Create(C, Document(C, "c"));
+
+        Assert.Equal([B, A, C], new DocumentStore(paths).Open());
+        Assert.Equal($$"""{"order":["{{B}}","{{A}}","{{C}}"],"keep":{"x":1},"later":"\uD800","\uD800":[1,2],"deep":{{deep}}}""",
+            File.ReadAllText(paths.ProfileOrderFile));
+
+        // A damaged order is rebuilt by id, and the members beside it are still kept.
+        File.WriteAllText(paths.ProfileOrderFile, """{"keep": 1, "order": {"not": "a list"}}""");
+        Assert.Equal([A, B, C], new DocumentStore(paths).Open());
+        Assert.Equal($$"""{"keep":1,"order":["{{A}}","{{B}}","{{C}}"]}""", File.ReadAllText(paths.ProfileOrderFile));
+    }
+
+    /// <summary>
+    /// A well-formed order file the store can't hold whole (over its bound, or nested deeper than jsonDepth) is left as
+    /// it is: the profiles are listed by id and the run keeps the order in memory, writing nothing, so nothing in the
+    /// file is lost. A damaged one (not JSON) is rebuilt as before (<see cref="Open_MissingOrUnreadableOrder_ListsFoldersById"/>).
+    /// </summary>
+    [Theory]
+    [InlineData("over its bound")]
+    [InlineData("deeper than jsonDepth")]
+    public void TheOrderFile_ThatCantBeHeldWhole_IsLeftAsItIs_AndTheRunKeepsTheOrderInMemory(string why)
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        WriteFolder(paths, A);
+        WriteFolder(paths, B);
+        var text = why == "over its bound"
+            ? $$"""{"order":["{{B}}","{{A}}"],"later":"{{new string('x', 4096)}}"}"""
+            : $$"""{"order":["{{B}}","{{A}}"],"later":{{new string('[', 300)}}{{new string(']', 300)}}}""";
+        File.WriteAllText(paths.ProfileOrderFile, text);
+
+        var store = new DocumentStore(paths, why == "over its bound" ? ListBound(1024) : null);
+        Assert.Equal([A, B], store.Open());
+        store.Create(C, Document(C, "c"));
+        store.Reorder([C, B, A]);
+        Assert.True(store.Delete(B));
+
+        Assert.Equal([C, A], store.List());
+        Assert.Equal(text, File.ReadAllText(paths.ProfileOrderFile));
+        Assert.Equal([A, C], new DocumentStore(paths, why == "over its bound" ? ListBound(1024) : null).Open());
     }
 
     [Fact]

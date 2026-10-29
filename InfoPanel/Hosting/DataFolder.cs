@@ -9,11 +9,24 @@ public static class DataFolder
     /// <summary>Owner-only (0700) for folders the engine creates on Unix.</summary>
     private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
-    /// <summary>Creates <paramref name="path"/> (and missing parents) when it doesn't exist, owner-only (0700) on Unix.</summary>
+    /// <summary>
+    /// Creates <paramref name="path"/> (and missing parents) when nothing is there, owner-only (0700) on Unix. A folder
+    /// there (or a link to one) is used as it is; a link whose target can't be reached, or anything but a folder, is
+    /// thrown, and nothing is created through it.
+    /// </summary>
+    /// <exception cref="UnresolvedLinkException">A link is there whose target can't be reached.</exception>
+    /// <exception cref="IOException">Something other than a folder is there, or the folder couldn't be created.</exception>
     public static void CreatePrivate(string path)
     {
-        if (Directory.Exists(path))
-            return;
+        switch (RegularFile.StateOf(path))
+        {
+            case PathState.Folder:
+                return;
+            case PathState.Unresolved:
+                throw new UnresolvedLinkException(path);
+            case PathState.Other:
+                throw new IOException($"{path} isn't a folder.");
+        }
         if (OperatingSystem.IsWindows())
             Directory.CreateDirectory(path);
         else

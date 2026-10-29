@@ -168,16 +168,30 @@ public sealed partial class BlobStore
     /// Start-up only: removes the temp files interrupted writes left in <c>blobs/</c> (only <c>{64 hex}.{32 hex}.tmp</c>,
     /// the names <see cref="AtomicFile"/> gives them).
     /// </summary>
+    /// <exception cref="IOException">
+    /// <c>blobs/</c> can't be listed: a link whose target can't be reached (<see cref="UnresolvedLinkException"/>), or
+    /// something that isn't a folder. Nothing was changed. (One with more entries than a listing looks at is opened, its
+    /// temp files left.)
+    /// </exception>
     public void Open()
     {
         lock (_lock)
         {
-            _opened = true;
-            if (!Directory.Exists(Paths.BlobsDirectory))
-                return;
-            foreach (var temp in Directory.EnumerateFiles(Paths.BlobsDirectory, "*" + AtomicFile.TempSuffix))
+            var entries = new List<FileSystemInfo>();
+            try
             {
-                if (!AtomicFile.IsTempFile(Path.GetFileName(temp), name => BlobFileName().IsMatch(name)))
+                foreach (var entry in RegularFile.List(Paths.BlobsDirectory, new ListingBudget(RegularFile.MaxListing, $"Listing {Paths.BlobsDirectory}")))
+                    entries.Add(entry);
+            }
+            catch (ListingBudgetException ex)
+            {
+                Logger.Warning(ex, "Left the temp files in {Folder} past the first entries", Paths.BlobsDirectory);
+            }
+            _opened = true;
+            foreach (var entry in entries)
+            {
+                var temp = entry.FullName;
+                if (entry is not FileInfo || !AtomicFile.IsTempFile(entry.Name, name => BlobFileName().IsMatch(name)))
                     continue;
                 try
                 {
@@ -298,11 +312,11 @@ public sealed partial class BlobStore
     {
         try
         {
-            return new FileStream(Paths.BlobFile(id), FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            return RegularFile.OpenRead(Paths.BlobFile(id), FileShare.Read | FileShare.Delete);
         }
-        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException or NotARegularFileException)
         {
-            return null;
+            return null; // a FIFO or device under a blob's name isn't a stored blob, and is never waited on
         }
     }
 
@@ -419,17 +433,20 @@ public sealed partial class BlobStore
     }
 
     /// <summary>The ids of the stored blobs (files named by 64 hex digits; anything else in <c>blobs/</c> is ignored).</summary>
-    internal IReadOnlyList<string> List()
-    {
-        if (!Directory.Exists(Paths.BlobsDirectory))
-            return [];
-        return Directory.EnumerateFiles(Paths.BlobsDirectory)
-            .Select(Path.GetFileName)
-            .Where(name => BlobFileName().IsMatch(name!))
-            .Select(name => IdPrefix + name)
+    internal IReadOnlyList<string> List() => List(new ListingBudget(RegularFile.MaxListing, $"Listing {Paths.BlobsDirectory}"));
+
+    /// <inheritdoc cref="List()"/>
+    /// <param name="budget">What the listing counts against.</param>
+    /// <exception cref="IOException">
+    /// <c>blobs/</c> can't be listed: a link whose target can't be reached (<see cref="UnresolvedLinkException"/>),
+    /// something that isn't a folder, or the budget ran out (<see cref="ListingBudgetException"/>).
+    /// </exception>
+    internal IReadOnlyList<string> List(ListingBudget budget) =>
+        RegularFile.List(Paths.BlobsDirectory, budget)
+            .Where(entry => entry is FileInfo && BlobFileName().IsMatch(entry.Name))
+            .Select(entry => IdPrefix + entry.Name)
             .Order(StringComparer.Ordinal)
             .ToArray();
-    }
 
     /// <summary>
     /// For <see cref="BlobSweep"/>: deletes the blob when it was last written before <paramref name="cutoff"/>,

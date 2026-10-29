@@ -1,3 +1,5 @@
+using InfoPanel.Extensions;
+using InfoPanel.Persistence;
 using Serilog;
 using SkiaSharp;
 using System;
@@ -22,6 +24,12 @@ namespace InfoPanel.Drawing
         private static readonly string[] EmbeddedFaces = ["Inter-Regular.ttf", "Inter-Bold.ttf", "Inter-Italic.ttf", "Inter-BoldItalic.ttf"];
         private static readonly string[] FontExtensions = [".ttf", ".otf", ".ttc", ".otc"];
 
+        /// <summary>The largest font file read; a larger one isn't (the bundled faces are a few hundred KiB, a whole CJK collection tens of MiB).</summary>
+        public const int MaxFontBytes = 256 * 1024 * 1024;
+
+        /// <summary>The most entries <see cref="RegisterDirectory"/> looks at, its folders' files and folders together.</summary>
+        public const int MaxDirectoryEntries = 10_000;
+
         private static readonly Lock _lock = new();
         private static readonly Dictionary<string, List<SKTypeface>> _families = new(StringComparer.OrdinalIgnoreCase);
         private static bool _embeddedRegistered;
@@ -39,7 +47,9 @@ namespace InfoPanel.Drawing
         }
 
         /// <summary>
-        /// Registers every face in a font file (.ttf, .otf, or each face of a .ttc/.otc collection).
+        /// Registers every face in a font file (.ttf, .otf, or each face of a .ttc/.otc collection). The file is read
+        /// through the one handle <see cref="RegularFile.OpenRead"/> opened and checked, a regular file only, so a FIFO
+        /// or device named like a font is skipped without waiting on it; a file over <see cref="MaxFontBytes"/> isn't read.
         /// </summary>
         /// <returns>The family names registered; empty if the file is not a font Skia can read.</returns>
         public static IReadOnlyList<string> RegisterFile(string path)
@@ -51,7 +61,10 @@ namespace InfoPanel.Drawing
 
             try
             {
-                using var data = SKData.Create(path);
+                using var stream = RegularFile.OpenRead(path);
+                if (stream.Length > MaxFontBytes)
+                    throw new InvalidDataException($"It has {stream.Length} bytes; at most {MaxFontBytes} are read.");
+                using var data = SKData.Create(stream);
                 if (data != null)
                 {
                     for (var index = 0; index < (isCollection ? 64 : 1); index++)
@@ -85,22 +98,40 @@ namespace InfoPanel.Drawing
         }
 
         /// <summary>
-        /// Registers every font file (.ttf, .otf, .ttc, .otc) under <paramref name="directory"/>, subfolders included.
-        /// A missing directory registers nothing.
+        /// Registers every font file (.ttf, .otf, .ttc, .otc) under <paramref name="directory"/>, subfolders included,
+        /// read through links with each real folder walked once, at most <see cref="MaxDirectoryEntries"/> entries
+        /// (<see cref="RegularFile.List"/>). A missing directory registers nothing; one that can't be walked whole (a link
+        /// whose target can't be reached, too many entries) registers what was found before, with a warning.
         /// </summary>
         /// <returns>The family names registered.</returns>
         public static IReadOnlyList<string> RegisterDirectory(string directory)
         {
-            if (!Directory.Exists(directory))
+            var files = new List<string>();
+            var walked = new HashSet<string>(StringComparer.Ordinal);
+            var budget = new ListingBudget(MaxDirectoryEntries, $"Looking for fonts in {directory}");
+            var pending = new Stack<string>();
+            pending.Push(directory);
+            try
             {
-                return [];
+                while (pending.TryPop(out var folder))
+                {
+                    if (!walked.Add(PathExtensions.ResolveRealPath(folder)))
+                        continue;
+                    foreach (var entry in RegularFile.List(folder, budget))
+                    {
+                        if (entry is DirectoryInfo)
+                            pending.Push(entry.FullName);
+                        else if (FontExtensions.Contains(entry.Extension, StringComparer.OrdinalIgnoreCase))
+                            files.Add(entry.FullName);
+                    }
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                Logger.Warning(e, "Stopped looking for fonts in {Folder}; the {Count} found before are registered", directory, files.Count);
             }
 
-            var files = Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
-                .Where(file => FontExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
-                .Order(StringComparer.Ordinal);
-
-            return [.. files.SelectMany(RegisterFile).Distinct(StringComparer.OrdinalIgnoreCase)];
+            return [.. files.Order(StringComparer.Ordinal).SelectMany(RegisterFile).Distinct(StringComparer.OrdinalIgnoreCase)];
         }
 
         /// <summary>

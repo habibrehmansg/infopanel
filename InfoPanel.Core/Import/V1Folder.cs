@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Xml.Linq;
 using InfoPanel.Documents;
 using InfoPanel.Extensions;
@@ -43,6 +44,12 @@ public sealed class V1Folder
 
     private static readonly string[] Outcomes = ["imported", "skipped", "failed"];
     private static readonly string[] SettingsOutcomes = ["imported", "skipped"];
+
+    /// <summary>The record's own members; any other is a later engine's, ignored when read and kept when replaced.</summary>
+    private static readonly string[] RecordMembers = ["completed", "folder", "profiles", "settings"];
+
+    /// <summary>The record is the engine's own file, read tolerantly: members this engine doesn't know are ignored.</summary>
+    private static readonly JsonSerializerOptions RecordReading = new(SpecJson.Options) { UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip };
 
     public V1Folder(string root, ImportLimits? limits = null)
     {
@@ -345,33 +352,72 @@ public sealed class V1Folder
     /// <summary>The record, or null: none (no problem) or unreadable (<paramref name="problem"/>).</summary>
     private V1MigrationRecord? ReadRecord(DataPaths data, out string? problem)
     {
-        problem = null;
+        var file = InspectRecord(data);
+        problem = file.Problem;
+        return file.Record;
+    }
+
+    /// <summary>
+    /// What the record file holds: the record when it can be read (tolerantly: members this engine doesn't know are
+    /// ignored, read at one depth, jsonDepth); the members this engine doesn't know, as written (<see cref="EngineJson"/>),
+    /// whenever the file is a JSON object, so a replacement keeps them; and whether it may be replaced at all: not when
+    /// the engine can't hold it whole (over <see cref="ImportLimits.RecordBytes"/>, well-formed but nested deeper than
+    /// jsonDepth, or a file it can't open, a FIFO say), which is then left as it is.
+    /// </summary>
+    private RecordState InspectRecord(DataPaths data)
+    {
         var path = RecordFile(data);
-        if (!File.Exists(path) && !Directory.Exists(path))
-            return null;
+        if (RegularFile.StateOf(path) == PathState.Absent)
+            return new RecordState(null, null, null, Replaceable: true);
+
+        byte[] bytes;
         try
         {
-            var bytes = DocumentStore.ReadAtMost(path, Limits.RecordBytes);
-            var record = JsonSerializer.Deserialize<V1MigrationRecord>(bytes, SpecJson.Options)
+            bytes = DocumentStore.ReadAtMost(path, Limits.RecordBytes);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return new RecordState(null, ex.Message, null, Replaceable: false);
+        }
+
+        List<JsonMemberText> unknown;
+        try
+        {
+            unknown = EngineJson.Members(bytes).Where(member => member.Name is null || !RecordMembers.Contains(member.Name)).ToList();
+        }
+        catch (JsonException ex)
+        {
+            return EngineJson.IsTooDeep(bytes)
+                ? new RecordState(null, $"it nests deeper than {EngineJson.MaxDepth} levels", null, Replaceable: false)
+                : new RecordState(null, ex.Message, null, Replaceable: true);
+        }
+
+        try
+        {
+            var record = JsonSerializer.Deserialize<V1MigrationRecord>(bytes, RecordReading)
                 ?? throw new JsonException("The record is null.");
             if (Check(record) is { } invalid)
                 throw new JsonException(invalid.Message);
-            return record;
+            return new RecordState(record, null, unknown, Replaceable: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or JsonException or InvalidOperationException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
         {
-            problem = ex.Message;
-            return null;
+            return new RecordState(null, ex.Message, unknown, Replaceable: true);
         }
     }
+
+    /// <summary>The record file: its record or why it can't be read, its members this engine doesn't know, and whether it may be replaced.</summary>
+    private sealed record RecordState(V1MigrationRecord? Record, string? Problem, List<JsonMemberText>? Unknown, bool Replaceable);
 
     /// <summary>
     /// Replaces the run-once record with what a client reports (<c>completed</c> is now, <c>folder</c> this folder) and
     /// answers the new state. Written atomically by the store's write rules, in the data folder, never the 1.x folder.
+    /// The record it replaces keeps its members this engine doesn't know (a later engine's), as written, after the new
+    /// ones; a record the engine can't hold whole (<see cref="InspectRecord"/>) is left as it is and the write refused.
     /// </summary>
     /// <exception cref="ImportRefusal">More than <see cref="ImportLimits.RecordOutcomes"/> outcomes, a value outside the
     /// record's rules, or larger than <see cref="ImportLimits.RecordBytes"/> as stored.</exception>
-    /// <exception cref="IOException">The record couldn't be written.</exception>
+    /// <exception cref="IOException">The record couldn't be written, or the one there can't be held whole; it is unchanged.</exception>
     public V1Migration WriteRecord(DataPaths data, IReadOnlyList<V1MigrationOutcome> profiles, string settings, DateTimeOffset now)
     {
         var record = new V1MigrationRecord
@@ -384,7 +430,12 @@ public sealed class V1Folder
         if (Check(record) is { } invalid)
             throw invalid;
 
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(record, SpecJson.Options);
+        // The record it replaces keeps its members this engine doesn't know, as written; one the engine can't hold whole
+        // is never replaced.
+        var existing = InspectRecord(data);
+        if (!existing.Replaceable)
+            throw new IOException($"The migration record {RecordFile(data)} can't be read whole ({existing.Problem}), so it is left as it is.");
+        var bytes = EngineJson.Append(JsonSerializer.SerializeToUtf8Bytes(record, SpecJson.Options), existing.Unknown);
         if (bytes.Length > Limits.RecordBytes)
             throw new ImportRefusal("limit.recordBytes", $"The record is {bytes.Length} bytes; at most {Limits.RecordBytes} are stored.");
 

@@ -158,6 +158,97 @@ public sealed class V1FolderTests : IDisposable
         Assert.Contains("/profiles/0", Assert.Single(nullOutcome.Diagnostics!, d => d.Code == "import.record").Message);
     }
 
+    /// <summary>
+    /// The record is read tolerantly: a member this engine doesn't know, at its top or in an outcome, is ignored, so the
+    /// outcomes it knows stay readable. When the engine replaces the record, it keeps the record's unknown members (the
+    /// outcomes are the new ones).
+    /// </summary>
+    [Fact]
+    public void Record_WithMembersThisEngineDoesntKnow_Reads_AndKeepsThemWhenReplaced()
+    {
+        Directory.CreateDirectory(_kit.Data.Root);
+        File.WriteAllText(V1Folder.RecordFile(_kit.Data),
+            $$$"""{"completed":"2026-01-01T00:00:00Z","folder":"x","profiles":[{"v1Id":"{{{Desk}}}","id":null,"outcome":"skipped","note":"later"}],"settings":"skipped","later":{"a":[1,2]}}""");
+
+        var state = Folder().GetState(_kit.Data);
+
+        Assert.Equal("done", state.State);
+        Assert.Equal(("x", "skipped"), (state.Record?.Folder, state.Record?.Settings));
+        Assert.Equal((Desk, "skipped"), (Assert.Single(state.Record!.Profiles).V1Id, state.Record.Profiles[0].Outcome));
+        Assert.DoesNotContain(state.Diagnostics ?? [], d => d.Code == "import.record");
+
+        var now = new DateTimeOffset(2026, 10, 28, 9, 30, 0, TimeSpan.Zero);
+        var replaced = Folder().WriteRecord(_kit.Data, [new V1MigrationOutcome { V1Id = Usb, Id = Usb, Outcome = "imported" }], "imported", now);
+
+        Assert.Equal((Usb, "imported"), (Assert.Single(replaced.Record!.Profiles).V1Id, replaced.Record.Settings));
+        var stored = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(V1Folder.RecordFile(_kit.Data)))!.AsObject();
+        Assert.Equal("""{"a":[1,2]}""", stored["later"]?.ToJsonString());
+        Assert.Equal(["completed", "folder", "profiles", "settings", "later"], stored.Select(p => p.Key));
+        Assert.Null(stored["profiles"]![0]!["note"]);
+    }
+
+    /// <summary>
+    /// A member this engine doesn't know is kept as JSON text, whatever it holds: a string that holds no text no longer
+    /// makes the record unreadable, and it is written back as it was when the record is replaced.
+    /// </summary>
+    [Fact]
+    public void Record_WithAMemberItCantDecode_Reads_AndKeepsItAsItWas()
+    {
+        Directory.CreateDirectory(_kit.Data.Root);
+        File.WriteAllText(V1Folder.RecordFile(_kit.Data),
+            """{"completed":"2026-01-01T00:00:00Z","folder":"x","profiles":[],"settings":"skipped","later":"\uD800"}""");
+
+        var state = Folder().GetState(_kit.Data);
+        Assert.Equal(("done", "x"), (state.State, state.Record?.Folder));
+        Assert.DoesNotContain(state.Diagnostics ?? [], d => d.Code == "import.record");
+
+        Folder().WriteRecord(_kit.Data, [], "imported", DateTimeOffset.UnixEpoch);
+        Assert.EndsWith(""","later":"\uD800"}""", File.ReadAllText(V1Folder.RecordFile(_kit.Data)));
+    }
+
+    /// <summary>
+    /// The record is read at one depth, the formats' jsonDepth, as every engine file is: a member nested 100 deep reads
+    /// and is kept, as it was, when the record is replaced.
+    /// </summary>
+    [Fact]
+    public void Record_WithADeepMemberThisEngineDoesntKnow_Reads_AndKeepsIt()
+    {
+        Directory.CreateDirectory(_kit.Data.Root);
+        var deep = new string('[', 100) + new string(']', 100);
+        File.WriteAllText(V1Folder.RecordFile(_kit.Data),
+            $$"""{"completed":"2026-01-01T00:00:00Z","folder":"x","profiles":[],"settings":"skipped","later":{{deep}}}""");
+
+        var state = Folder().GetState(_kit.Data);
+        Assert.Equal(("done", "x"), (state.State, state.Record?.Folder));
+        Assert.DoesNotContain(state.Diagnostics ?? [], d => d.Code == "import.record");
+
+        Folder().WriteRecord(_kit.Data, [], "imported", DateTimeOffset.UnixEpoch);
+        Assert.EndsWith($",\"later\":{deep}}}", File.ReadAllText(V1Folder.RecordFile(_kit.Data)));
+    }
+
+    /// <summary>
+    /// A record the engine can't hold whole (nested deeper than jsonDepth, or over its byte cap) counts as done, with a
+    /// warning, and is never replaced: a write is refused and the file is left as it is.
+    /// </summary>
+    [Theory]
+    [InlineData("deeper than jsonDepth")]
+    [InlineData("over its byte cap")]
+    public void Record_ThatCantBeHeldWhole_CountsAsDone_AndIsNeverReplaced(string why)
+    {
+        Directory.CreateDirectory(_kit.Data.Root);
+        var later = why == "deeper than jsonDepth" ? new string('[', 300) + new string(']', 300) : $"\"{new string('x', 5000)}\"";
+        var text = $$"""{"completed":"2026-01-01T00:00:00Z","folder":"x","profiles":[],"settings":"skipped","later":{{later}}}""";
+        File.WriteAllText(V1Folder.RecordFile(_kit.Data), text);
+        var folder = Folder(why == "over its byte cap" ? new ImportLimits { RecordBytes = 4096 } : null);
+
+        var state = folder.GetState(_kit.Data);
+        Assert.Equal(("done", (V1MigrationRecord?)null), (state.State, state.Record));
+        Assert.Single(state.Diagnostics!, d => d.Code == "import.record");
+
+        Assert.ThrowsAny<IOException>(() => folder.WriteRecord(_kit.Data, [], "imported", DateTimeOffset.UnixEpoch));
+        Assert.Equal(text, File.ReadAllText(V1Folder.RecordFile(_kit.Data)));
+    }
+
     [Fact]
     public void State_Diagnostics_AreCappedOnceForTheWholeAnswer()
     {

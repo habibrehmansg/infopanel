@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
+using InfoPanel.Extensions;
 using InfoPanel.Persistence;
 using InfoPanel.Spec;
 using Serilog;
@@ -12,10 +13,25 @@ using Serilog;
 namespace InfoPanel.Documents;
 
 /// <summary>
+/// A create that would take the stored profile list (<c>profiles.json</c>) over its bound, <c>profileListBytes</c>
+/// (spec/docs/limits.md): nothing was written.
+/// </summary>
+public sealed class ProfileListFullException(long bytes, long limit)
+    : IOException($"The profile list would be {bytes} bytes, over the limit of {limit} (profileListBytes).")
+{
+    /// <summary>The bytes the list would take.</summary>
+    public long Bytes { get; } = bytes;
+
+    /// <summary>Its bound.</summary>
+    public long Limit { get; } = limit;
+}
+
+/// <summary>
 /// The saved documents on disk: <c>profiles/{id}/document.json</c> holds a profile's saved generation as the caller's
 /// bytes (parsing and validation are the caller's; the workspace writes the canonical form, spec/docs/limits.md#sizes,
 /// so a file's size is its document's measured <c>documentBytes</c>), <c>profiles.json</c> only the display order
-/// (<c>{"order":[ids]}</c>).
+/// (<c>{"order":[ids]}</c>, read tolerantly: members it doesn't know are kept when it is rewritten), within its own byte
+/// bound, <see cref="ProfileListBytes"/>, so every order file the store writes reads back.
 /// The folders are the source of truth: <see cref="Open"/> appends a folder missing from the order, drops a listed id
 /// with no folder, and removes what an interrupted operation left (temp files, staging folders, deleted folders), so
 /// there is no consistency between files to keep. Every write goes through <see cref="AtomicFile"/>; a new profile is
@@ -42,6 +58,19 @@ public sealed partial class DocumentStore
     private List<string>? _order;
     private bool _changed;
 
+    /// <summary>
+    /// The members of <c>profiles.json</c> in their order, <c>order</c> as null (the list itself); the others are members
+    /// this engine doesn't know, written back as they were read (<see cref="EngineJson"/>).
+    /// </summary>
+    private List<JsonMemberText?> _orderMembers = [null];
+
+    /// <summary>
+    /// Whether <c>profiles.json</c> is left as it is for this run: a file the store can't hold whole (over
+    /// <see cref="ProfileListBytes"/>, nested deeper than jsonDepth, or one it can't open, such as a FIFO), so the order is
+    /// kept in memory and never written, and nothing in the file is lost.
+    /// </summary>
+    private bool _orderFileKept;
+
     /// <param name="limits">Sets <see cref="MaxBytes"/> (<see cref="ReadCap"/> of them); the defaults when null.</param>
     public DocumentStore(DataPaths paths, SpecLimits? limits = null) : this(paths, limits, faults: null)
     {
@@ -51,17 +80,31 @@ public sealed partial class DocumentStore
     {
         Paths = paths;
         MaxBytes = ReadCap(limits ?? SpecLimits.Default);
+        ProfileListBytes = (limits ?? SpecLimits.Default).ProfileListBytes;
         _faults = faults;
     }
 
     public DataPaths Paths { get; }
 
     /// <summary>
-    /// The largest document (and order file) read: <see cref="ReadCap"/>. A larger file is never read whole; one within it
-    /// is admitted by its canonical size, <c>documentBytes</c> (spec/docs/limits.md#sizes), which a document the workspace
-    /// stored (in the canonical form it was measured in) never exceeds.
+    /// The most entries the start-up removal of what interrupted operations left (staging and deleted profiles' folders)
+    /// looks at, all of them together (<see cref="RegularFile.List"/>); past it the rest is left for the next start, and
+    /// start-up goes on. Tests set it lower.
+    /// </summary>
+    internal int CleanupEntries { get; set; } = RegularFile.MaxListing;
+
+    /// <summary>
+    /// The largest document read: <see cref="ReadCap"/>. A larger file is never read whole; one within it is admitted by
+    /// its canonical size, <c>documentBytes</c> (spec/docs/limits.md#sizes), which a document the workspace stored (in the
+    /// canonical form it was measured in) never exceeds.
     /// </summary>
     public int MaxBytes { get; }
+
+    /// <summary>
+    /// The bound on <c>profiles.json</c>'s bytes, <c>profileListBytes</c>: the store never writes a larger one (a create
+    /// that would is refused, <see cref="ProfileListFullException"/>) and never reads one whole.
+    /// </summary>
+    public int ProfileListBytes { get; }
 
     /// <summary>
     /// The room a document's bytes as sent or stored (whitespace, escapes, number spellings) may take beyond
@@ -96,10 +139,17 @@ public sealed partial class DocumentStore
     /// Start-up reconciliation, before anything else: removes the order file's temp files, staging folders,
     /// <c>profiles/*.deleted-*</c> folders and the temp files in each profile's folder (only names the store writes); then
     /// appends every profile folder the order doesn't list (by id, in ordinal order) and drops every listed id without a
-    /// folder, rewriting <c>profiles.json</c> when that changed it (or it is missing, unreadable or larger than
-    /// <see cref="MaxBytes"/>). Entries of <c>profiles/</c> that are none of these (1.x <c>{guid}.xml</c> files, folders
-    /// not named by a valid id) are left alone. Returns the order.
+    /// folder, rewriting <c>profiles.json</c> when that changed it (or it is missing or damaged: not JSON, or without an
+    /// <c>order</c> array), unless the order is then over <see cref="ProfileListBytes"/> itself: it is kept for this run,
+    /// and no profile can be created until enough are deleted. A file the store can't hold whole is never rewritten in
+    /// the run (<see cref="_orderFileKept"/>). Entries of <c>profiles/</c> that are none of these (1.x
+    /// <c>{guid}.xml</c> files, folders not named by a valid id) are left alone; a link named by a valid id whose target
+    /// can't be reached is a profile (it can't be read), never an absent one. Returns the order.
     /// </summary>
+    /// <exception cref="IOException">
+    /// <c>profiles/</c> can't be listed: a link whose target can't be reached (<see cref="UnresolvedLinkException"/>),
+    /// something that isn't a folder, or more entries than a listing looks at. Nothing was changed.
+    /// </exception>
     public IReadOnlyList<string> Open()
     {
         lock (_lock)
@@ -127,7 +177,16 @@ public sealed partial class DocumentStore
             }
 
             if (!readable || !order.SequenceEqual(listed))
-                WriteOrder(order);
+            {
+                try
+                {
+                    WriteOrder(order);
+                }
+                catch (ProfileListFullException ex)
+                {
+                    Logger.Warning("Left {Path} as it was: the order of {Count} profiles is over its limit ({Message})", Paths.ProfileOrderFile, order.Count, ex.Message);
+                }
+            }
             _order = order;
             return order.ToArray();
         }
@@ -167,6 +226,7 @@ public sealed partial class DocumentStore
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid profile id.</exception>
     /// <exception cref="InvalidOperationException">A profile (or a folder) with this id already exists.</exception>
+    /// <exception cref="ProfileListFullException">The order would be over <see cref="ProfileListBytes"/>; nothing was written.</exception>
     /// <exception cref="IOException">
     /// The profile could not be stored (nothing of it is left), or it was renamed into place but <c>profiles/</c> could
     /// not be flushed to disk (it is then listed, and a power loss may lose it).
@@ -178,8 +238,12 @@ public sealed partial class DocumentStore
         {
             var order = Order;
             _changed = true;
-            if (order.Contains(id) || Directory.Exists(folder))
+            if (order.Contains(id) || RegularFile.StateOf(folder) != PathState.Absent)
                 throw new InvalidOperationException($"Profile {id} already exists.");
+            // Checked before anything is written, so the order file the create rewrites stays within its bound.
+            var listBytes = OrderBytes([.. order, id]).Length;
+            if (listBytes > ProfileListBytes)
+                throw new ProfileListFullException(listBytes, ProfileListBytes);
 
             var staging = Path.Combine(Paths.ProfilesDirectory, $"{id}.{AtomicFile.NewRandom()}{AtomicFile.TempSuffix}");
             try
@@ -246,10 +310,15 @@ public sealed partial class DocumentStore
 
             var folder = Paths.ProfileFolder(id);
             var deleted = Path.Combine(Paths.ProfilesDirectory, $"{id}{DeletedMarker}{AtomicFile.NewRandom()}");
-            if (Directory.Exists(folder))
+            var state = RegularFile.StateOf(folder);
+            if (state != PathState.Absent)
             {
                 _faults?.Before(StorageStep.MoveFolder, deleted);
-                Directory.Move(folder, deleted);
+                // A link to nothing (a profile on a drive that isn't there) is renamed itself, never what it leads to.
+                if (state == PathState.Folder)
+                    Directory.Move(folder, deleted);
+                else
+                    File.Move(folder, deleted, overwrite: true);
                 order.Remove(id);
                 try
                 {
@@ -295,48 +364,102 @@ public sealed partial class DocumentStore
     }
 
     /// <summary>
-    /// Every <c>profiles/*/document.json</c> path that is or may be a document: each profile folder's, and those of
-    /// folders not named by a valid id (never staging or deleted folders), for <see cref="BlobSweep"/>. A profile folder
-    /// is listed even when its document is missing.
+    /// The sweep's roots (<see cref="BlobSweep"/>), by the root rule of docs/2.0/data-folder.md ("The blob sweep"): under
+    /// each folder of <c>profiles/</c> (profile folders, and folders not named by a valid id; never staging or deleted
+    /// folders), every file at any depth but known OS metadata and the engine's write leftovers (<see cref="IsIgnored"/>),
+    /// read through links (a linked folder is walked, each real folder once; a linked file is read through its link); and
+    /// each folder's <c>document.json</c> (<see cref="SweepRoot.IsDocument"/>), listed even when it is missing. Every
+    /// listing counts against <paramref name="budget"/>; none when <c>profiles/</c> isn't there at all.
     /// </summary>
-    /// <exception cref="IOException">Whether a folder or a document exists can't be told.</exception>
-    /// <exception cref="UnauthorizedAccessException">Whether a folder or a document exists can't be told.</exception>
-    internal IReadOnlyList<string> DocumentFiles()
+    /// <exception cref="IOException">
+    /// Whether a folder or a document exists, what a folder holds or where a link leads can't be told, a link leads
+    /// nowhere (<c>profiles/</c> itself included: <see cref="UnresolvedLinkException"/>), or the budget ran out
+    /// (<see cref="ListingBudgetException"/>): a link could hide roots that can't be read.
+    /// </exception>
+    /// <exception cref="UnauthorizedAccessException">What a folder holds can't be told.</exception>
+    internal IReadOnlyList<SweepRoot> SweepRoots(ListingBudget budget)
     {
         lock (_lock)
         {
-            var files = new List<string>();
-            foreach (var folder in Subfolders(Paths.ProfilesDirectory))
+            var roots = new SortedDictionary<string, bool>(StringComparer.Ordinal);
+            var walked = new HashSet<string>(StringComparer.Ordinal);
+            var entries = RegularFile.List(Paths.ProfilesDirectory, budget).ToArray();
+            if (entries.Length == 0)
+                return [];
+
+            var profilesReal = PathExtensions.ResolveRealPath(Paths.ProfilesDirectory);
+            foreach (var entry in entries)
             {
+                if (entry is not DirectoryInfo folder)
+                {
+                    // A link to nothing may stand for a profile's folder on a drive that isn't there (a link that loops
+                    // throws here too).
+                    if (entry.LinkTarget != null && entry.ResolveLinkTarget(returnFinalTarget: true) is not { Exists: true })
+                        throw new IOException($"{entry.FullName} is a link to nothing, so the roots it may lead to can't be read.");
+                    continue;
+                }
+
                 if (IsLeftover(folder.Name))
                     continue;
-                var file = Path.Combine(folder.FullName, DocumentFileName);
-                if (IsValidId(folder.Name) || FileExists(file))
-                    files.Add(file);
+                var document = Path.Combine(folder.FullName, DocumentFileName);
+                if (IsValidId(folder.Name) || FileExists(document))
+                    roots[document] = true;
+                var real = folder.LinkTarget != null ? PathExtensions.ResolveRealPath(folder.FullName) : Path.Combine(profilesReal, folder.Name);
+                Walk(folder, real, roots, walked, budget);
             }
 
-            files.Sort(StringComparer.Ordinal);
-            return files;
+            return roots.Select(root => new SweepRoot(root.Key, root.Value)).ToList();
         }
     }
 
-    /// <summary>Reads <paramref name="path"/> whole, reading at most <paramref name="maxBytes"/> + 1 bytes of it.</summary>
-    /// <exception cref="InvalidDataException">The file is larger than <paramref name="maxBytes"/>.</exception>
-    internal static byte[] ReadAtMost(string path, int maxBytes)
+    /// <summary>
+    /// Adds every file under <paramref name="top"/> but the ignored ones to <paramref name="roots"/>, through links; each
+    /// folder is walked once, by its real path (<paramref name="walked"/>), so a link back to a folder already walked adds
+    /// nothing. A link to nothing is added as a file: a root that can't be read. Every listing counts against
+    /// <paramref name="budget"/>.
+    /// </summary>
+    private static void Walk(DirectoryInfo top, string topReal, SortedDictionary<string, bool> roots, HashSet<string> walked, ListingBudget budget)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        using var content = new MemoryStream();
-        var chunk = new byte[81_920];
-        int read;
-        while ((read = stream.Read(chunk, 0, (int)Math.Min(chunk.Length, maxBytes + 1L - content.Length))) > 0)
+        var pending = new Stack<(DirectoryInfo Folder, string Real)>();
+        if (walked.Add(topReal))
+            pending.Push((top, topReal));
+        while (pending.TryPop(out var item))
         {
-            content.Write(chunk, 0, read);
-            if (content.Length > maxBytes)
-                throw new InvalidDataException($"{path} is larger than {maxBytes} bytes.");
+            foreach (var entry in RegularFile.List(item.Folder.FullName, budget))
+            {
+                if (entry is DirectoryInfo inner)
+                {
+                    var real = inner.LinkTarget != null ? PathExtensions.ResolveRealPath(inner.FullName) : Path.Combine(item.Real, inner.Name);
+                    if (walked.Add(real))
+                        pending.Push((inner, real));
+                }
+                else if (!IsIgnored(entry.Name))
+                {
+                    roots.TryAdd(entry.FullName, false);
+                }
+            }
         }
-
-        return content.ToArray();
     }
+
+    /// <summary>
+    /// Files under a profile's folder that aren't sweep roots: known OS metadata (Finder's <c>.DS_Store</c> and
+    /// AppleDouble <c>._*</c> files, Windows' <c>Thumbs.db</c> and <c>desktop.ini</c>) and what an interrupted write left,
+    /// discarded (<c>{name}.{32 hex}.tmp</c>, the engine's temp files).
+    /// </summary>
+    internal static bool IsIgnored(string name) =>
+        name.StartsWith("._", StringComparison.Ordinal)
+        || name.Equals(".DS_Store", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("Thumbs.db", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase)
+        || AtomicFile.IsTempFile(name, _ => true);
+
+    /// <summary>
+    /// Reads <paramref name="path"/> whole, a regular file only, reading at most <paramref name="maxBytes"/> + 1 bytes of
+    /// it (<see cref="RegularFile.ReadAtMost"/>).
+    /// </summary>
+    /// <exception cref="InvalidDataException">The file is larger than <paramref name="maxBytes"/>.</exception>
+    /// <exception cref="NotARegularFileException">A FIFO, socket or device is at the path; it wasn't read.</exception>
+    internal static byte[] ReadAtMost(string path, int maxBytes) => RegularFile.ReadAtMost(path, maxBytes);
 
     private List<string> Order => _order ?? throw new InvalidOperationException("The document store is not open.");
 
@@ -360,18 +483,17 @@ public sealed partial class DocumentStore
     /// <summary>Whether a leftover's <paramref name="name"/> is a deleted folder's rather than a staging folder's.</summary>
     private static bool IsDeleted(string name) => name.AsSpan(IdLength).StartsWith(DeletedMarker, StringComparison.Ordinal);
 
-    /// <summary>The folders in <paramref name="path"/>, none when it doesn't exist; any other failure is thrown.</summary>
-    private static DirectoryInfo[] Subfolders(string path)
-    {
-        try
-        {
-            return new DirectoryInfo(path).EnumerateDirectories().ToArray();
-        }
-        catch (DirectoryNotFoundException)
-        {
-            return [];
-        }
-    }
+    /// <summary>
+    /// The folders in <paramref name="path"/> (<see cref="RegularFile.List"/>), and the links in it whose target can't be
+    /// reached (as <see cref="FileInfo"/>s: each may be a folder on a drive that isn't there); none when nothing is at the
+    /// path. A path that is a link to nothing, or isn't a folder, is thrown, never read as empty.
+    /// </summary>
+    /// <exception cref="IOException">The folder can't be listed (<see cref="UnresolvedLinkException"/>, <see cref="ListingBudgetException"/>).</exception>
+    /// <exception cref="UnauthorizedAccessException">The folder may not be listed.</exception>
+    private static FileSystemInfo[] Subfolders(string path) =>
+        RegularFile.List(path, new ListingBudget(RegularFile.MaxListing, $"Listing {path}"))
+            .Where(entry => entry is DirectoryInfo || (entry.LinkTarget != null && RegularFile.StateOf(entry.FullName) == PathState.Unresolved))
+            .ToArray();
 
     /// <summary>Whether <paramref name="path"/> exists; thrown when that can't be told (unlike <see cref="File.Exists"/>).</summary>
     private static bool FileExists(string path)
@@ -401,19 +523,19 @@ public sealed partial class DocumentStore
         return folders;
     }
 
-    /// <summary>Removes what interrupted operations left; an entry that can't be removed is logged and left.</summary>
+    /// <summary>
+    /// Removes what interrupted operations left; an entry that can't be removed is logged and left. <c>profiles/</c> is
+    /// listed first, so a folder that can't be listed stops the open before anything is removed.
+    /// </summary>
     private void RemoveLeftovers()
     {
-        if (Directory.Exists(Paths.Root))
+        var entries = Subfolders(Paths.ProfilesDirectory);
+        foreach (var file in RegularFile.List(Paths.Root, new ListingBudget(RegularFile.MaxListing, $"Listing {Paths.Root}")))
         {
-            foreach (var file in Directory.EnumerateFiles(Paths.Root))
-            {
-                if (AtomicFile.IsTempFile(Path.GetFileName(file), name => name == Path.GetFileName(Paths.ProfileOrderFile)))
-                    TryDeleteTree(file);
-            }
+            if (file is FileInfo && AtomicFile.IsTempFile(file.Name, name => name == Path.GetFileName(Paths.ProfileOrderFile)))
+                TryDeleteTree(file.FullName);
         }
 
-        var entries = Subfolders(Paths.ProfilesDirectory);
         var deletedFlushed = false;
         if (entries.Any(entry => IsLeftover(entry.Name) && IsDeleted(entry.Name)))
         {
@@ -430,6 +552,7 @@ public sealed partial class DocumentStore
             }
         }
 
+        var cleanup = new ListingBudget(CleanupEntries, "Removing what interrupted operations left in " + Paths.ProfilesDirectory);
         foreach (var entry in entries)
         {
             if (IsLeftover(entry.Name))
@@ -437,61 +560,143 @@ public sealed partial class DocumentStore
                 if (IsDeleted(entry.Name) && !deletedFlushed)
                     continue;
                 Logger.Information("Removing {Folder}, left by an interrupted operation", entry.FullName);
-                TryDeleteTree(entry.FullName);
+                TryDeleteTree(entry.FullName, cleanup);
             }
-            else if (IsValidId(entry.Name) && entry.LinkTarget == null)
+            else if (IsValidId(entry.Name) && entry is DirectoryInfo && entry.LinkTarget == null)
             {
-                foreach (var file in entry.EnumerateFiles("*" + AtomicFile.TempSuffix))
+                foreach (var file in RegularFile.List(entry.FullName, new ListingBudget(RegularFile.MaxListing, $"Listing {entry.FullName}")))
                 {
-                    if (AtomicFile.IsTempFile(file.Name, name => name == DocumentFileName))
+                    if (file is FileInfo && AtomicFile.IsTempFile(file.Name, name => name == DocumentFileName))
                         TryDeleteTree(file.FullName);
                 }
             }
         }
     }
 
-    /// <summary>The ids <c>profiles.json</c> lists (valid ones, in order), and whether it could be read.</summary>
+    /// <summary>
+    /// The ids <c>profiles.json</c> lists (valid ones, in order), and whether it could be read; its other members are kept,
+    /// as written, for its next write (<see cref="_orderMembers"/>), even when the order in it is damaged. A file that
+    /// isn't JSON, or has no <c>order</c> array, is damaged: the caller rebuilds it. A file the store can't hold whole
+    /// (over <see cref="ProfileListBytes"/>, well-formed but nested deeper than jsonDepth, or one it can't open, a FIFO say)
+    /// is left as it is for the run (<see cref="_orderFileKept"/>).
+    /// </summary>
     private (List<string> Ids, bool Readable) ReadOrder()
     {
         var path = Paths.ProfileOrderFile;
-        if (!File.Exists(path))
+        _orderMembers = [null];
+        _orderFileKept = false;
+        if (RegularFile.StateOf(path) == PathState.Absent)
             return ([], false);
+
+        byte[] bytes;
+        List<JsonMemberText> members;
         try
         {
-            using var json = JsonDocument.Parse(ReadAtMost(path, MaxBytes));
-            if (json.RootElement.ValueKind != JsonValueKind.Object
-                || !json.RootElement.TryGetProperty("order", out var order) || order.ValueKind != JsonValueKind.Array)
-                throw new JsonException("it has no \"order\" array");
-
-            var ids = new List<string>();
-            foreach (var entry in order.EnumerateArray())
-            {
-                if (entry.ValueKind == JsonValueKind.String && IsValidId(entry.GetString()))
-                    ids.Add(entry.GetString()!);
-                else
-                    Logger.Warning("Ignored {Entry} in {Path}: not a profile id", entry.GetRawText(), path);
-            }
-
-            return (ids, true);
+            bytes = ReadAtMost(path, ProfileListBytes);
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or InvalidDataException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
+            return KeepOrderFile(ex.Message);
+        }
+
+        try
+        {
+            members = EngineJson.Members(bytes);
+        }
+        catch (JsonException ex)
+        {
+            if (EngineJson.IsTooDeep(bytes))
+                return KeepOrderFile($"it nests deeper than {EngineJson.MaxDepth} levels");
             Logger.Warning(ex, "Could not read {Path}; the profiles are listed by id", path);
             return ([], false);
         }
+
+        // The order keeps its first place; its value is the last one, as a JSON reader takes a repeated member.
+        var kept = new List<JsonMemberText?>();
+        JsonMemberText? order = null;
+        foreach (var member in members)
+        {
+            if (member.Name != "order")
+                kept.Add(member);
+            else if (order is null)
+                kept.Add(null);
+            if (member.Name == "order")
+                order = member;
+        }
+        if (order is null)
+            kept.Insert(0, null);
+        _orderMembers = kept;
+
+        if (order is null || order.Value[0] != (byte)'[')
+        {
+            Logger.Warning("Could not read {Path}: it has no \"order\" array; the profiles are listed by id", path);
+            return ([], false);
+        }
+
+        var ids = new List<string>();
+        using var list = JsonDocument.Parse(order.Value, EngineJson.DocumentOptions);
+        foreach (var entry in list.RootElement.EnumerateArray())
+        {
+            if (entry.ValueKind == JsonValueKind.String && TextOf(entry) is { } id && IsValidId(id))
+                ids.Add(id);
+            else
+                Logger.Warning("Ignored {Entry} in {Path}: not a profile id", entry.GetRawText(), path);
+        }
+
+        return (ids, true);
+
+        static string? TextOf(JsonElement entry)
+        {
+            try
+            {
+                return entry.GetString();
+            }
+            catch (InvalidOperationException)
+            {
+                return null; // a string that holds no text
+            }
+        }
     }
 
-    private void WriteOrder(List<string> order, Action? replaced = null) =>
-        AtomicFile.Write(Paths.ProfileOrderFile, stream =>
+    /// <summary>Leaves <c>profiles.json</c> as it is for the run (<see cref="_orderFileKept"/>): the profiles are listed by id.</summary>
+    private (List<string> Ids, bool Readable) KeepOrderFile(string why)
+    {
+        Logger.Warning("Left {Path} as it is: it can't be read whole ({Reason}); the profiles are listed by id, and their order is kept in memory and not written this run",
+            Paths.ProfileOrderFile, why);
+        _orderFileKept = true;
+        return ([], false);
+    }
+
+    /// <exception cref="ProfileListFullException">The order file would be over <see cref="ProfileListBytes"/>; nothing was written.</exception>
+    private void WriteOrder(List<string> order, Action? replaced = null)
+    {
+        var bytes = OrderBytes(order);
+        if (bytes.Length > ProfileListBytes)
+            throw new ProfileListFullException(bytes.Length, ProfileListBytes);
+        if (_orderFileKept)
         {
-            using var writer = new Utf8JsonWriter(stream);
-            writer.WriteStartObject();
-            writer.WriteStartArray("order");
+            // Left as it is for the run: the order lives in memory.
+            replaced?.Invoke();
+            return;
+        }
+        AtomicFile.Write(Paths.ProfileOrderFile, stream => stream.Write(bytes), Paths.Root, _faults, replaced);
+    }
+
+    /// <summary><c>profiles.json</c>'s bytes for <paramref name="order"/>, with the members this engine doesn't know as they were read.</summary>
+    private byte[] OrderBytes(List<string> order)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartArray();
             foreach (var id in order)
                 writer.WriteStringValue(id);
             writer.WriteEndArray();
-            writer.WriteEndObject();
-        }, Paths.Root, _faults, replaced);
+        }
+
+        var list = new JsonMemberText("\"order\""u8.ToArray(), "order", stream.ToArray());
+        return EngineJson.Object(_orderMembers.Select(member => member ?? list));
+    }
 
     private void TryWriteOrder(List<string> order)
     {
@@ -505,14 +710,18 @@ public sealed partial class DocumentStore
         }
     }
 
-    /// <summary>Removes a file or a folder and everything in it; links are removed, never followed. Failures are logged.</summary>
-    private void TryDeleteTree(string path)
+    /// <summary>
+    /// Removes a file or a folder and everything in it; links are removed, never followed. Its folders are listed within
+    /// <paramref name="budget"/> (by default <see cref="RegularFile.MaxListing"/> entries for this tree): past it, what is
+    /// left stays for the next start. Failures are logged.
+    /// </summary>
+    private void TryDeleteTree(string path, ListingBudget? budget = null)
     {
         try
         {
             FileSystemInfo entry = Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path);
             if (entry.Exists || entry.LinkTarget != null)
-                DeleteTree(entry);
+                DeleteTree(entry, budget ?? new ListingBudget(RegularFile.MaxListing, $"Removing {path}"));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -520,12 +729,12 @@ public sealed partial class DocumentStore
         }
     }
 
-    private void DeleteTree(FileSystemInfo entry)
+    private void DeleteTree(FileSystemInfo entry, ListingBudget budget)
     {
         if (entry is DirectoryInfo directory && entry.LinkTarget == null)
         {
-            foreach (var child in directory.EnumerateFileSystemInfos())
-                DeleteTree(child);
+            foreach (var child in RegularFile.List(directory.FullName, budget))
+                DeleteTree(child, budget);
             _faults?.Before(StorageStep.DeleteFolder, entry.FullName);
             directory.Delete();
         }
@@ -543,3 +752,6 @@ public sealed partial class DocumentStore
         }
     }
 }
+
+/// <summary>A root of the blob sweep: a file whose text may refer to blobs; <see cref="IsDocument"/> for a profile folder's <c>document.json</c>, which must be JSON.</summary>
+internal readonly record struct SweepRoot(string Path, bool IsDocument);

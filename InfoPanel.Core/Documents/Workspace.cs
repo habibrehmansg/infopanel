@@ -90,9 +90,9 @@ public sealed record StoredBlob(BlobInfo Info, bool Created);
 /// <summary>
 /// The engine's profiles (spec/docs/api.md): the 2.0 document store, the blob store, and the open documents.
 /// <list type="bullet">
-/// <item><b>Start-up</b> (<see cref="Start"/>): both stores opened, the blob sweep run, then the first change: the
-/// example document on the first run (the store didn't exist before). Step-1 data in the folder is left untouched and
-/// unread, with one warning.</item>
+/// <item><b>Start-up</b> (<see cref="Start"/>): the data folder's marker checked (<see cref="StoreMarker"/>) before
+/// anything else, both stores opened, the blob sweep run, then the first change: the example document on the first run
+/// (the store didn't exist before). Step-1 data in the folder is left untouched and unread, with one warning.</item>
 /// <item><b>Folders are ids.</b> A profile's id is its folder's name. A stored document whose own <c>id</c> differs is
 /// opened under the folder's id (logged), and saved with it.</item>
 /// <item><b>Opening.</b> A document is opened the first time anything reads it (the profile list included) and stays
@@ -170,15 +170,19 @@ public sealed class Workspace : IDisposable
     internal Action? WaitingForLock;
 
     /// <summary>
-    /// Opens the stores in <paramref name="paths"/>, sweeps the blobs, and on the first run (no profile order file and no
-    /// profile folder before) stores the example documents. Logs once when the folder holds step-1 data.
+    /// Checks the data folder's marker (<see cref="StoreMarker.Open"/>: nothing is repaired, swept or written in a folder
+    /// this engine can't honour), opens the stores in <paramref name="paths"/>, sweeps the blobs, and on the first run (no
+    /// profile order file and no profile folder before) stores the example documents. Logs once when the folder holds
+    /// step-1 data.
     /// </summary>
+    /// <exception cref="StoreMarkerException">The marker stops start-up; nothing in the folder was changed.</exception>
     /// <exception cref="IOException">A store can't be opened.</exception>
     public static Workspace Start(DataPaths paths, WorkspaceOptions? options, DateTimeOffset now)
     {
+        StoreMarker.Open(paths);
         options ??= new WorkspaceOptions();
         var logger = options.Logger ?? Log.ForContext<Workspace>();
-        var firstRun = !File.Exists(paths.ProfileOrderFile) && !HasProfileFolders(paths);
+        var hadOrder = RegularFile.StateOf(paths.ProfileOrderFile) != PathState.Absent;
         if (HasStep1Data(paths))
         {
             logger.Warning("The data folder {DataDir} holds step-1 profiles (profiles.xml, profiles/*.xml, assets/); this engine doesn't read them and leaves them untouched",
@@ -187,7 +191,8 @@ public sealed class Workspace : IDisposable
 
         var documents = new DocumentStore(paths, options.Limits);
         var blobs = new BlobStore(paths, options.Limits);
-        documents.Open();
+        // The order lists every profile folder once it is open (a link to nothing named by an id included).
+        var firstRun = documents.Open().Count == 0 && !hadOrder;
         blobs.Open();
         var sweep = BlobSweep.Run(documents, blobs, now);
         if (sweep.SkippedBecause is { } skipped)
@@ -201,13 +206,20 @@ public sealed class Workspace : IDisposable
         return workspace;
     }
 
-    private static bool HasProfileFolders(DataPaths paths) =>
-        Directory.Exists(paths.ProfilesDirectory)
-        && Directory.EnumerateDirectories(paths.ProfilesDirectory).Any(d => DocumentStore.IsValidId(Path.GetFileName(d)));
-
-    private static bool HasStep1Data(DataPaths paths) =>
-        File.Exists(paths.ProfilesFile) || Directory.Exists(paths.AssetsDirectory)
-        || (Directory.Exists(paths.ProfilesDirectory) && Directory.EnumerateFiles(paths.ProfilesDirectory, "*.xml").Any());
+    /// <summary>Whether step-1 data is in the folder; false when that can't be told (it only decides a warning).</summary>
+    private static bool HasStep1Data(DataPaths paths)
+    {
+        try
+        {
+            return File.Exists(paths.ProfilesFile) || Directory.Exists(paths.AssetsDirectory)
+                || RegularFile.List(paths.ProfilesDirectory, new ListingBudget(RegularFile.MaxListing, $"Listing {paths.ProfilesDirectory}"))
+                    .Any(entry => entry is FileInfo && entry.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>The example documents embedded in Core (<c>Documents/Examples/*.document.json</c>), by file name.</summary>
     public static IReadOnlyList<(string Name, byte[] Bytes)> ExampleDocuments()
@@ -582,7 +594,8 @@ public sealed class Workspace : IDisposable
     /// Stores a checked generation as a new profile and publishes its open document in one step under the workspace
     /// lock (the class's lifetime rule): 409 <c>exists</c> when the id is taken, 404 when a duplicate's
     /// <paramref name="source"/> was deleted meanwhile, 422 <c>limit.documentBytes</c> at <paramref name="path"/> when
-    /// the bytes to store are over the limit (<see cref="OverDocumentBytes"/>).
+    /// the bytes to store are over the limit (<see cref="OverDocumentBytes"/>), and 422 <c>limit.profileListBytes</c> at
+    /// <c>""</c> when the stored profile list would be over its own (<see cref="ProfileListFullException"/>).
     /// </summary>
     private CreateOutcome Store(string id, Generation generation, string path, ProfileDocument? source)
     {
@@ -604,6 +617,10 @@ public sealed class Workspace : IDisposable
             catch (InvalidOperationException)
             {
                 return Exists(id);
+            }
+            catch (ProfileListFullException full)
+            {
+                return Invalid([DocumentValidator.Over("", "profileListBytes", full.Bytes, full.Limit)]);
             }
 
             StoreChanged?.Invoke(id);

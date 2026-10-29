@@ -120,6 +120,320 @@ public class EngineStartupTests
     }
 
     [Fact]
+    public async Task AFirstStart_WritesTheDataFolderMarker()
+    {
+        using var factory = new EngineFactory();
+        using (var client = factory.CreateApiClient())
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/session", Ct)).StatusCode);
+
+        Assert.Equal("""{"format":"infopanel.store/1","requires":[]}""", File.ReadAllText(Path.Combine(factory.DataDir, "store.json")));
+    }
+
+    /// <summary>
+    /// The engine itself, as a child process, on a data folder whose marker it can't honour: it stops with exit 1 and a
+    /// message naming why, before it writes anything there (no log, no repair of the leftovers, no sweep of the old
+    /// unreferenced blob, no first-run example): the folder is byte for byte as it was.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"format":"infopanel.store/1","requires":["test.unknown"]}""", "test.unknown")]
+    [InlineData("""{"format":"infopanel.store/2","requires":[]}""", "infopanel.store/2")]
+    [InlineData("{ not json", "can't be read")]
+    public async Task AMarkerThisEngineCantHonour_StopsStartUp_WithExit1_AndWritesNothing(string marker, string named)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "infopanel-marker-" + Guid.NewGuid().ToString("N"));
+        var data = Path.Combine(root, "data");
+        try
+        {
+            const string profile = "0a000000-0000-4000-8000-000000000000";
+            Directory.CreateDirectory(Path.Combine(data, "profiles", profile));
+            Directory.CreateDirectory(Path.Combine(data, "profiles", $"{profile}.{new string('1', 32)}.tmp"));
+            Directory.CreateDirectory(Path.Combine(data, "blobs"));
+            File.WriteAllText(Path.Combine(data, "profiles", profile, "document.json"), """{"format":"infopanel.document/1"}""");
+            File.WriteAllText(Path.Combine(data, "profiles.json"), """{"order":["0b000000-0000-4000-8000-000000000000"]}""");
+            File.WriteAllText(Path.Combine(data, $"profiles.json.{new string('2', 32)}.tmp"), "x");
+            File.WriteAllText(Path.Combine(data, $"tokens.json.{new string('3', 32)}.tmp"), "x");
+            var blob = Path.Combine(data, "blobs", Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData("old"u8)));
+            File.WriteAllText(blob, "old");
+            File.SetLastWriteTimeUtc(blob, DateTime.UtcNow.AddDays(-30));
+            File.WriteAllText(Path.Combine(data, "engine.lock"), "");
+            File.WriteAllText(Path.Combine(data, "store.json"), marker);
+            var before = TreeHash(data);
+
+            var (exitCode, said) = await RunUntilItStops(data, before);
+            Assert.Equal(1, exitCode);
+            Assert.Contains(named, said);
+            Assert.Contains("store.json", said);
+            Assert.Equal(before, TreeHash(data));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
+    /// The same with no lock file yet: the marker is checked, read only, before the lock is created, so a refused start
+    /// leaves no <c>engine.lock</c> behind either.
+    /// </summary>
+    [Fact]
+    public async Task AMarkerThisEngineCantHonour_WithNoLockYet_LeavesNoLockBehind()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "infopanel-marker-" + Guid.NewGuid().ToString("N"));
+        var data = Path.Combine(root, "data");
+        try
+        {
+            Directory.CreateDirectory(data);
+            File.WriteAllText(Path.Combine(data, "store.json"), """{"format":"infopanel.store/2","requires":[]}""");
+            var before = TreeHash(data);
+
+            var (exitCode, said) = await RunUntilItStops(data, before);
+
+            Assert.Equal(1, exitCode);
+            Assert.Contains("infopanel.store/2", said);
+            Assert.False(File.Exists(Path.Combine(data, "engine.lock")));
+            Assert.Equal(before, TreeHash(data));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
+    /// Runs the engine as a child process on <paramref name="data"/> until it exits: its exit code and everything it
+    /// said. It fails at once when the folder changes from <paramref name="before"/> while it runs (an engine that doesn't
+    /// stop writes there within moments), or after a minute.
+    /// </summary>
+    private static Task<(int ExitCode, string Said)> RunUntilItStops(string data, string before) =>
+        RunUntilItStops(data, () => TreeHash(data), before);
+
+    /// <inheritdoc cref="RunUntilItStops(string, string)"/>
+    /// <param name="snapshot">What must not change while it runs (<paramref name="before"/> is its value before).</param>
+    private static async Task<(int ExitCode, string Said)> RunUntilItStops(string data, Func<string> snapshot, string before)
+    {
+        using var engine = System.Diagnostics.Process.Start(EngineProcess(data, EngineRuntime.FindFreePort()))!;
+        var output = engine.StandardOutput.ReadToEndAsync(Ct);
+        var errors = engine.StandardError.ReadToEndAsync(Ct);
+        try
+        {
+            // An engine that doesn't stop writes its log within moments: fail then rather than wait it out.
+            var deadline = Environment.TickCount64 + 60_000;
+            while (!engine.HasExited)
+            {
+                if (Environment.TickCount64 > deadline || snapshot() != before)
+                    Assert.Fail($"The engine didn't stop before writing to the data folder.");
+                await Task.Delay(50, Ct);
+            }
+        }
+        finally
+        {
+            if (!engine.HasExited)
+                engine.Kill(entireProcessTree: true);
+            await engine.WaitForExitAsync(Ct);
+        }
+
+        return (engine.ExitCode, await output + await errors);
+    }
+
+    /// <summary>The engine as a child process on <paramref name="data"/> and <paramref name="port"/>, its output read.</summary>
+    private static System.Diagnostics.ProcessStartInfo EngineProcess(string data, int port)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "InfoPanel.exe" : "InfoPanel"))
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var arg in new[] { "--data-dir", data, "--port", port.ToString(), "--token", EngineFactory.Token, "--no-browser", "--no-windows", "--mock" })
+            start.ArgumentList.Add(arg);
+        return start;
+    }
+
+    /// <summary>
+    /// Runs the engine as a child process on <paramref name="data"/> until it answers <c>/healthz</c> (then stops it), it
+    /// exits, or 30 seconds pass (it is then killed: blocked, say): whether it answered, and everything it said.
+    /// </summary>
+    private static async Task<(bool Listening, string Said)> RunUntilListening(string data)
+    {
+        var port = EngineRuntime.FindFreePort();
+        using var engine = System.Diagnostics.Process.Start(EngineProcess(data, port))!;
+        var output = engine.StandardOutput.ReadToEndAsync(Ct);
+        var errors = engine.StandardError.ReadToEndAsync(Ct);
+        var listening = false;
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        try
+        {
+            var deadline = Environment.TickCount64 + 30_000;
+            while (!listening && !engine.HasExited && Environment.TickCount64 < deadline)
+            {
+                try
+                {
+                    using var response = await http.GetAsync($"http://127.0.0.1:{port}/healthz", Ct);
+                    listening = response.IsSuccessStatusCode;
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !Ct.IsCancellationRequested)
+                {
+                }
+                if (!listening)
+                    await Task.Delay(100, Ct);
+            }
+        }
+        finally
+        {
+            if (!engine.HasExited)
+                engine.Kill(entireProcessTree: true);
+            await engine.WaitForExitAsync(Ct);
+        }
+
+        return (listening, await output + await errors);
+    }
+
+    /// <summary>
+    /// Today's log file is a FIFO with nothing reading it, or <c>logs/</c> a link to a drive that isn't there: the engine
+    /// starts anyway (the file log can't block it or stop it), says once on the console that it logs there only, and
+    /// leaves what is at the path as it was.
+    /// </summary>
+    [Theory]
+    [InlineData("a FIFO at today's log")]
+    [InlineData("logs a link to nothing")]
+    public async Task ALogTargetThatIsntAFile_DoesntHoldUpStartUp_AndTheConsoleSaysSo(string what)
+    {
+        if (OperatingSystem.IsWindows())
+            return; // no FIFOs in folders, and symbolic links need privileges
+        var root = Path.Combine(Path.GetTempPath(), "infopanel-logs-" + Guid.NewGuid().ToString("N"));
+        var data = Path.Combine(root, "data");
+        var logs = Path.Combine(data, "logs");
+        try
+        {
+            Directory.CreateDirectory(data);
+            if (what == "a FIFO at today's log")
+            {
+                Directory.CreateDirectory(logs);
+                InfoPanel.Core.Tests.Fifo.Create(Path.Combine(logs, $"infopanel-{DateTime.Now:yyyyMMdd}.log"));
+            }
+            else
+            {
+                Directory.CreateSymbolicLink(logs, Path.Combine(root, "unmounted", "logs"));
+            }
+
+            var (listening, said) = await RunUntilListening(data);
+
+            Assert.True(listening, $"The engine didn't start:\n{said}");
+            Assert.Single(said.Split('\n'), line => line.Contains("logs") && line.Contains("console only"));
+            if (what == "a FIFO at today's log")
+                Assert.Equal(0, new FileInfo(Path.Combine(logs, $"infopanel-{DateTime.Now:yyyyMMdd}.log")).Length);
+            else
+                Assert.False(Directory.Exists(Path.Combine(root, "unmounted")));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
+    /// The data folder itself a link to a drive that isn't there: start-up stops with exit 1 and a message naming it, and
+    /// nothing is created through the link.
+    /// </summary>
+    [Fact]
+    public async Task ADataFolderLinkToNothing_StopsStartUp_WithExit1_AndCreatesNothing()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // symbolic links need privileges there
+        var root = Path.Combine(Path.GetTempPath(), "infopanel-root-" + Guid.NewGuid().ToString("N"));
+        var data = Path.Combine(root, "data");
+        var target = Path.Combine(root, "unmounted", "data");
+        try
+        {
+            Directory.CreateDirectory(root);
+            Directory.CreateSymbolicLink(data, target);
+            string Snapshot() => $"{Directory.Exists(Path.Combine(root, "unmounted"))}|{new FileInfo(data).LinkTarget}";
+            var before = Snapshot();
+
+            var (exitCode, said) = await RunUntilItStops(data, Snapshot, before);
+
+            Assert.Equal(1, exitCode);
+            Assert.Contains(data, said);
+            Assert.Equal(before, Snapshot());
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
+    /// <c>engine.lock</c> a FIFO, or a link to a file that isn't there: the folder can't be locked, so start-up stops with
+    /// exit 1 (not 3: no other engine holds it) and a message naming the lock, writes nothing, and creates no file through
+    /// the link.
+    /// </summary>
+    [Theory]
+    [InlineData("a FIFO")]
+    [InlineData("a link to nothing")]
+    public async Task ALockThatIsntARegularFile_StopsStartUp_WithExit1_AndWritesNothing(string what)
+    {
+        if (OperatingSystem.IsWindows())
+            return; // no FIFOs in folders, and symbolic links need privileges
+        var root = Path.Combine(Path.GetTempPath(), "infopanel-lock-" + Guid.NewGuid().ToString("N"));
+        var data = Path.Combine(root, "data");
+        var elsewhere = Path.Combine(root, "elsewhere");
+        try
+        {
+            Directory.CreateDirectory(data);
+            Directory.CreateDirectory(elsewhere);
+            File.WriteAllText(Path.Combine(data, "store.json"), """{"format":"infopanel.store/1","requires":[]}""");
+            var lockPath = Path.Combine(data, "engine.lock");
+            if (what == "a FIFO")
+                InfoPanel.Core.Tests.Fifo.Create(lockPath);
+            else
+                File.CreateSymbolicLink(lockPath, Path.Combine(elsewhere, "engine.lock"));
+            var before = TreeHash(data);
+
+            var (exitCode, said) = await RunUntilItStops(data, before);
+
+            Assert.Equal(1, exitCode);
+            Assert.Contains("engine.lock", said);
+            Assert.Equal(before, TreeHash(data));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(elsewhere));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
+    /// Every file and folder under <paramref name="root"/>: names, kinds, sizes, write times and bytes (the lock's
+    /// bytes aren't read: a running engine holds it).
+    /// </summary>
+    private static string TreeHash(string root)
+    {
+        var text = new System.Text.StringBuilder();
+        foreach (var entry in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        {
+            var info = new FileInfo(entry);
+            text.Append(Path.GetRelativePath(root, entry)).Append('|').Append(info.Attributes).Append('|').Append(info.LastWriteTimeUtc.Ticks).Append('|');
+            if (File.Exists(entry))
+            {
+                text.Append(info.Length).Append('|');
+                if (info.Name != "engine.lock")
+                {
+                    try
+                    {
+                        text.Append(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(entry))));
+                    }
+                    catch (IOException)
+                    {
+                        text.Append("(held open)");
+                    }
+                }
+            }
+            text.Append('\n');
+        }
+        return text.ToString();
+    }
+
+    [Fact]
     public async Task ThumbnailWhoseItemsFailToDraw_StillRenders()
     {
         using var engine = new EngineFactory();

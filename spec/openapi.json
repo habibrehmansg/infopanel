@@ -522,7 +522,10 @@
           },
           "401": {"$ref": "#/components/responses/unauthorized"},
           "403": {"$ref": "#/components/responses/forbidden"},
-          "422": {"$ref": "#/components/responses/invalid"}
+          "422": {
+            "description": "The body breaks its definition or a limit, or the stored tokens would be over tokensBytes (limit.tokensBytes); nothing was created.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          }
         }
       }
     },

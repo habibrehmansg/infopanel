@@ -1,5 +1,7 @@
 using InfoPanel.Documents;
 using InfoPanel.Hosting;
+using InfoPanel.Persistence;
+using InfoPanel.Spec;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -54,6 +56,23 @@ public sealed record Caller(string Kind, string? TokenId, TokenScopes Scopes)
 public sealed record TokenRecord(string Id, string Name, TokenScopes Scopes, DateTimeOffset Created, DateTimeOffset? LastUsed, byte[] Hash)
 {
     public string Kind => Caller.IntegrationKind;
+
+    /// <summary>The token's members in the file that this engine doesn't know (a later engine's), as written, kept when it rewrites the file.</summary>
+    internal IReadOnlyList<JsonMemberText>? Unknown { get; init; }
+}
+
+/// <summary>
+/// A create that would take <c>tokens.json</c> over its cap, <c>tokensBytes</c> (spec/docs/limits.md): nothing was
+/// created or written.
+/// </summary>
+public sealed class TokensFullException(long bytes, long limit)
+    : IOException($"The stored tokens would be {bytes} bytes, over the limit of {limit} (tokensBytes).")
+{
+    /// <summary>The bytes the file would take.</summary>
+    public long Bytes { get; } = bytes;
+
+    /// <summary>Its cap.</summary>
+    public long Limit { get; } = limit;
 }
 
 /// <summary>
@@ -63,6 +82,12 @@ public sealed record TokenRecord(string Id, string Name, TokenScopes Scopes, Dat
 /// and 256 random bits in base64url; it is answered once, by <see cref="Create"/>, and never logged. A presented token is
 /// hashed and compared with every stored hash in constant time. <see cref="Revoke"/> removes a token at once and raises
 /// <see cref="Revoked"/>, so open connections authenticated with it can close.
+/// <para>The file is read tolerantly: members this engine doesn't know, in the file and in each token, are ignored and
+/// kept, as written (<see cref="EngineJson"/>), whenever it is rewritten; the file, kept members included, is held to
+/// <see cref="MaxFileBytes"/>, read only when it is a regular file, and written compact. Whatever a later engine adds
+/// that an earlier one must enforce (a rule a token has to meet) comes with a capability in the data folder's marker,
+/// so an earlier engine stops before it reads this file (docs/2.0/data-folder.md). A kind or scope it doesn't know
+/// still stops it.</para>
 /// </summary>
 public sealed partial class TokenStore
 {
@@ -71,32 +96,60 @@ public sealed partial class TokenStore
 
     public const int MaxNameLength = 64;
 
+    /// <summary>
+    /// The most bytes of <c>tokens.json</c>, the members it keeps included, <c>tokensBytes</c> (spec/docs/limits.md): a
+    /// larger file isn't read (the engine stops), and a create that would take it over is refused
+    /// (<see cref="TokensFullException"/>), nothing written. About 80,000 tokens.
+    /// </summary>
+    public static int MaxFileBytes => SpecLimits.Default.TokensBytes;
+
     private const int SecretBytes = 32;
 
     /// <summary>How long a token's last use may be behind before the file is rewritten for it.</summary>
     internal static readonly TimeSpan LastUsedResolution = TimeSpan.FromMinutes(1);
 
+    /// <summary>Compact, and read at one depth, the formats' <c>jsonDepth</c>, as every engine file is.</summary>
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        MaxDepth = EngineJson.MaxDepth,
     };
+
+    /// <summary>The members of the file and of a token that this engine reads (the serializer matches them in any case).</summary>
+    private static readonly string[] FileMembers = ["tokens"];
+
+    private static readonly string[] TokenMembers = ["id", "name", "kind", "scopes", "created", "lastUsed", "sha256"];
 
     private readonly string _path;
     private readonly string _root;
     private readonly TimeProvider _time;
     private readonly Serilog.ILogger _logger;
     private readonly Lock _lock = new();
-    /// <summary>Replaced, never changed, under <see cref="_lock"/>; read without it.</summary>
+    /// <summary>
+    /// Replaced, never changed, under <see cref="_lock"/>; read without it. The tokens as they are in the file, but for
+    /// uses whose write failed (kept here so a failing write is tried again a minute later, not by every request).
+    /// </summary>
     private volatile TokenRecord[] _records;
 
-    private TokenStore(string path, string root, TimeProvider time, Serilog.ILogger logger, TokenRecord[] records)
+    /// <summary>
+    /// The tokens exactly as the file holds them (as read, or as last written), under <see cref="_lock"/>. A create or
+    /// revoke writes from these, never from <see cref="_records"/>, so a use that couldn't be written never makes a
+    /// revoke's file larger than the one on disk: a revoke can always be written, whatever its size.
+    /// </summary>
+    private TokenRecord[] _saved;
+
+    /// <summary>The file's top-level members this engine doesn't know, written back as they were read.</summary>
+    private readonly IReadOnlyList<JsonMemberText>? _unknown;
+
+    private TokenStore(string path, string root, TimeProvider time, Serilog.ILogger logger, TokenRecord[] records, IReadOnlyList<JsonMemberText>? unknown)
     {
         _path = path;
         _root = root;
         _time = time;
         _logger = logger;
         _records = records;
+        _saved = records;
+        _unknown = unknown;
     }
 
     /// <summary>Raised with a token's id after it is revoked.</summary>
@@ -112,34 +165,38 @@ public sealed partial class TokenStore
     /// Reads <paramref name="path"/> (none yet: no tokens) and removes temp files an interrupted write left beside it.
     /// </summary>
     /// <exception cref="InvalidDataException">
-    /// The file can't be read as tokens, or something else is at its path (a folder); it is left as it is.
+    /// The file can't be read as tokens, is larger than <see cref="MaxFileBytes"/>, or something else is at its path (a
+    /// folder, a FIFO, a link whose target can't be reached); it is left as it is.
     /// </exception>
     public static TokenStore Open(string path, string root, TimeProvider time, Serilog.ILogger logger)
     {
         RemoveTempFiles(path, logger);
         TokenRecord[] records;
+        IReadOnlyList<JsonMemberText>? unknown;
         try
         {
-            records = Parse(File.ReadAllBytes(path));
+            (records, unknown) = Parse(RegularFile.ReadAtMost(path, MaxFileBytes));
         }
-        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException && RegularFile.StateOf(path) == PathState.Absent)
         {
-            // Only a file that isn't there is no tokens yet.
-            records = [];
+            // Only a path with nothing at all is no tokens yet: a link to a drive that isn't there is tokens that can't be read.
+            (records, unknown) = ([], null);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or JsonException or FormatException
+            or InvalidOperationException)
         {
             throw new InvalidDataException(
                 $"{path} can't be read ({ex.Message}). Fix it, or delete it to revoke every integration token.", ex);
         }
 
-        return new TokenStore(path, root, time, logger, records);
+        return new TokenStore(path, root, time, logger, records, unknown);
     }
 
     /// <summary>Every token, oldest first.</summary>
     public IReadOnlyList<TokenRecord> List() => _records;
 
     /// <summary>Creates and stores a token; the secret is in the answer only.</summary>
+    /// <exception cref="TokensFullException">The file would be over its cap, <c>tokensBytes</c>; nothing was created.</exception>
     /// <exception cref="IOException">The file could not be written; nothing was created.</exception>
     public (TokenRecord Record, string Secret) Create(string name, TokenScopes scopes)
     {
@@ -150,9 +207,10 @@ public sealed partial class TokenStore
         var record = new TokenRecord(Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16)), name, scopes, created, null, Hash(secret));
         lock (_lock)
         {
-            TokenRecord[] next = [.. _records, record];
+            TokenRecord[] next = [.. _saved, record];
             Save(next);
-            _records = next;
+            _saved = next;
+            _records = [.. _records, record];
         }
 
         _logger.Information("Created integration token {TokenId} ({TokenName}) with scopes {Scopes}", record.Id, name, ScopeNames(scopes));
@@ -161,6 +219,10 @@ public sealed partial class TokenStore
 
     /// <summary>Removes a token: false when there is none with <paramref name="id"/>.</summary>
     /// <exception cref="IOException">The file could not be written; the token is kept.</exception>
+    /// <remarks>
+    /// The file written is the one on disk without the token (<see cref="_saved"/>), so it is never larger than the file
+    /// already there, which is within the cap: a revoke is never refused for it.
+    /// </remarks>
     public bool Revoke(string id)
     {
         TokenRecord? removed;
@@ -169,9 +231,10 @@ public sealed partial class TokenStore
             removed = _records.FirstOrDefault(r => r.Id == id);
             if (removed == null)
                 return false;
-            var next = _records.Where(r => r.Id != id).ToArray();
+            var next = _saved.Where(r => r.Id != id).ToArray();
             Save(next);
-            _records = next;
+            _saved = next;
+            _records = _records.Where(r => r.Id != id).ToArray();
         }
 
         _logger.Information("Revoked integration token {TokenId} ({TokenName})", removed.Id, removed.Name);
@@ -225,11 +288,13 @@ public sealed partial class TokenStore
             try
             {
                 Save(next);
+                _saved = next;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // The use is still allowed, and its time is kept in memory, so the write is tried again a minute later
-                // (or by the next create or revoke) rather than on every request while it fails.
+                // The use is still allowed. The file is unchanged, and so is what a create or revoke writes from
+                // (_saved); the time is kept only in _records, so the write is tried again a minute later rather than on
+                // every request while it fails. Past the cap (TokensFullException) it is the same: nothing is written.
                 _logger.Warning(ex, "Could not record the use of integration token {TokenId} in {Path}", id, _path);
             }
 
@@ -237,46 +302,85 @@ public sealed partial class TokenStore
         }
     }
 
+    /// <exception cref="TokensFullException">The file would be over <see cref="MaxFileBytes"/>; it is unchanged.</exception>
+    /// <exception cref="IOException">The file couldn't be written; it is unchanged.</exception>
     private void Save(TokenRecord[] records)
     {
-        var file = new TokenFile([.. records.Select(r => new StoredToken(r.Id, r.Name, r.Kind, ScopeNames(r.Scopes), Format(r.Created),
-            r.LastUsed is { } used ? Format(used) : null, Convert.ToHexStringLower(r.Hash)))]);
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteStartArray("tokens");
+            foreach (var r in records)
+            {
+                var token = new StoredToken(r.Id, r.Name, r.Kind, ScopeNames(r.Scopes), Format(r.Created),
+                    r.LastUsed is { } used ? Format(used) : null, Convert.ToHexStringLower(r.Hash));
+                writer.WriteRawValue(EngineJson.Append(JsonSerializer.SerializeToUtf8Bytes(token, Json), r.Unknown), skipInputValidation: true);
+            }
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        var bytes = EngineJson.Append(stream.ToArray(), _unknown);
+        if (bytes.Length > MaxFileBytes)
+            throw new TokensFullException(bytes.Length, MaxFileBytes);
         Saving?.Invoke();
-        AtomicFile.WritePrivate(_path, JsonSerializer.SerializeToUtf8Bytes(file, Json), _root);
+        AtomicFile.WritePrivate(_path, bytes, _root);
     }
 
-    private static TokenRecord[] Parse(byte[] bytes)
+    /// <summary>
+    /// The tokens in the file, and the members of the file and of each token this engine doesn't know, as written (in a
+    /// file the serializer read, so a well-formed object within jsonDepth).
+    /// </summary>
+    private static (TokenRecord[] Records, IReadOnlyList<JsonMemberText>? Unknown) Parse(byte[] bytes)
     {
         var file = JsonSerializer.Deserialize<TokenFile>(bytes, Json) ?? throw new JsonException("The file is null.");
         if (file.Tokens == null)
             throw new JsonException("No \"tokens\" array.");
 
+        var members = EngineJson.Members(bytes);
+        var stored = members.LastOrDefault(m => IsKnown(m, FileMembers));
+        List<byte[]> elements = stored is null ? [] : EngineJson.Elements(stored.Value);
+        if (elements.Count != file.Tokens.Count)
+            throw new JsonException("The tokens can't be told apart.");
+
         var records = new List<TokenRecord>();
-        foreach (var stored in file.Tokens)
+        for (var i = 0; i < file.Tokens.Count; i++)
         {
-            if (stored == null || stored.Id == null || !TokenId().IsMatch(stored.Id) || records.Any(r => r.Id == stored.Id))
+            var token = file.Tokens[i];
+            if (token == null || token.Id == null || !TokenId().IsMatch(token.Id) || records.Any(r => r.Id == token.Id))
                 throw new JsonException("A token has a missing, malformed or repeated id.");
-            if (stored.Kind != Caller.IntegrationKind)
-                throw new JsonException($"Token {stored.Id} has the kind '{stored.Kind}'.");
-            if (stored.Name == null || !IsValidName(stored.Name))
-                throw new JsonException($"Token {stored.Id} has a malformed name.");
-            if (stored.Sha256 == null || !Sha256Hex().IsMatch(stored.Sha256))
-                throw new JsonException($"Token {stored.Id} has a malformed sha256.");
-            if (stored.Created == null)
-                throw new JsonException($"Token {stored.Id} has no creation time.");
+            if (token.Kind != Caller.IntegrationKind)
+                throw new JsonException($"Token {token.Id} has the kind '{token.Kind}'.");
+            if (token.Name == null || !IsValidName(token.Name))
+                throw new JsonException($"Token {token.Id} has a malformed name.");
+            if (token.Sha256 == null || !Sha256Hex().IsMatch(token.Sha256))
+                throw new JsonException($"Token {token.Id} has a malformed sha256.");
+            if (token.Created == null)
+                throw new JsonException($"Token {token.Id} has no creation time.");
 
             var scopes = TokenScopes.None;
-            foreach (var name in stored.Scopes ?? [])
-                scopes |= ParseScope(name) ?? throw new JsonException($"Token {stored.Id} has the unknown scope '{name}'.");
+            foreach (var name in token.Scopes ?? [])
+                scopes |= ParseScope(name) ?? throw new JsonException($"Token {token.Id} has the unknown scope '{name}'.");
             if (!scopes.HasFlag(TokenScopes.Read))
-                throw new JsonException($"Token {stored.Id} has no read scope.");
+                throw new JsonException($"Token {token.Id} has no read scope.");
 
-            records.Add(new TokenRecord(stored.Id, stored.Name, scopes, ParseTime(stored.Created),
-                stored.LastUsed is { } used ? ParseTime(used) : null, Convert.FromHexString(stored.Sha256)));
+            records.Add(new TokenRecord(token.Id, token.Name, scopes, ParseTime(token.Created),
+                token.LastUsed is { } used ? ParseTime(used) : null, Convert.FromHexString(token.Sha256))
+            {
+                Unknown = Unknown(EngineJson.Members(elements[i]), TokenMembers),
+            });
         }
 
-        return [.. records];
+        return ([.. records], Unknown(members, FileMembers));
     }
+
+    /// <summary>Whether the serializer reads <paramref name="member"/> as one of <paramref name="known"/> (it matches names in any case).</summary>
+    private static bool IsKnown(JsonMemberText member, string[] known) =>
+        member.Name is { } name && known.Contains(name, StringComparer.OrdinalIgnoreCase);
+
+    private static List<JsonMemberText>? Unknown(List<JsonMemberText> members, string[] known) =>
+        members.Where(m => !IsKnown(m, known)).ToList() is { Count: > 0 } unknown ? unknown : null;
 
     /// <summary>A token name: 1 to <see cref="MaxNameLength"/> letters, digits, spaces, dots, underscores and hyphens, not starting or ending with a space.</summary>
     public static bool IsValidName(string name) => TokenName().IsMatch(name);
@@ -316,14 +420,12 @@ public sealed partial class TokenStore
     private static void RemoveTempFiles(string path, Serilog.ILogger logger)
     {
         var folder = Path.GetDirectoryName(path)!;
-        if (!Directory.Exists(folder))
-            return;
-
         var prefix = Path.GetFileName(path) + ".";
-        foreach (var temp in Directory.EnumerateFiles(folder, prefix + "*" + AtomicFile.TempSuffix))
+        foreach (var entry in RegularFile.List(folder, new ListingBudget(RegularFile.MaxListing, $"Listing {folder}")))
         {
-            var name = Path.GetFileName(temp);
-            if (!TempPart().IsMatch(name[(prefix.Length - 1)..]))
+            var temp = entry.FullName;
+            var name = entry.Name;
+            if (entry is not FileInfo || !name.StartsWith(prefix, StringComparison.Ordinal) || !TempPart().IsMatch(name[(prefix.Length - 1)..]))
                 continue;
             try
             {

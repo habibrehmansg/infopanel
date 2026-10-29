@@ -128,6 +128,22 @@ public sealed class HostingTests : IDisposable
     }
 
     [Fact]
+    public void Wipe_OfAFolderWithTheStoreMarker_KeepsOnlyTheLock()
+    {
+        // --fresh on a folder with the data folder's marker and a temp file an interrupted write of it left.
+        var lockPath = Path.Combine(_dir, "engine.lock");
+        using var held = InstanceLock.TryAcquire(lockPath, out _);
+        File.WriteAllText(Path.Combine(_dir, "store.json"), """{"format":"infopanel.store/1","requires":[]}""");
+        File.WriteAllText(Path.Combine(_dir, $"store.json.{Guid.NewGuid():N}.tmp"), "x");
+
+        Assert.True(DataPaths.IsEngineEntry("store.json"));
+        Assert.Null(DataFolder.CheckWipeable(_dir));
+        DataFolder.Wipe(_dir, lockPath);
+
+        Assert.Equal([lockPath], Directory.GetFileSystemEntries(_dir));
+    }
+
+    [Fact]
     public void Wipe_RefusesAFolderWithForeignFiles_AndDeletesNothing()
     {
         File.WriteAllText(Path.Combine(_dir, "profiles.xml"), "x");

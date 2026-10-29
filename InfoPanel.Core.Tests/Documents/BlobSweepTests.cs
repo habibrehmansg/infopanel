@@ -224,6 +224,224 @@ public class BlobSweepTests
         Assert.False(stores.Blobs.Exists(gone));
     }
 
+    /// <summary>
+    /// The sweep's roots are every regular file under a profile's folder, at any depth: a blob that only a saved
+    /// version, or a file a later engine keeps there, refers to is kept, and the profile's document still counts.
+    /// </summary>
+    [Fact]
+    public void EveryFileUnderAProfileFolderCounts()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        var inDocument = Put(stores, "in the document", Now.AddDays(-30));
+        var inVersion = Put(stores, "in a saved version", Now.AddDays(-30));
+        var deep = Put(stores, "deep down", Now.AddDays(-30));
+        var gone = Put(stores, "gone", Now.AddDays(-30));
+        stores.Documents.Create(A, Document(A, "a", inDocument));
+        var folder = paths.ProfileFolder(A);
+        Directory.CreateDirectory(Path.Combine(folder, "versions"));
+        File.WriteAllBytes(Path.Combine(folder, "versions", "1.json"), Document(A, "saved before", inVersion));
+        Directory.CreateDirectory(Path.Combine(folder, "a", "b", "c"));
+        File.WriteAllText(Path.Combine(folder, "a", "b", "c", "later.json"), $"{{\"x\":[\"{deep}\"]}}");
+
+        var result = Sweep(stores, Now);
+
+        Assert.Null(result.SkippedBecause);
+        Assert.Equal((3, 1), (result.Documents, result.Deleted));
+        Assert.True(stores.Blobs.Exists(inDocument));
+        Assert.True(stores.Blobs.Exists(inVersion));
+        Assert.True(stores.Blobs.Exists(deep));
+        Assert.False(stores.Blobs.Exists(gone));
+    }
+
+    /// <summary>
+    /// A file under a profile's folder that can't be read (or not whole) is one more root that can't be: nothing is
+    /// deleted. What it holds needn't be JSON (<see cref="OsMetadataIsIgnored_AndEveryOtherFileIsScannedAsText"/>).
+    /// </summary>
+    [Theory]
+    [InlineData("(no permission)")]
+    [InlineData("(oversized)")]
+    public void AnUnreadableFileUnderAProfileFolderSkipsTheWholeSweep(string content)
+    {
+        if (content == "(no permission)" && OperatingSystem.IsWindows())
+            return; // Unix permissions
+
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        stores.Documents.Create(A, Document(A, "a"));
+        var old = Put(stores, "old", Now.AddDays(-30));
+        var file = Path.Combine(paths.ProfileFolder(A), "versions", "1.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, content == "(oversized)" ? "\"" + new string('x', stores.Documents.MaxBytes) + "\"" : "{}");
+        if (content == "(no permission)")
+        {
+            File.SetUnixFileMode(file, UnixFileMode.None);
+            if (CanRead(file))
+                return; // running with privileges that ignore the mode
+        }
+
+        var result = Sweep(stores, Now);
+
+        Assert.NotNull(result.SkippedBecause);
+        Assert.Contains("1.json", result.SkippedBecause);
+        Assert.Equal(0, result.Deleted);
+        Assert.True(stores.Blobs.Exists(old));
+    }
+
+    /// <summary>
+    /// Links under a profile's folder are read through, not skipped: a linked folder's files and a linked file count as
+    /// roots (a file there that isn't JSON is scanned as text, like any other), so a blob only they refer to is kept.
+    /// </summary>
+    [Fact]
+    public void LinksUnderAProfileFolderAreReadThroughTheLink()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // symbolic links need privileges there
+
+        using var temp = new TempDirectory();
+        using var outside = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        stores.Documents.Create(A, Document(A, "a"));
+        var linked = Put(stores, "only a linked file refers to it", Now.AddDays(-30));
+        var gone = Put(stores, "gone", Now.AddDays(-30));
+        File.WriteAllText(Path.Combine(outside.Path, "notes.txt"), "not json");
+        File.WriteAllText(Path.Combine(outside.Path, "refers.json"), $"{{\"x\":\"{linked}\"}}");
+        Directory.CreateSymbolicLink(Path.Combine(paths.ProfileFolder(A), "elsewhere"), outside.Path);
+        File.CreateSymbolicLink(Path.Combine(paths.ProfileFolder(A), "refers.json"), Path.Combine(outside.Path, "refers.json"));
+
+        var result = Sweep(stores, Now);
+
+        Assert.Null(result.SkippedBecause);
+        // document.json, elsewhere/notes.txt, elsewhere/refers.json and the linked refers.json.
+        Assert.Equal((4, 1), (result.Documents, result.Deleted));
+        Assert.True(stores.Blobs.Exists(linked));
+        Assert.False(stores.Blobs.Exists(gone));
+    }
+
+    /// <summary>
+    /// A profile's folder that is a link (moved elsewhere and linked back) is read through the link, its saved versions
+    /// included, and so is a linked folder in a profile's folder: a blob only a version there refers to is kept. A link
+    /// back to a folder already read is read once.
+    /// </summary>
+    [Fact]
+    public void ALinkedProfileFolderIsReadThroughTheLink()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // symbolic links need privileges there
+
+        using var temp = new TempDirectory();
+        using var outside = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        var inDocument = Put(stores, "in the document", Now.AddDays(-30));
+        var inVersion = Put(stores, "in a saved version", Now.AddDays(-30));
+        var inLinkedVersions = Put(stores, "in a linked versions folder", Now.AddDays(-30));
+        var gone = Put(stores, "gone", Now.AddDays(-30));
+        stores.Documents.Create(A, Document(A, "a", inDocument));
+        stores.Documents.Create(B, Document(B, "b"));
+
+        // A's folder moved elsewhere, with a saved version, and linked back; a link in it back to itself.
+        var moved = Path.Combine(outside.Path, "A");
+        Directory.Move(paths.ProfileFolder(A), moved);
+        Directory.CreateDirectory(Path.Combine(moved, "versions"));
+        File.WriteAllBytes(Path.Combine(moved, "versions", "1.json"), Document(A, "saved before", inVersion));
+        Directory.CreateSymbolicLink(Path.Combine(moved, "versions", "again"), "..");
+        Directory.CreateSymbolicLink(paths.ProfileFolder(A), moved);
+        // B's saved versions kept elsewhere, linked in.
+        var versions = Path.Combine(outside.Path, "B-versions");
+        Directory.CreateDirectory(versions);
+        File.WriteAllBytes(Path.Combine(versions, "1.json"), Document(B, "saved before", inLinkedVersions));
+        Directory.CreateSymbolicLink(Path.Combine(paths.ProfileFolder(B), "versions"), versions);
+
+        var result = Sweep(stores, Now);
+
+        Assert.Null(result.SkippedBecause);
+        Assert.Equal((4, 1), (result.Documents, result.Deleted));
+        Assert.True(stores.Blobs.Exists(inDocument));
+        Assert.True(stores.Blobs.Exists(inVersion));
+        Assert.True(stores.Blobs.Exists(inLinkedVersions));
+        Assert.False(stores.Blobs.Exists(gone));
+    }
+
+    /// <summary>
+    /// A link whose roots can't be read (one to nothing, in a profile's folder or in <c>profiles/</c> where it may stand
+    /// for a profile on a drive that isn't there, or links that loop) means nothing is deleted that run.
+    /// </summary>
+    [Theory]
+    [InlineData("to nothing, in a profile")]
+    [InlineData("to nothing, in profiles")]
+    [InlineData("looping")]
+    public void ALinkWhoseRootsCantBeReadSkipsTheWholeSweep(string link)
+    {
+        if (OperatingSystem.IsWindows())
+            return; // symbolic links need privileges there
+
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        stores.Documents.Create(A, Document(A, "a"));
+        var old = Put(stores, "old", Now.AddDays(-30));
+        var folder = paths.ProfileFolder(A);
+        var nowhere = temp.Combine("unmounted", "drive");
+        switch (link)
+        {
+            case "to nothing, in a profile":
+                Directory.CreateSymbolicLink(Path.Combine(folder, "versions"), nowhere);
+                break;
+            case "to nothing, in profiles":
+                Directory.CreateSymbolicLink(paths.ProfileFolder(B), nowhere);
+                break;
+            case "looping":
+                File.CreateSymbolicLink(Path.Combine(folder, "x"), Path.Combine(folder, "y"));
+                File.CreateSymbolicLink(Path.Combine(folder, "y"), Path.Combine(folder, "x"));
+                break;
+        }
+
+        var result = Sweep(stores, Now);
+
+        Assert.NotNull(result.SkippedBecause);
+        Assert.Equal(0, result.Deleted);
+        Assert.True(stores.Blobs.Exists(old));
+    }
+
+    /// <summary>
+    /// Known OS metadata (Finder's <c>.DS_Store</c> and AppleDouble <c>._*</c> files, Windows' <c>Thumbs.db</c> and
+    /// <c>desktop.ini</c>) and the engine's own write leftovers aren't roots; every other file is scanned as text, JSON or
+    /// not: a reference in a text editor's binary swap file, or escaped in a recovery file that isn't JSON, keeps its blob.
+    /// </summary>
+    [Fact]
+    public void OsMetadataIsIgnored_AndEveryOtherFileIsScannedAsText()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        var inSwap = Put(stores, "in a swap file", Now.AddDays(-30));
+        var escaped = Put(stores, "escaped in a recovery file", Now.AddDays(-30));
+        var gone = Put(stores, "gone", Now.AddDays(-30));
+        stores.Documents.Create(A, Document(A, "a"));
+        var folder = paths.ProfileFolder(A);
+        Directory.CreateDirectory(Path.Combine(folder, "versions"));
+        File.WriteAllBytes(Path.Combine(folder, ".DS_Store"), [0, 0, 0, 1, (byte)'B', (byte)'u', (byte)'d', 0xFF]);
+        File.WriteAllBytes(Path.Combine(folder, "._document.json"), [0, 5, 22, 7, 0xFF]);
+        File.WriteAllBytes(Path.Combine(folder, "versions", "Thumbs.db"), [0xD0, 0xCF, 0x11, 0xE0]);
+        File.WriteAllText(Path.Combine(folder, "desktop.ini"), "[.ShellClassInfo]");
+        File.WriteAllText(Path.Combine(folder, "versions", $"2.json.{new string('a', 32)}.tmp"), "{\"half");
+        File.WriteAllBytes(Path.Combine(folder, ".document.json.swp"), [0xFF, 0x00, .. Encoding.ASCII.GetBytes(inSwap), 0x00, 0xFE]);
+        File.WriteAllText(Path.Combine(folder, "versions", "3.json~"), "{\"src\": \"\\u0073ha256:" + escaped["sha256:".Length..] + "\", broken");
+
+        var result = Sweep(stores, Now);
+
+        Assert.Null(result.SkippedBecause);
+        // document.json, the swap file and the recovery file.
+        Assert.Equal((3, 1), (result.Documents, result.Deleted));
+        Assert.True(stores.Blobs.Exists(inSwap));
+        Assert.True(stores.Blobs.Exists(escaped));
+        Assert.False(stores.Blobs.Exists(gone));
+    }
+
     [Fact]
     public void OtherFilesInBlobsAreLeftAlone()
     {
@@ -236,6 +454,19 @@ public class BlobSweepTests
 
         Assert.Equal(1, Sweep(stores, Now).Deleted);
         Assert.True(File.Exists(notes));
+    }
+
+    private static bool CanRead(string file)
+    {
+        try
+        {
+            File.ReadAllBytes(file);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static bool CanList(string folder)

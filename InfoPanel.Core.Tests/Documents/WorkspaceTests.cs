@@ -405,6 +405,42 @@ public sealed class WorkspaceTests : IDisposable
         Assert.Equal("json /document/x", Show(created.Invalid!.Errors));
     }
 
+    /// <summary>
+    /// A create or duplicate that would take the stored profile list over <c>profileListBytes</c> is refused, 422 with one
+    /// error <c>limit.profileListBytes</c> at <c>""</c>, and creates nothing; an id that exists is still 409 first.
+    /// </summary>
+    [Fact]
+    public void CreateAndDuplicate_PastTheProfileListBound_AreRefused_AndCreateNothing()
+    {
+        const string C = "0c000000-0000-4000-8000-000000000000";
+        Directory.CreateDirectory(Paths.ProfileFolder(A));
+        File.WriteAllText(Paths.DocumentFile(A), DocJson(A, Scene("a")));
+        File.WriteAllText(Paths.ProfileOrderFile, $$"""{"order":["{{A}}"]}""");
+        var room = Encoding.UTF8.GetByteCount($$"""{"order":["{{A}}","{{B}}"]}""");
+        var workspace = Workspace.Start(Paths, new WorkspaceOptions
+        {
+            Instance = Instance,
+            HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes),
+            Limits = SpecLimits.Default.With(new Dictionary<string, double> { ["profileListBytes"] = room }),
+        }, Start);
+        _open.Add(workspace);
+        byte[] Empty(string id) => Bytes(new JsonObject { ["id"] = id, ["name"] = "Empty", ["width"] = 64, ["height"] = 32 });
+
+        Assert.Equal(201, workspace.Create(Empty(B)).Status);
+        var created = workspace.Create(Empty(C));
+        var copied = workspace.Duplicate(A, Bytes(new JsonObject { ["id"] = C }));
+        var fromDocument = workspace.Create(Bytes(new JsonObject { ["id"] = C, ["document"] = JsonNode.Parse(DocJson(C, Scene("c"))) }));
+
+        foreach (var refused in new[] { created, copied, fromDocument })
+        {
+            Assert.Equal(422, refused.Status);
+            Assert.Equal("limit.profileListBytes ", Show(refused.Invalid!.Errors));
+        }
+        Assert.Equal((409, "exists"), (workspace.Create(Empty(B)).Status, workspace.Create(Empty(B)).Exists!.Code));
+        Assert.Equal([A, B], workspace.List().Select(e => e.Id));
+        Assert.False(Directory.Exists(Paths.ProfileFolder(C)));
+    }
+
     [Fact]
     public void Duplicate_CopiesTheCurrentDocument_WithAFreshHistory()
     {

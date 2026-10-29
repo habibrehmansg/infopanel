@@ -61,6 +61,10 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
     [Fact]
     public async Task EveryDeclaredResponse_AndEverySocketMessage_IsSeen()
     {
+        // tokens.json within 530 bytes of its cap (tokensBytes, 16 MiB) before the engine starts: room for the tour's two
+        // tokens (and their uses), not for a third.
+        var pad = 16 * 1024 * 1024 - 530 - """{"tokens":[],"tour":""}""".Length;
+        File.WriteAllText(Path.Combine(factory.DataDir, "tokens.json"), $$"""{"tokens":[],"tour":"{{new string('x', pad)}}"}""");
         using var session = Client(EngineFactory.Token);
         using var anonymous = Client(null);
 
@@ -70,6 +74,8 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         using var reader = Client(read.GetProperty("token").GetString());
         using var editor = Client(edit.GetProperty("token").GetString());
         await Send(session, "POST", "/api/tokens", 422, Body("{}"));
+        var full = await Send(session, "POST", "/api/tokens", 422, JsonContent.Create(new { name = "tour-full", scopes = new[] { "read" } }));
+        Assert.Equal("limit.tokensBytes", full.GetProperty("errors")[0].GetProperty("code").GetString());
         await Send(session, "GET", "/api/tokens", 200);
         await Send(session, "DELETE", $"/api/tokens/{AbsentToken}", 404);
 

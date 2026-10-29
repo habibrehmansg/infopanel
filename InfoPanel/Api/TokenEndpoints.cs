@@ -54,7 +54,17 @@ public static class TokenEndpoints
             if (!TokenStore.IsValidName(create.Name))
                 return Invalid("/name", "schema", "A token name is 1 to 64 letters, digits, spaces, dots, underscores and hyphens, without a space at either end.");
             var scopes = create.Scopes.Aggregate(TokenScopes.None, (all, name) => all | TokenStore.ParseScope(name)!.Value);
-            var (record, secret) = tokens.Create(create.Name, scopes);
+            TokenRecord record;
+            string secret;
+            try
+            {
+                (record, secret) = tokens.Create(create.Name, scopes);
+            }
+            catch (TokensFullException full)
+            {
+                // The stored tokens are held to tokensBytes (spec/docs/limits.md): nothing was created.
+                return Invalid("", "limit.tokensBytes", $"The stored tokens would be {full.Bytes} bytes, over the limit of {full.Limit} (tokensBytes); revoke tokens to make room.");
+            }
             context.Response.Headers.CacheControl = "no-store";
             return Json(Info(record) with { Token = secret }, StatusCodes.Status201Created);
         }).RequireScope(ApiScope.Session);

@@ -4,7 +4,9 @@ namespace InfoPanel.Hosting;
 
 /// <summary>
 /// <c>{data}/runtime.json</c>: <c>{pid, port, url}</c> of the running engine, for launchers and companions.
-/// Written owner-only (0600) on Unix through a temp file, and deleted on clean shutdown.
+/// Written owner-only (0600) on Unix through a temp file, and deleted on clean shutdown. It is a hint: a crash leaves it
+/// behind and its pid may be reused, so whether an engine runs on the folder is its lock (<c>engine.lock</c>), and which
+/// run answers is <c>GET /api/session</c> (its <c>instance</c>) at that URL (docs/2.0/data-folder.md).
 /// </summary>
 public static class RuntimeFile
 {

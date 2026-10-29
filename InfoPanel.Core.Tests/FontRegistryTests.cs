@@ -112,4 +112,59 @@ public class FontRegistryTests
             Directory.Delete(directory, recursive: true);
         }
     }
+
+    /// <summary>
+    /// A FIFO named like a font in <c>fonts/</c> (nothing writing to it) is skipped without waiting on it, and the fonts
+    /// beside it are registered: start-up never blocks on one.
+    /// </summary>
+    [Fact]
+    public void RegisterDirectory_WithAFifo_DoesntBlock_AndRegistersTheFontsBesideIt()
+    {
+        if (!Fifo.Supported)
+            return;
+        var directory = Path.Combine(Path.GetTempPath(), $"fonts-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var fifo = Path.Combine(directory, "a-wait.ttf");
+            Fifo.Create(fifo);
+            File.Copy(Path.Combine(InterDirectory, "Inter-Bold.ttf"), Path.Combine(directory, "b-Inter-Bold.ttf"));
+
+            var families = Fifo.Within(15, () => FontRegistry.RegisterDirectory(directory), fifo);
+
+            Assert.Equal(["Inter"], families);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// <c>fonts/</c> walked through links: each real folder once, so links that loop back (two here, which a walk that
+    /// follows them would multiply into tens of thousands of paths) register the font once, in moments.
+    /// </summary>
+    [Fact]
+    public void RegisterDirectory_ThroughLinksThatLoop_ReadsEachFolderOnce()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // symbolic links need privileges there
+        var directory = Path.Combine(Path.GetTempPath(), $"fonts-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(directory, "sub"));
+        try
+        {
+            File.Copy(Path.Combine(InterDirectory, "Inter-Bold.ttf"), Path.Combine(directory, "sub", "Inter-Bold.ttf"));
+            Directory.CreateSymbolicLink(Path.Combine(directory, "sub", "again"), directory);
+            Directory.CreateSymbolicLink(Path.Combine(directory, "sub", "and again"), Path.Combine(directory, "sub"));
+
+            var walk = Task.Run(() => FontRegistry.RegisterDirectory(directory));
+            Assert.True(walk.Wait(TimeSpan.FromSeconds(20)), "Still walking after 20 s: the links were followed round and round.");
+
+            Assert.Equal(["Inter"], walk.Result);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }

@@ -1,0 +1,64 @@
+# The data folder
+
+The engine keeps everything it stores in one folder: `{LocalApplicationData}/InfoPanel/v2` (`~/Library/Application Support/InfoPanel/v2` on macOS, `%LOCALAPPDATA%\InfoPanel\v2` on Windows), or `--data-dir`. The folder is the engine's own: it isn't one of the formats in `spec/`, and a client never reads it. This page says what is in it, and the rules that keep one engine from damaging what another wrote there.
+
+## What is in it
+
+| Entry | What |
+|---|---|
+| `store.json` | The folder's marker ([below](#the-marker)) |
+| `engine.lock` | Held open and locked by the running engine, so a second one on the folder stops (exit 3); a regular file only (a FIFO, a device or a link to nothing there stops start-up, exit 1); left in place on exit |
+| `profiles.json` | The profiles' display order, `{"order": [ids]}`, within `profileListBytes` ([below](#the-profile-list)) |
+| `profiles/{id}/document.json` | Each profile's saved document; `{id}` is a lower-case UUID. The folder's other files count for the blob sweep too ([below](#the-blob-sweep)) |
+| `blobs/{64 hex}` | Media and other blobs, by the SHA-256 of their bytes |
+| `tokens.json` | Integration tokens: records and the SHA-256 of each secret, never a secret; owner-only; at most `tokensBytes`, 16 MiB (`spec/docs/limits.md`: a create past it is 422 `limit.tokensBytes`, a use that would take it past isn't recorded, and a revoke, which writes the file on disk less the token, always fits) |
+| `settings.json` | The engine settings that someone set (`infopanel.settings/1`) |
+| `import-v1.json` | The 1.x migration's run-once record |
+| `runtime.json` | The running engine's pid, port and URL: a hint ([below](#finding-the-running-engine)) |
+| `fonts/` | User fonts (`.ttf`, `.otf`, `.ttc`, `.otc`, at any depth, read through links with each real folder walked once; at most 10,000 entries looked at and 256 MiB a font; past either, the fonts found are registered and the rest skipped with a warning) |
+| `logs/` | The engine's log, `infopanel-{yyyyMMdd}.log` by local date (`_001`, `_002`… past 100 MiB), the newest 7 files kept. Only a regular file is written: when the folder or the day's file is anything else (a FIFO, a device, a link to nothing), the engine logs to the console only for the run and says so there once; so it does when a rollover finds 8 full files in a row, or the day's files are full up to the last number a name holds |
+| `profiles.xml`, `profiles/{guid}.xml`, `assets/` | Step-1 data, left untouched and unread |
+
+Every file the engine replaces is written to `{name}.{32 hex}.tmp` beside it, flushed and renamed over it, so a crash leaves the old file or the new one. `--fresh` (a development flag) wipes a folder only when it holds nothing but these entries and their temp files.
+
+## Special files and links
+
+Every file the engine opens here and every folder it lists, at start-up, in the blob sweep and after, goes through one layer (`Persistence/RegularFile`), with three rules:
+
+- **Only regular files are opened, without waiting.** On macOS and Linux a file is opened non-blocking and its type checked on that open handle (a FIFO's plain open waits for the other end); on Windows its name is taken literally (`\?\`, so a file named `NUL`, or one ending in a dot, is that file and never a device) and the handle's type checked before anything is read. A FIFO, socket or device is refused: as the marker it stops start-up, as the lock it stops start-up (exit 1), as a sweep root it stops the sweep's deletions, as one of the engine's own files it can't be read and is left as it is, as a font it is skipped, as the day's log the file log is off, and under a blob's name it isn't a stored blob.
+- **A link whose target can't be reached is never "nothing there".** A link to nothing, to a drive that isn't there, or links that loop, are followed and found unresolved; only a path with nothing at all, not even a link, is absent. Such a link, or anything but a folder where a folder is listed, is never read as empty: the sweep deletes nothing that run; the data folder itself, `profiles/`, `blobs/` or `engine.lock` stops start-up with exit 1, nothing written there or through the link; `tokens.json` stops the engine, `profiles.json`, `settings.json` and `import-v1.json` can't be read and are left as they are (as [below](#the-engines-files-are-read-tolerantly)); `fonts/` and `logs/` are skipped with a warning and start-up goes on. A profile's folder that is such a link is still a profile, listed as unreadable; deleting it removes the link, never what it leads to.
+- **Every listing is bounded.** One listing looks at most at 1,000,000 entries; the blob sweep at most at 250,000 in all (the profiles' files and folders and the blobs) and reads at most 1 GiB of roots; the start-up removal of what interrupted creates and deletes left (staging and deleted profiles' folders) at most 1,000,000 in all; past a bound the listing stops: the sweep deletes nothing that run, the removal leaves the rest for the next start, and start-up goes on (but for `profiles/`, whose profiles can't then be listed: start-up stops).
+
+## The marker
+
+`store.json` says which layout the folder has and what an engine must understand before it touches it:
+
+```json
+{"format": "infopanel.store/1", "requires": []}
+```
+
+Before it creates anything in the folder, its lock file included, the engine reads the marker, read only; it reads it again right after it takes the lock, before it repairs, sweeps or writes anything there (its log included). (`--fresh` wipes the folder, marker and all, after taking the lock, so it reads it only then.)
+
+- **Absent:** the engine writes it, as above, and starts.
+- **Readable, `infopanel.store/1`, every capability in `requires` one the engine has:** it starts. Members it doesn't know are ignored, and the file is never rewritten.
+- **Anything else** (a file that isn't a JSON object of at most 64 KiB, or isn't a regular file, no `format` string, a `format` of another major version such as `infopanel.store/2`, a `requires` that isn't an array of names, `format` or `requires` given twice, or a capability the engine lacks): the engine stops with exit code 1 and a message naming the reason, the file and the capabilities it lacks, and changes nothing in the folder: it creates no lock file, and one already there is left in place.
+
+Version 1.0 of the layout defines no capabilities. A later engine that keeps something an earlier one would damage lists one: blob references in a file outside the profiles' folders (an earlier engine's sweep wouldn't see them), or a rule an earlier engine must enforce (a token that expires, say). Such an engine adds its capability to `requires` when it first writes what needs it; an earlier engine on that folder then stops instead of sweeping those blobs or honouring that token. Anything kept inside a profile's own folder needs no capability ([below](#the-blob-sweep)). A new major version (`infopanel.store/2`) is for a layout an earlier engine can't read at all; an earlier engine stops on it as on a capability it lacks.
+
+## The engine's files are read tolerantly
+
+What the engine writes for itself it reads tolerantly, so a later engine can add to it: `profiles.json`, `tokens.json`, `import-v1.json` and `settings.json` ignore members they don't know and keep them when the engine rewrites the file (the order, a token's last use, a token created or revoked, a migration recorded again, a setting changed). In `profiles.json`, `tokens.json` and `import-v1.json` a kept member is kept as JSON text, as it was written but for the whitespace between its tokens, so a value of any kind survives (a string or a name that holds no text included), and it is written back as that text, never re-indented; `settings.json` keeps its members as values (one it can't write back makes the file unreadable, so never rewritten). What is kept counts toward the file's own byte cap: `profileListBytes` for `profiles.json` ([below](#the-profile-list)), 16 MiB for `tokens.json` (a create that would pass it is refused), `recordBytes` for `import-v1.json`, 1 MiB for `settings.json`. Each file is read at one depth: the formats' `jsonDepth` (256 levels) for `profiles.json`, `tokens.json`, `import-v1.json` and the marker; `settings.json` keeps its own 64, to which its changes are held as well.
+
+Tolerant files never lose data. A file the engine can't hold whole (over its byte cap, well-formed but nested deeper than it reads, or not a regular file it can open) is left as it is, never rewritten, and the run does without it: `profiles.json`'s order is kept in memory and not written that run, a record counts as a migration done and isn't replaced (a client's write of it is refused), an unreadable `tokens.json` stops the engine, and `settings.json` leaves the defaults in effect and refuses changes. A file that is damaged (not JSON, or a member the engine knows that it can't read) is handled as damage: a token of a kind or with a scope it doesn't know stops the engine too; `profiles.json` is rebuilt, listing the profiles by id; a record counts as a migration done, and the next one recorded replaces it. When a damaged `profiles.json` or record is still a JSON object, its other members are kept when it is replaced. Whatever an earlier engine must not ignore comes under the marker instead.
+
+## The blob sweep
+
+Unreferenced blobs are deleted at start-up only, after the marker, and only when every root can be read. **The root rule:** under each folder of `profiles/` (a profile's, or any other but an interrupted create's or delete's, below), every file at any depth is a root, read through links (a linked folder's files are read through the link, each real folder once, and nothing is deleted through a link), except known OS metadata (Finder's `.DS_Store` and AppleDouble `._*` files, Windows' `Thumbs.db` and `desktop.ini`) and the engine's discarded write leftovers (`{name}.{32 hex}.tmp`); and so is each folder's `document.json`, even when it is missing. A root's references are any `sha256:` followed by 64 hex digits in its text, as written or with JSON escapes decoded, whether or not the file is JSON; only a profile's `document.json` must also be well-formed JSON. A root that can't be read (missing, unreadable, not a regular file, over a document's read cap, a document that isn't JSON), a link whose roots can't be read (one to nothing, links that loop, `profiles/` itself included), or a sweep past its bounds ([above](#special-files-and-links)) means nothing is deleted that run. So a later engine can keep saved versions, recovery files or anything else that names blobs in a profile's folder, in any form, and an earlier engine keeps those blobs without understanding the files. An unreferenced blob is deleted only once it was last written more than 24 hours ago. Staging folders (`{id}.{32 hex}.tmp`) and deleted ones (`{id}.deleted-{32 hex}`) aren't roots: they are what an interrupted create or delete left, removed at start-up.
+
+## The profile list
+
+`profiles.json` is held to `profileListBytes` (16 MiB, `spec/docs/limits.md`), its own bound, not a document's: the engine never writes a larger one (a create or duplicate that would is refused with `limit.profileListBytes`) and reads one within it. A file over the bound isn't read, nor rewritten that run: the profiles are listed by id, and their order is kept in memory. If the profile folders alone make a list over the bound, the engine keeps that order for the run and doesn't write it, and refuses creates until profiles are deleted.
+
+## Finding the running engine
+
+`runtime.json` (`{pid, port, url}`, owner-only) is written once the engine listens and deleted when it stops cleanly. It is only a hint: a crash leaves it behind, and its pid may belong to another process by then. Whether an engine runs on the folder is its lock, `engine.lock`, held for the engine's whole run; which run answers at the URL is `GET /api/session`, whose `instance` is new every run.

@@ -11,8 +11,9 @@ namespace InfoPanel.Persistence;
 /// The engine's data folder. It keeps the 1.x layout (<c>profiles.xml</c>, <c>profiles/{guid}.xml</c>,
 /// <c>assets/{guid}/</c>) and adds <c>fonts/</c>, <c>logs/</c>, <c>runtime.json</c> and <c>engine.lock</c>.
 /// The 2.0 document store (<see cref="DocumentStore"/>, <see cref="BlobStore"/>) adds <c>profiles.json</c>,
-/// <c>profiles/{id}/document.json</c> and <c>blobs/{sha256 hex}</c>; the engine adds <c>tokens.json</c> and
-/// <c>settings.json</c>, and the 1.x import its run-once record <c>import-v1.json</c>. <see cref="EngineFiles"/> and <see cref="EngineFolders"/> list them.
+/// <c>profiles/{id}/document.json</c> and <c>blobs/{sha256 hex}</c>; the engine adds <c>store.json</c> (the folder's
+/// marker, <see cref="StoreMarker"/>), <c>tokens.json</c> and <c>settings.json</c>, and the 1.x import its run-once record
+/// <c>import-v1.json</c>. <see cref="EngineFiles"/> and <see cref="EngineFolders"/> list them (docs/2.0/data-folder.md).
 /// </summary>
 public sealed class DataPaths
 {
@@ -39,20 +40,23 @@ public sealed class DataPaths
     /// <summary>The engine settings (<c>InfoPanel.Settings.SettingsStore</c>), in the data folder.</summary>
     public const string SettingsFileName = "settings.json";
 
+    /// <summary>The data folder's marker (<see cref="StoreMarker"/>), at its root.</summary>
+    public const string StoreFileName = "store.json";
+
     /// <summary>
-    /// The top-level files the engine writes in its data folder: the 2.0 store's profile order, the integration
-    /// tokens, the engine settings, the runtime file, the lock, step-1's profile list (which this engine leaves alone)
-    /// and the 1.x migration's run-once record. The one list of them: <c>--fresh</c> wipes only a folder that holds nothing else,
-    /// and the 1.x import keeps the 1.x folder clear of them.
+    /// The top-level files the engine writes in its data folder: the folder's marker, the 2.0 store's profile order, the
+    /// integration tokens, the engine settings, the runtime file, the lock, step-1's profile list (which this engine leaves
+    /// alone) and the 1.x migration's run-once record. The one list of them: <c>--fresh</c> wipes only a folder that holds
+    /// nothing else, and the 1.x import keeps the 1.x folder clear of them.
     /// </summary>
     public static IReadOnlyList<string> EngineFiles { get; } =
-        ["profiles.json", "tokens.json", SettingsFileName, "runtime.json", "engine.lock", "profiles.xml", ImportRecordFileName];
+        [StoreFileName, "profiles.json", "tokens.json", SettingsFileName, "runtime.json", "engine.lock", "profiles.xml", ImportRecordFileName];
 
     /// <summary>The top-level folders the engine writes in its data folder (<c>assets</c> is step-1's).</summary>
     public static IReadOnlyList<string> EngineFolders { get; } = ["profiles", "blobs", "fonts", "logs", "assets"];
 
     /// <summary>The engine files written by renaming a temp file (<c>{name}.{32 hex}.tmp</c>) over them.</summary>
-    private static readonly string[] ReplacedFiles = ["profiles.json", "tokens.json", SettingsFileName, "runtime.json", "profiles.xml", ImportRecordFileName];
+    private static readonly string[] ReplacedFiles = [StoreFileName, "profiles.json", "tokens.json", SettingsFileName, "runtime.json", "profiles.xml", ImportRecordFileName];
 
     private static readonly Regex EngineTempFile = new(
         $"\\A({string.Join('|', ReplacedFiles.Select(Regex.Escape))})\\.[0-9a-f]{{32}}\\.tmp\\z",
@@ -85,8 +89,14 @@ public sealed class DataPaths
 
     public string LogsDirectory => Path.Combine(Root, "logs");
 
-    /// <summary>Written by the running engine (pid, port, url) so launchers and companions can find it.</summary>
+    /// <summary>
+    /// Written by the running engine (pid, port, url) so launchers and companions can find it: a hint, since a crash
+    /// leaves it behind; whether an engine runs is the lock, and which one <c>GET /api/session</c>.
+    /// </summary>
     public string RuntimeFile => Path.Combine(Root, "runtime.json");
+
+    /// <summary>The data folder's marker: its format and what an engine must understand to touch the folder.</summary>
+    public string StoreFile => Path.Combine(Root, StoreFileName);
 
     /// <summary>Held by the running engine so a second instance can detect it.</summary>
     public string EngineLockFile => Path.Combine(Root, "engine.lock");

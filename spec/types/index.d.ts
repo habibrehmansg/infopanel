@@ -2615,7 +2615,7 @@ export interface ApiOperations {
       401: Problem;
       /** The token lacks the scope the request needs. */
       403: ScopeProblem;
-      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      /** The body breaks its definition or a limit, or the stored tokens would be over tokensBytes (limit.tokensBytes); nothing was created. */
       422: InvalidProblem;
     };
   };

@@ -21,7 +21,8 @@ using System.Net;
 using System.Text.Json.Serialization;
 
 // The InfoPanel 2.0 engine: a headless, loopback-only ASP.NET Core host that stores and edits 2.0 documents, reads
-// sensors, renders every output with the scene runtime and serves the web client. Exit codes: 0 clean, 1 fatal error, 2 bad arguments, 3 data folder in use.
+// sensors, renders every output with the scene runtime and serves the web client. Exit codes: 0 clean, 1 fatal error
+// (a data folder whose marker this engine can't honour included), 2 bad arguments, 3 data folder in use.
 
 var parsed = EngineCommandLine.Parse(args);
 if (parsed.ShowHelp)
@@ -49,13 +50,41 @@ if (options == null)
 }
 
 var paths = options.DataDir != null ? new DataPaths(options.DataDir) : DataPaths.DefaultRoot();
-DataFolder.CreatePrivate(paths.Root);
 
-using var instanceLock = InstanceLock.TryAcquire(paths.EngineLockFile, out var lockError);
+// The data folder's marker, read only, before anything is created there (the lock file included): a folder this engine
+// can't honour stops it with the reason on the console and is left exactly as it was. --fresh wipes the folder, marker
+// included, so it is checked after the wipe instead.
+if (!options.Fresh)
+{
+    try
+    {
+        StoreMarker.Preflight(paths);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"InfoPanel: {ex.Message}");
+        return 1;
+    }
+}
+
+try
+{
+    DataFolder.CreatePrivate(paths.Root);
+}
+catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+{
+    // A data folder that is a link to a drive that isn't there, or a file: nothing is created through it.
+    Console.Error.WriteLine($"InfoPanel: the data folder {paths.Root} can't be used: {ex.Message}");
+    return 1;
+}
+
+// Only a regular file is locked: one another engine holds is exit 3; one that can't be locked (a FIFO, a link whose
+// target can't be reached) stops start-up with exit 1, nothing created.
+using var instanceLock = InstanceLock.TryAcquire(paths.EngineLockFile, out var lockError, out var lockHeld);
 if (instanceLock == null)
 {
     Console.Error.WriteLine($"InfoPanel: {lockError}");
-    return 3;
+    return lockHeld ? 3 : 1;
 }
 
 if (options.Fresh)
@@ -72,7 +101,22 @@ if (options.Fresh)
     }
 }
 
-DataFolder.CreatePrivate(paths.LogsDirectory);
+// The marker again, now under the lock, before anything repairs, sweeps or writes there (the log included): a folder
+// this engine can't honour stops it with the reason on the console, and nothing in the folder is touched; the lock
+// file, once there, is left in place. Written when absent.
+try
+{
+    StoreMarker.Open(paths);
+}
+catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+{
+    Console.Error.WriteLine($"InfoPanel: {ex.Message}");
+    return 1;
+}
+
+// The log file, opened only as a regular file (the folder created when nothing is there): when it can't be, the engine
+// says so once on the console and logs there only, so a FIFO or a link to nothing never blocks or stops start-up.
+var logFile = new EngineLogFile(paths.LogsDirectory, message => Console.Error.WriteLine(message));
 
 // The sign-in link carries the token, so it goes to the console only; the file gets it redacted (EngineLifetime), and
 // so do the recent entries kept for clients. The level is the log level setting, set once the settings are open.
@@ -88,12 +132,7 @@ var engineLogger = new LoggerConfiguration()
         .WriteTo.Console())
     .WriteTo.Logger(file => file
         .Filter.ByExcluding(e => LogTargets.Is(e, LogTargets.Console))
-        .WriteTo.File(
-            Path.Combine(paths.LogsDirectory, "infopanel-.log"),
-            rollingInterval: RollingInterval.Day,
-            retainedFileCountLimit: 7,
-            fileSizeLimitBytes: 100L * 1024 * 1024,
-            rollOnFileSizeLimit: true)
+        .WriteTo.Sink(logFile)
         .WriteTo.Sink(recentLog))
     .CreateLogger();
 Log.Logger = engineLogger;
@@ -105,7 +144,8 @@ try
     if (options.Fresh)
         Log.Information("Wiped the data folder {DataDir} (--fresh)", paths.Root);
 
-    // The stores are opened and their blobs swept before anything changes them; the first run stores the example.
+    // The stores are opened and their blobs swept before anything changes them (behind the marker, checked again); the
+    // first run stores the example.
     var workspace = Workspace.Start(paths, new WorkspaceOptions { Logger = engineLogger.ForContext<Workspace>() }, DateTimeOffset.UtcNow);
     // The engine settings: a file that can't be read is logged, leaves the defaults in effect and is never rewritten.
     var settings = SettingsStore.Open(paths, engineLogger.ForContext<SettingsStore>());

@@ -273,15 +273,19 @@ public sealed class SettingsStore
         static (SettingsStatus, SpecError?, JsonObject?) Unreadable(string pointer, string code, string message) =>
             (SettingsStatus.Unreadable, new SpecError(pointer, code, message), null);
 
-        if (Directory.Exists(path))
-            return Unreadable("", "io", "A folder is where the settings file belongs.");
-        if (!File.Exists(path))
-            return (SettingsStatus.Ok, null, NewTree());
+        switch (RegularFile.StateOf(path))
+        {
+            case PathState.Folder:
+                return Unreadable("", "io", "A folder is where the settings file belongs.");
+            case PathState.Absent:
+                return (SettingsStatus.Ok, null, NewTree());
+        }
 
         byte[] bytes;
         try
         {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            // A regular file only: a FIFO or device there is unreadable, without waiting on it.
+            using var stream = RegularFile.OpenRead(path);
             if (stream.Length > SettingsLimits.MaxFileBytes)
                 return Unreadable("", "limit.settingsBytes", $"The file has {stream.Length} bytes; at most {SettingsLimits.MaxFileBytes} are read.");
             using var buffer = new MemoryStream();
@@ -780,14 +784,13 @@ public sealed class SettingsStore
     {
         var folder = System.IO.Path.GetDirectoryName(path)!;
         var name = System.IO.Path.GetFileName(path);
-        if (!Directory.Exists(folder))
-            return;
 
         IEnumerable<string> temps;
         try
         {
-            temps = Directory.EnumerateFiles(folder, name + ".*" + AtomicFile.TempSuffix)
-                .Where(t => AtomicFile.IsTempFile(System.IO.Path.GetFileName(t), target => target == name))
+            temps = RegularFile.List(folder, new ListingBudget(RegularFile.MaxListing, $"Listing {folder}"))
+                .Where(t => t is FileInfo && AtomicFile.IsTempFile(t.Name, target => target == name))
+                .Select(t => t.FullName)
                 .ToList();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

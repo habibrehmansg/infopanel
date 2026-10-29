@@ -42,6 +42,30 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
         return client;
     }
 
+    /// <summary>
+    /// A create that would take <c>tokens.json</c> over its cap, <c>tokensBytes</c> (16 MiB), is refused 422 with one
+    /// error, <c>limit.tokensBytes</c> at <c>""</c> (spec/docs/limits.md), and nothing is created or written.
+    /// </summary>
+    [Fact]
+    public async Task ACreatePastTheTokenFilesCap_Is422_LimitTokensBytes()
+    {
+        using var full = new EngineFactory();
+        Directory.CreateDirectory(full.DataDir);
+        var file = Path.Combine(full.DataDir, "tokens.json");
+        var nearlyFull = $"{{\"tokens\":[],\"later\":\"{new string('x', 16 * 1024 * 1024 - 100 - 27)}\"}}";
+        File.WriteAllText(file, nearlyFull);
+        using var session = full.CreateApiClient();
+
+        using var response = await session.PostAsJsonAsync("/api/tokens", new { name = "one-too-many", scopes = new[] { "read" } }, Ct);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        var error = Assert.Single(problem.GetProperty("errors").EnumerateArray());
+        Assert.Equal(("limit.tokensBytes", ""), (error.GetProperty("code").GetString(), error.GetProperty("path").GetString()));
+        Assert.Empty((await session.GetFromJsonAsync<JsonElement>("/api/tokens", Ct)).EnumerateArray());
+        Assert.Equal(nearlyFull, File.ReadAllText(file));
+    }
+
     private static async Task AssertScopeProblem(HttpResponseMessage response, string scope)
     {
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -866,6 +890,141 @@ public sealed class TokenStoreTests : IDisposable
         Assert.Equal(_time.GetUtcNow(), Open().List().Single().LastUsed);
     }
 
+    /// <summary>
+    /// The file is read tolerantly: members this engine doesn't know, in the file and in a token, are ignored and kept
+    /// whenever the engine rewrites it (a last use, a create, a revoke).
+    /// </summary>
+    [Fact]
+    public void UnknownMembers_AreKept_WhenTheFileIsRewritten()
+    {
+        var (_, secret) = Open().Create("kept", TokenScopes.Read);
+        var file = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(File_))!.AsObject();
+        file["note"] = "from a later engine";
+        file["tokens"]![0]!["label"] = new System.Text.Json.Nodes.JsonObject { ["color"] = "blue" };
+        File.WriteAllText(File_, file.ToJsonString());
+
+        var store = Open();
+        Assert.NotNull(store.Authenticate(secret));
+        var afterUse = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(File_))!;
+        Assert.Equal(TokenStore.Format(_time.GetUtcNow()), afterUse["tokens"]![0]!["lastUsed"]?.GetValue<string>());
+
+        var (other, _) = store.Create("other", TokenScopes.Read);
+        Assert.True(store.Revoke(other.Id));
+
+        foreach (var text in new[] { afterUse.ToJsonString(), File.ReadAllText(File_) })
+        {
+            var after = System.Text.Json.Nodes.JsonNode.Parse(text)!;
+            Assert.Equal("from a later engine", after["note"]?.GetValue<string>());
+            Assert.Equal("blue", after["tokens"]![0]!["label"]?["color"]?.GetValue<string>());
+        }
+        Assert.Equal("kept", Assert.Single(Open().List()).Name);
+    }
+
+    /// <summary>
+    /// A member this engine doesn't know is kept as JSON text, whatever it holds: a string that holds no text no longer
+    /// stops the open, and it is written back as it was.
+    /// </summary>
+    [Fact]
+    public void AnUnknownMemberItCantDecode_IsKeptAsItWas()
+    {
+        Open().Create("kept", TokenScopes.Read);
+        File.WriteAllText(File_, File.ReadAllText(File_).Replace("\"tokens\"", "\"later\": \"\\uD800\", \"tokens\""));
+
+        Open().Create("other", TokenScopes.Read);
+
+        Assert.Contains("\"later\":\"\\uD800\"", File.ReadAllText(File_));
+        Assert.Equal(["kept", "other"], Open().List().Select(t => t.Name));
+    }
+
+    /// <summary>
+    /// The members it keeps are written back compact, as they were, never re-indented: a deep, wide member costs its own
+    /// bytes and no more when the file is rewritten.
+    /// </summary>
+    [Fact]
+    public void KeptMembers_AreWrittenBackCompact()
+    {
+        Open().Create("kept", TokenScopes.Read);
+        var wide = new string('[', 50) + string.Join(",", Enumerable.Repeat("1", 1000)) + new string(']', 50);
+        var text = File.ReadAllText(File_).Replace("\"tokens\"", $"\"later\": {wide}, \"tokens\"");
+        File.WriteAllText(File_, text);
+
+        Open().Create("other", TokenScopes.Read);
+
+        var after = File.ReadAllText(File_);
+        Assert.Contains($"\"later\":{wide}", after);
+        Assert.True(after.Length < text.Length + 400, $"{after.Length} bytes after the create, {text.Length} before");
+    }
+
+    /// <summary>
+    /// <c>tokens.json</c> is held to its own byte cap, 16 MiB, the members it keeps included: a larger file is unreadable
+    /// (the engine stops) and left as it is, and a create that would take the file over it is refused, nothing written.
+    /// </summary>
+    [Fact]
+    public void TheFile_IsHeldToItsByteCap_KeptMembersIncluded()
+    {
+        const int Cap = 16 * 1024 * 1024; // TokenStore.MaxFileBytes, docs/2.0/data-folder.md
+        Open().Create("kept", TokenScopes.Read);
+        var text = File.ReadAllText(File_);
+        string Padded(int bytes) => text.Replace("\"tokens\"", $"\"later\":\"{new string('x', bytes - text.Length - 11)}\",\"tokens\"");
+
+        var over = Padded(Cap + 1);
+        Assert.Equal(Cap + 1, over.Length);
+        File.WriteAllText(File_, over);
+        Assert.Throws<InvalidDataException>(Open);
+        Assert.Equal(over, File.ReadAllText(File_));
+
+        var full = Padded(Cap - 100);
+        File.WriteAllText(File_, full);
+        var store = Open();
+        Assert.ThrowsAny<IOException>(() => store.Create("over", TokenScopes.Read));
+        Assert.Equal(["kept"], store.List().Select(t => t.Name));
+        Assert.Equal(full, File.ReadAllText(File_));
+    }
+
+    /// <summary>
+    /// A file a few bytes under its cap, whose tokens are then each used once: recording a use would take it over, so no
+    /// use is written, and what a revoke writes is the file as it is on disk without the token, which never grows it. The
+    /// revoke succeeds, the token stops working at once, and the file is smaller and still readable.
+    /// </summary>
+    [Fact]
+    public void Revoking_PastTheCap_AfterUsesThatCouldntBeRecorded_Succeeds()
+    {
+        const int Cap = 16 * 1024 * 1024; // TokenStore.MaxFileBytes
+        var created = Open();
+        var secrets = Enumerable.Range(0, 10).Select(i => created.Create($"t{i}", TokenScopes.Read).Secret).ToList();
+        var text = File.ReadAllText(File_);
+        var full = text.Replace("\"tokens\"", $"\"later\":\"{new string('x', Cap - 20 - text.Length - 11)}\",\"tokens\"");
+        Assert.Equal(Cap - 20, full.Length); // under the cap by less than one recorded use
+        File.WriteAllText(File_, full);
+        var store = Open();
+
+        foreach (var secret in secrets)
+            Assert.NotNull(store.Authenticate(secret));
+        Assert.Equal(full, File.ReadAllText(File_));
+
+        var revoked = store.List()[3];
+        Assert.True(store.Revoke(revoked.Id));
+
+        Assert.Null(store.Authenticate(secrets[3]));
+        Assert.False(store.IsActive(revoked.Id));
+        var after = File.ReadAllText(File_);
+        Assert.True(after.Length < full.Length, $"{after.Length} bytes after the revoke, {full.Length} before");
+        Assert.Equal(9, Open().List().Count);
+        Assert.DoesNotContain(Open().List(), t => t.Id == revoked.Id);
+    }
+
+    [Fact]
+    public void AFifoAtThePath_StopsTheOpen_WithoutBlocking()
+    {
+        if (!InfoPanel.Core.Tests.Fifo.Supported)
+            return;
+        InfoPanel.Core.Tests.Fifo.Create(File_);
+
+        InfoPanel.Core.Tests.Fifo.Within(10, () => Assert.Throws<InvalidDataException>(Open), File_);
+
+        Assert.True(File.Exists(File_));
+    }
+
     [Fact]
     public void UnreadableFile_StopsTheOpen_AndIsLeftAlone()
     {
@@ -875,6 +1034,24 @@ public sealed class TokenStoreTests : IDisposable
 
         File.WriteAllText(File_, """{"tokens":[{"id":"0123456789abcdef0123456789abcdef","name":"x","kind":"session","scopes":["read"],"created":"2026-10-27T09:30:00Z","sha256":"00"}]}""");
         Assert.Throws<InvalidDataException>(Open);
+    }
+
+    /// <summary>
+    /// <c>tokens.json</c> as a link to a drive that isn't there: the tokens aren't "none yet", so the open stops (the engine
+    /// with it) and the link is left as it is, never replaced by a new file that would disconnect them.
+    /// </summary>
+    [Fact]
+    public void ALinkToNothingAtThePath_StopsTheOpen_AndIsLeftAsALink()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // symbolic links need privileges there
+        var target = Path.Combine(_dir, "unmounted", "tokens.json");
+        File.CreateSymbolicLink(File_, target);
+
+        Assert.Throws<InvalidDataException>(Open);
+
+        Assert.Equal(target, new FileInfo(File_).LinkTarget);
+        Assert.False(Directory.Exists(Path.GetDirectoryName(target)));
     }
 
     /// <summary>Only a missing file is no tokens: a folder at its path stops the open too, and is left as it is.</summary>

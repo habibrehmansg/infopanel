@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using InfoPanel.Persistence;
 using Serilog;
 
 namespace InfoPanel.Documents;
@@ -13,13 +15,17 @@ namespace InfoPanel.Documents;
 public sealed record BlobSweepResult(int Documents, int Blobs, int Referenced, int Deleted, string? SkippedBecause);
 
 /// <summary>
-/// Removes blobs no saved document refers to, at start-up only (nothing is deleted while the engine runs, so a blob
-/// only the undo history or an unsaved change refers to stays until the next start). A reference is any
-/// <c>sha256:</c> followed by 64 hex digits anywhere in a <c>document.json</c>, found by scanning its text (and, for
-/// strings with JSON escapes, their decoded value), so documents of an unsupported format and opaque data count without
-/// being understood. An unreferenced blob is deleted only when it was last written more than <see cref="GracePeriod"/>
-/// ago. When any document can't be read (missing, unreadable, larger than <see cref="DocumentStore.MaxBytes"/>, or not
-/// well-formed JSON), or whether one exists can't be told, nothing is deleted at all.
+/// Removes blobs no saved file refers to, at start-up only (nothing is deleted while the engine runs, so a blob only
+/// the undo history or an unsaved change refers to stays until the next start). The roots are chosen by the root rule of
+/// docs/2.0/data-folder.md (<see cref="DocumentStore.SweepRoots"/>), so what a later engine keeps in a profile's folder
+/// counts without being understood. A reference is any <c>sha256:</c> followed by 64 hex digits anywhere in a root's
+/// text, as it is or with its JSON escapes decoded, whether or not the root is JSON; only a profile's
+/// <c>document.json</c> must also be well-formed JSON. An unreferenced blob is deleted only when it was last written more
+/// than <see cref="GracePeriod"/> ago. When any root can't be read (missing, unreadable, not a regular file, larger than
+/// <see cref="DocumentStore.MaxBytes"/>, a document that isn't JSON), or what the roots are can't be told (a folder that
+/// can't be listed, a link whose target can't be reached), nothing is deleted at all. The sweep is bounded: it looks at
+/// most at <see cref="MaxEntries"/> entries (the profiles' files and folders and the blobs) and reads at most
+/// <see cref="MaxBytes"/> of roots; past either, it deletes nothing that run.
 /// </summary>
 public static partial class BlobSweep
 {
@@ -27,6 +33,12 @@ public static partial class BlobSweep
 
     /// <summary>How long an unreferenced blob is kept after it was last stored.</summary>
     public static readonly TimeSpan GracePeriod = TimeSpan.FromHours(24);
+
+    /// <summary>The most entries a sweep looks at: the files and folders under <c>profiles/</c>, and the files in <c>blobs/</c>.</summary>
+    public const int MaxEntries = 250_000;
+
+    /// <summary>The most bytes of roots a sweep reads.</summary>
+    public const long MaxBytes = 1L << 30;
 
     [GeneratedRegex("sha256:[0-9a-f]{64}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Reference();
@@ -38,25 +50,33 @@ public static partial class BlobSweep
     /// and referenced by no document are deleted; a blob that can't be deleted is logged and kept.
     /// </summary>
     /// <exception cref="InvalidOperationException">A store isn't open, or something was already changed in either.</exception>
-    public static BlobSweepResult Run(DocumentStore documents, BlobStore blobs, DateTimeOffset now)
+    public static BlobSweepResult Run(DocumentStore documents, BlobStore blobs, DateTimeOffset now) =>
+        Run(documents, blobs, now, MaxEntries, MaxBytes);
+
+    /// <inheritdoc cref="Run(DocumentStore, BlobStore, DateTimeOffset)"/>
+    /// <param name="maxEntries">The most entries it looks at (<see cref="MaxEntries"/>).</param>
+    /// <param name="maxBytes">The most bytes of roots it reads (<see cref="MaxBytes"/>).</param>
+    internal static BlobSweepResult Run(DocumentStore documents, BlobStore blobs, DateTimeOffset now, int maxEntries, long maxBytes)
     {
         lock (documents.SyncRoot)
         lock (blobs.SyncRoot)
         {
             if (!documents.InStartup || !blobs.InStartup)
                 throw new InvalidOperationException("The blob sweep runs only at start-up: after both stores are opened and before either changes.");
-            return Sweep(documents, blobs, now);
+            return Sweep(documents, blobs, now, maxEntries, maxBytes);
         }
     }
 
-    private static BlobSweepResult Sweep(DocumentStore documents, BlobStore blobs, DateTimeOffset now)
+    private static BlobSweepResult Sweep(DocumentStore documents, BlobStore blobs, DateTimeOffset now, int maxEntries, long maxBytes)
     {
         var references = new HashSet<string>(StringComparer.Ordinal);
-        IReadOnlyList<string> files, stored;
+        var budget = new ListingBudget(maxEntries, "The blob sweep");
+        IReadOnlyList<SweepRoot> files;
+        IReadOnlyList<string> stored;
         try
         {
-            files = documents.DocumentFiles();
-            stored = blobs.List();
+            files = documents.SweepRoots(budget);
+            stored = blobs.List(budget);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -64,13 +84,22 @@ public static partial class BlobSweep
             return new BlobSweepResult(0, 0, 0, 0, $"the documents or blobs can't be listed ({ex.Message})");
         }
 
-        foreach (var file in files)
+        long read = 0;
+        foreach (var (file, isDocument) in files)
         {
             try
             {
-                CollectReferences(DocumentStore.ReadAtMost(file, documents.MaxBytes), references);
+                var content = DocumentStore.ReadAtMost(file, documents.MaxBytes);
+                if ((read += content.Length) > maxBytes)
+                {
+                    Logger.Warning("Skipped the blob sweep: its roots are more than {MaxBytes} bytes", maxBytes);
+                    return new BlobSweepResult(files.Count, stored.Count, 0, 0, $"the roots are more than {maxBytes} bytes, more than the sweep reads");
+                }
+                if (isDocument)
+                    RequireJson(content);
+                CollectReferences(content, references);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or JsonException or InvalidOperationException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
             {
                 Logger.Warning(ex, "Skipped the blob sweep: {Path} can't be read", file);
                 return new BlobSweepResult(files.Count, stored.Count, 0, 0, $"{file} can't be read ({ex.Message})");
@@ -103,21 +132,61 @@ public static partial class BlobSweep
         return new BlobSweepResult(files.Count, stored.Count, referenced, deleted, null);
     }
 
-    /// <summary>Adds every reference in <paramref name="document"/>'s text and in its escaped JSON strings, lower-cased.</summary>
-    /// <exception cref="JsonException">The document is not well-formed JSON.</exception>
-    internal static void CollectReferences(ReadOnlySpan<byte> document, HashSet<string> references)
+    /// <summary>
+    /// Adds every reference in <paramref name="content"/>'s text, lower-cased: as it is, and with its JSON escapes
+    /// decoded (<c>\u0073ha256:…</c>), wherever they are, so a reference in a JSON string counts however it is spelled and
+    /// the content needn't be JSON (a swap file, a recovery file cut short).
+    /// </summary>
+    internal static void CollectReferences(ReadOnlySpan<byte> content, HashSet<string> references)
     {
         // Latin-1 maps each byte to one char, so every ASCII reference in UTF-8 text is found as it is.
-        Collect(Encoding.Latin1.GetString(document), references);
+        var text = Encoding.Latin1.GetString(content);
+        Collect(text, references);
+        if (text.Contains('\\'))
+            Collect(Unescaped(text), references);
+    }
 
-        // A string can spell a reference with escapes (sha256:...); its decoded value is scanned too.
-        if (document.StartsWith("﻿"u8))
+    /// <summary><paramref name="text"/> with every JSON escape in it decoded, left to right, inside a string or not.</summary>
+    private static string Unescaped(string text)
+    {
+        var decoded = new StringBuilder(text.Length);
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (c == '\\' && i + 1 < text.Length)
+            {
+                var next = text[i + 1];
+                if (next == 'u' && i + 5 < text.Length && ushort.TryParse(text.AsSpan(i + 2, 4), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var unit))
+                {
+                    decoded.Append((char)unit);
+                    i += 5;
+                    continue;
+                }
+
+                var simple = next switch { '"' => '"', '\\' => '\\', '/' => '/', 'b' => '\b', 'f' => '\f', 'n' => '\n', 'r' => '\r', 't' => '\t', _ => (char?)null };
+                if (simple is { } one)
+                {
+                    decoded.Append(one);
+                    i++;
+                    continue;
+                }
+            }
+
+            decoded.Append(c);
+        }
+
+        return decoded.ToString();
+    }
+
+    /// <summary>Checks that a profile's document is well-formed JSON, at any depth.</summary>
+    /// <exception cref="JsonException">It isn't.</exception>
+    private static void RequireJson(ReadOnlySpan<byte> document)
+    {
+        if (document.StartsWith("\uFEFF"u8))
             document = document[3..];
-        var reader = new Utf8JsonReader(document, new JsonReaderOptions { MaxDepth = 4096 });
+        var reader = new Utf8JsonReader(document, new JsonReaderOptions { MaxDepth = int.MaxValue });
         while (reader.Read())
         {
-            if (reader.TokenType is JsonTokenType.String or JsonTokenType.PropertyName && reader.ValueIsEscaped)
-                Collect(reader.GetString()!, references);
         }
     }
 

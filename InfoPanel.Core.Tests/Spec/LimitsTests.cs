@@ -72,6 +72,8 @@ public class LimitsTests
             ["itemDepth"] = 8,
             ["requestBytes"] = 65_536,
             ["tokenRequestBytes"] = 4_096,
+            ["profileListBytes"] = 16_777_216,
+            ["tokensBytes"] = 16_777_216,
             ["archiveBytes"] = 536_870_912,
             ["archiveEntries"] = 10_000,
             ["expandedBytes"] = 536_870_912,
