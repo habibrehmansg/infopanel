@@ -232,7 +232,8 @@ public class VideoStreamTests
         await Eventually(() => first.Aborted && h.Refreshes == 1, "the session is aborted, a fresh frame asked for");
 
         h.Frame();
-        await Eventually(() => h.Hardware.Sessions.Count == 2 && h.Stream.Queued >= 1, "the new session encodes");
+        // The first frame is still queued (of the aborted session's generation), the new keyframe behind it.
+        await Eventually(() => h.Hardware.Sessions.Count == 2 && h.Stream.Queued == 2, "the new session encodes");
         var sent = h.Take();
         var frame = Assert.Single(sent);
         Assert.Equal(3, frame.Header.Tick);

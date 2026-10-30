@@ -48,6 +48,8 @@ internal sealed class H264Backends
     public static H264Backends ForThisComputer(string mode, ILogger logger)
     {
         var all = new List<IH264Backend>();
+        if (OperatingSystem.IsMacOS())
+            all.Add(new VideoToolboxH264(logger));
         return new H264Backends(Enabled(all, mode), logger);
     }
 
