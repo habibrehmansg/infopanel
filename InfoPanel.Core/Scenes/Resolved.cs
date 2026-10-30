@@ -516,6 +516,15 @@ internal sealed class RText : RNode
     /// <summary>The node's outline for bounds: the box on each axis it has one, otherwise the lines.</summary>
     public SKRect Outline;
 
+    /// <summary>Whether the text fits its box (a text node; a table's cells are <see cref="TextFit.Fits"/>), for <see cref="TickSnapshot.Texts"/>.</summary>
+    public TextFit Fit;
+
+    /// <summary>The runs laid out (shared with the layout's key), for the report's text.</summary>
+    public TextRun[] Runs = [];
+
+    /// <summary>Where the lines are drawn, in the node's coordinates (within <see cref="ClipRect"/> when clipped).</summary>
+    public SKRect Lines;
+
     private SKRect[]? _glyphs; // an array, so a racing first read publishes it atomically
 
     /// <summary>Where glyphs may draw (the blobs' conservative bounds and the outline), for layer bounds.</summary>

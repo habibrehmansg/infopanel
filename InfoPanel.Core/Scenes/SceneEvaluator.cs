@@ -648,9 +648,26 @@ internal sealed class SceneEvaluator
             h is null ? linesRect.Bottom : clipped ? boxRect.Bottom : Math.Max(boxRect.Bottom, linesRect.Bottom));
         if (r.Stroke is { } st && !clipped) outline.Inflate(st.Width / 2, st.Width / 2);
         r.Outline = outline;
+
+        // For the preview checks: where the lines are, and whether the text fits its box. A marquee scrolls instead.
+        r.Runs = _texts[t.TextIndex].Item1.Runs;
+        var drawn = linesRect;
+        if (r.ClipRect is { } clip && !drawn.IntersectsWith(clip)) drawn = SKRect.Empty;
+        else if (r.ClipRect is { } c) drawn.Intersect(c);
+        r.Lines = drawn;
+        var larger = (w is { } bw && layout.Width > bw + FitTolerance) || (h is { } bh2 && layout.Height > bh2 + FitTolerance);
+        r.Fit = marquee ? TextFit.Fits
+            : layout.FitFailed ? TextFit.FitMinimum
+            : layout.Truncated ? (t.Overflow == TextOverflow.Ellipsis ? TextFit.Ellipsis : TextFit.LinesLeftOut)
+            : larger ? (t.Overflow == TextOverflow.Clip ? TextFit.Clipped : TextFit.PastBox)
+            : TextFit.Fits;
+
         _laidOut[t.TextIndex] = r;
         return r;
     }
+
+    /// <summary>How far laid-out text may pass its box, in pixels, and still count as fitting (rounding in shaping).</summary>
+    private const float FitTolerance = 0.5f;
 
     private static int CountScalars(string s)
     {

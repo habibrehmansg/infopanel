@@ -128,6 +128,15 @@ internal sealed class TextLayout
     /// <summary>A fit probe stopped before its last line (it can't fit).</summary>
     public bool Stopped;
 
+    /// <summary>
+    /// Text was left out: lines past <c>maxLines</c> (or past the box's height, for an ellipsis), or a line cut with
+    /// "…". For the preview checks (<see cref="TickSnapshot.Texts"/>), not for drawing.
+    /// </summary>
+    public bool Truncated;
+
+    /// <summary><c>fit</c> found no size down to its minimum at which the text fits: it is laid out at the minimum.</summary>
+    public bool FitFailed;
+
     public float FirstBaseline => Lines.Length > 0 ? Lines[0].Baseline : 0;
 
     private double[]? _outline; // an array, so a racing first read publishes length and contours together
@@ -270,7 +279,8 @@ internal static class TextLayoutEngine
             return !probe.Stopped && probe.Width <= key.W!.Value + 0.01f && (key.H is not { } h || probe.Height <= h + 0.01f) && (key.MaxLines is not { } m || lines <= m);
         }
         var found = steps;
-        if (Fits(0)) found = 0;
+        var fitted = Fits(0);
+        if (fitted) found = 0;
         else
         {
             int lo = 1, hi = steps; // smallest k that fits, assuming fitting is monotonic in size
@@ -280,6 +290,7 @@ internal static class TextLayoutEngine
                 if (Fits(mid))
                 {
                     found = mid;
+                    fitted = true;
                     hi = mid - 1;
                 }
                 else lo = mid + 1;
@@ -288,6 +299,7 @@ internal static class TextLayoutEngine
         var s = size > 0 ? (size - 0.5f * found) / size : 1;
         var result = Lay(key.With(key.MaxLines, s, key.Overflow), meter);
         result.Scale = s;
+        result.FitFailed = !fitted;
         return result;
     }
 
@@ -303,15 +315,19 @@ internal static class TextLayoutEngine
         var ellipsis = key.Overflow == TextOverflow.Ellipsis;
         var height = 0f;
         var stopped = false;
-        for (var p = 0; p < paragraphs.Count && remaining > 0 && !stopped; p++)
+        var truncated = false;
+        var p = 0;
+        for (; p < paragraphs.Count && remaining > 0 && !stopped; p++)
         {
             var dropsLater = p + 1 < paragraphs.Count && remaining == 1;
-            var block = LayParagraph(key, paragraphs[p], remaining, dropsLater && ellipsis, meter, stopBelow - height, out stopped);
+            var block = LayParagraph(key, paragraphs[p], remaining, dropsLater && ellipsis, meter, stopBelow - height, out stopped, out var cut);
+            truncated |= cut || (dropsLater && ellipsis);
             lines.AddRange(block);
             remaining -= block.Count;
             foreach (var line in block) height += line.Height;
             if (height > stopBelow && p + 1 < paragraphs.Count) stopped = true;
         }
+        if (p < paragraphs.Count && !stopped) truncated = true; // paragraphs past maxLines
 
         Stack(lines);
         var layout = new TextLayout
@@ -320,6 +336,7 @@ internal static class TextLayoutEngine
             Width = lines.Count == 0 ? 0 : lines.Max(l => l.Width),
             Height = lines.Count == 0 ? 0 : lines[^1].Top + lines[^1].Height,
             Stopped = stopped,
+            Truncated = truncated,
         };
 
         // Ellipsis with a box height: keep the lines that fit (at least one) and end the last with "…".
@@ -330,7 +347,9 @@ internal static class TextLayoutEngine
             fit = Math.Max(1, fit);
             if (fit < layout.Lines.Length && fit < (key.MaxLines ?? int.MaxValue))
             {
-                return Lay(key.With(fit, 1, key.Overflow), meter);
+                var cut = Lay(key.With(fit, 1, key.Overflow), meter);
+                cut.Truncated = true;
+                return cut;
             }
         }
         return layout;
@@ -366,9 +385,11 @@ internal static class TextLayoutEngine
         LetterSpacing = key.LetterSpacing,
     };
 
-    private static List<LaidLine> LayParagraph(TextLayoutKey key, List<(int Span, string Text)> fragments, int maxLines, bool forceEllipsis, LayoutMeter meter, float stopBelow, out bool stopped)
+    /// <param name="truncated">Lines of the paragraph were left out, or its line cut with "…" (a whole layout only, not a fit probe).</param>
+    private static List<LaidLine> LayParagraph(TextLayoutKey key, List<(int Span, string Text)> fragments, int maxLines, bool forceEllipsis, LayoutMeter meter, float stopBelow, out bool stopped, out bool truncated)
     {
         stopped = false;
+        truncated = false;
         var ellipsis = key.Overflow == TextOverflow.Ellipsis;
         var tb = new TextBlock { FontMapper = SceneFontMapper.Instance, Alignment = TextAlignment.Left };
         if (key.Wrap && key.W is { } ww) tb.MaxWidth = Math.Max(0, ww);
@@ -415,6 +436,9 @@ internal static class TextLayoutEngine
             cap = Cap();
             limit = (int)Math.Min(2L * limit, cap);
         }
+        // A whole layout's cap is maxLines (one more line than the budget allows has thrown above), so RichTextKit
+        // truncating means lines past maxLines, or the one line an ellipsis keeps.
+        truncated = float.IsPositiveInfinity(stopBelow) && tb.Truncated;
 
         var lines = new List<LaidLine>();
         var made = 0f; // the lines' height so far

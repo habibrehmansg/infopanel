@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using InfoPanel.Images;
 using InfoPanel.Spec;
@@ -39,6 +40,37 @@ internal sealed class SnapScene : SnapItem
     public ItemRuntime? Runtime;
 }
 
+/// <summary>Whether a text node's text fits its box, as its layout knows it (<see cref="TickSnapshot.Texts"/>).</summary>
+public enum TextFit
+{
+    /// <summary>It fits, it has no box, or it scrolls (a marquee).</summary>
+    Fits,
+
+    /// <summary>Its text was cut and ended with "…" (<c>overflow: ellipsis</c>).</summary>
+    Ellipsis,
+
+    /// <summary>Lines were left out (<c>maxLines</c>, or explicit lines past it).</summary>
+    LinesLeftOut,
+
+    /// <summary>It is larger than its box and clipped to it (<c>overflow: clip</c>).</summary>
+    Clipped,
+
+    /// <summary>It is larger than its box and drawn past it (<c>overflow: visible</c>).</summary>
+    PastBox,
+
+    /// <summary><c>fit</c> shrank it to its minimum size, and it still didn't fit.</summary>
+    FitMinimum,
+}
+
+/// <summary>A rectangle on the canvas, in profile pixels.</summary>
+public readonly record struct CanvasBox(double X, double Y, double W, double H);
+
+/// <summary>
+/// One drawn text node of a tick: its item, its text (its spans joined), where its lines are drawn on the canvas (the
+/// axis-aligned box of the lines, clipped to its box when it is clipped), and whether it fits its box.
+/// </summary>
+public sealed record TextReport(string ItemId, string Text, CanvasBox Box, TextFit Fit);
+
 /// <summary>
 /// One tick of one document generation (spec/docs/identity.md, "The tick snapshot"): the clock, every input, the text
 /// layouts and the media frames the tick read, evaluated once. Everything drawn or measured for the tick uses it: every
@@ -55,6 +87,7 @@ public sealed class TickSnapshot : IDisposable
     private readonly MediaSample[] _samples;
     private readonly IDisposable[] _owned;
     private readonly Lazy<IReadOnlyList<ItemBounds>> _bounds;
+    private readonly Lazy<IReadOnlyList<TextReport>> _texts;
     private readonly double _drawBudgetMs;
     private int _references = 1;
 
@@ -74,6 +107,7 @@ public sealed class TickSnapshot : IDisposable
         Diagnostics = diagnostics;
         _drawBudgetMs = drawBudgetMs;
         _bounds = new Lazy<IReadOnlyList<ItemBounds>>(() => BoundsOf(_items), LazyThreadSafetyMode.ExecutionAndPublication);
+        _texts = new Lazy<IReadOnlyList<TextReport>>(() => TextsOf(_items), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public long Generation { get; }
@@ -97,6 +131,44 @@ public sealed class TickSnapshot : IDisposable
 
     /// <summary>Every visible item's measured frame and ink (spec/docs/geometry.md), in document order, from this tick.</summary>
     public IReadOnlyList<ItemBounds> Bounds => _bounds.Value;
+
+    /// <summary>Every drawn text node of every visible item, in drawing order, from this tick's layouts (not part of the API).</summary>
+    public IReadOnlyList<TextReport> Texts => _texts.Value;
+
+    private static IReadOnlyList<TextReport> TextsOf(SnapItem[] roots)
+    {
+        var result = new List<TextReport>();
+        void Item(SnapItem item)
+        {
+            switch (item)
+            {
+                case SnapGroup g:
+                    foreach (var child in g.Children) Item(child);
+                    break;
+                case SnapScene { Nodes: { } nodes } s:
+                    foreach (var node in nodes) Node(s.Id, node, s.World);
+                    break;
+            }
+        }
+        void Node(string id, RNode node, SKMatrix matrix)
+        {
+            if (node.Opacity <= 0) return; // not drawn
+            switch (node)
+            {
+                case RGroup g:
+                    var inner = g.Matrix.IsIdentity ? matrix : matrix.PreConcat(g.Matrix);
+                    foreach (var child in g.Children) Node(id, child, inner);
+                    break;
+                case RText t:
+                    var box = matrix.MapRect(t.Lines);
+                    var text = t.Runs.Length == 1 ? t.Runs[0].Text : string.Concat(t.Runs.Select(r => r.Text));
+                    result.Add(new TextReport(id, text, new CanvasBox(box.Left, box.Top, box.Width, box.Height), t.Fit));
+                    break;
+            }
+        }
+        foreach (var item in roots) Item(item);
+        return result;
+    }
 
     /// <summary>Another reference; the holder disposes it.</summary>
     public TickSnapshot Retain()
