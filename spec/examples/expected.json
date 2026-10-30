@@ -295,6 +295,8 @@
   "scene/invalid/path-syntax.json": {"code": "path.syntax", "path": "/nodes/0/d"},
   "scene/invalid/provider-newline.json": {"code": "schema", "path": "/nodes/0/source"},
   "scene/invalid/provider-without-capability.json": {"code": "requires.missing", "path": "/nodes/0/source"},
+  "scene/invalid/video-in-sequence.json": {"code": "schema", "path": "/nodes/0/source"},
+  "scene/invalid/video-without-capability.json": {"code": "requires.missing", "path": "/nodes/0/source"},
   "scene/invalid/scene-bytes.json": {"code": "limit.sceneBytes", "path": "", "limits": {"sceneBytes": 100}},
   "scene/invalid/schema-type.json": {"code": "schema", "path": "/nodes/0/w/args/1"},
   "scene/invalid/sequence.json": {"code": "limit.sequence", "path": "/nodes/0/source/sequence", "limits": {"sequence": 2}},

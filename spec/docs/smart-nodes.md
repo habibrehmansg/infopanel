@@ -50,11 +50,11 @@ Each cell, the header's included, is its text, at most `textLength` Unicode scal
 
 ## `media`
 
-Examples: `image.json`, `gauge-sequence.json`, `provider-media.json`.
+Examples: `image.json`, `gauge-sequence.json`, `provider-media.json`, `video-media.json`.
 
 | Member | Meaning |
 |---|---|
-| `source` | `{ "asset": "sha256:…" }`: a stored asset. `{ "sequence": [assets], "index", "crossfade" }`: one of several assets, picked by `index` (0 first, clamped to the range): without `crossfade`, frame round(index); with it, frame floor(index) and over it frame ceil(index) at opacity index − floor(index). `{ "provider", "ref" }`: media from a provider configured on the engine (capability `media.provider`); `ref`, a string expression, is passed to it. |
+| `source` | `{ "asset": "sha256:…" }`: a stored asset. `{ "sequence": [assets], "index", "crossfade" }`: one of several assets, picked by `index` (0 first, clamped to the range): without `crossfade`, frame round(index); with it, frame floor(index) and over it frame ceil(index) at opacity index − floor(index). `{ "provider", "ref" }`: media from a provider configured on the engine (capability `media.provider`); `ref`, a string expression, is passed to it. `{ "video": "sha256:…" }`: a stored video file (capability `media.video`, [video files](#video-files)). |
 | `x`, `y`, `w`, `h` | The box. An absent `w` or `h` is the media's natural size on that axis, or kept in proportion when the other is given. |
 | `fit` | `fill` (default; stretch to the box), `contain`, `cover` (scale keeping proportions), `none` (natural size). `cover` and `none` are clipped to the box, as CSS `object-fit` is. |
 | `align` | Where contained, covered or natural-size media sits in the box: fractions of the free space, default [0.5, 0.5]. |
@@ -74,3 +74,10 @@ A video file is a media asset too: its container is read from its headers, witho
 | AVI (`avi`) | `.avi` | the same, ProRes excepted |
 
 The codecs are named `h264`, `hevc`, `vp8`, `vp9`, `av1`, `mpeg4`, `mjpeg` and `prores` (the asset's `codec`, [API](api.md#blobs)). A video whose first video track uses another codec is refused (`media.codec`), as is a container whose structure is broken or incomplete (`media.malformed`, `media.truncated`), whatever the file's name: the engine reads what the bytes are. Its size is the track's coded size as the container states it; the size limits apply to it ([limits](limits.md#media-limits-checked-from-the-header-before-decoding)), the frame and duration limits don't. A video isn't a picture: media whose `asset` names one draws the missing-media placeholder.
+
+Media shows a video through a `{ "video" }` source, under the capability `media.video`: an engine without a video decoder lacks it, and an item that uses one is then unsupported, kept exactly as it is. Example: `video-media.json`.
+
+- **Timing.** The frame shown is the newest whose timestamp is at or before elapsed × `speed` seconds into the video, on the tick clock as an animation's is: never a frame early. With `loop` (the default) the time wraps at the video's length as its stream holds it (the last frame's timestamp plus one frame; a duration the container states may be wrong and isn't used), and the first frame shows again at once; `once` holds the last frame; `still` shows the first. Every output draws the same frame. An engine that can't decode as fast as the tick clock shows the latest frame it has, skipping the rest.
+- **Size.** The natural size is the video's own (its coded size, [above](#video-files)). An engine may decode at a smaller size, never below twice the box (in scene units) nor above the video's own size; the box and the layout don't change with it.
+- **Missing media.** A video still opening, not stored, refused by its checks, or that fails to decode draws the missing-media placeholder in the box. So does one past the engine's decode sessions ([process budgets](limits.md#process-budgets)), reported as over budget (`media.budget`) and tried again on the next tick.
+- **Sound** is never played and never part of a frame.

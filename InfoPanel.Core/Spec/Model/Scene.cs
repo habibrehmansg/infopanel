@@ -273,9 +273,10 @@ public sealed record MediaNode : SceneNode
 
 /// <summary>
 /// A media node's source: an asset (<see cref="Asset"/>), a configured provider (<see cref="Provider"/> and
-/// <see cref="Ref"/>), or a sequence of assets picked by <see cref="Index"/>. The schema allows exactly one form.
+/// <see cref="Ref"/>), a sequence of assets picked by <see cref="Index"/>, or a video file (<see cref="Video"/>,
+/// capability <c>media.video</c>). The schema allows exactly one form.
 /// </summary>
-[SpecDef("urn:infopanel:scene:1#/$defs/assetSource", "urn:infopanel:scene:1#/$defs/providerSource", "urn:infopanel:scene:1#/$defs/sequenceSource")]
+[SpecDef("urn:infopanel:scene:1#/$defs/assetSource", "urn:infopanel:scene:1#/$defs/providerSource", "urn:infopanel:scene:1#/$defs/sequenceSource", "urn:infopanel:scene:1#/$defs/videoSource")]
 public sealed record MediaSource
 {
     public string? Asset { get; init; }
@@ -284,6 +285,7 @@ public sealed record MediaSource
     public IReadOnlyList<MediaSource>? Sequence { get; init; }
     public Expr? Index { get; init; }
     public bool? Crossfade { get; init; }
+    public string? Video { get; init; }
 }
 
 /// <summary>A paint: a colour (<see cref="SolidPaint"/>) or a shader (gradient or composition).</summary>

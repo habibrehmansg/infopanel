@@ -50,6 +50,7 @@ Capabilities defined by version 1.0:
 | Capability | Format | What |
 |---|---|---|
 | `media.provider` | scene | Media from providers configured on the engine (`{ "provider", "ref" }` sources). Optional: an engine may lack it. |
+| `media.video` | scene | Video files played on the tick clock (`{ "video" }` sources, [video files](smart-nodes.md#video-files)). Optional: an engine without a video decoder lacks it. |
 
 Everything else in version 1.0 is the base every engine supports. Version 1.0 defines no document or archive capability.
 

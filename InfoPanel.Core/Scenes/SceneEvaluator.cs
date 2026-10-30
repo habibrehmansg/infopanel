@@ -96,6 +96,9 @@ internal sealed class TickServices
     public readonly Dictionary<(string Hash, double Seconds, MediaPlayback Playback), MediaLookup> Assets = new();
 
     public readonly Dictionary<(string Provider, string Reference, double Seconds), (MediaSample? Sample, string? Error)> Provided = new();
+
+    /// <summary>This tick's video lookups, by video, time, playback and box.</summary>
+    public readonly Dictionary<(string Hash, double Seconds, MediaPlayback Playback, float? W, float? H), MediaLookup> Videos = new();
 }
 
 internal sealed class BudgetExceeded(string code, string message) : Exception(message)
@@ -958,7 +961,7 @@ internal sealed class SceneEvaluator
         }
         else
         {
-            sample = Fetch(src, seconds, m.Playback, out pending);
+            sample = src.Video is { } video ? FetchVideo(video, seconds, m.Playback, w, h, out pending) : Fetch(src, seconds, m.Playback, out pending);
         }
         // The natural size: the (lower) picture's, decoded or known while it loads, whichever picture is drawn; in a
         // crossfade the upper's only when the lower has none, so the bounds don't follow which decode lands first.
@@ -1018,6 +1021,34 @@ internal sealed class SceneEvaluator
         var left = box.Left + (box.Width - w) * ax;
         var top = box.Top + (box.Height - h) * ay;
         return new SKRect(left, top, left + w, top + h);
+    }
+
+    /// <summary>
+    /// A video's frame at <paramref name="seconds"/> (elapsed × speed), decoded for the box <paramref name="w"/> x
+    /// <paramref name="h"/>; or null with <paramref name="pending"/> its own size once probed, while it opens.
+    /// </summary>
+    private MediaSample? FetchVideo(string hash, double seconds, MediaPlayback playback, float? w, float? h, out (float Width, float Height)? pending)
+    {
+        pending = null;
+        if (_services.Media is not { } media)
+        {
+            _diag.Add("media.missing", $"No media store: {hash} is drawn as missing.");
+            return null;
+        }
+        var key = (hash, seconds, playback, w, h);
+        if (!_services.Videos.TryGetValue(key, out var lookup))
+        {
+            lookup = media.GetVideo(hash, seconds, playback, w, h);
+            _services.Videos[key] = lookup;
+            if (lookup.Sample is { } retained) _services.Retained.Add(retained);
+        }
+        if (lookup.Sample is { } sample) return sample;
+        pending = lookup.Info is { Width: > 0, Height: > 0 } info ? (info.Width, info.Height) : null;
+        if (lookup.State == MediaState.Failed)
+            _diag.Add(lookup.Problem?.StartsWith("media.budget", StringComparison.Ordinal) == true ? "media.budget" : "media.missing", $"{hash}: {lookup.Problem}");
+        else
+            _diag.Add("media.loading", $"{hash} is loading.");
+        return null;
     }
 
     /// <summary>The source's sample, or null with <paramref name="pending"/> set when it is a stored asset still loading whose size is known.</summary>

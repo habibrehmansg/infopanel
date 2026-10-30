@@ -162,11 +162,23 @@ try
     if (options.Fresh)
         Log.Information("Wiped the data folder {DataDir} (--fresh)", paths.Root);
 
+    // Video: FFmpeg's decoding libraries, beside the engine, else in INFOPANEL_FFMPEG_DIR (development; a test engine's
+    // Engine:FFmpegDir setting replaces both). Without them media.video isn't listed: a video item is unsupported, kept.
+    IReadOnlyList<string?> ffmpegFolders = builder.Configuration[$"{EngineOptions.Section}:FFmpegDir"] is { Length: > 0 } ffmpegDir
+        ? [ffmpegDir]
+        : [.. InfoPanel.Images.Video.FFmpeg.DefaultFolders()];
+    var ffmpeg = InfoPanel.Images.Video.FFmpeg.Load(ffmpegFolders, out var noVideo);
+    if (ffmpeg is null)
+        InfoPanel.Images.Video.FFmpeg.LogUnavailable(noVideo);
+    else
+        Log.Information("Video playback: FFmpeg {Versions} from {Folder}", ffmpeg.Versions, ffmpeg.Folder);
+
     // The stores are opened and their blobs swept before anything changes them (behind the marker, checked again); the
     // first run stores the example for this platform and sensor source.
     var workspace = Workspace.Start(paths, new WorkspaceOptions
     {
         Logger = engineLogger.ForContext<Workspace>(),
+        Support = ffmpeg is null ? InfoPanel.Spec.EngineSupport.Base : InfoPanel.Spec.EngineSupport.Base.WithScene(InfoPanel.Spec.EngineSupport.MediaVideo),
         Examples = Workspace.FirstRunExamples(OperatingSystem.IsMacOS(), options.Mock),
         // 1.x data waiting to be migrated brings the user's own profiles: no example then.
         ExamplesWanted = () => !new V1Folder(v1Root).IsPending(paths),
@@ -267,7 +279,11 @@ try
     // inspection gives the cache its size, so a picture still decoding is laid out at the size it will be drawn at.
     builder.Services.AddSingleton(_ =>
     {
-        var media = new MediaSampleCache(new BlobMediaStore(workspace.Blobs), new MediaSampleCacheOptions { Limits = workspace.Limits });
+        var media = new MediaSampleCache(new BlobMediaStore(workspace.Blobs), new MediaSampleCacheOptions
+        {
+            Limits = workspace.Limits,
+            Video = new InfoPanel.Images.Video.VideoOptions { Decoder = ffmpeg },
+        });
         workspace.BlobStored += media.Retry;
         return media;
     });

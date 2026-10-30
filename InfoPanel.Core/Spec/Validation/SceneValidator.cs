@@ -862,6 +862,8 @@ public static class SceneValidator
                     Error(p, "requires.missing", "A provider source needs \"media.provider\" in requires.");
                 Expect(source.Ref, p + "/ref", Ty.String, Ctx.Node);
             }
+            if (source.Video is not null && scene.Requires?.Contains(EngineSupport.MediaVideo) != true)
+                Error(p, "requires.missing", "A video source needs \"media.video\" in requires.");
             if (source.Sequence is { } sequence)
             {
                 if (sequence.Count > limits.Sequence) Limit(p + "/sequence", "sequence", sequence.Count, limits.Sequence);

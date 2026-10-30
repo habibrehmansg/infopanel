@@ -985,4 +985,7 @@ public sealed class BlobMediaStore(BlobStore blobs) : IMediaAssetStore
     public byte[]? Read(string hash) => BlobStore.IsValidId(hash) && !(blobs.Size(hash) > blobs.MediaBytes) ? blobs.ReadVerified(hash) : null;
 
     public long? Size(string hash) => BlobStore.IsValidId(hash) ? blobs.Size(hash) : null;
+
+    /// <summary>A blob read in place, checked against its id (hashed on its first read in a run), never read whole.</summary>
+    public Stream? Open(string hash) => BlobStore.IsValidId(hash) ? blobs.OpenVerified(hash) : null;
 }

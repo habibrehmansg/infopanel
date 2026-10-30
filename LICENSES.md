@@ -132,6 +132,17 @@ The following packages are licensed under LGPL:
 - **Copyright**: © LibUsbDotNet Contributors
 - **Project**: https://github.com/LibUsbDotNet/LibUsbDotNet
 
+### FFmpeg (the 2.0 engine's video decoding)
+- **License**: LGPL-2.1-or-later (built without `--enable-gpl` and `--enable-nonfree`)
+- **Copyright**: © the FFmpeg developers
+- **Project**: https://ffmpeg.org/
+- **Use**: libavutil, libavcodec, libavformat and libswscale, called as shared libraries through the engine's own binding and never linked statically, so they can be replaced. The decode-only build the engine ships is made by `native/ffmpeg/build.sh` from FFmpeg 9.0.2's source, whose configuration it pins; the source and that script are the corresponding source.
+
+### dav1d (AV1 decoding inside the FFmpeg build)
+- **License**: BSD 2-Clause License
+- **Copyright**: © VideoLAN and dav1d authors
+- **Project**: https://code.videolan.org/videolan/dav1d
+
 ## Other Licenses
 
 ### BouncyCastle.NetCore

@@ -419,7 +419,7 @@
     },
 
     "mediaNode": {
-      "description": "An image (still or animated) from an asset, a sequence of assets picked by an index (with optional cross-fade), or a configured provider. Animated media plays on the tick clock. See docs/smart-nodes.md.",
+      "description": "An image (still or animated) from an asset, a sequence of assets picked by an index (with optional cross-fade), a configured provider, or a video file. Animated media and video play on the tick clock. See docs/smart-nodes.md.",
       "type": "object",
       "required": ["kind", "source"],
       "additionalProperties": false,
@@ -436,7 +436,8 @@
           "oneOf": [
             { "$ref": "#/$defs/assetSource" },
             { "$ref": "#/$defs/providerSource" },
-            { "$ref": "#/$defs/sequenceSource" }
+            { "$ref": "#/$defs/sequenceSource" },
+            { "$ref": "#/$defs/videoSource" }
           ]
         },
         "fit": {
@@ -471,6 +472,13 @@
         "provider": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
         "ref": { "$ref": "urn:infopanel:expression:1#/$defs/stringExpr" }
       }
+    },
+    "videoSource": {
+      "description": "A stored video file, played on the tick clock (version 1.0, capability media.video; docs/smart-nodes.md, video files). `playback` and `speed` mean what they mean for an animation.",
+      "type": "object",
+      "required": ["video"],
+      "additionalProperties": false,
+      "properties": { "video": { "$ref": "urn:infopanel:common:1#/$defs/blobId" } }
     },
     "sequenceSource": {
       "description": "Frames picked by `index` (0 first, clamped to the range). With crossfade, a fractional index draws frame floor(index) and, over it, frame ceil(index) at opacity index − floor(index).",

@@ -18,7 +18,7 @@ namespace InfoPanel.Core.Tests.Scenes;
 public sealed class SceneGoldenTests
 {
     private sealed record Case(string Scene, int Width, int Height, double X, double Y, double? W, double? H, Action<FakeSceneInputs>? Inputs = null,
-        float Scale = 1, double Elapsed = 0, bool Provider = false, double Rotation = 0);
+        float Scale = 1, double Elapsed = 0, bool Provider = false, double Rotation = 0, bool Video = false);
 
     private static void Load(FakeSceneInputs i)
     {
@@ -85,6 +85,10 @@ public sealed class SceneGoldenTests
         ["text-layout-t2"] = new("scene/valid/text-layout.json", 220, 180, 10, 10, null, null, Load, Elapsed: 2),
         ["shapes-scale2"] = new("scene/valid/shapes.json", 220, 180, 5, 5, null, null, Scale: 2),
         ["sensor-text-rotated"] = new("scene/valid/sensor-text.json", 200, 120, 40, 40, null, null, i => i.Number("test:v", 90, "°C"), Rotation: 20),
+        // A video on the tick clock: its first frame, frame 3 at 0.35 s, and frame 2 of its second loop at 1.25 s.
+        ["video-media"] = new("scene/valid/video-media.json", 148, 116, 10, 10, null, null, Video: true),
+        ["video-media-t1"] = new("scene/valid/video-media.json", 148, 116, 10, 10, null, null, Elapsed: 0.35, Video: true),
+        ["video-media-t2"] = new("scene/valid/video-media.json", 148, 116, 10, 10, null, null, Elapsed: 1.25, Video: true),
     };
 
     private static readonly Dictionary<string, Case> Fixtures = new()
@@ -155,11 +159,40 @@ public sealed class SceneGoldenTests
             $"local column 30: {a} is {bitmap.GetPixel(a.X, a.Y)}, {b} is {bitmap.GetPixel(b.X, b.Y)}");
     }
 
+    /// <summary>A case's per-channel tolerance: a video frame's colours may differ by a few levels with another FFmpeg.</summary>
+    private static int ToleranceOf(Case c) => c.Video ? GoldenImage.VideoChannelTolerance : GoldenImage.ChannelTolerance;
+
+    [Fact]
+    public void A_video_golden_allows_the_few_levels_another_FFmpeg_may_differ_by()
+    {
+        var c = Examples["video-media-t1"];
+        var directory = Path.Combine(TestPaths.ProjectDirectory, "Golden", "scene", GoldenImage.OsFolder);
+        GoldenImage.RequireGoldenDirectory(directory);
+        using var bitmap = Render(c, SceneKit.Example(c.Scene));
+        // Every colour 4 levels lighter, as another FFmpeg's YUV to RGB conversion or scaler might draw the frame.
+        for (var y = 0; y < bitmap.Height; y++)
+        for (var x = 0; x < bitmap.Width; x++)
+        {
+            var p = bitmap.GetPixel(x, y);
+            bitmap.SetPixel(x, y, new SKColor((byte)Math.Min(255, p.Red + 4), (byte)Math.Min(255, p.Green + 4), (byte)Math.Min(255, p.Blue + 4), p.Alpha));
+        }
+
+        var golden = Path.Combine(directory, "video-media-t1.png");
+        Assert.Null(GoldenImage.Difference(golden, bitmap, ToleranceOf(c)));
+        Assert.NotNull(GoldenImage.Difference(golden, bitmap, ToleranceOf(Examples["shapes-scale2"]))); // the others stay strict
+    }
+
     private static void Verify(string name, Case c, JsonElement scene)
+    {
+        using var bitmap = Render(c, scene);
+        GoldenImage.Verify(name, bitmap, "scene", ToleranceOf(c));
+    }
+
+    private static SKBitmap Render(Case c, JsonElement scene)
     {
         var inputs = new FakeSceneInputs();
         c.Inputs?.Invoke(inputs);
-        using var media = SceneKit.SyncMedia();
+        using var media = c.Video ? SceneKit.SyncMedia(video: FFmpegForTests.Library) : SceneKit.SyncMedia();
         using var logo = LoadImage("logo.png");
         var providers = c.Provider ? new Dictionary<string, IMediaProvider> { ["now-playing"] = new FixedProvider(logo!) } : null;
         var doc = SceneKit.Doc(scene, c.Width, c.Height, c.X, c.Y, c.W, c.H, rotation: c.Rotation);
@@ -177,10 +210,7 @@ public sealed class SceneGoldenTests
             snapshot = runtime.Snapshot(SceneKit.Now);
         }
         using (snapshot)
-        {
-            using var bitmap = snapshot.Render(c.Scale);
-            GoldenImage.Verify(name, bitmap, "scene");
-        }
+            return snapshot.Render(c.Scale);
     }
 
     internal static SKImage? LoadImage(string file)

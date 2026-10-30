@@ -43,6 +43,12 @@ internal static class GoldenImage
     public const int ChannelTolerance = 2;
     public const double DifferingPixelFraction = 0.0005;
 
+    /// <summary>
+    /// The per-channel tolerance of goldens showing video frames: another FFmpeg version's YUV to RGB conversion and
+    /// scaling may land a few levels away from the reference's.
+    /// </summary>
+    public const int VideoChannelTolerance = 6;
+
     public static string OsFolder { get; } =
         OperatingSystem.IsMacOS() ? "osx" : OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsLinux() ? "linux" : "other";
 
@@ -56,7 +62,7 @@ internal static class GoldenImage
     /// Compares with <c>Golden/{os}/{name}.png</c>, or <c>Golden/{folder}/{os}/{name}.png</c> when
     /// <paramref name="folder"/> is given (the scene runtime's goldens live in <c>Golden/scene/</c>).
     /// </summary>
-    public static void Verify(string name, SKBitmap rendered, string? folder = null)
+    public static void Verify(string name, SKBitmap rendered, string? folder = null, int channelTolerance = ChannelTolerance)
     {
         var actualPng = EncodePng(rendered);
         var directory = folder is null ? GoldenDirectory : Path.Combine(TestPaths.ProjectDirectory, "Golden", folder, OsFolder);
@@ -66,7 +72,7 @@ internal static class GoldenImage
 
         if (Update)
         {
-            if (!File.Exists(goldenPath) || Compare(File.ReadAllBytes(goldenPath), actualPng, out _) is not null)
+            if (!File.Exists(goldenPath) || Compare(File.ReadAllBytes(goldenPath), actualPng, channelTolerance, out _) is not null)
             {
                 Directory.CreateDirectory(directory);
                 File.WriteAllBytes(goldenPath, actualPng);
@@ -84,7 +90,7 @@ internal static class GoldenImage
                 + $"(the rendered frame is in TestResults/golden/{name}.actual.png).");
         }
 
-        var failure = Compare(File.ReadAllBytes(goldenPath), actualPng, out var diffPng);
+        var failure = Compare(File.ReadAllBytes(goldenPath), actualPng, channelTolerance, out var diffPng);
         if (failure is not null)
         {
             WriteResults(name, actualPng, diffPng);
@@ -160,12 +166,16 @@ internal static class GoldenImage
     public static void WriteComparison(string name, string goldenPath, SKBitmap actual)
     {
         var png = EncodePng(actual);
-        Compare(File.ReadAllBytes(goldenPath), png, out var diff);
+        Compare(File.ReadAllBytes(goldenPath), png, ChannelTolerance, out var diff);
         WriteResults(name, png, diff);
     }
 
+    /// <summary>As <see cref="Verify"/> compares, without writing anything: null when <paramref name="actual"/> matches the PNG at <paramref name="goldenPath"/> within <paramref name="channelTolerance"/>, otherwise why not.</summary>
+    public static string? Difference(string goldenPath, SKBitmap actual, int channelTolerance) =>
+        Compare(File.ReadAllBytes(goldenPath), EncodePng(actual), channelTolerance, out _);
+
     /// <summary>Null when the images match within tolerance; otherwise why not, with a diff image when the sizes match.</summary>
-    private static string? Compare(byte[] goldenPng, byte[] actualPng, out byte[]? diffPng)
+    private static string? Compare(byte[] goldenPng, byte[] actualPng, int channelTolerance, out byte[]? diffPng)
     {
         diffPng = null;
 
@@ -196,7 +206,7 @@ internal static class GoldenImage
 
             maxDelta = Math.Max(maxDelta, delta);
 
-            if (delta > ChannelTolerance)
+            if (delta > channelTolerance)
             {
                 differing++;
                 diffPixels[i] = 255;
@@ -222,7 +232,7 @@ internal static class GoldenImage
         }
 
         diffPng = EncodePng(diff);
-        return $"{differing} of {total} pixels ({100.0 * differing / total:0.###}%) differ by more than {ChannelTolerance} "
+        return $"{differing} of {total} pixels ({100.0 * differing / total:0.###}%) differ by more than {channelTolerance} "
             + $"(largest channel difference {maxDelta}; at most {DifferingPixelFraction * 100}% may).";
     }
 

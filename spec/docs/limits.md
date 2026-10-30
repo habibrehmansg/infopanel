@@ -223,7 +223,9 @@ Shared by everything one engine runs. Each is a floor, as above: this engine's v
 |---|---|
 | `opId`s remembered | the last 1,000 commits applied to each document, for as long as the engine runs ([commits](commit.md#opid-retries)) |
 | Undo history | per document the last 100 steps within 64 MiB, and all documents together 256 MiB; the byte caps win, so a document with large steps keeps fewer than 100; oldest steps are evicted first ([commits](commit.md#undo-redo-revert-and-save)) |
-| Decoded media cache | 512 MiB; least recently used frames are dropped first |
+| Decoded media cache | 512 MiB; least recently used frames are dropped first. A playing video's frames count too |
+| Video decode sessions | 8 at once, each one video decoded at one size. A session no tick has asked for in 30 s is closed; past 8, a session no tick has asked for in the last second makes room, else the new one waits (`media.budget`, [video files](smart-nodes.md#video-files)) |
+| Video decoders' memory | 768 MiB between the open sessions, each estimated from the video's coded size as its container states it (with a margin for a picture's edges) and its codec: 2 bytes a pixel for each picture its decoder may keep (up to 16 references for H.264 and HEVC, 8 for VP9 and AV1, none for MJPEG and ProRes), one per decoding thread and the one being decoded. A session that would take them past it waits as one past 8 sessions does; one alone always fits. A decoder allocates no picture larger than that size: a stream whose pictures are larger than its container states fails to decode (`media.malformed`) |
 | Scene nodes being rendered | 100,000 across all documents; a document that would exceed it is not rendered until others stop (its outputs show it as over budget) |
 | Output buffers | a bounded pool per output, each buffer up to the 16 Mpx frame (64 MiB) |
 

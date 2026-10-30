@@ -73,6 +73,8 @@ public class EngineFactory : WebApplicationFactory<Program>
         builder.UseSetting("Engine:MockSeed", "42");
         builder.UseSetting("Engine:DevOrigins:0", DevOrigin);
         builder.UseSetting("Engine:AllowOrigins:0", CrossOrigin);
+        // No video decoder, whatever the machine has (INFOPANEL_FFMPEG_DIR included): a test that plays video sets its own.
+        builder.UseSetting("Engine:FFmpegDir", Path.Combine(Root, "no-ffmpeg"));
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton(Regional);

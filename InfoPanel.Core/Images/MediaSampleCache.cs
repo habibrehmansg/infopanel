@@ -22,6 +22,12 @@ namespace InfoPanel.Images
 
         /// <summary>The stored asset's size in bytes, unchecked, or null when unknown; a picture over <c>mediaBytes</c> isn't read.</summary>
         long? Size(string hash) => null;
+
+        /// <summary>
+        /// The asset's bytes as a seekable stream (a video is read in place, never whole), or null when the store has no
+        /// such asset. The caller disposes it.
+        /// </summary>
+        Stream? Open(string hash) => Read(hash) is { } bytes ? new MemoryStream(bytes, writable: false) : null;
     }
 
     /// <summary>
@@ -80,6 +86,9 @@ namespace InfoPanel.Images
         public TimeProvider Time { get; init; } = TimeProvider.System;
 
         public SpecLimits Limits { get; init; } = SpecLimits.Default;
+
+        /// <summary>How videos are decoded; none play without a decoder (<see cref="Video.VideoOptions.Decoder"/>).</summary>
+        public Video.VideoOptions Video { get; init; } = new();
     }
 
     /// <summary>
@@ -94,11 +103,12 @@ namespace InfoPanel.Images
     /// they release them. Locks: an asset's <c>DecodeLock</c> is taken before the cache's lock, never after it (under
     /// the cache's lock a decode lock is only tried, never waited for).
     /// </summary>
-    public sealed class MediaSampleCache : IDisposable
+    public sealed class MediaSampleCache : IDisposable, Video.IFrameBudget
     {
         private static readonly ILogger Logger = Log.ForContext<MediaSampleCache>();
 
         private readonly IMediaAssetStore _store;
+        private readonly Video.VideoPlayer _videos;
         private readonly MediaSampleCacheOptions _options;
         private readonly Lock _lock = new();
         private readonly Dictionary<string, Asset> _assets = new(StringComparer.Ordinal);
@@ -132,6 +142,37 @@ namespace InfoPanel.Images
             _workers = _options.Synchronous
                 ? []
                 : Enumerable.Range(0, Math.Clamp(_options.Workers, 1, 8)).Select(_ => Task.Run(WorkAsync)).ToArray();
+            _videos = new Video.VideoPlayer(store, _options.Video, _options.Limits, _options.Synchronous, _options.Time, this);
+        }
+
+        /// <summary>
+        /// The frame of video <paramref name="hash"/> at <paramref name="seconds"/> into it, for a box of
+        /// <paramref name="boxWidth"/> x <paramref name="boxHeight"/> scene units (null: the video's own size on that
+        /// axis), retained for the caller (<see cref="Video.VideoPlayer"/>). Never blocks unless the cache is synchronous.
+        /// <see cref="MediaLookup.Info"/> is the video's header once probed: its size is the natural size.
+        /// </summary>
+        public MediaLookup GetVideo(string hash, double seconds, MediaPlayback playback, float? boxWidth, float? boxHeight) =>
+            _disposed ? new MediaLookup(MediaState.Failed, null, null, "The media cache is shut down.")
+                : _videos.Get(hash, seconds, playback, boxWidth, boxHeight);
+
+        /// <summary>Decode sessions playing videos.</summary>
+        internal int VideoSessions => _videos.Sessions;
+
+        /// <summary>The video decoders' estimated memory (<see cref="Video.VideoOptions.WorkingBytes"/>), apart from the frame budget.</summary>
+        internal long VideoWorkingBytes => _videos.WorkingBytes;
+
+        void Video.IFrameBudget.Charge(long bytes)
+        {
+            lock (_lock)
+            {
+                _bytes += bytes;
+                TrimLocked(null, null);
+            }
+        }
+
+        void Video.IFrameBudget.Uncharge(long bytes)
+        {
+            lock (_lock) _bytes -= bytes;
         }
 
         /// <summary>Bytes of decoded frames and open decoders the cache holds.</summary>
@@ -249,6 +290,7 @@ namespace InfoPanel.Images
         /// </summary>
         public void Retry(string hash, MediaInfo? header = null)
         {
+            _videos.Retry(hash);
             if (header is not null) _sizes.Put(hash, header.Width, header.Height);
             lock (_lock)
             {
@@ -794,6 +836,7 @@ namespace InfoPanel.Images
         {
             if (_disposed) return;
             _disposed = true;
+            _videos.Dispose();
             _queue.Writer.TryComplete();
             _stop.Cancel();
             var stopped = true;

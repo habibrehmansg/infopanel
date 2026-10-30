@@ -174,6 +174,7 @@ internal sealed class CTable : CNode
 internal sealed class CMediaSource
 {
     public string? Asset;
+    public string? Video;
     public string? Provider;
     public CExpr? Ref;
     public CMediaSource[]? Sequence;
@@ -552,6 +553,7 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
         Sequence = depth > 0 ? null : s.Sequence?.Take(limits.Sequence).Select(x => Source(x, depth + 1)).ToArray(),
         Index = s.Index is null ? null : _x.Compile(s.Index),
         Crossfade = s.Crossfade == true,
+        Video = s.Video,
     };
 
     private CFont Font(Font f) => new() { Family = f.Family, Size = _x.Compile(f.Size), Weight = f.Weight, Italic = f.Italic };

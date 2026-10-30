@@ -2463,7 +2463,7 @@ export interface TableColumn {
   title?: StringExpr;
 }
 
-/** An image (still or animated) from an asset, a sequence of assets picked by an index (with optional cross-fade), or a configured provider. Animated media plays on the tick clock. See docs/smart-nodes.md. */
+/** An image (still or animated) from an asset, a sequence of assets picked by an index (with optional cross-fade), a configured provider, or a video file. Animated media and video play on the tick clock. See docs/smart-nodes.md. */
 export interface MediaNode {
   kind: "media";
   id?: NodeId;
@@ -2477,7 +2477,7 @@ export interface MediaNode {
   w?: NumberExpr;
   /** Absent: the media's natural height (or kept in proportion to `w`). */
   h?: NumberExpr;
-  source: AssetSource | ProviderSource | SequenceSource;
+  source: AssetSource | ProviderSource | SequenceSource | VideoSource;
   /**
    * fill: stretch to the box. contain, cover: scale keeping proportions. none: natural size. cover and none are clipped to the box, as CSS object-fit is.
    * @default "fill"
@@ -2508,6 +2508,11 @@ export interface ProviderSource {
   /** Pattern: `^[a-z][a-z0-9-]{0,31}$`. */
   provider: string;
   ref: StringExpr;
+}
+
+/** A stored video file, played on the tick clock (version 1.0, capability media.video; docs/smart-nodes.md, video files). `playback` and `speed` mean what they mean for an animation. */
+export interface VideoSource {
+  video: BlobId;
 }
 
 /** Frames picked by `index` (0 first, clamped to the range). With crossfade, a fractional index draws frame floor(index) and, over it, frame ceil(index) at opacity index − floor(index). */

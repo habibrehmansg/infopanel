@@ -1,0 +1,14 @@
+{
+  "format": "infopanel.scene/1",
+  "requires": ["media.video"],
+  "nodes": [
+    {
+      "kind": "media",
+      "w": 128,
+      "h": 96,
+      "fit": "cover",
+      "playback": "loop",
+      "source": {"video": "sha256:d3da1b89e555360fd029bb764f88f31feea1502d599ce79e7d6d0ee5197c90c5"}
+    }
+  ]
+}

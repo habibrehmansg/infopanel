@@ -108,8 +108,8 @@ internal static class SceneKit
         Limits = limits ?? SpecLimits.Default,
     };
 
-    public static MediaSampleCache SyncMedia(IMediaAssetStore? store = null) =>
-        new(store ?? FolderAssets.Examples(), new MediaSampleCacheOptions { Synchronous = true });
+    public static MediaSampleCache SyncMedia(IMediaAssetStore? store = null, InfoPanel.Images.Video.FFmpeg? video = null) =>
+        new(store ?? FolderAssets.Examples(), new MediaSampleCacheOptions { Synchronous = true, Video = new() { Decoder = video } });
 
     /// <summary>A document from a JSON literal (single quotes allowed for readability).</summary>
     public static JsonElement Json(string json)

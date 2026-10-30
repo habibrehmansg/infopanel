@@ -28,6 +28,14 @@ namespace InfoPanel.Images
         public static MediaSample FromImage(SKImage image) =>
             new(image, null, image.Width, image.Height, (long)image.Width * image.Height * 4);
 
+        /// <summary>
+        /// A raster frame decoded at its own pixel size for media whose natural size is <paramref name="width"/> ×
+        /// <paramref name="height"/> (a video decoded smaller than its own size): laid out at the natural size, drawn
+        /// from the image's pixels. The sample takes ownership of <paramref name="image"/>.
+        /// </summary>
+        public static MediaSample FromImage(SKImage image, float width, float height) =>
+            new(image, null, width, height, (long)image.Width * image.Height * 4);
+
         /// <summary>A vector picture drawn at <paramref name="width"/> × <paramref name="height"/> natural size; the sample takes ownership.</summary>
         public static MediaSample FromPicture(SKPicture picture, float width, float height) =>
             new(null, picture, width, height, Math.Max(1024, picture.ApproximateBytesUsed));
