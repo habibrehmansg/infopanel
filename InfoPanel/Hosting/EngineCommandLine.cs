@@ -25,6 +25,7 @@ public static class EngineCommandLine
         ["--web-root"] = "WebRoot",
         ["--token"] = "Token",
         ["--mock-seed"] = "MockSeed",
+        ["--mcp-text"] = "McpText",
     };
 
     private static readonly Dictionary<string, string> Flags = new(StringComparer.Ordinal)
@@ -33,6 +34,7 @@ public static class EngineCommandLine
         ["--no-windows"] = "NoWindows",
         ["--fresh"] = "Fresh",
         ["--mock"] = "Mock",
+        ["--mcp"] = "Mcp",
     };
 
     private const string DevOrigin = "--dev-origin";
@@ -71,6 +73,12 @@ public static class EngineCommandLine
           --fresh               Wipe the data folder first (needs --data-dir)
           --mock                Mock sensors, and simulated values for sensors no source has
           --mock-seed <n>       Seed for the mock sensors (implies --mock)
+          --mcp-text <dir>      A folder of tool wording, guide topics and other text for AI apps,
+                                read on every call over the built-in text
+          --mcp                 Be the MCP server an AI app starts (stdin and stdout): it talks to
+                                the engine on the data folder, starting it when it isn't running.
+                                Takes only --data-dir; the engine it starts gets the flags of the
+                                folder's last start (its launch record) and --no-browser
           --help                Show this help
         """;
 

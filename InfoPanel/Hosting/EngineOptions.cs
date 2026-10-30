@@ -68,6 +68,15 @@ public sealed partial class EngineOptions
     /// </summary>
     public string? RunDir { get; init; }
 
+    /// <summary>
+    /// The live text folder for AI apps (<c>--mcp-text</c>): tool wording, guide topics and the rest, read on every call
+    /// over the built-in text; null for the built-in text only.
+    /// </summary>
+    public string? McpText { get; init; }
+
+    /// <summary>Be the MCP server an AI app starts (<c>--mcp</c>), not the engine.</summary>
+    public bool Mcp { get; init; }
+
     [GeneratedRegex("^[A-Za-z0-9_-]{1,256}$")]
     private static partial Regex TokenPattern();
 
@@ -166,6 +175,11 @@ public sealed partial class EngineOptions
         if (webRoot != null && !Directory.Exists(webRoot))
             problems.Add($"--web-root '{webRoot}' does not exist.");
 
+        var mcpText = Value(section, "McpText");
+        if (mcpText != null && !Directory.Exists(mcpText))
+            problems.Add($"--mcp-text '{mcpText}' does not exist.");
+        var mcp = Flag(section, "Mcp", "--mcp", problems);
+
         var runDir = Value(section, "RunDir");
         string? fullRunDir = null;
         if (runDir != null)
@@ -199,6 +213,8 @@ public sealed partial class EngineOptions
             MockSeed = seed,
             Mock = mock,
             RunDir = fullRunDir,
+            McpText = mcpText == null ? null : Path.GetFullPath(mcpText),
+            Mcp = mcp,
         };
     }
 

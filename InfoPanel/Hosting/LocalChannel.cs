@@ -893,6 +893,17 @@ public sealed class LocalChannelService(
         try
         {
             var endpoint = LocalChannel.EndpointFor(options.RunDir ?? LocalChannel.DefaultRunDirectory(), paths.Root);
+            LocalChannel.CreateRunDirectory(endpoint.RunDirectory);
+            // This start's flags, for an engine an AI app starts later on the same folder (LaunchRecord).
+            try
+            {
+                LaunchRecord.Write(LaunchRecord.PathFor(endpoint), options);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning(ex, "Could not write the launch record for AI apps: {Message}", ex.Message);
+            }
+
             var server = LocalChannelServer.Start(endpoint, handler, logger);
             lock (_lock)
             {

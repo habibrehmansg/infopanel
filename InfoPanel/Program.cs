@@ -39,6 +39,15 @@ if (parsed.Error != null)
     return 2;
 }
 
+// --mcp: the MCP server an AI app starts, a front that relays to the engine on the data folder (starting it when needed).
+// It opens nothing in the data folder and writes only the protocol to stdout.
+if (parsed.Settings.TryGetValue($"{EngineOptions.Section}:Mcp", out var mcpFlag) && bool.TryParse(mcpFlag, out var mcp) && mcp)
+    return await InfoPanel.Mcp.Front.McpFront.RunAsync(parsed, () => new System.Text.Json.Nodes.JsonObject
+    {
+        ["tools"] = new System.Text.Json.Nodes.JsonArray(),
+        ["instructions"] = "",
+    });
+
 // When this run started (the session's `started`): before anything else it does.
 var started = DateTimeOffset.UtcNow;
 
