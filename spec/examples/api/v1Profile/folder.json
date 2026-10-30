@@ -394,7 +394,7 @@
             "width": 64,
             "height": 64
           },
-          "meta": {}
+          "meta": {"refreshInterval": 30}
         }
       ]
     },

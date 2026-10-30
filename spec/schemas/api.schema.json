@@ -1527,11 +1527,17 @@
       }
     },
     "v1ItemMeta": {
-      "description": "What the engine adds to a 1.x item: its sensor binding as this engine reads it now.",
+      "description": "What the engine adds to a 1.x item: its sensor binding as this engine reads it now, and what the item's XML holds beyond the 1.x model the engine keeps (docs/import.md#the-envelope).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "sensor": { "$ref": "#/$defs/v1SensorMeta" }
+        "sensor": { "$ref": "#/$defs/v1SensorMeta" },
+        "refreshInterval": {
+          "description": "An image item's RefreshInterval as stored, in seconds (0: never): how often a 1.x build that has it fetched the item's web image again. Absent when the item has none.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
       }
     },
     "v1SensorMeta": {

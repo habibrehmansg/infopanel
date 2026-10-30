@@ -850,7 +850,10 @@ public sealed class V1FolderTests : IDisposable
         Assert.Equal("USB Panel", (string)envelope.Profile["name"]!);
         Assert.Equal(["Title", "Banner", "Clip", "Bitmap", "Scripted", "Wallpaper", "Sneaky", "Fancy"], envelope.Items.Select(i => (string)i.Props["name"]!));
         Assert.Equal("Centre", Assert.Single(envelope.Guides).Name);
-        Assert.Equal([("/profile", "profiles.xml"), ("/items/1", $"profiles/{Usb}.xml")], With(envelope, "import.element").Select(d => (d.Path, d.File!)));
+        // Banner's RefreshInterval is its meta, not an unknown element.
+        Assert.Equal([("/profile", "profiles.xml")], With(envelope, "import.element").Select(d => (d.Path, d.File!)));
+        Assert.Equal(30, envelope.Items[1].Meta.RefreshInterval);
+        Assert.All(envelope.Items.Where((_, i) => i != 1), item => Assert.Null(item.Meta.RefreshInterval));
         Assert.Equal("/items", Single(envelope, "import.itemType").Path);
         Assert.Equal("/items", Single(envelope, "import.nil").Path);
         Assert.Equal("/items/7/props/font", Single(envelope, "import.font").Path);

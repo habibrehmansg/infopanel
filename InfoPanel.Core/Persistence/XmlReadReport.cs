@@ -21,9 +21,9 @@ public sealed record SkippedItem(string? Type, string? Container, int? Line, XEl
 
 /// <summary>
 /// An element or attribute the serializer didn't know and ignored. <see cref="Owner"/> is the object it was read into
-/// (an item, a profile), when the serializer says.
+/// (an item, a profile), when the serializer says; <see cref="Text"/> is its text (an element's, as the XML has it).
 /// </summary>
-public sealed record UnknownXmlNode(string Name, bool IsAttribute, int? Line, object? Owner);
+public sealed record UnknownXmlNode(string Name, bool IsAttribute, int? Line, object? Owner, string? Text = null);
 
 /// <summary>
 /// What a read of 1.x XML through <see cref="ProfileSerializer"/> left out or ignored, with positions and lines, for an
@@ -60,7 +60,7 @@ public sealed class XmlReadReport
 
     internal XmlDeserializationEvents Events() => new()
     {
-        OnUnknownElement = (_, e) => Unknown.Add(new UnknownXmlNode(e.Element.Name, false, e.LineNumber > 0 ? e.LineNumber : null, e.ObjectBeingDeserialized)),
+        OnUnknownElement = (_, e) => Unknown.Add(new UnknownXmlNode(e.Element.Name, false, e.LineNumber > 0 ? e.LineNumber : null, e.ObjectBeingDeserialized, e.Element.InnerText)),
         // The serializer passes xsi:type and xsi:nil (which it reads) and namespace declarations on as unknown attributes.
         OnUnknownAttribute = (_, e) =>
         {

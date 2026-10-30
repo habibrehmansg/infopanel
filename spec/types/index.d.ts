@@ -1406,9 +1406,14 @@ export interface V1TargetWindow {
   deviceName?: string;
 }
 
-/** What the engine adds to a 1.x item: its sensor binding as this engine reads it now. */
+/** What the engine adds to a 1.x item: its sensor binding as this engine reads it now, and what the item's XML holds beyond the 1.x model the engine keeps (docs/import.md#the-envelope). */
 export interface V1ItemMeta {
   sensor?: V1SensorMeta;
+  /**
+   * An image item's RefreshInterval as stored, in seconds (0: never): how often a 1.x build that has it fetched the item's web image again. Absent when the item has none.
+   * Range: 0–2147483647.
+   */
+  refreshInterval?: number;
 }
 
 /** The sensor a 1.x item is bound to: its key in this engine and its status now (`import.sensor` when it has no reading). */

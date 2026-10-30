@@ -161,6 +161,7 @@
   "api/v1Profile/invalid/extra-member.json": {"code": "schema", "path": "/extra"},
   "api/v1Profile/invalid/profile-null-bool.json": {"code": "schema", "path": "/profile/isSelected"},
   "api/v1Profile/invalid/prop-type.json": {"code": "schema", "path": "/items/0/props/fontSize"},
+  "api/v1Profile/invalid/refresh-interval-negative.json": {"code": "schema", "path": "/items/0/meta/refreshInterval"},
   "api/v1Profile/invalid/severity.json": {"code": "schema", "path": "/diagnostics/0/severity"},
   "api/v1Profile/invalid/unknown-kind.json": {"code": "schema", "path": "/items/0/kind"},
   "api/viewMessage/invalid/fractional-fps.json": {"code": "schema", "path": "/maxFps"},

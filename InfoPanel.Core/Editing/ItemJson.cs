@@ -12,9 +12,12 @@ namespace InfoPanel.Editing;
 [SpecDef("urn:infopanel:api:1#/$defs/v1SensorMeta")]
 public sealed record SensorMeta(string Key, SensorStatus Status);
 
-/// <summary>What the engine adds to an item: its sensor binding as it reads it now, when it has one.</summary>
+/// <summary>
+/// What the engine adds to an item: its sensor binding as it reads it now, when it has one; and an image item's
+/// <c>RefreshInterval</c> as its XML stores it (the kept 1.x model lacks it), when it has one.
+/// </summary>
 [SpecDef("urn:infopanel:api:1#/$defs/v1ItemMeta")]
-public sealed record ItemMeta(SensorMeta? Sensor = null);
+public sealed record ItemMeta(SensorMeta? Sensor = null, int? RefreshInterval = null);
 
 /// <summary>
 /// An item as the API sends it (plan §6.2). Properties are nested under <see cref="Props"/> because
@@ -98,27 +101,29 @@ public static class ItemJson
     }
 
     /// <summary>
-    /// The item's node: <c>children</c> for groups, <c>images</c> (read-only) for gauges, and
-    /// <c>meta.sensor</c> when the item is bound to a sensor.
+    /// The item's node: <c>children</c> for groups, <c>images</c> (read-only) for gauges, <c>meta.sensor</c> when the
+    /// item is bound to a sensor, and <c>meta.refreshInterval</c> from <paramref name="refreshIntervals"/> (read from the
+    /// item's XML) when it has one.
     /// </summary>
-    public static ItemNode ToNode(DisplayItem item, SensorHub sensors)
+    public static ItemNode ToNode(DisplayItem item, SensorHub sensors, IReadOnlyDictionary<DisplayItem, int>? refreshIntervals = null)
     {
         var kind = ItemKinds.Of(item);
         var props = PropertyMap.For(item.GetType()).Read(item);
 
         IReadOnlyList<ItemNode>? children = item is GroupDisplayItem group
-            ? group.DisplayItems.Select(child => ToNode(child, sensors)).ToList()
+            ? group.DisplayItems.Select(child => ToNode(child, sensors, refreshIntervals)).ToList()
             : null;
 
         IReadOnlyList<ItemNode>? images = item is GaugeDisplayItem gauge
-            ? gauge.Images.Select(image => ToNode(image, sensors)).ToList()
+            ? gauge.Images.Select(image => ToNode(image, sensors, refreshIntervals)).ToList()
             : null;
 
         SensorMeta? sensor = SensorKeys.Of(item) is SensorKey key
             ? new SensorMeta(key.ToString(), sensors.GetStatus(key))
             : null;
 
-        return new ItemNode(item.Guid.ToString(), kind.Id, props, children, images, new ItemMeta(sensor));
+        int? refresh = refreshIntervals is not null && refreshIntervals.TryGetValue(item, out var seconds) ? seconds : null;
+        return new ItemNode(item.Guid.ToString(), kind.Id, props, children, images, new ItemMeta(sensor, refresh));
     }
 
     /// <summary>The profile's properties (camelCase; <c>Guid</c> is the document's <c>id</c>).</summary>

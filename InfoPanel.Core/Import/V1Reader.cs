@@ -171,6 +171,18 @@ public static class V1Reader
         // The items.
         var (items, report) = ReadItems(itemsInput, context.Limits, diagnostics);
         var guides = new List<V1Guide>();
+        // An image item's RefreshInterval (later 1.4.x builds; the kept model lacks it) goes into its meta, from the XML.
+        var refreshIntervals = new Dictionary<DisplayItem, int>(ReferenceEqualityComparer.Instance);
+        var read = new HashSet<UnknownXmlNode>(ReferenceEqualityComparer.Instance);
+        foreach (var node in report?.Unknown ?? [])
+        {
+            if (!node.IsAttribute && node.Name == "RefreshInterval" && node.Owner is ImageDisplayItem image
+                && int.TryParse(node.Text?.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var seconds))
+            {
+                refreshIntervals[image] = seconds;
+                read.Add(node);
+            }
+        }
         if (report is not null)
         {
             foreach (var skipped in report.Skipped.OrderBy(s => s.Line ?? int.MaxValue))
@@ -185,7 +197,7 @@ public static class V1Reader
                         $"An item of the type '{skipped.Type}', which isn't one of the 14 kinds, is left out.", itemsInput.File, skipped.Line);
             }
 
-            foreach (var group in report.Unknown.GroupBy(n => (Item: n.Owner as DisplayItem, n.Name, n.IsAttribute)))
+            foreach (var group in report.Unknown.Where(n => !read.Contains(n)).GroupBy(n => (Item: n.Owner as DisplayItem, n.Name, n.IsAttribute)))
             {
                 var first = group.First();
                 var item = group.Key.Item;
@@ -202,7 +214,7 @@ public static class V1Reader
         string PathOf(DisplayItem item) => report?.PathOf(item) is { } p ? "/items" + p : "/items";
         int? LineOf(DisplayItem item) => report?.LineOf(item);
 
-        var nodes = items.Select(item => ItemJson.ToNode(item, context.Sensors)).ToList();
+        var nodes = items.Select(item => ItemJson.ToNode(item, context.Sensors, refreshIntervals)).ToList();
         foreach (var item in ItemTree.Walk(items))
         {
             if (item is TextDisplayItem text)

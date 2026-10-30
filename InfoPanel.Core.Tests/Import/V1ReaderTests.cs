@@ -135,10 +135,10 @@ public sealed class V1ReaderTests : IDisposable
     [Fact]
     public void Element_UnknownElements_AreIgnored_AndTheItemStillLoads()
     {
-        // 1.4.x pin 4: RefreshInterval (newer builds) is ignored; the item keeps everything else.
+        // 1.4.x pin 4: an element a newer build writes is ignored; the item keeps everything else.
         var xml = Items(
             Text("First"),
-            Group("Box", """<DisplayItem xsi:type="ImageDisplayItem"><Name>Feed</Name><Type>URL</Type><HttpUrl>https://example.com/a.png</HttpUrl><RefreshInterval>30</RefreshInterval><Scale>80</Scale></DisplayItem>"""));
+            Group("Box", """<DisplayItem xsi:type="ImageDisplayItem"><Name>Feed</Name><Type>URL</Type><HttpUrl>https://example.com/a.png</HttpUrl><FutureSetting>30</FutureSetting><Scale>80</Scale></DisplayItem>"""));
 
         var envelope = _kit.ReadArchive(V1Archive(xml));
 
@@ -146,9 +146,49 @@ public sealed class V1ReaderTests : IDisposable
         Assert.Equal(80, (int)feed.Props["scale"]!);
         var unknown = Single(envelope, "import.element");
         Assert.Equal("/items/1/children/0", unknown.Path);
-        Assert.Contains("RefreshInterval", unknown.Message);
+        Assert.Contains("FutureSetting", unknown.Message);
         Assert.Equal("warning", unknown.Severity);
         Assert.NotNull(unknown.Line);
+    }
+
+    [Fact]
+    public void RefreshInterval_OfAnImageItem_IsItsMeta_AtAnyItemPosition()
+    {
+        // Later 1.4.x builds write an image item's RefreshInterval (seconds, 0 never), which the kept 1.x model lacks:
+        // read from the XML into meta.refreshInterval, and not reported as unknown.
+        var xml = Items(
+            """<DisplayItem xsi:type="ImageDisplayItem"><Name>Radar</Name><Type>URL</Type><HttpUrl>https://example.com/radar.png</HttpUrl><RefreshInterval>600</RefreshInterval></DisplayItem>""",
+            Group("Box", """<DisplayItem xsi:type="HttpImageDisplayItem"><Name>Art</Name><RefreshInterval> 0 </RefreshInterval></DisplayItem>"""),
+            """<DisplayItem xsi:type="ImageDisplayItem"><Name>Plain</Name><Type>FILE</Type><FilePath>a.png</FilePath></DisplayItem>""",
+            Gauge("Dial", """<ImageDisplayItem><Name>f0</Name><FilePath>f0.png</FilePath><RefreshInterval>5</RefreshInterval></ImageDisplayItem>"""));
+
+        var envelope = _kit.ReadArchive(V1Archive(xml));
+
+        Assert.Equal(600, envelope.Items[0].Meta.RefreshInterval);
+        Assert.Equal(0, envelope.Items[1].Children![0].Meta.RefreshInterval);
+        Assert.Null(envelope.Items[2].Meta.RefreshInterval);
+        Assert.Equal(5, envelope.Items[3].Images![0].Meta.RefreshInterval);
+        Assert.Empty(With(envelope, "import.element"));
+        Assert.Equal("""{"refreshInterval":600}""", System.Text.Json.JsonSerializer.Serialize(envelope.Items[0].Meta, InfoPanel.Spec.SpecJson.Options));
+    }
+
+    [Theory]
+    [InlineData("""<DisplayItem xsi:type="ImageDisplayItem"><Name>Bad</Name><RefreshInterval>-5</RefreshInterval></DisplayItem>""")]
+    [InlineData("""<DisplayItem xsi:type="ImageDisplayItem"><Name>Bad</Name><RefreshInterval>1.5</RefreshInterval></DisplayItem>""")]
+    [InlineData("""<DisplayItem xsi:type="ImageDisplayItem"><Name>Bad</Name><RefreshInterval>soon</RefreshInterval></DisplayItem>""")]
+    [InlineData("""<DisplayItem xsi:type="ImageDisplayItem"><Name>Bad</Name><RefreshInterval>2147483648</RefreshInterval></DisplayItem>""")]
+    [InlineData("""<DisplayItem xsi:type="TextDisplayItem"><Name>Bad</Name><RefreshInterval>30</RefreshInterval></DisplayItem>""")]
+    public void RefreshInterval_ThatIsntAWholeNumberInRange_OrNotOnAnImage_IsUnknown(string bad)
+    {
+        // Beside an image item whose RefreshInterval is read, one that isn't a whole number from 0 to 2^31 - 1, or that
+        // sits on an item that isn't an image, is reported as unknown and left out of meta.
+        var envelope = _kit.ReadArchive(V1Archive(Items(
+            """<DisplayItem xsi:type="ImageDisplayItem"><Name>Radar</Name><RefreshInterval>30</RefreshInterval></DisplayItem>""", bad)));
+        Assert.Equal(30, envelope.Items[0].Meta.RefreshInterval);
+        Assert.Null(envelope.Items[1].Meta.RefreshInterval);
+        var unknown = Single(envelope, "import.element");
+        Assert.Equal("/items/1", unknown.Path);
+        Assert.Contains("RefreshInterval", unknown.Message);
     }
 
     [Fact]
