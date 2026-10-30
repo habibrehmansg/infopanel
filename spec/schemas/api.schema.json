@@ -1522,7 +1522,7 @@
         "relative": { "description": "Exactly the items' `relativePath`: the path is inside the profile's assets.", "type": "boolean" },
         "blob": { "$ref": "#/$defs/blobInfo", "description": "The stored blob, as POST /api/blobs answers it." },
         "code": { "description": "Why nothing was stored: an `import.asset.*` code (docs/import.md#diagnostics). A later engine may add codes: a client treats one it doesn't know as a file that wasn't stored.", "type": "string", "minLength": 1 },
-        "reason": { "description": "With `import.asset.media`: the media check's code or the limit's (`media.format`, `limit.mediaBytes`, `archive.expanded`, ...).", "type": "string", "minLength": 1 }
+        "reason": { "description": "With `import.asset.media`: the media check's code or the limit's (`media.format`, `limit.mediaBytes`, `limit.videoBytes`, `archive.expanded`, ...).", "type": "string", "minLength": 1 }
       }
     },
     "importDiagnostic": {

@@ -77,7 +77,7 @@ What the engine leaves out, each with a diagnostic: an item of a type outside th
 
 ### Assets
 
-`assets` has one entry per distinct pair of an image item's `filePath` and `relativePath` (gauge frames included), keyed by exactly those props, so a client looks each up. A relative path is resolved inside the profile's assets (the folder's `assets/{guid}/`, an archive's `assets/` entries), names matched whatever their letter case. A file that passes the media check is stored as `POST /api/blobs` stores it ([API](api.md#blobs)), and its entry has the `blob`, as that request answers it; the engine keeps it for 24 hours, time for the client to create the profile that refers to it. Otherwise the entry has a `code`, nothing is stored, and the item draws the missing-image placeholder once created:
+`assets` has one entry per distinct pair of an image item's `filePath` and `relativePath` (gauge frames included), keyed by exactly those props, so a client looks each up. A relative path is resolved inside the profile's assets (the folder's `assets/{guid}/`, an archive's `assets/` entries), names matched whatever their letter case. A file that passes the media check, a picture or a video file ([video files](smart-nodes.md#video-files): 1.x showed videos as images), is read up to `videoBytes` when its first bytes are a video container's, else up to `mediaBytes`, and stored as `POST /api/blobs` stores it ([API](api.md#blobs)), and its entry has the `blob`, as that request answers it; the engine keeps it for 24 hours, time for the client to create the profile that refers to it. Otherwise the entry has a `code`, nothing is stored, and the item draws the missing-image placeholder once created:
 
 | `code` | Why |
 |---|---|
@@ -85,7 +85,7 @@ What the engine leaves out, each with a diagnostic: an item of a type outside th
 | `import.asset.path` | A relative path that leaves the assets folder, or isn't a file path (`scheme://`) |
 | `import.asset.missing` | No such file, or one that can't be read |
 | `import.asset.link` | A link: never followed |
-| `import.asset.media` | Not stored: `reason` is the media check's code ([validation](validation.md#codes)), `limit.mediaBytes`, or `archive.expanded` when the import has read `expandedBytes` |
+| `import.asset.media` | Not stored: `reason` is the media check's code ([validation](validation.md#codes)) or limit (`limit.mediaBytes` for a picture), `limit.videoBytes` for a video file larger than any blob, or `archive.expanded` when the import has read `expandedBytes` |
 
 An archive's asset files no item uses aren't stored (one `import.asset.unused` counts them).
 

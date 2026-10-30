@@ -65,11 +65,14 @@ public interface IV1AssetSource
     /// <summary>Finds the file at <paramref name="segments"/> (names matched case-insensitively); <paramref name="file"/> is its location.</summary>
     V1AssetLookup Find(IReadOnlyList<string> segments, out object? handle, out string file);
 
-    /// <summary>The file's bytes, counted against the request's budget; null when over <paramref name="maxBytes"/>.</summary>
+    /// <summary>
+    /// The file's bytes, counted against the request's budget; null when over what <paramref name="cap"/> answers for its
+    /// first <paramref name="headBytes"/> bytes (reading stops there).
+    /// </summary>
     /// <exception cref="ImportBudgetExceededException">A folder read went over the request's budget.</exception>
     /// <exception cref="ImportRefusal">An archive read went over it (<c>archive.expanded</c>) or failed.</exception>
     /// <exception cref="IOException">The file can't be read.</exception>
-    byte[]? Read(object handle, long maxBytes);
+    byte[]? Read(object handle, ReadCap cap, int headBytes);
 }
 
 /// <summary>
@@ -105,11 +108,11 @@ public sealed class V1FolderAssets : IV1AssetSource
         return found;
     }
 
-    public byte[]? Read(object handle, long maxBytes)
+    public byte[]? Read(object handle, ReadCap cap, int headBytes)
     {
         // A regular file only, opened without waiting: a FIFO, socket or device there is refused, not waited on.
         using var stream = RegularFile.OpenRead((string)handle, FileShare.ReadWrite | FileShare.Delete);
-        return _budget.ReadAll(stream, maxBytes);
+        return _budget.ReadAll(stream, cap, headBytes);
     }
 
     /// <summary>
@@ -223,7 +226,7 @@ public sealed class V1ArchiveAssets : IV1AssetSource
         return V1AssetLookup.Missing;
     }
 
-    public byte[]? Read(object handle, long maxBytes) => _reader.Read((ArchiveEntry)handle, maxBytes);
+    public byte[]? Read(object handle, ReadCap cap, int headBytes) => _reader.Read((ArchiveEntry)handle, cap, headBytes);
 }
 
 /// <summary>An image file items use: the props as stored, and the first item using it (for messages).</summary>
@@ -295,9 +298,12 @@ public static class V1Assets
             return Problem("import.asset.media", $"The image of {who} isn't stored: the import already read its limit of bytes.", file, "archive.expanded");
 
         byte[]? bytes;
+        (long Bytes, string Name) cap = (workspace.Limits.MediaBytes, "mediaBytes");
         try
         {
-            bytes = source.Read(handle!, workspace.Limits.MediaBytes);
+            // A video (1.x played them as images) up to videoBytes, stored like a picture; anything else, told by its
+            // first bytes, up to mediaBytes: it is never read on towards videoBytes before being refused.
+            bytes = source.Read(handle!, head => (cap = MediaValidator.ByteCap(head, workspace.Limits)).Bytes, MediaValidator.HeadBytes);
         }
         catch (ImportBudgetExceededException)
         {
@@ -309,7 +315,7 @@ public static class V1Assets
         }
 
         if (bytes is null)
-            return Problem("import.asset.media", $"The image of {who} is larger than {workspace.Limits.MediaBytes} bytes (mediaBytes): it isn't stored.", file, "limit.mediaBytes");
+            return Problem("import.asset.media", $"The image of {who} is larger than {cap.Bytes} bytes ({cap.Name}): it isn't stored.", file, "limit." + cap.Name);
 
         var check = MediaValidator.Check(bytes, workspace.Limits);
         if (check.Errors.Count > 0)

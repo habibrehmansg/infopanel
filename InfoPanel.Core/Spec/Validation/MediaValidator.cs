@@ -73,11 +73,18 @@ public static class MediaValidator
         return Limited(info, problem, limits, null);
     }
 
+    /// <summary>The bytes a file starting <paramref name="head"/> may hold, told by its first bytes (<see cref="HeadBytes"/>): <c>videoBytes</c> for a video container, <c>mediaBytes</c> for anything else.</summary>
+    public static (long Bytes, string Name) ByteCap(ReadOnlySpan<byte> head, SpecLimits limits) =>
+        VideoProbe.Detect(head[..Math.Min(head.Length, HeadBytes)], out _) != VideoProbe.Container.None
+            ? (limits.VideoBytes, "videoBytes")
+            : (limits.MediaBytes, "mediaBytes");
+
+    /// <summary>The first bytes <see cref="ByteCap"/> reads.</summary>
+    public const int HeadBytes = 12;
+
     /// <summary>The size error for <paramref name="length"/> bytes starting <paramref name="head"/>: over <c>videoBytes</c> for a video, <c>mediaBytes</c> for anything else.</summary>
     private static SpecError? SizeError(ReadOnlySpan<byte> head, long length, SpecLimits limits) =>
-        VideoProbe.Detect(head, out _) != VideoProbe.Container.None
-            ? length > limits.VideoBytes ? Over("videoBytes", length, limits.VideoBytes) : null
-            : length > limits.MediaBytes ? Over("mediaBytes", length, limits.MediaBytes) : null;
+        ByteCap(head, limits) is var (cap, name) && length > cap ? Over(name, length, cap) : null;
 
     /// <summary>What a probe found, held to the media limits.</summary>
     private static MediaCheck Limited(MediaInfo? info, MediaProblem? problem, SpecLimits limits, byte[]? rebuilt)

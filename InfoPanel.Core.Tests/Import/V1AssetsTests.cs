@@ -127,9 +127,68 @@ public sealed class V1AssetsTests : IDisposable
     }
 
     [Fact]
+    public void AVideo_IsStored_AsItsContainer()
+    {
+        // 1.x played video files as images (a background clip): the import stores one the video checks accept.
+        var clip = VideoFixtures.Read("clip-hevc.mkv");
+        var envelope = _kit.ReadArchive(V1Archive(Items(Image("Clip", "clip.mkv")), ("assets/clip.mkv", clip)));
+
+        var asset = Assert.Single(envelope.Assets);
+        Assert.Null(asset.Code);
+        Assert.Equal(("matroska", "hevc", 64, 48), (asset.Blob!.Media!.Format, asset.Blob.Media.Codec, asset.Blob.Media.Width, asset.Blob.Media.Height));
+        Assert.True(_kit.Stored(clip));
+        Assert.DoesNotContain(envelope.Diagnostics, d => d.Path.StartsWith("/assets/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AVideoInACodecOutsideTheList_IsNotStored()
+    {
+        var clip = VideoFixtures.Read("outside-mpeg2.mkv");
+        var envelope = _kit.ReadArchive(V1Archive(Items(Image("Clip", "clip.mkv")), ("assets/clip.mkv", clip)));
+
+        Assert.Equal(("import.asset.media", "media.codec"), (envelope.Assets[0].Code, envelope.Assets[0].Reason));
+        Assert.False(_kit.Stored(clip));
+    }
+
+    [Fact]
+    public void AVideoOverVideoBytes_IsNotStored_AndAPictureOverMediaBytes_IsNot()
+    {
+        // Lowered limits: the clip (8 KiB) over videoBytes, a picture over mediaBytes; the small clip within both.
+        using var kit = new ImportKit(SpecLimits.Default with { VideoBytes = 4096, MediaBytes = 1024 });
+        var large = VideoFixtures.Read("clip-mjpeg.avi");
+        var small = VideoFixtures.Read("clip-h264.mp4");
+        var picture = ImportKit.Asset("logo.png");
+        Assert.True(picture.Length > 1024 && small.Length is > 1024 and <= 4096 && large.Length > 4096);
+        var envelope = kit.ReadArchive(V1Archive(Items(Image("Large", "large.avi"), Image("Small", "small.mp4"), Image("Logo", "logo.png")),
+            ("assets/large.avi", large), ("assets/small.mp4", small), ("assets/logo.png", picture)));
+
+        Assert.Equal(("import.asset.media", "limit.videoBytes"), (envelope.Assets[0].Code, envelope.Assets[0].Reason));
+        Assert.Equal("mp4", envelope.Assets[1].Blob!.Media!.Format);
+        Assert.Equal(("import.asset.media", "limit.mediaBytes"), (envelope.Assets[2].Code, envelope.Assets[2].Reason));
+        Assert.Equal([false, true, false], new[] { large, small, picture }.Select(b => kit.Workspace.Blobs.Exists(BlobStore.IdOf(b))));
+    }
+
+    [Fact]
+    public void AFileWhoseFirstBytesArentAVideos_IsReadNoFurtherThanMediaBytes()
+    {
+        // Held to mediaBytes as it is read, not read on towards videoBytes into memory first: here, reading the 2 MB
+        // picture whole would take the import past its 1 MB budget and refuse the archive.
+        using var kit = new ImportKit(SpecLimits.Default with { MediaBytes = 1024 });
+        var large = new byte[2_000_000];
+        ImportKit.Asset("logo.png").AsSpan(0, 64).CopyTo(large);
+        var clip = VideoFixtures.Read("clip-h264.mp4"); // over mediaBytes, a video: held to videoBytes
+        var envelope = kit.ReadArchive(V1Archive(Items(Image("Large", "large.png"), Image("Clip", "clip.mp4")),
+            ("assets/large.png", large), ("assets/clip.mp4", clip)), new ImportLimits { ExpandedBytes = 1_000_000 });
+
+        Assert.Equal(("import.asset.media", "limit.mediaBytes"), (envelope.Assets[0].Code, envelope.Assets[0].Reason));
+        Assert.Equal("mp4", envelope.Assets[1].Blob!.Media!.Format);
+        Assert.Equal([false, true], new[] { large, clip }.Select(b => kit.Workspace.Blobs.Exists(BlobStore.IdOf(b))));
+    }
+
+    [Fact]
     public void VideoStub_IsNotStored()
     {
-        // The media check comes before storing: a video (until B4-media) never reaches the blob store.
+        // The media check comes before storing: an mp4 that is only an ftyp box (no moov) never reaches the blob store.
         var envelope = _kit.ReadArchive(V1Archive(Items(Image("Clip", "clip.mp4")), ("assets/clip.mp4", VideoStub)));
 
         Assert.Equal("import.asset.media", envelope.Assets[0].Code);

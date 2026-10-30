@@ -22,14 +22,19 @@ internal sealed class ImportKit : IDisposable
 
     public const string Xsi = "http://www.w3.org/2001/XMLSchema-instance";
 
-    public ImportKit()
+    public ImportKit() : this(null)
+    {
+    }
+
+    /// <param name="limits">The workspace's limits (a test lowers one); the defaults when null.</param>
+    public ImportKit(SpecLimits? limits)
     {
         Data = new DataPaths(Temp.Combine("data"));
-        var documents = new DocumentStore(Data);
-        var blobs = new BlobStore(Data);
+        var documents = new DocumentStore(Data, limits);
+        var blobs = new BlobStore(Data, limits);
         documents.Open();
         blobs.Open();
-        Workspace = new Workspace(documents, blobs);
+        Workspace = limits is null ? new Workspace(documents, blobs) : new Workspace(documents, blobs, new WorkspaceOptions { Limits = limits });
     }
 
     public TempDirectory Temp { get; } = new();

@@ -1413,7 +1413,7 @@ export interface V1Asset {
    */
   code?: string;
   /**
-   * With `import.asset.media`: the media check's code or the limit's (`media.format`, `limit.mediaBytes`, `archive.expanded`, ...).
+   * With `import.asset.media`: the media check's code or the limit's (`media.format`, `limit.mediaBytes`, `limit.videoBytes`, `archive.expanded`, ...).
    * Length: ≥ 1.
    */
   reason?: string;

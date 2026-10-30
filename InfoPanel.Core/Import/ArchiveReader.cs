@@ -364,12 +364,18 @@ public sealed class ArchiveReader : IDisposable
     /// <c>archive.expanded</c> (the request's budget), <c>archive.method</c> (the entry can't be opened) or
     /// <c>archive.zip</c> (its data doesn't decompress).
     /// </exception>
-    public byte[]? Read(ArchiveEntry entry, long maxBytes)
+    public byte[]? Read(ArchiveEntry entry, long maxBytes) => Read(entry, _ => maxBytes, 0);
+
+    /// <summary>
+    /// As <see cref="Read(ArchiveEntry, long)"/>, with the most it may hold told by its first <paramref name="headBytes"/>
+    /// bytes (<see cref="ImportBudget.ReadAll(Stream, ReadCap, int)"/>).
+    /// </summary>
+    public byte[]? Read(ArchiveEntry entry, ReadCap cap, int headBytes)
     {
         using var source = entry.Record.Method is Stored or Deflated ? OpenData(entry) : Open(entry);
         try
         {
-            var bytes = _budget.ReadAll(source, maxBytes);
+            var bytes = _budget.ReadAll(source, cap, headBytes);
             if (bytes is not null && bytes.Length != entry.DeclaredLength)
                 throw ImportRefusal.Entry("archive.zip", entry.Name, $"The entry holds {bytes.Length} bytes, but its headers claim {entry.DeclaredLength}.");
             return bytes;
