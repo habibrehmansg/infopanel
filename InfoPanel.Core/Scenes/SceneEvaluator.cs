@@ -82,6 +82,9 @@ internal sealed class TickServices
 {
     public MediaSampleCache? Media;
     public IReadOnlyDictionary<string, IMediaProvider> Providers = new Dictionary<string, IMediaProvider>();
+
+    /// <summary>A render loop's tick, whose asks may start a provider's fetch; false for a one-off render.</summary>
+    public bool Live = true;
     public readonly List<MediaSample> Retained = [];
 
     /// <summary>What the tick's nodes hold until the snapshot is released: the paths dashed outlines are drawn from.</summary>
@@ -95,7 +98,10 @@ internal sealed class TickServices
     /// <summary>This tick's media lookups, so every node that shows the same source at the same time shows the same frame.</summary>
     public readonly Dictionary<(string Hash, double Seconds, MediaPlayback Playback), MediaLookup> Assets = new();
 
-    public readonly Dictionary<(string Provider, string Reference, double Seconds), (MediaSample? Sample, string? Error)> Provided = new();
+    public readonly Dictionary<(string Provider, string Reference, double Seconds, MediaPlayback Playback), ProvidedMedia> Provided = new();
+
+    /// <summary>This tick's refreshes each provider was told of, by reference: each told once.</summary>
+    public readonly HashSet<(string Provider, string Reference, int Refresh)> Refreshes = new();
 
     /// <summary>This tick's video lookups, by video, time, playback and box.</summary>
     public readonly Dictionary<(string Hash, double Seconds, MediaPlayback Playback, float? W, float? H), MediaLookup> Videos = new();
@@ -1032,7 +1038,7 @@ internal sealed class SceneEvaluator
         pending = null;
         if (_services.Media is not { } media)
         {
-            _diag.Add("media.missing", $"No media store: {hash} is drawn as missing.");
+            _diag.AddMedia("media.missing", $"No media store: {hash} is drawn as missing.");
             return null;
         }
         var key = (hash, seconds, playback, w, h);
@@ -1045,9 +1051,9 @@ internal sealed class SceneEvaluator
         if (lookup.Sample is { } sample) return sample;
         pending = lookup.Info is { Width: > 0, Height: > 0 } info ? (info.Width, info.Height) : null;
         if (lookup.State == MediaState.Failed)
-            _diag.Add(lookup.Problem?.StartsWith("media.budget", StringComparison.Ordinal) == true ? "media.budget" : "media.missing", $"{hash}: {lookup.Problem}");
+            _diag.AddMedia(lookup.Problem?.StartsWith("media.budget", StringComparison.Ordinal) == true ? "media.budget" : "media.missing", $"{hash}: {lookup.Problem}");
         else
-            _diag.Add("media.loading", $"{hash} is loading.");
+            _diag.AddMedia("media.loading", $"{hash} is loading.");
         return null;
     }
 
@@ -1059,7 +1065,7 @@ internal sealed class SceneEvaluator
         {
             if (_services.Media is not { } media)
             {
-                _diag.Add("media.missing", $"No media store: {hash} is drawn as missing.");
+                _diag.AddMedia("media.missing", $"No media store: {hash} is drawn as missing.");
                 return null;
             }
             if (!_services.Assets.TryGetValue((hash, seconds, playback), out var lookup))
@@ -1071,13 +1077,13 @@ internal sealed class SceneEvaluator
             if (lookup.Sample is { } sample) return sample;
             if (lookup.State == MediaState.Failed)
             {
-                _diag.Add("media.missing", $"{hash}: {lookup.Problem}");
+                _diag.AddMedia("media.missing", $"{hash}: {lookup.Problem}");
             }
             else
             {
                 // Its header once a worker has inspected it, else the size measured when it was stored or last decoded.
                 pending = lookup.Info is { Width: > 0, Height: > 0 } info ? (info.Width, info.Height) : media.KnownSize(hash);
-                _diag.Add("media.loading", $"{hash} is loading.");
+                _diag.AddMedia("media.loading", $"{hash} is loading.");
             }
             return null;
         }
@@ -1086,30 +1092,41 @@ internal sealed class SceneEvaluator
             var reference = src.Ref?.Str(_e) ?? "";
             if (!_services.Providers.TryGetValue(name, out var provider))
             {
-                _diag.Add("media.provider", $"No media provider '{name}' is configured.");
+                _diag.AddMedia("media.provider", $"No media provider '{name}' is configured.");
                 return null;
             }
-            if (!_services.Provided.TryGetValue((name, reference, seconds), out var provided))
+            // Asked once per tick for each reference, time and playback: every item showing it shows the same answer. An item
+            // sharing it with another refresh tells the provider of that refresh (the shortest applies), and only that.
+            var key = (name, reference, seconds, playback);
+            var request = new MediaRequest(reference, seconds, playback, src.Refresh, _services.Live);
+            if (!_services.Provided.TryGetValue(key, out var provided))
             {
                 try
                 {
-                    provided = (provider.TryGet(reference, seconds), null);
+                    provided = provider.Get(request);
                 }
                 catch (Exception ex)
                 {
-                    provided = (null, ex.Message);
+                    provided = new ProvidedMedia(null, new MediaStatus("media.provider", $"The provider failed: {ex.Message}"));
                 }
-                _services.Provided[(name, reference, seconds)] = provided;
+                _services.Provided[key] = provided;
+                _services.Refreshes.Add((name, reference, src.Refresh));
                 if (provided.Sample is { } retained) _services.Retained.Add(retained);
             }
-            var sample = provided.Sample;
-            if (provided.Error is { } error) _diag.Add("media.provider", $"Provider '{name}' failed: {error}");
-            if (sample is null)
+            else if (_services.Live && _services.Refreshes.Add((name, reference, src.Refresh)))
             {
-                _diag.Add("media.loading", $"Provider '{name}' has nothing for this reference yet.");
-                return null;
+                try
+                {
+                    provider.Asked(request);
+                }
+                catch (Exception ex)
+                {
+                    _diag.AddMedia("media.provider", $"The provider failed: {ex.Message}");
+                }
             }
-            return sample;
+            if (provided.Status is { } status) _diag.AddMedia(status.Code, status.Message);
+            else if (provided.Sample is null) _diag.AddMedia("media.loading", "Loading.");
+            return provided.Sample;
         }
         return null;
     }

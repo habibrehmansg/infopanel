@@ -6,5 +6,6 @@
   "graphRate": 1000,
   "logLevel": "information",
   "sources": {"libre": {"enabled": true, "storage": true, "storageInterval": 30}},
+  "media": {"localNetwork": true},
   "clients": {}
 }

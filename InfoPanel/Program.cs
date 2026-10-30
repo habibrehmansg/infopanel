@@ -14,6 +14,7 @@ using InfoPanel.Security;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.MacOS;
 using InfoPanel.Settings;
+using InfoPanel.Spec;
 using Microsoft.AspNetCore.HostFiltering;
 using Serilog;
 using Serilog.Core;
@@ -178,7 +179,10 @@ try
     var workspace = Workspace.Start(paths, new WorkspaceOptions
     {
         Logger = engineLogger.ForContext<Workspace>(),
-        Support = ffmpeg is null ? InfoPanel.Spec.EngineSupport.Base : InfoPanel.Spec.EngineSupport.Base.WithScene(InfoPanel.Spec.EngineSupport.MediaVideo),
+        // Media providers are configured (the http provider below); video files play when FFmpeg loaded.
+        Support = ffmpeg is null
+            ? EngineSupport.Base.WithScene(EngineSupport.MediaProvider)
+            : EngineSupport.Base.WithScene(EngineSupport.MediaProvider, EngineSupport.MediaVideo),
         Examples = Workspace.FirstRunExamples(OperatingSystem.IsMacOS(), options.Mock),
         // 1.x data waiting to be migrated brings the user's own profiles: no example then.
         ExamplesWanted = () => !new V1Folder(v1Root).IsPending(paths),
@@ -277,9 +281,11 @@ try
     // One media cache for the process, over the blob store; every render loop's runtime and every thumbnail reads it. A
     // blob stored after a lookup of it failed is read again, so its missing-media placeholders repair; a stored blob's
     // inspection gives the cache its size, so a picture still decoding is laid out at the size it will be drawn at.
+    // Fetched web images are decoded by the same cache, from memory (FetchedMediaStore), under keys no asset has.
+    var fetched = new FetchedMediaStore();
     builder.Services.AddSingleton(_ =>
     {
-        var media = new MediaSampleCache(new BlobMediaStore(workspace.Blobs), new MediaSampleCacheOptions
+        var media = new MediaSampleCache(new EngineMediaStore(new BlobMediaStore(workspace.Blobs), fetched), new MediaSampleCacheOptions
         {
             Limits = workspace.Limits,
             Video = new InfoPanel.Images.Video.VideoOptions { Decoder = ffmpeg },
@@ -287,10 +293,36 @@ try
         workspace.BlobStored += media.Retry;
         return media;
     });
+    // The http provider (spec/docs/providers.md): it reads the media.localNetwork setting for every connection, and a
+    // change of it drops what it fetched, so every web image is fetched again under the new rule. --offline keeps every
+    // connection on this computer.
+    builder.Services.AddSingleton(sp =>
+    {
+        var http = new HttpMediaProvider(sp.GetRequiredService<MediaSampleCache>(), fetched, new HttpMediaProviderOptions
+        {
+            Limits = workspace.Limits,
+            LocalNetwork = () => settings.Current.Settings.Media.LocalNetwork,
+            LoopbackOnly = options.Offline,
+            UserAgent = $"InfoPanel/{ReadEndpoints.EngineVersion()}",
+        });
+        var localNetwork = settings.Current.Settings.Media.LocalNetwork;
+        var changing = new Lock();
+        settings.Changed += snapshot =>
+        {
+            lock (changing)
+            {
+                if (localNetwork == snapshot.Settings.Media.LocalNetwork) return;
+                localNetwork = snapshot.Settings.Media.LocalNetwork;
+            }
+            http.Reset();
+        };
+        return http;
+    });
     builder.Services.AddSingleton(sp => new SceneRuntimeOptions
     {
         Inputs = new SensorSceneInputs(sp.GetRequiredService<ISensorReader>(), sp.GetRequiredService<ISensorHistory>()),
         Media = sp.GetRequiredService<MediaSampleCache>(),
+        Providers = new Dictionary<string, IMediaProvider> { [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>() },
         Limits = workspace.Limits,
         Support = workspace.Support,
         Locale = sp.GetRequiredService<RegionalFormat>(),

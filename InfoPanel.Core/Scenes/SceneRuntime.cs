@@ -230,6 +230,7 @@ public sealed class SceneRuntime : IDisposable
         {
             Media = _options.Media,
             Providers = _options.Providers,
+            Live = advance,
             LayoutsLeft = _options.LayoutsPerTick,
             TextLength = _options.Limits.TextLength,
         };
@@ -300,6 +301,7 @@ public sealed class SceneRuntime : IDisposable
                         diag.Add("runtime.error", e.Message);
                     }
                     if (advance) Watchdog(rt, tick, Stopwatch.GetElapsedTime(start).TotalMilliseconds, nowTicks);
+                    if (snap.Problem is null && diag.Media is { } media) snap.Media = new ItemMedia { Code = media.Code, Message = media.Message };
                     diagnostics.AddRange(diag.Items);
                     return snap;
                 }

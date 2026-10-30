@@ -5,6 +5,7 @@
   "graphRate": 250,
   "logLevel": "debug",
   "sources": {"libre": {"enabled": true, "storage": false, "storageInterval": 300}},
+  "media": {"localNetwork": false},
   "clients": {
     "web-client": {"theme": "dark", "grid": {"show": true, "spacing": 20}},
     "tray.helper_2": ["recent", 3, null, false],

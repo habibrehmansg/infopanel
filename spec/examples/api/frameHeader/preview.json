@@ -34,6 +34,13 @@
       "ink": {"x": 400, "y": 100, "w": 100, "h": 100},
       "rotation": 0,
       "problem": "unsupported"
+    },
+    {
+      "id": "radar",
+      "frame": {"x": 520, "y": 20, "w": 260, "h": 200},
+      "ink": {"x": 520, "y": 20, "w": 260, "h": 200},
+      "rotation": 0,
+      "media": {"code": "media.address", "message": "192.168.1.20 is on your local network."}
     }
   ]
 }

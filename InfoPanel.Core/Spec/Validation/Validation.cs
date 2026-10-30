@@ -25,6 +25,9 @@ public sealed record EngineSupport(IReadOnlySet<string> SceneCapabilities, IRead
     /// <summary>The optional capabilities defined by version 1.0 of the scene format (docs/versioning.md).</summary>
     public static IReadOnlySet<string> SceneCapabilities10 { get; } = new HashSet<string> { "media.provider", "media.video" };
 
+    /// <summary>The scene capability configured media providers bring (<c>{ "provider", "ref" }</c> media sources).</summary>
+    public const string MediaProvider = "media.provider";
+
     /// <summary>The scene capability a video decoder brings (<c>{ "video" }</c> media sources).</summary>
     public const string MediaVideo = "media.video";
 

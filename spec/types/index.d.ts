@@ -47,7 +47,17 @@ export interface Session {
   /** Whether the engine runs in mock mode, started to simulate its sensors (docs/api.md#session): its readings come from simulated sources, not the computer's, so a client can say they aren't real. It changes only when the engine restarts. */
   mock: boolean;
   locale: SessionLocale;
+  media: SessionMedia;
   formatSupport: FormatSupport;
+}
+
+/** The media the engine can show beyond stored assets (docs/api.md#session): `providers`, the media providers configured on it by name (docs/providers.md), each once. A scene's provider source names one of them; `media.provider` in the scene format's capabilities says only that providers exist. It changes only when the engine restarts. */
+export interface SessionMedia {
+  /**
+   * Provider names, as a provider source's `provider` is written (`http`: web images). A client ignores a name it doesn't know.
+   * Unique items.
+   */
+  providers: string[];
 }
 
 /** The PC's regional format as the engine read it when it started (docs/api.md#session): a profile without a `locale` draws numbers and dates with it, and a client that formats readings of its own uses it so they match the frames. It changes only when the engine restarts. */
@@ -613,6 +623,21 @@ export interface ItemBounds {
   rotation: number;
   /** Set when the item is drawn as a placeholder: unsupported (needs a newer engine), invalid (breaks a rule or limit), budget (over a document or process budget). A client treats a problem it doesn't know as a placeholder whose reason it can't name. */
   problem?: "unsupported" | "invalid" | "budget";
+  media?: ItemMedia;
+}
+
+/** Set when media the item shows had a problem in this tick: the first one, as the engine reports it (docs/api.md#frames). The item itself isn't a placeholder: the media is drawn as the missing-media placeholder, or a provider's last good image stays while it says why the newest couldn't be shown. */
+export interface ItemMedia {
+  /**
+   * `media.loading` (still loading), `media.missing` (an asset that isn't stored, or was refused), `media.provider` (the provider couldn't fetch it, or the reference isn't one it takes), `media.address` (an address the engine may not connect to, docs/providers.md), `media.budget` (a video past the engine's decode sessions, docs/smart-nodes.md), or the code a fetched answer was refused with (docs/validation.md: `media.format`, `limit.mediaBytes`, ...). A client treats a code it doesn't know as media that can't be shown.
+   * Length: 1–64.
+   */
+  code: string;
+  /**
+   * Why, for people, in English, such as "The server answered 404."; one longer than 1,024 characters is cut, ending in "…".
+   * Length: ≤ 1024.
+   */
+  message: string;
 }
 
 export interface Rect {
@@ -871,6 +896,7 @@ export interface EngineSettingsOk {
   graphRate: number;
   logLevel: LogLevel;
   sources: SettingsSources;
+  media: MediaSettings;
   /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
   clients: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean };
 }
@@ -898,6 +924,7 @@ export interface EngineSettingsProblem {
   graphRate: number;
   logLevel: LogLevel;
   sources: SettingsSources;
+  media: MediaSettings;
   /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
   clients: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean };
 }
@@ -920,6 +947,12 @@ export interface LibreSettings {
   storageInterval: number;
 }
 
+/** The settings of the engine's media providers (docs/providers.md). */
+export interface MediaSettings {
+  /** Whether a provider may connect to this computer and the local network (docs/providers.md#addresses); true by default. */
+  localNetwork: boolean;
+}
+
 /** How much the engine logs: the least severe entries it writes to its log, from `debug` (everything) through `information` and `warning` to `error` (errors only). A client shows a level it doesn't know by its name. */
 export type LogLevel = "debug" | "information" | "warning" | "error";
 
@@ -929,7 +962,7 @@ export type LogLevel = "debug" | "information" | "warning" | "error";
  */
 export type ClientName = string;
 
-/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
+/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `media` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
 export interface SettingsChange {
   /**
    * Frames a second, 1 to 60 (engineSettings).
@@ -952,6 +985,10 @@ export interface SettingsChange {
        */
       storageInterval?: number | null;
     };
+  };
+  media?: {
+    /** mediaSettings. */
+    localNetwork?: boolean | null;
   };
   /** Client preferences to set, each whole, or to remove (`null`), by client name; the other clients' are kept. */
   clients?: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean | null };
@@ -2509,11 +2546,17 @@ export interface AssetSource {
   asset: BlobId;
 }
 
-/** Media from a provider configured on the engine (capability media.provider). `ref` is passed to the provider; the engine never fetches anything that isn't configured. */
+/** Media from a provider configured on the engine (capability media.provider), which alone decides what it fetches. `ref` is passed to the provider (for `http`, a web address: docs/providers.md). The session lists the providers an engine has. */
 export interface ProviderSource {
   /** Pattern: `^[a-z][a-z0-9-]{0,31}$`. */
   provider: string;
   ref: StringExpr;
+  /**
+   * Seconds between the provider's fetches of `ref` while it is shown: 0 (the default) fetches it once while shown, and again once the provider has dropped it. Items showing the same reference share the shortest refresh. A stream ignores it. See docs/providers.md.
+   * Range: 0–86400.
+   * @default 0
+   */
+  refresh?: number;
 }
 
 /** A stored video file, played on the tick clock (version 1.0, capability media.video; docs/smart-nodes.md, video files). `playback` and `speed` mean what they mean for an animation. */

@@ -27,7 +27,7 @@ public static partial class ReadEndpoints
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/session", (DataPaths paths, Workspace workspace, RegionalFormat regional, EngineRuntime runtime, EngineOptions options) => ApiResults.Json(new Session
+        api.MapGet("/session", (DataPaths paths, Workspace workspace, RegionalFormat regional, EngineRuntime runtime, EngineOptions options, SceneRuntimeOptions scenes) => ApiResults.Json(new Session
         {
             EngineVersion = EngineVersion(),
             EngineBuild = EngineBuild(),
@@ -48,6 +48,8 @@ public static partial class ReadEndpoints
                 DecimalSeparator = regional.DecimalSeparator,
                 GroupSeparator = regional.GroupSeparator,
             },
+            // The media providers configured on the engine, by name (spec/docs/providers.md).
+            Media = new SessionMedia { Providers = [.. scenes.Providers.Keys.Order(StringComparer.Ordinal)] },
             FormatSupport = FormatSupportOf(workspace),
         })).RequireScope(ApiScope.Read);
 

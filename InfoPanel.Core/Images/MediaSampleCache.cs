@@ -31,13 +31,40 @@ namespace InfoPanel.Images
     }
 
     /// <summary>
-    /// Media a provider configured on the engine supplies (capability <c>media.provider</c>). Must not block: it returns
-    /// the sample it has for <paramref name="reference"/> (retained for the caller, who releases it) or null while it has none.
+    /// Media a provider configured on the engine supplies (capability <c>media.provider</c>, spec/docs/providers.md).
+    /// Must not block: it answers the sample it has for the request's reference (retained for the caller, who releases
+    /// it) or none, with the status of that reference's media when it has a problem.
     /// </summary>
     public interface IMediaProvider
     {
-        MediaSample? TryGet(string reference, double seconds);
+        ProvidedMedia Get(in MediaRequest request);
+
+        /// <summary>
+        /// Another ask in the same tick that shares an answer <see cref="Get"/> already gave (the same reference, time and
+        /// playback), told for its refresh, which counts as asked (the shortest applies): it answers nothing and fetches
+        /// nothing. Told once per refresh per tick, and only by a live tick.
+        /// </summary>
+        void Asked(in MediaRequest request)
+        {
+        }
     }
+
+    /// <summary>
+    /// A tick's ask of a provider: the source's <paramref name="Reference"/> (its <c>ref</c>, evaluated), the media time
+    /// and playback (for animated media), the source's <paramref name="Refresh"/> in seconds (0: once), and whether the ask
+    /// is <paramref name="Live"/>: a render loop's tick, which may start fetching, rather than a one-off render, which is
+    /// answered with what the provider has.
+    /// </summary>
+    public readonly record struct MediaRequest(string Reference, double Seconds, MediaPlayback Playback, int Refresh = 0, bool Live = true);
+
+    /// <summary>
+    /// A problem the media of a reference has, as an item reports it in the frame header (<c>itemBounds[].media</c>):
+    /// <c>media.loading</c>, <c>media.provider</c>, <c>media.address</c>, or the code a fetched answer was refused with.
+    /// </summary>
+    public sealed record MediaStatus(string Code, string Message);
+
+    /// <summary>A provider's answer: the sample (retained for the caller), and the status when there is a problem.</summary>
+    public readonly record struct ProvidedMedia(MediaSample? Sample, MediaStatus? Status = null);
 
     public enum MediaPlayback { Loop, Once, Still }
 

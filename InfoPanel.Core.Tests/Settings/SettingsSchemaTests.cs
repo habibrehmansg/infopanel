@@ -51,7 +51,7 @@ public class SettingsSchemaTests
 
         var (ok, problem) = (Defs[Shapes[0]]!, Defs[Shapes[1]]!);
 
-        Assert.Equal(["clients", "frameRate", "graphRate", "logLevel", "sources", "version"], RequiredWithout(ok));
+        Assert.Equal(["clients", "frameRate", "graphRate", "logLevel", "media", "sources", "version"], RequiredWithout(ok));
         Assert.Equal(RequiredWithout(ok), RequiredWithout(problem));
         Assert.Equal(Without(ok["properties"]!.AsObject()).Select(p => p.Key), Without(problem["properties"]!.AsObject()).Select(p => p.Key));
         foreach (var (name, schema) in Without(ok["properties"]!.AsObject()))

@@ -31,6 +31,9 @@ internal sealed class SnapScene : SnapItem
 {
     public RNode[]? Nodes;
     public string? Problem;
+
+    /// <summary>The first problem the item's media had in the tick.</summary>
+    public ItemMedia? Media;
     public double? LayoutW, LayoutH;
     public SKRect PlaceholderBox;
     public ItemRuntime? Runtime;
@@ -231,7 +234,7 @@ public sealed class TickSnapshot : IDisposable
                 {
                     frame = ink = new SKRect(0, 0, (float)(s.LayoutW ?? 0), (float)(s.LayoutH ?? 0));
                 }
-                result.Add(Report(s, frame, ink, s.Problem));
+                result.Add(Report(s, frame, ink, s.Problem, s.Media));
                 return (frame, ink);
             }
             case SnapGroup g:
@@ -247,7 +250,7 @@ public sealed class TickSnapshot : IDisposable
                     ink = ink is { } ka ? SKRect.Union(ka, k) : k;
                 }
                 if (frame is not { } fr || ink is not { } ik) return null;
-                result.Insert(index, Report(g, fr, ik, null));
+                result.Insert(index, Report(g, fr, ik, null, null));
                 return (fr, ik);
             }
             default:
@@ -256,13 +259,13 @@ public sealed class TickSnapshot : IDisposable
     }
 
     /// <summary>A local rectangle as reported: its centre mapped by the world transform, its size, the world rotation.</summary>
-    private static ItemBounds Report(SnapItem item, SKRect frame, SKRect ink, string? problem)
+    private static ItemBounds Report(SnapItem item, SKRect frame, SKRect ink, string? problem, ItemMedia? media)
     {
         static BoundsRect Rect(SKMatrix world, SKRect r)
         {
             var c = world.MapPoint(new SKPoint(r.MidX, r.MidY));
             return new BoundsRect { X = c.X - r.Width / 2.0, Y = c.Y - r.Height / 2.0, W = Math.Max(0, r.Width), H = Math.Max(0, r.Height) };
         }
-        return new ItemBounds { Id = item.Id, Frame = Rect(item.World, frame), Ink = Rect(item.World, ink), Rotation = item.Rotation, Problem = problem };
+        return new ItemBounds { Id = item.Id, Frame = Rect(item.World, frame), Ink = Rect(item.World, ink), Rotation = item.Rotation, Problem = problem, Media = media };
     }
 }

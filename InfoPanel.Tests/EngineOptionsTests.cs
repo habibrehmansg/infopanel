@@ -32,6 +32,7 @@ public class EngineOptionsTests
         Assert.False(options.Fresh);
         Assert.Null(options.MockSeed);
         Assert.False(options.Mock);
+        Assert.False(options.Offline);
         Assert.Empty(options.DevOrigins);
         Assert.Empty(options.AllowOrigins);
         Assert.Matches("^[A-Za-z0-9_-]{43}$", options.Token);
@@ -42,12 +43,13 @@ public class EngineOptionsTests
     public void ValueLessFlags_DontSwallowTheNextOption()
     {
         var dir = TempDir();
-        var options = Load(["--no-browser", "--port", "5199", "--fresh", "--data-dir", dir, "--no-windows", "--token", "t3st", "--mock-seed", "7"], out var errors);
+        var options = Load(["--no-browser", "--port", "5199", "--fresh", "--data-dir", dir, "--no-windows", "--offline", "--token", "t3st", "--mock-seed", "7"], out var errors);
 
         Assert.Empty(errors);
         Assert.NotNull(options);
         Assert.True(options.NoBrowser);
         Assert.True(options.NoWindows);
+        Assert.True(options.Offline);
         Assert.True(options.Fresh);
         Assert.Equal(5199, options.Port);
         Assert.Equal(Path.GetFullPath(dir), options.DataDir);

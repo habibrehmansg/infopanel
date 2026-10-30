@@ -11,7 +11,7 @@
   },
   "infopanel.scene/1": {
     "version": "1.0",
-    "capabilities": [],
+    "capabilities": ["media.provider"],
     "limits": {"composeDepth": 16, "depth": 24, "effectCost": 64, "exprDepth": 32, "exprWork": 20000, "geometry": 32768, "inputs": 32, "mediaArea": 16777216, "mediaBytes": 33554432, "mediaDuration": 600, "mediaFrameArea": 268435456, "mediaFrames": 1000, "mediaNodes": 64, "mediaSide": 8192, "nodes": 2000, "pathCommands": 8192, "sceneBytes": 1048576, "sequence": 256, "seriesNodes": 32, "stateCells": 64, "svgBytes": 1048576, "svgDepth": 32, "svgDrawnDepth": 64, "svgElements": 10000, "svgGradientChain": 4, "svgNumber": 1000000000, "tableNodes": 8, "textLength": 4096, "textNodes": 256, "values": 256, "videoBytes": 268435456}
   }
 }

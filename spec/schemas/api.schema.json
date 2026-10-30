@@ -6,7 +6,7 @@
     "session": {
       "description": "GET /api/session: the engine, this run of it and what it supports.",
       "type": "object",
-      "required": ["engineVersion", "engineBuild", "protocol", "instance", "started", "features", "platform", "osVersion", "arch", "dataDir", "mock", "locale", "formatSupport"],
+      "required": ["engineVersion", "engineBuild", "protocol", "instance", "started", "features", "platform", "osVersion", "arch", "dataDir", "mock", "locale", "media", "formatSupport"],
       "additionalProperties": false,
       "properties": {
         "engineVersion": { "description": "The engine's version, such as \"2.0.0\".", "type": "string", "minLength": 1, "maxLength": 64 },
@@ -39,7 +39,22 @@
         "dataDir": { "description": "The folder the engine keeps its data in: an absolute path on the engine's machine.", "type": "string", "minLength": 1 },
         "mock": { "description": "Whether the engine runs in mock mode, started to simulate its sensors (docs/api.md#session): its readings come from simulated sources, not the computer's, so a client can say they aren't real. It changes only when the engine restarts.", "type": "boolean" },
         "locale": { "$ref": "#/$defs/sessionLocale" },
+        "media": { "$ref": "#/$defs/sessionMedia" },
         "formatSupport": { "$ref": "#/$defs/formatSupport" }
+      }
+    },
+    "sessionMedia": {
+      "description": "The media the engine can show beyond stored assets (docs/api.md#session): `providers`, the media providers configured on it by name (docs/providers.md), each once. A scene's provider source names one of them; `media.provider` in the scene format's capabilities says only that providers exist. It changes only when the engine restarts.",
+      "type": "object",
+      "required": ["providers"],
+      "additionalProperties": false,
+      "properties": {
+        "providers": {
+          "description": "Provider names, as a provider source's `provider` is written (`http`: web images). A client ignores a name it doesn't know.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+          "uniqueItems": true
+        }
       }
     },
     "sessionLocale": {
@@ -741,7 +756,23 @@
         "problem": {
           "description": "Set when the item is drawn as a placeholder: unsupported (needs a newer engine), invalid (breaks a rule or limit), budget (over a document or process budget). A client treats a problem it doesn't know as a placeholder whose reason it can't name.",
           "enum": ["unsupported", "invalid", "budget"]
-        }
+        },
+        "media": { "$ref": "#/$defs/itemMedia" }
+      }
+    },
+    "itemMedia": {
+      "description": "Set when media the item shows had a problem in this tick: the first one, as the engine reports it (docs/api.md#frames). The item itself isn't a placeholder: the media is drawn as the missing-media placeholder, or a provider's last good image stays while it says why the newest couldn't be shown.",
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "`media.loading` (still loading), `media.missing` (an asset that isn't stored, or was refused), `media.provider` (the provider couldn't fetch it, or the reference isn't one it takes), `media.address` (an address the engine may not connect to, docs/providers.md), `media.budget` (a video past the engine's decode sessions, docs/smart-nodes.md), or the code a fetched answer was refused with (docs/validation.md: `media.format`, `limit.mediaBytes`, ...). A client treats a code it doesn't know as media that can't be shown.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": { "description": "Why, for people, in English, such as \"The server answered 404.\"; one longer than 1,024 characters is cut, ending in \"…\".", "type": "string", "maxLength": 1024 }
       }
     },
     "rect": {
@@ -960,7 +991,7 @@
     "engineSettingsOk": {
       "description": "The engine read its stored settings (or had none), and they can be changed: no `problem`.",
       "type": "object",
-      "required": ["status", "version", "frameRate", "graphRate", "logLevel", "sources", "clients"],
+      "required": ["status", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "clients"],
       "additionalProperties": false,
       "properties": {
         "status": { "const": "ok" },
@@ -974,6 +1005,7 @@
         "graphRate": { "description": "Milliseconds between the samples of the sensor history: 100 to 3000, 1000 by default.", "type": "integer", "minimum": 100, "maximum": 3000 },
         "logLevel": { "$ref": "#/$defs/logLevel" },
         "sources": { "$ref": "#/$defs/settingsSources" },
+        "media": { "$ref": "#/$defs/mediaSettings" },
         "clients": {
           "description": "Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any.",
           "type": "object",
@@ -986,7 +1018,7 @@
     "engineSettingsProblem": {
       "description": "The engine couldn't read its stored settings when it started: the defaults are in effect, `problem` says why, and every change is refused (409 settingsStatusProblem) until the stored settings are fixed or removed and the engine restarts.",
       "type": "object",
-      "required": ["status", "problem", "version", "frameRate", "graphRate", "logLevel", "sources", "clients"],
+      "required": ["status", "problem", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "clients"],
       "additionalProperties": false,
       "properties": {
         "status": {
@@ -1004,6 +1036,7 @@
         "graphRate": { "description": "Milliseconds between the samples of the sensor history: 100 to 3000, 1000 by default.", "type": "integer", "minimum": 100, "maximum": 3000 },
         "logLevel": { "$ref": "#/$defs/logLevel" },
         "sources": { "$ref": "#/$defs/settingsSources" },
+        "media": { "$ref": "#/$defs/mediaSettings" },
         "clients": {
           "description": "Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any.",
           "type": "object",
@@ -1033,6 +1066,15 @@
         "storageInterval": { "description": "Seconds between its reads of storage drives: 1 to 300, 30 by default.", "type": "integer", "minimum": 1, "maximum": 300 }
       }
     },
+    "mediaSettings": {
+      "description": "The settings of the engine's media providers (docs/providers.md).",
+      "type": "object",
+      "required": ["localNetwork"],
+      "additionalProperties": false,
+      "properties": {
+        "localNetwork": { "description": "Whether a provider may connect to this computer and the local network (docs/providers.md#addresses); true by default.", "type": "boolean" }
+      }
+    },
     "logLevel": {
       "description": "How much the engine logs: the least severe entries it writes to its log, from `debug` (everything) through `information` and `warning` to `error` (errors only). A client shows a level it doesn't know by its name.",
       "enum": ["debug", "information", "warning", "error"]
@@ -1043,7 +1085,7 @@
       "pattern": "^[A-Za-z0-9._-]{1,64}$"
     },
     "settingsChange": {
-      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
+      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `media` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -1063,6 +1105,13 @@
                 "storageInterval": { "description": "Seconds, 1 to 300 (libreSettings).", "type": ["integer", "null"], "minimum": 1, "maximum": 300 }
               }
             }
+          }
+        },
+        "media": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "localNetwork": { "description": "mediaSettings.", "type": ["boolean", "null"] }
           }
         },
         "clients": {

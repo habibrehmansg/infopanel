@@ -1,1 +1,1 @@
-{"status": "ok", "version": 0, "frameRate": 15, "graphRate": 1000, "logLevel": "information", "sources": {"libre": {"enabled": true, "storageInterval": 30}}, "clients": {}}
+{"status": "ok", "version": 0, "frameRate": 15, "graphRate": 1000, "logLevel": "information", "sources": {"libre": {"enabled": true, "storageInterval": 30}}, "media": {"localNetwork": true}, "clients": {}}

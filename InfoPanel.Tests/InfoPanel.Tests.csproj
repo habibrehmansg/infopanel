@@ -23,6 +23,7 @@
          source is compiled into the tests; OpenWeatherMap.Cache is the package it already uses (central version). -->
     <Compile Include="..\InfoPanel.Extras\WeatherPlugin.cs" Link="Plugins\Linked\WeatherPlugin.cs" />
     <Compile Include="..\InfoPanel.Core.Tests\Fifo.cs" Link="Linked\Fifo.cs" />
+    <Compile Include="..\InfoPanel.Core.Tests\Images\LocalHttpServer.cs" Link="Linked\LocalHttpServer.cs" />
     <PackageReference Include="OpenWeatherMap.Cache" />
   </ItemGroup>
   <ItemGroup>

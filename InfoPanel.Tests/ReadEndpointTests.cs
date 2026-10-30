@@ -55,15 +55,18 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal(factory.DataDir, session.GetProperty("dataDir").GetString());
         Assert.Contains(session.GetProperty("platform").GetString(), new[] { "macos", "windows", "linux", "other" });
 
-        // What the engine reads, by format string: majors 1 at 1.0, no optional capabilities (no media providers), and
-        // each format's own limits. No optional API features.
+        // What the engine reads, by format string: majors 1 at 1.0, the scene format's media.provider (the engine has
+        // media providers) and no other optional capability, and each format's own limits. No optional API features.
         var support = session.GetProperty("formatSupport");
         Assert.Equal(new[] { "infopanel.archive/1", "infopanel.document/1", "infopanel.scene/1" }, support.EnumerateObject().Select(p => p.Name));
         foreach (var format in support.EnumerateObject())
         {
             Assert.Equal("1.0", format.Value.GetProperty("version").GetString());
-            Assert.Equal(0, format.Value.GetProperty("capabilities").GetArrayLength());
+            Assert.Equal(format.Name == "infopanel.scene/1" ? """["media.provider"]""" : "[]", format.Value.GetProperty("capabilities").GetRawText());
         }
+
+        // The media providers the engine has, by name: web images.
+        Assert.Equal("""{"providers":["http"]}""", session.GetProperty("media").GetRawText());
         Assert.Equal(SpecLimits.Default.Nodes, support.GetProperty("infopanel.scene/1").GetProperty("limits").GetProperty("nodes").GetInt32());
         Assert.Equal(SpecLimits.Default.Items, support.GetProperty("infopanel.document/1").GetProperty("limits").GetProperty("items").GetInt32());
         Assert.Equal("[]", session.GetProperty("features").GetRawText());

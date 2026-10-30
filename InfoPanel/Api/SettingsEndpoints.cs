@@ -74,6 +74,7 @@ public static class SettingsEndpoints
                     StorageInterval = settings.Libre.StorageInterval,
                 },
             },
+            Media = new MediaSettingsBody { LocalNetwork = settings.Media.LocalNetwork },
             Clients = settings.Clients,
         };
     }

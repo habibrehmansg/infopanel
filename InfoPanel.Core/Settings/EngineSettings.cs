@@ -108,6 +108,14 @@ public sealed record LibreSettings(bool Enabled, bool Storage, int StorageInterv
 }
 
 /// <summary>
+/// The media providers' settings: whether they may connect to this computer and the local network (spec/docs/providers.md).
+/// </summary>
+public sealed record MediaSettings(bool LocalNetwork)
+{
+    public static MediaSettings Default { get; } = new(true);
+}
+
+/// <summary>
 /// The engine settings in effect: each set value, or its default. <see cref="Clients"/> holds each client's own
 /// preferences, opaque to the engine.
 /// </summary>
@@ -116,6 +124,7 @@ public sealed record EngineSettings(
     int GraphRate,
     EngineLogLevel LogLevel,
     LibreSettings Libre,
+    MediaSettings Media,
     IReadOnlyDictionary<string, JsonElement> Clients)
 {
     public static EngineSettings Default { get; } = new(
@@ -123,6 +132,7 @@ public sealed record EngineSettings(
         SettingsLimits.GraphRate.Default,
         SettingsLimits.LogLevel,
         LibreSettings.Default,
+        MediaSettings.Default,
         ImmutableDictionary<string, JsonElement>.Empty);
 
     /// <summary>The time between the sensor history's samples.</summary>

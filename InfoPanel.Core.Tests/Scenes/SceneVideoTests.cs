@@ -103,6 +103,23 @@ public sealed class SceneVideoTests
     }
 
     [Fact]
+    public void AVideoNotStored_IsTheItemsMediaProblem()
+    {
+        using var media = SceneKit.SyncMedia(new Videos(), FFmpegForTests.Library);
+        var options = SceneKit.Options(media: media);
+        using var runtime = new SceneRuntime(new SceneRuntimeOptions
+        {
+            Inputs = options.Inputs, Media = media, LocalZone = options.LocalZone, Locale = options.Locale,
+            Support = EngineSupport.All,
+        });
+        runtime.Load(SceneKit.Doc(SceneKit.Json(Scene(source: "sha256:" + new string('a', 64))), 120, 80));
+        runtime.Tick(0, SceneKit.Now).Dispose();
+        using var snapshot = runtime.Tick(0.35, SceneKit.Now);
+        var missing = Assert.Single(snapshot.Diagnostics, d => d.Code == "media.missing");
+        Assert.Equal(new ItemMedia { Code = missing.Code, Message = missing.Message }, snapshot.Bounds.Single().Media);
+    }
+
+    [Fact]
     public void WithoutTheCapability_TheItemIsUnsupported()
     {
         var (bitmap, _, check) = Tick(Scene(), 0.35, EngineSupport.Base);

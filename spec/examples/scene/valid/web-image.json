@@ -1,0 +1,13 @@
+{
+  "format": "infopanel.scene/1",
+  "requires": ["media.provider"],
+  "nodes": [
+    {
+      "kind": "media",
+      "w": 320,
+      "h": 240,
+      "fit": "contain",
+      "source": {"provider": "http", "ref": "https://example.com/radar.png", "refresh": 600}
+    }
+  ]
+}

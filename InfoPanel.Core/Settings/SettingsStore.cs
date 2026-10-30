@@ -148,7 +148,7 @@ public sealed class SettingsStore
 
     /// <summary>
     /// Merges <paramref name="change"/> into the settings and writes them: a member's value sets it, <c>null</c> removes it
-    /// (back to its default); <c>sources</c>, <c>sources.libre</c> and <c>clients</c> merge member by member, and each
+    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>media</c> and <c>clients</c> merge member by member, and each
     /// <c>clients</c> member is set or removed whole. Unknown members are refused.
     /// </summary>
     /// <returns>The settings in effect afterwards (the same version when nothing changed).</returns>
@@ -428,6 +428,9 @@ public sealed class SettingsStore
             Check(libre, "storageInterval", "/sources/libre/storageInterval", e => IntProblem(e, SettingsLimits.StorageInterval));
         }
 
+        if (Container(tree, "media", "/media") is { } media)
+            Check(media, "localNetwork", "/media/localNetwork", BoolProblem);
+
         if (Container(tree, "clients", "/clients") is { } clients)
         {
             var kept = 0;
@@ -456,6 +459,7 @@ public sealed class SettingsStore
     private static EngineSettings Effective(JsonObject tree)
     {
         var libre = (tree["sources"] as JsonObject)?["libre"] as JsonObject;
+        var media = tree["media"] as JsonObject;
         var clients = ImmutableDictionary.CreateBuilder<string, JsonElement>(StringComparer.Ordinal);
         if (tree["clients"] is JsonObject stored)
         {
@@ -471,6 +475,7 @@ public sealed class SettingsStore
                 Bool(libre?["enabled"]) ?? LibreSettings.Default.Enabled,
                 Bool(libre?["storage"]) ?? LibreSettings.Default.Storage,
                 Int(libre?["storageInterval"]) ?? LibreSettings.Default.StorageInterval),
+            new MediaSettings(Bool(media?["localNetwork"]) ?? MediaSettings.Default.LocalNetwork),
             clients.ToImmutable());
 
         static int? Int(JsonNode? node) => node is null ? null : SpecJson.ReadInt32(ElementOf(node));
@@ -577,6 +582,19 @@ public sealed class SettingsStore
                     }
 
                     break;
+                case "media":
+                    if (!Object(member.Value, pointer))
+                        break;
+                    foreach (var setting in member.Value.EnumerateObject())
+                    {
+                        var settingPointer = pointer + "/" + Escape(setting.Name);
+                        if (setting.Name == "localNetwork")
+                            Leaf(setting.Value, settingPointer, BoolProblem);
+                        else
+                            Unknown(settingPointer);
+                    }
+
+                    break;
                 case "clients":
                     if (!Object(member.Value, pointer))
                         break;
@@ -634,6 +652,12 @@ public sealed class SettingsStore
                     }
 
                     PruneIfEmpty(tree, "sources");
+                    break;
+                case "media":
+                    var media = Child(tree, "media");
+                    foreach (var setting in member.Value.EnumerateObject())
+                        Set(media, setting.Name, setting.Value, e => JsonValue.Create(e.GetBoolean()));
+                    PruneIfEmpty(tree, "media");
                     break;
                 case "clients":
                     var clients = Child(tree, "clients");

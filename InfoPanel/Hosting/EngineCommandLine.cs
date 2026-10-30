@@ -34,6 +34,7 @@ public static class EngineCommandLine
         ["--no-windows"] = "NoWindows",
         ["--fresh"] = "Fresh",
         ["--mock"] = "Mock",
+        ["--offline"] = "Offline",
         ["--mcp"] = "Mcp",
     };
 
@@ -73,6 +74,7 @@ public static class EngineCommandLine
           --fresh               Wipe the data folder first (needs --data-dir)
           --mock                Mock sensors, and simulated values for sensors no source has
           --mock-seed <n>       Seed for the mock sensors (implies --mock)
+          --offline             Media providers connect only to this computer (tests)
           --mcp-text <dir>      A folder of tool wording, guide topics and other text for AI apps,
                                 read on every call over the built-in text
           --mcp                 Be the MCP server an AI app starts (stdin and stdout): it talks to

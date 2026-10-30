@@ -177,6 +177,9 @@ internal sealed class CMediaSource
     public string? Video;
     public string? Provider;
     public CExpr? Ref;
+
+    /// <summary>A provider source's seconds between fetches (0: once).</summary>
+    public int Refresh;
     public CMediaSource[]? Sequence;
     public CExpr? Index;
     public bool Crossfade;
@@ -550,6 +553,7 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
         Asset = s.Asset,
         Provider = s.Provider,
         Ref = s.Ref is null ? null : _x.Compile(s.Ref),
+        Refresh = s.Refresh ?? 0,
         Sequence = depth > 0 ? null : s.Sequence?.Take(limits.Sequence).Select(x => Source(x, depth + 1)).ToArray(),
         Index = s.Index is null ? null : _x.Compile(s.Index),
         Crossfade = s.Crossfade == true,

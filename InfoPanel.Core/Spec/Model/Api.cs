@@ -30,6 +30,8 @@ public sealed record Session
     public required bool Mock { get; init; }
     /// <summary>The PC's regional format as the engine read it when it started.</summary>
     public required SessionLocale Locale { get; init; }
+    /// <summary>The media the engine shows beyond stored assets: its providers by name.</summary>
+    public required SessionMedia Media { get; init; }
     /// <summary>The schema's <c>formatSupport</c>: every format the engine reads, by format string.</summary>
     public required IReadOnlyDictionary<string, SupportedFormat> FormatSupport { get; init; }
 }
@@ -42,6 +44,13 @@ public sealed record SessionLocale
     public required string Tag { get; init; }
     public required string DecimalSeparator { get; init; }
     public required string GroupSeparator { get; init; }
+}
+
+/// <summary>The session's <c>media</c>: the media providers configured on the engine, by name.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/sessionMedia")]
+public sealed record SessionMedia
+{
+    public required IReadOnlyList<string> Providers { get; init; }
 }
 
 /// <summary>
@@ -379,6 +388,16 @@ public sealed record ItemBounds
     public required BoundsRect Ink { get; init; }
     public required double Rotation { get; init; }
     public string? Problem { get; init; }
+    /// <summary>The first problem the item's media had in the tick, when it had one.</summary>
+    public ItemMedia? Media { get; init; }
+}
+
+/// <summary>An item's media problem in a tick (<c>itemMedia</c>): <c>media.loading</c>, <c>media.missing</c>, <c>media.provider</c>, <c>media.address</c>, or a refusal's code.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/itemMedia")]
+public sealed record ItemMedia
+{
+    public required string Code { get; init; }
+    public required string Message { get; init; }
 }
 
 [SpecDef("urn:infopanel:api:1#/$defs/rect")]
@@ -532,6 +551,7 @@ public sealed record EngineSettingsBody
     /// <summary><c>debug</c>, <c>information</c>, <c>warning</c> or <c>error</c>.</summary>
     public required string LogLevel { get; init; }
     public required SettingsSources Sources { get; init; }
+    public required MediaSettingsBody Media { get; init; }
     /// <summary>Each client's preferences by client name, as the client set them.</summary>
     public required IReadOnlyDictionary<string, JsonElement> Clients { get; init; }
 }
@@ -541,6 +561,13 @@ public sealed record EngineSettingsBody
 public sealed record SettingsSources
 {
     public required LibreSettingsBody Libre { get; init; }
+}
+
+/// <summary>The media providers' settings (<c>mediaSettings</c>, engineSettings' <c>media</c>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/mediaSettings")]
+public sealed record MediaSettingsBody
+{
+    public required bool LocalNetwork { get; init; }
 }
 
 [SpecDef("urn:infopanel:api:1#/$defs/libreSettings")]
@@ -563,6 +590,7 @@ public sealed record SettingsChange : IRemovesMembers
     public int? GraphRate { get; init; }
     public string? LogLevel { get; init; }
     public SettingsChangeSources? Sources { get; init; }
+    public MediaSettingsChange? Media { get; init; }
     public IReadOnlyDictionary<string, JsonElement>? Clients { get; init; }
     /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
@@ -573,6 +601,16 @@ public sealed record SettingsChange : IRemovesMembers
 public sealed record SettingsChangeSources
 {
     public LibreSettingsChange? Libre { get; init; }
+}
+
+/// <summary>The media providers' settings to change; one given as <c>null</c> goes back to its default (<see cref="IRemovesMembers"/>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/media")]
+public sealed record MediaSettingsChange : IRemovesMembers
+{
+    public bool? LocalNetwork { get; init; }
+    /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 /// <summary>The Libre source's settings to change; one given as <c>null</c> goes back to its default (<see cref="IRemovesMembers"/>).</summary>

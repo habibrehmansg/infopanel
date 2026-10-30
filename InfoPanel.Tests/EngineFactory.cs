@@ -15,7 +15,9 @@ namespace InfoPanel.Tests;
 /// a fixed token, port, dev origin and cross origin, seeded mock sensors and a fixed PC regional format (en-US), so
 /// frames don't depend on the machine's region. Its folder opener only records (<see cref="Folders"/>), so no test engine
 /// opens a file manager, and its browser launcher starts nothing. Its 1.x folder is its own (<see cref="V1Dir"/>, empty unless a test puts
-/// 1.x data there), so no test engine reads the 1.x data of the user running the tests. Every response it gives, on the TestServer
+/// 1.x data there), so no test engine reads the 1.x data of the user running the tests. It runs offline
+/// (<c>--offline</c>): its media providers connect only to this computer, so a test's web image reaches a server the
+/// test started on loopback, or nothing. Every response it gives, on the TestServer
 /// or on Kestrel (<c>LiveEngine</c>), is checked against spec/openapi.json (<see cref="ContractCheck"/>), except in
 /// <c>Category=Performance</c> tests; <see cref="Contract"/> holds what the check saw, and disposing the factory fails on
 /// any violation it recorded.
@@ -71,6 +73,8 @@ public class EngineFactory : WebApplicationFactory<Program>
         builder.UseSetting("Engine:Port", Port.ToString());
         builder.UseSetting("Engine:NoBrowser", "true");
         builder.UseSetting("Engine:MockSeed", "42");
+        // Media providers connect only to this computer: no test engine reaches the network.
+        builder.UseSetting("Engine:Offline", "true");
         builder.UseSetting("Engine:DevOrigins:0", DevOrigin);
         builder.UseSetting("Engine:AllowOrigins:0", CrossOrigin);
         // No video decoder, whatever the machine has (INFOPANEL_FFMPEG_DIR included): a test that plays video sets its own.

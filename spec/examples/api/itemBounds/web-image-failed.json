@@ -1,0 +1,7 @@
+{
+  "id": "radar",
+  "frame": {"x": 20, "y": 20, "w": 320, "h": 240},
+  "ink": {"x": 20, "y": 20, "w": 320, "h": 240},
+  "rotation": 0,
+  "media": {"code": "media.provider", "message": "The server answered 404."}
+}

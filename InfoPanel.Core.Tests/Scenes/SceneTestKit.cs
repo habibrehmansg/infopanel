@@ -68,10 +68,10 @@ internal sealed class FixedProvider(SKImage image) : IMediaProvider
     private readonly MediaSample _sample = MediaSample.FromImage(image);
     public int Calls;
 
-    public MediaSample? TryGet(string reference, double seconds)
+    public ProvidedMedia Get(in MediaRequest request)
     {
         Interlocked.Increment(ref Calls);
-        return _sample.Retain();
+        return new ProvidedMedia(_sample.Retain());
     }
 }
 

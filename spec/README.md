@@ -23,7 +23,7 @@ The formats an InfoPanel engine reads and writes, specified so that any client c
 3. [Bindings](docs/bindings.md): scene inputs, sensor bindings, statistics, status, history.
 4. [Scene](docs/scene.md): nodes, paints, strokes, effects, transforms, clips, the drawing model.
 5. [Expressions](docs/expressions.md): types, operations, values, state cells, time patterns, evaluation order.
-6. [Smart nodes](docs/smart-nodes.md): `text`, `series`, `table`, `media`.
+6. [Smart nodes](docs/smart-nodes.md): `text`, `series`, `table`, `media`; [media providers](docs/providers.md): the `http` provider, refresh, status, and the addresses a provider may connect to.
 7. [Identity and state](docs/identity.md): instance ids, what keeps and what resets state, the tick snapshot.
 8. [Commits](docs/commit.md): per-item per-field ops, what a change stamps, `baseRev`, `opId` and the retry window, coalescing, 409 and 422; undo, redo, revert and save.
 9. [Engine API](docs/api.md): the requests, errors and tokens, the session, fonts and sensors, the engine settings, the recent log entries, opening the engine's folders, the displays, the profile list and its statuses, creating, duplicating, deleting and exporting profiles, documents, blobs, the preview socket's messages, frames and change events.

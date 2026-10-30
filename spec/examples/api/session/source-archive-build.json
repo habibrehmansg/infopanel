@@ -11,6 +11,7 @@
   "dataDir": "C:\\Users\\me\\AppData\\Local\\InfoPanel\\v2",
   "mock": true,
   "locale": {"tag": "en-GB", "decimalSeparator": ".", "groupSeparator": ","},
+  "media": {"providers": ["http"]},
   "formatSupport": {
     "infopanel.archive/1": {"version": "1.0", "capabilities": [], "limits": {"archiveBytes": 536870912, "manifestBytes": 65536}},
     "infopanel.document/1": {"version": "1.0", "capabilities": [], "limits": {"documentBytes": 16777216, "items": 2000, "ops": 1000}},

@@ -223,7 +223,15 @@ public sealed class SceneRegressionTests
         private readonly MediaSample _sample = MediaSample.FromImage(image);
         public int Calls;
 
-        public MediaSample? TryGet(string reference, double seconds) => Interlocked.Increment(ref Calls) == 1 ? _sample.Retain() : null;
+        /// <summary>The refreshes told apart from the answered asks (another item's ask sharing the tick's answer).</summary>
+        public readonly List<int> Also = [];
+
+        public ProvidedMedia Get(in MediaRequest request) => new(Interlocked.Increment(ref Calls) == 1 ? _sample.Retain() : null);
+
+        public void Asked(in MediaRequest request)
+        {
+            lock (Also) Also.Add(request.Refresh);
+        }
     }
 
     [Fact]
@@ -233,10 +241,12 @@ public sealed class SceneRegressionTests
         bmp.Erase(SKColors.Red);
         var provider = new OnceProvider(SKImage.FromBitmap(bmp));
         var options = SceneKit.Options(providers: new Dictionary<string, IMediaProvider> { ["p"] = provider });
+        // The two ask with different refreshes: still one answer, and the provider is told of the second refresh.
         using var s = Tick("{'format':'infopanel.scene/1','requires':['media.provider'],'nodes':["
-            + "{'kind':'media','w':20,'h':20,'source':{'provider':'p','ref':'x'}},{'kind':'media','x':30,'w':20,'h':20,'source':{'provider':'p','ref':'x'}}]}",
+            + "{'kind':'media','w':20,'h':20,'source':{'provider':'p','ref':'x'}},{'kind':'media','x':30,'w':20,'h':20,'source':{'provider':'p','ref':'x','refresh':10}}]}",
             60, 30, options);
         Assert.Equal(1, provider.Calls);
+        Assert.Equal([10], provider.Also);
         Assert.DoesNotContain(s.Diagnostics, d => d.Code == "media.loading");
         using var frame = s.Render();
         Assert.Equal(SKColors.Red, frame.GetPixel(10, 10));

@@ -61,6 +61,9 @@ public sealed partial class EngineOptions
     /// </summary>
     public bool Mock { get; init; }
 
+    /// <summary>Media providers connect only to this computer (<c>--offline</c>): tests and their engines reach no network.</summary>
+    public bool Offline { get; init; }
+
     /// <summary>
     /// The folder of the data folders' local channels (<see cref="LocalChannel"/>), from the <c>Engine:RunDir</c> setting
     /// (a host setting, not a flag: tests give their engines their own); null means
@@ -110,6 +113,7 @@ public sealed partial class EngineOptions
         var noBrowser = Flag(section, "NoBrowser", "--no-browser", problems);
         var noWindows = Flag(section, "NoWindows", "--no-windows", problems);
         var fresh = Flag(section, "Fresh", "--fresh", problems);
+        var offline = Flag(section, "Offline", "--offline", problems);
 
         var token = Value(section, "Token");
         if (token != null && !TokenPattern().IsMatch(token))
@@ -212,6 +216,7 @@ public sealed partial class EngineOptions
             Fresh = fresh,
             MockSeed = seed,
             Mock = mock,
+            Offline = offline,
             RunDir = fullRunDir,
             McpText = mcpText == null ? null : Path.GetFullPath(mcpText),
             Mcp = mcp,
