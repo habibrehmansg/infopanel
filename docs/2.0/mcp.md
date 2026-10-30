@@ -12,12 +12,30 @@ isn't running. Nothing goes over the network.
 | `list_profiles` | read | The profiles: id, name, size, status, unsaved changes |
 | `get_profile` | read | A profile's name, size, revision and items (position, box, visibility, bindings, what made each; listed within 4 MiB, then "… and N more items"); with `item`, that item's scene and source |
 | `list_sensors` | read | The sensors: key, name, group, unit, status, value; `query` filters, `limit` caps (200) |
+| `list_fonts` | read | The font families a scene's text can name, the bundled ones (Inter) first and marked; `query` keeps those whose name holds it, in any case |
 | `render_preview` | read | A profile drawn as a PNG, `width` pixels wide (the profile's, at most 1,200) |
 | `get_design_guide` | read | The guide's topics (built-in: `scenes`, the scene format in short), palettes and examples, from the text folder |
+| `create_profile` | edit | An empty profile (`name`, `width`, `height`, `background`), stored and saved at once |
+| `add_item` | edit | An item drawing a `scene`, at `x`, `y`, with an optional box (`width`, `height`), `name`, `bindings`, `group`, `index` |
+| `update_item` | edit | Any of an item's `x`, `y`, `rotation`, `width`, `height`, `scene`, `bindings`, `name`, `visible`; the rest stays |
+| `remove_item` | edit | An item, a group with everything in it |
+| `add_asset` | edit | An SVG stored as a blob: its asset id and size, for a scene's `media` node; nothing stored when it isn't an SVG the engine shows |
+| `show_on_desktop` | edit | The profile's desktop window on (`show`, the default) or off, its other window settings kept; the answer says when no window opens on this engine (`--no-windows`, or a platform without desktop windows), the setting kept |
 
-A profile is named by its id or its exact name. Every problem comes back as a tool result marked as an error, with its
+A profile is named by its id or its exact name, an item by its id or its exact name. **Changes:** each call that changes
+a profile is one commit, one step the editor can undo, made at the revision the tool read (with the document's tag), so
+a change someone else made to the same part in between is a conflict: the tool reads again and retries once, then says
+so. The retry acts on the profile and the items the tool found first, never on others given their names meanwhile; one
+deleted or replaced meanwhile is an error that names it. The editor sees each change as another client's. **Saving:** the change is saved when the profile had no unsaved
+changes just before it applied (decided as the commit applies); otherwise it is left unsaved and the answer says "Not
+saved: ‹name› has unsaved changes from the editor; save there." A save refused because another change landed at the
+same moment, or one the data folder refuses (no space, no write access), leaves the change applied: "Changed, but not
+saved", never an error that would invite a second copy. `create_profile` saves the new profile at once; an
+interrupted build leaves it saved and unfinished. Every problem comes back as a tool result marked as an error, with its
 cause and a next step (for example "There's no profile Desk (notFound). list_profiles names them."), so the AI can
-explain it. The tools are always listed, also while the engine isn't running.
+explain it. The tools are always listed, also while the engine isn't running, then with the wording of the text folder the
+launch record names (`--mcp-text`, read as the engine reads it), so an app that connects first gets the same text. A
+record the channel wouldn't trust (its run folder or the record not this user's alone, or a link) gives the built-in text.
 
 ## 1. Get a build
 
@@ -55,7 +73,7 @@ Quit Claude Desktop (⌘Q), then add InfoPanel to `~/Library/Application Support
 
 Use absolute paths. Leave out `"--data-dir"` and its value for the default data folder
 (`~/Library/Application Support/InfoPanel/v2`). Open Claude Desktop: Settings › Developer shows `infopanel` running, and
-the tools menu lists its five tools.
+the tools menu lists its tools.
 
 ## 3. Claude Code
 
@@ -67,7 +85,9 @@ In a session, `/mcp` shows `infopanel` connected with its tools.
 
 ## 4. Use it
 
-Ask, for example: "Which InfoPanel profiles do I have?", "Show me a preview of Wide bar", "What's my CPU temperature?".
+Ask, for example: "Which InfoPanel profiles do I have?", "Show me a preview of Wide bar", "What's my CPU temperature?",
+"Make a new 800×480 profile called Desk with a big clock, my CPU temperature and a GPU load bar, then show it on my
+desktop". The editor, open on that profile, changes as the AI works.
 Quit the engine and ask again: it is started by itself, without a browser, and the answer says so. Quitting the AI app
 leaves the engine running.
 

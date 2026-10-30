@@ -9,8 +9,17 @@ namespace InfoPanel.Mcp.Front;
 /// <summary>Where the front finds the engine and how it starts one.</summary>
 public sealed class EngineLinkOptions
 {
-    /// <summary>The data folder's channel.</summary>
+    /// <summary>The data folder's channel, as worked out when the front started.</summary>
     public required LocalChannelEndpoint Endpoint { get; init; }
+
+    /// <summary>
+    /// Works the channel out again from the folder's stored spelling, throwing <see cref="IOException"/> when it can't
+    /// (<see cref="LocalChannel.StoredEndpointFor"/>). The link does it on first use once the data folder exists, however
+    /// it was when <see cref="Endpoint"/> was worked out (Codex p2 #3: the folder may appear in between): on a volume that
+    /// folds case it may have been made in another spelling than the one given (by an engine started by hand), and the
+    /// channel is named from the spelling stored. Settled only once it worked. Null: <see cref="Endpoint"/> always.
+    /// </summary>
+    public Func<LocalChannelEndpoint>? Rehash { get; init; }
 
     /// <summary>The data folder as given (null: the default one), passed to an engine the front starts.</summary>
     public string? DataDir { get; init; }
@@ -27,8 +36,11 @@ public sealed class EngineLinkOptions
     /// <summary>How often it looks for the channel while an engine starts.</summary>
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromMilliseconds(200);
 
-    /// <summary>The tools and instructions this executable carries.</summary>
-    public required Func<JsonObject> BuiltInList { get; init; }
+    /// <summary>
+    /// The tools and instructions this executable carries, with the text of a live folder over them (null: none): the
+    /// launch record's <c>--mcp-text</c>, the folder the engine it starts would read (triage p2 #9).
+    /// </summary>
+    public required Func<string?, JsonObject> BuiltInList { get; init; }
 }
 
 /// <summary>
@@ -54,8 +66,46 @@ public sealed class EngineLink(EngineLinkOptions options, IEngineLauncher launch
     private readonly SemaphoreSlim _gate = new(1, 1);
     private LocalChannelClient? _client;
     private bool _attachedBefore;
+    private LocalChannelEndpoint _endpoint = options.Endpoint;
+    private bool _settled = options.Rehash == null;
 
-    public JsonObject BuiltInList() => options.BuiltInList();
+    /// <summary>
+    /// The channel: worked out again from the folder's stored spelling once the data folder exists
+    /// (<see cref="EngineLinkOptions.Rehash"/>), and settled only once that worked; a try that fails is made again on
+    /// the next use. Under the link's gate.
+    /// </summary>
+    private LocalChannelEndpoint Endpoint()
+    {
+        if (_settled || !Directory.Exists(options.Paths.Root))
+            return _endpoint;
+        try
+        {
+            var now = options.Rehash!();
+            if (now != _endpoint)
+                log.WriteLine($"infopanel-mcp: the data folder exists now; its channel is {now.Name}");
+            _endpoint = now;
+            _settled = true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.WriteLine($"infopanel-mcp: the channel couldn't be worked out again ({ex.Message}); {_endpoint.Name} for now");
+        }
+        return _endpoint;
+    }
+
+    /// <summary>
+    /// The list while no engine answers: this executable's tools, with the wording of the live text folder the folder's
+    /// launch record names (<c>--mcp-text</c>), so a session that connects before the engine starts gets the same text
+    /// as one that connects after. Read on every answer; a record without one gives the built-in text, and so does one
+    /// the channel's checks wouldn't trust (<see cref="LaunchRecord.ReadTrusted"/>: the list comes here after a refused
+    /// channel too, Codex p2-2 #1).
+    /// </summary>
+    public JsonObject BuiltInList()
+    {
+        var args = LaunchRecord.ReadTrusted(_endpoint, message => log.WriteLine($"infopanel-mcp: {message}"));
+        var at = args.ToList().IndexOf("--mcp-text");
+        return options.BuiltInList(at >= 0 && at + 1 < args.Count ? args[at + 1] : null);
+    }
 
     public async Task<JsonObject?> TryListAsync(CancellationToken ct)
     {
@@ -103,7 +153,7 @@ public sealed class EngineLink(EngineLinkOptions options, IEngineLauncher launch
                 {
                     ["op"] = "call",
                     ["tool"] = tool,
-                    ["arguments"] = JsonNode.Parse(arguments.GetRawText()),
+                    ["arguments"] = JsonNode.Parse(arguments.GetRawText(), documentOptions: LocalChannel.MessageOptions),
                 }, ct).ConfigureAwait(false);
             }
             catch (IOException ex)
@@ -156,7 +206,7 @@ public sealed class EngineLink(EngineLinkOptions options, IEngineLauncher launch
         var args = new List<string>();
         if (options.DataDir != null)
             args.AddRange(["--data-dir", options.DataDir]);
-        args.AddRange(LaunchRecord.Read(LaunchRecord.PathFor(options.Endpoint), message => log.WriteLine($"infopanel-mcp: {message}")));
+        args.AddRange(LaunchRecord.Read(LaunchRecord.PathFor(Endpoint()), message => log.WriteLine($"infopanel-mcp: {message}")));
         args.Add("--no-browser");
         // Said outright: a start for a read call never wipes the folder, whatever the environment it inherits says.
         args.Add("--fresh=false");
@@ -248,7 +298,7 @@ public sealed class EngineLink(EngineLinkOptions options, IEngineLauncher launch
     }
 
     private Task<LocalChannelClient?> TryConnectAsync(CancellationToken ct) =>
-        LocalChannelClient.TryConnectAsync(options.Endpoint, ConnectTimeout, ct);
+        LocalChannelClient.TryConnectAsync(Endpoint(), ConnectTimeout, ct);
 
     private static JsonObject Failure(string text) => new()
     {

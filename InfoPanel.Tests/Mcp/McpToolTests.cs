@@ -21,6 +21,13 @@ public sealed class McpToolTests
         ["list_sensors"] = ApiScope.Read,
         ["render_preview"] = ApiScope.Read,
         ["get_design_guide"] = ApiScope.Read,
+        ["list_fonts"] = ApiScope.Read,
+        ["create_profile"] = ApiScope.Edit,
+        ["add_item"] = ApiScope.Edit,
+        ["update_item"] = ApiScope.Edit,
+        ["remove_item"] = ApiScope.Edit,
+        ["add_asset"] = ApiScope.Edit,
+        ["show_on_desktop"] = ApiScope.Edit,
     };
 
     private static McpToolHost Host(EngineFactory factory) => factory.Services.GetRequiredService<McpToolHost>();
@@ -62,7 +69,7 @@ public sealed class McpToolTests
                 Assert.True(properties.ContainsKey(required!.GetValue<string>()), $"{name} requires an argument it doesn't define.");
             foreach (var (member, property) in properties)
             {
-                Assert.Contains(property!["type"]!.GetValue<string>(), new[] { "string", "integer" });
+                Assert.Contains(property!["type"]!.GetValue<string>(), new[] { "string", "integer", "number", "boolean", "object" });
                 Assert.False(string.IsNullOrWhiteSpace(property["description"]?.GetValue<string>()), $"{name}.{member} has no description.");
             }
         }

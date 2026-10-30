@@ -75,11 +75,19 @@ public static class LocalChannel
     /// stores it (<see cref="AsStored"/>), so on a volume that folds case every spelling of one folder names one channel,
     /// while a volume that keeps case apart keeps two folders apart; case folded on Windows.
     /// </summary>
-    public static string HashOf(string dataRoot)
+    public static string HashOf(string dataRoot) => HashOf(dataRoot, whole: false);
+
+    /// <param name="whole">
+    /// Refuse a path that isn't there whole, or whose stored spelling can't be read (<see cref="IOException"/>), rather
+    /// than hash a spelling that may not be the folder's own.
+    /// </param>
+    private static string HashOf(string dataRoot, bool whole)
     {
         var real = Path.TrimEndingDirectorySeparator(DataFolder.ResolveRealPath(Path.GetFullPath(dataRoot)));
         if (OperatingSystem.IsMacOS())
-            real = AsStored(real);
+            real = AsStored(real, whole);
+        else if (whole && !Directory.Exists(real))
+            throw new IOException($"{real} isn't there.");
         if (OperatingSystem.IsWindows())
             real = real.ToUpperInvariant();
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(real)))[..16];
@@ -90,14 +98,16 @@ public static class LocalChannel
     /// which on macOS returns each name's stored spelling), and the rest, not made yet, as given: once it is made with that
     /// spelling the whole path reads the same. A path whose stored spelling can't be read is kept as it is.
     /// </summary>
-    private static string AsStored(string path)
+    private static string AsStored(string path, bool whole)
     {
         var existing = path;
         while (!Path.Exists(existing) && Path.GetDirectoryName(existing) is { } parent)
             existing = parent;
+        if (whole && existing != path)
+            throw new IOException($"{path} isn't there.");
         var buffer = new byte[4096]; // PATH_MAX is 1024
         if (realpath(existing, buffer) == IntPtr.Zero)
-            return path;
+            return whole ? throw new IOException($"The stored spelling of {path} can't be read.") : path;
         var stored = Encoding.UTF8.GetString(buffer, 0, Array.IndexOf(buffer, (byte)0) is var end && end >= 0 ? end : buffer.Length);
         return Path.TrimEndingDirectorySeparator(stored + path[existing.Length..]);
     }
@@ -107,10 +117,19 @@ public static class LocalChannel
 
     /// <summary>The channel of the data folder <paramref name="dataRoot"/> in <paramref name="runDirectory"/>.</summary>
     /// <exception cref="LocalChannelException">The socket's path would be over <see cref="MaxSocketPathBytes"/> bytes.</exception>
-    public static LocalChannelEndpoint EndpointFor(string runDirectory, string dataRoot)
+    public static LocalChannelEndpoint EndpointFor(string runDirectory, string dataRoot) => EndpointFor(runDirectory, dataRoot, whole: false);
+
+    /// <summary>
+    /// <see cref="EndpointFor(string, string)"/> of a data folder that exists, hashed from its stored spelling whole
+    /// (what a front settles on once the folder exists: <c>EngineLinkOptions.Rehash</c>).
+    /// </summary>
+    /// <exception cref="IOException">The folder isn't there whole, or its stored spelling can't be read.</exception>
+    public static LocalChannelEndpoint StoredEndpointFor(string runDirectory, string dataRoot) => EndpointFor(runDirectory, dataRoot, whole: true);
+
+    private static LocalChannelEndpoint EndpointFor(string runDirectory, string dataRoot, bool whole)
     {
         var run = Path.GetFullPath(runDirectory);
-        var hash = HashOf(dataRoot);
+        var hash = HashOf(dataRoot, whole);
         if (OperatingSystem.IsWindows())
             return new LocalChannelEndpoint(run, hash, null, $"InfoPanel-{hash}");
 
@@ -183,9 +202,24 @@ public static class LocalChannel
             File.SetUnixFileMode(file, OwnerOnlyFile);
     }
 
+    /// <summary>
+    /// How deeply every JSON message on the channel and on the MCP transport is read and written: the formats'
+    /// <c>jsonDepth</c> (a document or request body, 256 levels) and the envelope around a tool's arguments (an MCP
+    /// request puts them three levels down, a channel call two), with room to spare (Codex p2 #7). Bounded, so a message
+    /// can't nest without end; content deeper than the formats allow reaches the engine, which refuses it with
+    /// <c>limit.jsonDepth</c>.
+    /// </summary>
+    public const int MessageDepth = InfoPanel.Spec.SpecJson.SchemaDepth + 16;
+
+    /// <summary>Reading a message at <see cref="MessageDepth"/>.</summary>
+    public static JsonDocumentOptions MessageOptions => new() { MaxDepth = MessageDepth };
+
+    /// <summary>Writing a message at <see cref="MessageDepth"/>.</summary>
+    internal static readonly JsonSerializerOptions MessageWriter = new() { MaxDepth = MessageDepth };
+
     internal static byte[] Line(JsonNode node)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(node);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(node, MessageWriter);
         var line = new byte[bytes.Length + 1];
         bytes.CopyTo(line, 0);
         line[^1] = (byte)'\n';
@@ -250,8 +284,8 @@ internal static class UnixIdentity
             : (BitConverter.ToUInt32(buffer, 20), BitConverter.ToUInt16(buffer, 28));
     }
 
-    /// <summary>The file type bits of a mode, and a folder's (the same on macOS and Linux).</summary>
-    public const int TypeMask = 0xF000, TypeFolder = 0x4000;
+    /// <summary>The file type bits of a mode, a folder's and a regular file's (the same on macOS and Linux).</summary>
+    public const int TypeMask = 0xF000, TypeFolder = 0x4000, TypeFile = 0x8000;
 
     [DllImport("libc")]
     private static extern uint geteuid();
@@ -560,9 +594,9 @@ public sealed class LocalChannelServer : IAsyncDisposable
         JsonNode? id = null;
         try
         {
-            using var json = JsonDocument.Parse(request);
+            using var json = JsonDocument.Parse(request, LocalChannel.MessageOptions);
             if (json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("id", out var given))
-                id = JsonNode.Parse(given.GetRawText());
+                id = JsonNode.Parse(given.GetRawText(), documentOptions: LocalChannel.MessageOptions);
         }
         catch (JsonException)
         {
@@ -585,7 +619,7 @@ public sealed class LocalChannelServer : IAsyncDisposable
     {
         try
         {
-            using var json = JsonDocument.Parse(line);
+            using var json = JsonDocument.Parse(line, LocalChannel.MessageOptions);
             var root = json.RootElement;
             if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("channel", out var channel) || !channel.TryGetInt32(out var version))
                 return "not a hello";
@@ -607,12 +641,12 @@ public sealed class LocalChannelServer : IAsyncDisposable
         string? tool = null;
         try
         {
-            using var json = JsonDocument.Parse(line);
+            using var json = JsonDocument.Parse(line, LocalChannel.MessageOptions);
             var root = json.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
                 return Error(null, "a request is a JSON object");
             if (root.TryGetProperty("id", out var idElement))
-                id = JsonNode.Parse(idElement.GetRawText());
+                id = JsonNode.Parse(idElement.GetRawText(), documentOptions: LocalChannel.MessageOptions);
             var op = root.TryGetProperty("op", out var opElement) && opElement.ValueKind == JsonValueKind.String ? opElement.GetString() : null;
             JsonObject answer;
             switch (op)
@@ -783,7 +817,7 @@ public sealed class LocalChannelClient : IAsyncDisposable
             var line = await reader.ReadLineAsync(limit.Token).ConfigureAwait(false);
             if (line == null)
                 throw new LocalChannelException("The engine closed the channel before it said hello.");
-            var hello = JsonNode.Parse(line) as JsonObject ?? throw new LocalChannelException("The engine's hello isn't a JSON object.");
+            var hello = JsonNode.Parse(line, documentOptions: LocalChannel.MessageOptions) as JsonObject ?? throw new LocalChannelException("The engine's hello isn't a JSON object.");
             if (hello["refused"]?.GetValue<string>() is { } refused)
                 throw new LocalChannelException(refused);
             return new LocalChannelClient(stream, socket, hello);
@@ -835,7 +869,7 @@ public sealed class LocalChannelClient : IAsyncDisposable
             while (true)
             {
                 var line = await _reader.ReadLineAsync(ct).ConfigureAwait(false) ?? throw new IOException("The engine closed the channel.");
-                if (JsonNode.Parse(line) is JsonObject answer && answer["id"] is JsonValue value && value.TryGetValue<long>(out var answered) && answered == id)
+                if (JsonNode.Parse(line, documentOptions: LocalChannel.MessageOptions) is JsonObject answer && answer["id"] is JsonValue value && value.TryGetValue<long>(out var answered) && answered == id)
                     return answer;
             }
         }

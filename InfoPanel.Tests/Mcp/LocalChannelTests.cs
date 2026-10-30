@@ -392,6 +392,70 @@ public sealed class LocalChannelTests : IDisposable
         Assert.Null(await LocalChannelClient.TryConnectAsync(LocalChannel.EndpointFor(Path.Combine(_root, "absent"), Data("b")), TimeSpan.FromSeconds(2), Ct));
     }
 
+    /// <summary>
+    /// Codex p2 #3: on a volume that folds case, the front hashed <c>Later</c> while it didn't exist; <c>later</c> was
+    /// made before the front's link was. The link doesn't settle on that hash because the folder exists by then: it
+    /// works the channel out on first use, and settles only once that worked (a failed try is tried again next call).
+    /// </summary>
+    [Fact]
+    public async Task ALinkMadeAfterItsFolderAppeared_WorksTheChannelOutOnFirstUse_AndSettlesOnlyOnceThatWorked()
+    {
+        if (!OperatingSystem.IsMacOS())
+            return;
+        var probe = Data("case-probe");
+        if (!Directory.Exists(Path.Combine(_root, "CASE-PROBE")))
+            return; // a volume that keeps case apart: two spellings are two folders
+        Assert.True(Directory.Exists(probe));
+
+        var given = Path.Combine(_root, "Later");
+        var stale = LocalChannel.EndpointFor(Run, given); // the folder isn't there yet: the spelling as given
+        var made = Data("later");
+        await using var server = Start(made);
+        Assert.NotEqual(stale.Name, server.Endpoint.Name);
+
+        var tries = 0;
+        var launcher = new NoEngineStarts();
+        await using var link = new InfoPanel.Mcp.Front.EngineLink(new InfoPanel.Mcp.Front.EngineLinkOptions
+        {
+            Endpoint = stale,
+            Rehash = () => tries++ == 0 ? throw new IOException("can't read the folder's spelling now") : LocalChannel.EndpointFor(Run, given),
+            Paths = new InfoPanel.Persistence.DataPaths(given),
+            StartTimeout = TimeSpan.Zero,
+            BuiltInList = _ => new JsonObject(),
+        }, launcher, TextWriter.Null);
+        using var empty = JsonDocument.Parse("{}");
+
+        // The first try fails (nothing answers on the stale channel, so a start is tried); the next works it out and
+        // finds the engine on the folder's own channel.
+        var answer = await link.CallAsync("fake", empty.RootElement, Ct);
+        Assert.False(answer["isError"]!.GetValue<bool>(), answer.ToJsonString());
+        Assert.Contains(answer["content"]!.AsArray(), c => c!["text"]!.GetValue<string>() == "fake:{}");
+        Assert.Equal(2, tries);
+        Assert.Equal(1, launcher.Starts);
+
+        // Settled: worked out once, never again.
+        answer = await link.CallAsync("fake", empty.RootElement, Ct);
+        Assert.False(answer["isError"]!.GetValue<bool>(), answer.ToJsonString());
+        Assert.Equal(2, tries);
+
+        // The canonicalisation the front settles on refuses what it can't read whole, rather than hash it as given.
+        Assert.Throws<IOException>(() => LocalChannel.StoredEndpointFor(Run, Path.Combine(_root, "absent")));
+        Assert.Throws<IOException>(() => LocalChannel.StoredEndpointFor(Run, Path.Combine(_root, "absent", "deeper")));
+        Assert.Equal(server.Endpoint.Name, LocalChannel.StoredEndpointFor(Run, given).Name);
+    }
+
+    /// <summary>A launcher whose engine finds the folder in use (exit 3) at once.</summary>
+    private sealed class NoEngineStarts : InfoPanel.Mcp.Front.IEngineLauncher
+    {
+        public int Starts { get; private set; }
+
+        public InfoPanel.Mcp.Front.StartedEngine Start(IReadOnlyList<string> args)
+        {
+            Starts++;
+            return new InfoPanel.Mcp.Front.StartedEngine(null, () => 3);
+        }
+    }
+
     private LocalChannelServer Start(string data, ILocalChannelHandler? handler = null, LocalChannelServerOptions? options = null) =>
         LocalChannelServer.Start(LocalChannel.EndpointFor(Run, data), handler ?? new FakeHandler(), NullLogger.Instance, options);
 

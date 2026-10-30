@@ -73,6 +73,37 @@ public static class LaunchRecord
     }
 
     /// <summary>
+    /// The record's flags (<see cref="Read"/>) only when it is trusted as the channel is (Codex p2-2 #1): on Unix its run
+    /// folder passes <see cref="LocalChannel.CheckRunDirectory"/>, and the record is a regular file, not a link, this
+    /// user's, that no one else may write. Otherwise none, the reason said to <paramref name="warn"/>.
+    /// </summary>
+    public static IReadOnlyList<string> ReadTrusted(LocalChannelEndpoint endpoint, Action<string> warn)
+    {
+        var path = PathFor(endpoint);
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                LocalChannel.CheckRunDirectory(endpoint.RunDirectory);
+                if (UnixIdentity.StatOf(path) is not { } stat)
+                    return [];
+                if ((stat.Mode & UnixIdentity.TypeMask) != UnixIdentity.TypeFile)
+                    throw new LocalChannelException($"The launch record {path} is a link or not a file.");
+                if (stat.Owner != UnixIdentity.CurrentUser)
+                    throw new LocalChannelException($"The launch record {path} belongs to another user (uid {stat.Owner}).");
+                if ((stat.Mode & (int)(UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0)
+                    throw new LocalChannelException($"The launch record {path} is one others can write (mode {Convert.ToString(stat.Mode & 0x1FF, 8)}).");
+            }
+            catch (IOException ex)
+            {
+                warn($"{ex.Message} The launch record isn't trusted, so it wasn't read.");
+                return [];
+            }
+        }
+        return Read(path, warn);
+    }
+
+    /// <summary>
     /// The allowlisted flags of the record at <paramref name="path"/>; none when there is none or it can't be read. Each
     /// flag is checked against <see cref="Allowed"/> again; what isn't on it is skipped and said to <paramref name="warn"/>.
     /// </summary>

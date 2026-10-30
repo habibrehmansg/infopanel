@@ -32,6 +32,7 @@ namespace InfoPanel.Drawing
 
         private static readonly Lock _lock = new();
         private static readonly Dictionary<string, List<SKTypeface>> _families = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> _bundled = new(StringComparer.OrdinalIgnoreCase);
         private static bool _embeddedRegistered;
 
         /// <summary>
@@ -258,7 +259,18 @@ namespace InfoPanel.Drawing
                     continue;
                 }
 
+                _bundled.Add(typeface.FamilyName);
                 Add(typeface);
+            }
+        }
+
+        /// <summary>The families of the faces InfoPanel bundles (Inter): there on every computer.</summary>
+        public static IReadOnlySet<string> GetBundledFamilies()
+        {
+            lock (_lock)
+            {
+                EnsureEmbedded();
+                return new HashSet<string>(_bundled, StringComparer.OrdinalIgnoreCase);
             }
         }
     }

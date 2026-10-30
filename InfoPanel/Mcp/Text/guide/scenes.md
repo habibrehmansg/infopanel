@@ -30,6 +30,10 @@ A profile is a canvas (`width` × `height` pixels, a `background` colour) holdin
 - **Text**: `text`, `font` (`family`, `size`, `weight`, `italic`), `fill`, `x`, `y`, and a box `w`, `h` with `align`,
   `valign`, `wrap`, `maxLines`, `overflow` (`visible`, `clip`, `ellipsis`, `marquee`) and `fit` (`{ "min" }`, shrink to
   fit the box). Without `w` the text is as wide as it measures.
+- **Pictures**: a `media` node shows a stored asset, `{ "kind": "media", "x", "y", "w", "h", "source": { "asset":
+  "sha256:…" } }`, with `fit` (`fill`, the default, stretches to the box; `contain`, `cover`, `none`). `add_asset` stores an SVG and answers its id. An SVG
+  may hold shapes, groups, `use`, gradients, clip paths and masks, sizes in pixels; no text, style sheets, images,
+  filters, scripts or references outside the file.
 - **Sensors**: a scene declares `inputs` (`number`, `text` or `table`); the item's `bindings` map each input to a sensor
   key from `list_sensors`, e.g. `"bindings": { "v": { "key": "plugin:/…/cpu/temperature" } }`. Read an input with
   `{ "op": "input", "name": "v" }` (fields `value`, `now`, `min`, `max`, `avg`, `unit`, `text`, `status`), and its recent

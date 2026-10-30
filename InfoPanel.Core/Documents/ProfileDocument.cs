@@ -509,8 +509,16 @@ public sealed class ProfileDocument : IDisposable
     /// checks, with the <c>opId</c> digest over every byte of <paramref name="body"/>, whitespace around the value
     /// included, so a retry is the same body byte for byte.
     /// </summary>
-    public CommitOutcome Commit(ReadOnlyMemory<byte> body)
+    public CommitOutcome Commit(ReadOnlyMemory<byte> body) => Commit(body, out _);
+
+    /// <summary>
+    /// <see cref="Commit(ReadOnlyMemory{byte})"/>, also saying whether the document had no unsaved changes just before
+    /// this commit applied: read under the lock that applies it, so no other client's commit can come between that
+    /// answer and this commit (an AI app's tool saves its change only then). False when nothing was applied.
+    /// </summary>
+    public CommitOutcome Commit(ReadOnlyMemory<byte> body, out bool wasClean)
     {
+        wasClean = false;
         var limits = _options.Limits;
         if (body.Length > limits.CommitBytes) return Invalid([DocumentValidator.Over("", "commitBytes", body.Length, limits.CommitBytes)], "Invalid commit");
         JsonDocument json;
@@ -523,7 +531,7 @@ public sealed class ProfileDocument : IDisposable
             return Invalid([new SpecError("", "json", $"The body isn't JSON: {ex.Message}")], "Invalid commit");
         }
         // The request read from the body holds copies of its JSON values, so nothing refers to the document afterwards.
-        using (json) return Commit(json.RootElement, body.Span);
+        using (json) return Commit(json.RootElement, body.Span, out wasClean);
     }
 
     /// <summary>
@@ -536,10 +544,11 @@ public sealed class ProfileDocument : IDisposable
     /// <c>coalesceKey</c>); a commit that changes nothing records nothing. The <c>opId</c> digest is over the value's
     /// own text, without whitespace around it: an endpoint uses <see cref="Commit(ReadOnlyMemory{byte})"/>.
     /// </summary>
-    public CommitOutcome Commit(JsonElement body) => Commit(body, JsonMarshal.GetRawUtf8Value(body));
+    public CommitOutcome Commit(JsonElement body) => Commit(body, JsonMarshal.GetRawUtf8Value(body), out _);
 
-    private CommitOutcome Commit(JsonElement body, ReadOnlySpan<byte> bytes)
+    private CommitOutcome Commit(JsonElement body, ReadOnlySpan<byte> bytes, out bool wasClean)
     {
+        wasClean = false;
         var prepared = CommitApplier.Prepare(body, bytes, _options.Limits, _options.Support, out var errors);
         if (prepared is null) return Invalid(errors, "Invalid commit");
         var request = prepared.Request;
@@ -550,6 +559,7 @@ public sealed class ProfileDocument : IDisposable
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            var cleanBefore = !DirtyCore;
             if (_ops.TryGet(request.OpId, out var hash, out var stored))
             {
                 if (!hash.AsSpan().SequenceEqual(prepared.Hash))
@@ -598,6 +608,7 @@ public sealed class ProfileDocument : IDisposable
                     result = Result(published.Rev, applied.Changes, warnings);
                 }
                 _ops.Add(request.OpId, prepared.Hash, request.BaseRev, result);
+                wasClean = cleanBefore; // only for a commit applied here; a replay says false
                 // Whether or not anything is kept now: a save under way may keep this content's predecessor.
                 endCheckpoint = published is not null && !result.Dirty ? published.Rev : 0;
                 if (endCheckpoint != 0)

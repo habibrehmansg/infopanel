@@ -17,10 +17,11 @@ public sealed class HarnessFolder : IDisposable
 {
     private readonly List<Process> _engines = [];
 
-    public HarnessFolder()
+    /// <param name="dataName">The data folder's name inside the temp folder (not created).</param>
+    public HarnessFolder(string dataName = "data")
     {
         Root = Path.Combine(Path.GetTempPath(), "infopanel-mcp-" + Guid.NewGuid().ToString("N"));
-        Data = Path.Combine(Root, "data");
+        Data = Path.Combine(Root, dataName);
         Directory.CreateDirectory(Root);
         Endpoint = LocalChannel.EndpointFor(TestRunFolder.Path, Data);
     }

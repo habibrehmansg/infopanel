@@ -97,7 +97,8 @@ public sealed class McpServer(Stream input, Stream output, IMcpBackend backend, 
         try
         {
             // Strict, so no member read later can be one given twice (a JsonObject throws when it meets one).
-            message = JsonNode.Parse(line, documentOptions: new JsonDocumentOptions { AllowDuplicateProperties = false });
+            // At the transport's depth, which fits the deepest content the engine takes (LocalChannel.MessageDepth).
+            message = JsonNode.Parse(line, documentOptions: new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = LocalChannel.MessageDepth });
         }
         catch (JsonException)
         {
@@ -157,7 +158,7 @@ public sealed class McpServer(Stream input, Stream output, IMcpBackend backend, 
                     break;
                 }
 
-                var arguments = JsonSerializer.SerializeToElement(parameters["arguments"] ?? new JsonObject());
+                var arguments = JsonSerializer.SerializeToElement(parameters["arguments"] ?? new JsonObject(), LocalChannel.MessageWriter);
                 var call = CallAsync(id, name, arguments, ct);
                 _calls[call] = 0;
                 _ = call.ContinueWith(t => _calls.TryRemove(t, out _), TaskScheduler.Default);
@@ -172,7 +173,7 @@ public sealed class McpServer(Stream input, Stream output, IMcpBackend backend, 
     {
         try
         {
-            using var _ = JsonDocument.Parse(line);
+            using var _ = JsonDocument.Parse(line, LocalChannel.MessageOptions);
             return true;
         }
         catch (JsonException)
