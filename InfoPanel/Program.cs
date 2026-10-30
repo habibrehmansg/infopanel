@@ -258,7 +258,8 @@ try
     });
     builder.Services.AddSingleton<ISensorHistory>(sp => sp.GetRequiredService<SensorHistory>());
     // One media cache for the process, over the blob store; every render loop's runtime and every thumbnail reads it. A
-    // blob stored after a lookup of it failed is read again, so its missing-media placeholders repair.
+    // blob stored after a lookup of it failed is read again, so its missing-media placeholders repair; a stored blob's
+    // inspection gives the cache its size, so a picture still decoding is laid out at the size it will be drawn at.
     builder.Services.AddSingleton(_ =>
     {
         var media = new MediaSampleCache(new BlobMediaStore(workspace.Blobs), new MediaSampleCacheOptions { Limits = workspace.Limits });

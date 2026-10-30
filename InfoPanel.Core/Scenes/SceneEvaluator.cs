@@ -936,6 +936,8 @@ internal sealed class SceneEvaluator
         var seconds = _elapsed * speed;
 
         MediaSample? sample = null, over = null;
+        // The size of media still loading, when known: the size it is drawn at once decoded.
+        (float Width, float Height)? pending = null, overPending = null;
         float fade = 0;
         var src = m.Source;
         if (src.Sequence is { Length: > 0 } seq)
@@ -945,19 +947,22 @@ internal sealed class SceneEvaluator
             {
                 var lo = (int)Math.Floor(index);
                 var hi = (int)Math.Ceiling(index);
-                sample = Fetch(seq[lo], seconds, m.Playback);
+                sample = Fetch(seq[lo], seconds, m.Playback, out pending);
                 fade = (float)(index - lo);
-                if (hi != lo && fade > 0) over = Fetch(seq[hi], seconds, m.Playback);
+                if (hi != lo && fade > 0) over = Fetch(seq[hi], seconds, m.Playback, out overPending);
             }
             else
             {
-                sample = Fetch(seq[(int)Math.Round(index, MidpointRounding.AwayFromZero)], seconds, m.Playback);
+                sample = Fetch(seq[(int)Math.Round(index, MidpointRounding.AwayFromZero)], seconds, m.Playback, out pending);
             }
         }
         else
         {
-            sample = Fetch(src, seconds, m.Playback);
+            sample = Fetch(src, seconds, m.Playback, out pending);
         }
+        // The natural size: the (lower) picture's, decoded or known while it loads, whichever picture is drawn; in a
+        // crossfade the upper's only when the lower has none, so the bounds don't follow which decode lands first.
+        var natural = NaturalSize(sample, pending) ?? NaturalSize(over, overPending);
         if (sample is null && over is not null)
         {
             sample = over;
@@ -965,9 +970,9 @@ internal sealed class SceneEvaluator
             fade = 0;
         }
 
-        float nw = sample?.Width ?? 0, nh = sample?.Height ?? 0;
+        float nw = natural?.Width ?? 0, nh = natural?.Height ?? 0;
         float bw, bh;
-        if (sample is null || nw <= 0 || nh <= 0)
+        if (nw <= 0 || nh <= 0)
         {
             bw = w ?? 100;
             bh = h ?? 100;
@@ -980,26 +985,33 @@ internal sealed class SceneEvaluator
         var box = new SKRect(x, y, x + bw, y + bh);
         var dest = box;
         var clip = false;
-        if (sample is not null && nw > 0 && nh > 0)
+        // Fitted by the drawn picture's own size (the upper one's, when only it has arrived).
+        if (sample is { Width: > 0, Height: > 0 } drawn)
         {
+            float sw = drawn.Width, sh = drawn.Height;
             switch (m.Fit)
             {
                 case "contain":
                 case "cover":
                 {
-                    var s = m.Fit == "contain" ? Math.Min(bw / nw, bh / nh) : Math.Max(bw / nw, bh / nh);
-                    dest = Aligned(box, nw * s, nh * s, m.AlignX, m.AlignY);
+                    var s = m.Fit == "contain" ? Math.Min(bw / sw, bh / sh) : Math.Max(bw / sw, bh / sh);
+                    dest = Aligned(box, sw * s, sh * s, m.AlignX, m.AlignY);
                     clip = m.Fit == "cover";
                     break;
                 }
                 case "none":
-                    dest = Aligned(box, nw, nh, m.AlignX, m.AlignY);
+                    dest = Aligned(box, sw, sh, m.AlignX, m.AlignY);
                     clip = true;
                     break;
             }
         }
         return new RMedia { Sample = sample, Over = over, FadeOpacity = fade, Dest = dest, Box = box, ClipToBox = clip, Nearest = m.Nearest };
     }
+
+    private static (float Width, float Height)? NaturalSize(MediaSample? sample, (float Width, float Height)? pending) =>
+        sample is { Width: > 0, Height: > 0 } ? (sample.Width, sample.Height)
+        : pending is { Width: > 0, Height: > 0 } ? pending
+        : null;
 
     private static SKRect Aligned(SKRect box, float w, float h, float ax, float ay)
     {
@@ -1008,8 +1020,10 @@ internal sealed class SceneEvaluator
         return new SKRect(left, top, left + w, top + h);
     }
 
-    private MediaSample? Fetch(CMediaSource src, double seconds, MediaPlayback playback)
+    /// <summary>The source's sample, or null with <paramref name="pending"/> set when it is a stored asset still loading whose size is known.</summary>
+    private MediaSample? Fetch(CMediaSource src, double seconds, MediaPlayback playback, out (float Width, float Height)? pending)
     {
+        pending = null;
         if (src.Asset is { } hash)
         {
             if (_services.Media is not { } media)
@@ -1024,8 +1038,16 @@ internal sealed class SceneEvaluator
                 if (lookup.Sample is { } retained) _services.Retained.Add(retained);
             }
             if (lookup.Sample is { } sample) return sample;
-            if (lookup.State == MediaState.Failed) _diag.Add("media.missing", $"{hash}: {lookup.Problem}");
-            else _diag.Add("media.loading", $"{hash} is loading.");
+            if (lookup.State == MediaState.Failed)
+            {
+                _diag.Add("media.missing", $"{hash}: {lookup.Problem}");
+            }
+            else
+            {
+                // Its header once a worker has inspected it, else the size measured when it was stored or last decoded.
+                pending = lookup.Info is { Width: > 0, Height: > 0 } info ? (info.Width, info.Height) : media.KnownSize(hash);
+                _diag.Add("media.loading", $"{hash} is loading.");
+            }
             return null;
         }
         if (src.Provider is { } name)

@@ -1,4 +1,6 @@
 using System;
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -32,7 +34,11 @@ namespace InfoPanel.Images
 
     public enum MediaState { Loading, Ready, Failed }
 
-    /// <summary>What <see cref="MediaSampleCache.Get"/> found: a retained sample (the caller releases it) or why there is none.</summary>
+    /// <summary>
+    /// What <see cref="MediaSampleCache.Get"/> found: a retained sample (the caller releases it) or why there is none.
+    /// <see cref="Info"/> is the asset's header once a decode worker has inspected it, while it is still loading too;
+    /// <see cref="MediaSampleCache.KnownSize"/> has the size measured when it was stored or last decoded.
+    /// </summary>
     public readonly record struct MediaLookup(MediaState State, MediaSample? Sample, MediaInfo? Info, string? Problem);
 
     public sealed class MediaSampleCacheOptions
@@ -61,6 +67,15 @@ namespace InfoPanel.Images
         /// <summary>How long <see cref="MediaSampleCache.Dispose"/> waits for the workers; a decode still running then finishes on its own and frees what it holds.</summary>
         public TimeSpan ShutdownWait { get; init; } = TimeSpan.FromSeconds(5);
 
+        /// <summary>
+        /// Measured sizes kept (an asset's decoded size, from its upload's inspection or a decode's), apart from the
+        /// decoded frames and their budget; the least recently used is forgotten first.
+        /// </summary>
+        public int SizesKept { get; init; } = 4096;
+
+        /// <summary>The clock that times idle assets.</summary>
+        public TimeProvider Time { get; init; } = TimeProvider.System;
+
         public SpecLimits Limits { get; init; } = SpecLimits.Default;
     }
 
@@ -68,8 +83,10 @@ namespace InfoPanel.Images
     /// Decoded media frames by asset hash, for the scene runtime. <see cref="Get"/> never blocks: an asset is inspected
     /// with <see cref="MediaValidator"/> (header only) before anything decodes it, then decoded on a small pool of
     /// workers, with the decoder the probed format names (an SVG from its rebuilt document only, never its stored bytes); until a frame is ready the caller gets the asset's latest decoded frame, or nothing (it draws the
-    /// missing-media placeholder). Frames and open decoders are kept within one byte budget, least recently used dropped
-    /// first; a dropped frame is disposed once no holder retains it. <see cref="Dispose"/> stops the workers (waiting a
+    /// missing-media placeholder) with the asset's header once known (its size is the decoded frame's). Frames and open
+    /// decoders are kept within one byte budget, least recently used dropped first; a dropped frame is disposed once no holder retains it.
+    /// Measured sizes (<see cref="KnownSize"/>) are kept apart, in a small store bounded by its own entry count, so the
+    /// size of media stored or decoded in this run outlives its frames. <see cref="Dispose"/> stops the workers (waiting a
     /// while for the frame being decoded) and releases the cache's references; samples others retain stay valid until
     /// they release them. Locks: an asset's <c>DecodeLock</c> is taken before the cache's lock, never after it (under
     /// the cache's lock a decode lock is only tried, never waited for).
@@ -93,11 +110,15 @@ namespace InfoPanel.Images
         private long _peak;
         private long _lastSweep;
         private volatile bool _disposed;
+        private readonly long _start;
+        private readonly SizeStore _sizes;
 
         public MediaSampleCache(IMediaAssetStore store, MediaSampleCacheOptions? options = null)
         {
             _store = store;
             _options = options ?? new MediaSampleCacheOptions();
+            _start = _options.Time.GetTimestamp();
+            _sizes = new SizeStore(Math.Max(0, _options.SizesKept));
             _queue = Channel.CreateBounded<(Asset, int)>(new BoundedChannelOptions(Math.Max(1, _options.QueueCapacity))
             {
                 // Wait, so a full queue makes TryWrite return false (DropWrite reports success and discards the write).
@@ -130,6 +151,21 @@ namespace InfoPanel.Images
             return asset is { Opened: true } ? asset.FrameAt(seconds, playback) : -1;
         }
 
+        /// <summary>Milliseconds since the cache was made, on <see cref="MediaSampleCacheOptions.Time"/>.</summary>
+        private long Now() => (long)_options.Time.GetElapsedTime(_start).TotalMilliseconds;
+
+        /// <summary>Assets the cache holds (looked up and not yet swept).</summary>
+        internal int AssetCount
+        {
+            get
+            {
+                lock (_lock) return _assets.Count;
+            }
+        }
+
+        /// <summary>Measured sizes the cache keeps.</summary>
+        internal int KnownSizes => _sizes.Count;
+
         /// <summary>Assets with an open decoder.</summary>
         internal int DecoderCount
         {
@@ -157,7 +193,7 @@ namespace InfoPanel.Images
                     asset = new Asset(hash);
                     _assets[hash] = asset;
                 }
-                asset.LastUsed = Environment.TickCount64;
+                asset.LastUsed = Now();
                 SweepLocked();
             }
 
@@ -167,7 +203,7 @@ namespace InfoPanel.Images
                 else Request(asset, 0);
             }
             if (asset.State == MediaState.Failed) return new MediaLookup(MediaState.Failed, null, asset.Info, asset.Problem);
-            if (!asset.Opened) return new MediaLookup(MediaState.Loading, null, null, null);
+            if (!asset.Opened) return new MediaLookup(MediaState.Loading, null, asset.Info, null);
 
             var index = asset.FrameAt(seconds, playback);
             lock (_lock)
@@ -205,10 +241,12 @@ namespace InfoPanel.Images
         /// Forgets a lookup of <paramref name="hash"/> that failed or is still under way (its blob was stored since, say),
         /// so the next <see cref="Get"/> reads it again: a lookup under way may have read the store before the blob was
         /// there, and the failure it then publishes goes to the forgotten asset. An asset that loaded is left alone: its
-        /// bytes are the same.
+        /// bytes are the same. <paramref name="header"/> is what the store's own inspection of those bytes found (the
+        /// same check a decode worker makes): its size is kept (<see cref="KnownSize"/>), and no asset is made for it.
         /// </summary>
-        public void Retry(string hash)
+        public void Retry(string hash, MediaInfo? header = null)
         {
+            if (header is not null) _sizes.Put(hash, header.Width, header.Height);
             lock (_lock)
             {
                 if (!_assets.TryGetValue(hash, out var asset) || asset.State == MediaState.Ready) return;
@@ -218,6 +256,13 @@ namespace InfoPanel.Images
                 _assets.Remove(hash);
             }
         }
+
+        /// <summary>
+        /// The size <paramref name="hash"/> is drawn at once decoded, when it was measured in this run (stored, or
+        /// decoded) and is still among the <see cref="MediaSampleCacheOptions.SizesKept"/> most recently used; null
+        /// otherwise. Never reads or inspects the asset; takes only the size store's own lock.
+        /// </summary>
+        public (float Width, float Height)? KnownSize(string hash) => _sizes.Get(hash);
 
         private void Request(Asset asset, int frame)
         {
@@ -316,6 +361,9 @@ namespace InfoPanel.Images
         {
             asset.Problem = $"{code}: {message}";
             asset.State = MediaState.Failed;
+            // The picture won't be drawn: its remembered size must not lay it out once the idle sweep has dropped this
+            // asset. (A detached asset is skipped: an upload has replaced it and put the new bytes' size in.)
+            if (!asset.Detached) _sizes.Remove(asset.Hash);
             CloseDecoder(asset);
         }
 
@@ -497,6 +545,7 @@ namespace InfoPanel.Images
             asset.Timing = new Timing(frames, frameInfo, cumulative, total);
             asset.Opened = true;
             asset.State = MediaState.Ready;
+            _sizes.Put(asset.Hash, info.Width, info.Height);
         }
 
         private static SKEncodedImageFormat? Encoded(MediaFormat format) => format switch
@@ -554,6 +603,7 @@ namespace InfoPanel.Images
             asset.Timing = Timing.Still;
             asset.Opened = true;
             asset.State = MediaState.Ready;
+            if (asset.Vector is { } drawn) _sizes.Put(asset.Hash, drawn.Width, drawn.Height);
         }
 
         private bool Cached(Asset asset, int index)
@@ -705,7 +755,7 @@ namespace InfoPanel.Images
 
         private void SweepLocked()
         {
-            var now = Environment.TickCount64;
+            var now = Now();
             if (now - _lastSweep < 5000) return;
             _lastSweep = now;
             var idle = (long)_options.IdleAfter.TotalMilliseconds;
@@ -775,6 +825,87 @@ namespace InfoPanel.Images
 
         private sealed record Frame(string Hash, int Index, MediaSample Sample);
 
+        /// <summary>
+        /// Measured sizes by asset hash, apart from the decoded frames and their budget: put by an upload's inspection
+        /// (<see cref="Retry"/>) and a finished open, read by <see cref="KnownSize"/>, forgotten past the entry cap
+        /// (least recently used first) or when the asset's decode fails, never by the idle sweep, the frame budget or a retry. Its own lock, never taken
+        /// with the cache's: held for one dictionary read or write, and when a new size finds the store full, one pass
+        /// over its entries for the least recently used. An entry is the hash's 32 bytes, the size and a use stamp
+        /// (about 60 bytes with the dictionary's own); a hash that isn't <c>sha256:</c> and 64 hex digits isn't kept.
+        /// </summary>
+        private sealed class SizeStore(int cap)
+        {
+            private readonly Lock _lock = new();
+            private readonly Dictionary<HashKey, (float Width, float Height, long Used)> _sizes = new();
+            private long _stamp;
+
+            public int Count
+            {
+                get
+                {
+                    lock (_lock) return _sizes.Count;
+                }
+            }
+
+            public void Put(string hash, float width, float height)
+            {
+                if (cap == 0 || !(width > 0 && height > 0) || !HashKey.TryParse(hash, out var key)) return;
+                lock (_lock)
+                {
+                    if (_sizes.Count >= cap && !_sizes.ContainsKey(key))
+                    {
+                        HashKey oldest = default;
+                        var used = long.MaxValue;
+                        foreach (var (k, v) in _sizes)
+                        {
+                            if (v.Used < used)
+                            {
+                                used = v.Used;
+                                oldest = k;
+                            }
+                        }
+                        _sizes.Remove(oldest);
+                    }
+                    _sizes[key] = (width, height, ++_stamp);
+                }
+            }
+
+            public void Remove(string hash)
+            {
+                if (cap == 0 || !HashKey.TryParse(hash, out var key)) return;
+                lock (_lock) _sizes.Remove(key);
+            }
+
+            public (float Width, float Height)? Get(string hash)
+            {
+                if (cap == 0 || !HashKey.TryParse(hash, out var key)) return null;
+                lock (_lock)
+                {
+                    if (!_sizes.TryGetValue(key, out var size)) return null;
+                    _sizes[key] = size with { Used = ++_stamp };
+                    return (size.Width, size.Height);
+                }
+            }
+        }
+
+        /// <summary>A <c>sha256:</c> hash's 32 bytes.</summary>
+        private readonly record struct HashKey(ulong A, ulong B, ulong C, ulong D)
+        {
+            private const string Prefix = "sha256:";
+
+            public static bool TryParse(string hash, out HashKey key)
+            {
+                key = default;
+                if (hash.Length != Prefix.Length + 64 || !hash.StartsWith(Prefix, StringComparison.Ordinal)) return false;
+                Span<byte> bytes = stackalloc byte[32];
+                if (Convert.FromHexString(hash.AsSpan(Prefix.Length), bytes, out _, out var written) != OperationStatus.Done || written != 32)
+                    return false;
+                key = new HashKey(BinaryPrimitives.ReadUInt64LittleEndian(bytes), BinaryPrimitives.ReadUInt64LittleEndian(bytes[8..]),
+                    BinaryPrimitives.ReadUInt64LittleEndian(bytes[16..]), BinaryPrimitives.ReadUInt64LittleEndian(bytes[24..]));
+                return true;
+            }
+        }
+
         private sealed class Asset(string hash)
         {
             public readonly string Hash = hash;
@@ -783,7 +914,8 @@ namespace InfoPanel.Images
             public volatile bool Opened;
             /// <summary>Removed from the cache (swept or shut down): a worker that still has it frees what it holds and stores nothing.</summary>
             public volatile bool Detached;
-            public MediaInfo? Info;
+            /// <summary>The header, from the asset's inspection when it is opened. Read by lookups without the lock.</summary>
+            public volatile MediaInfo? Info;
             public string? Problem;
             public long LastUsed;
             /// <summary>Frame count, durations and disposal, published whole when the asset is opened (lookups read it without the lock).</summary>

@@ -176,8 +176,12 @@ public sealed class Workspace : IDisposable
     /// <summary>Raised after a profile is created, duplicated or deleted.</summary>
     public event EventHandler<ProfilesChangedEventArgs>? ProfilesChanged;
 
-    /// <summary>Raised with a blob's id after <see cref="PutBlob"/> stored it (new or again), so a failed lookup of it can be retried.</summary>
-    public event Action<string>? BlobStored;
+    /// <summary>
+    /// Raised with a blob's id after <see cref="PutBlob"/> stored it (new or again), so a failed lookup of it can be
+    /// retried, and with what its inspection found when it is media within the limits (null otherwise), so its size is
+    /// known before anything decodes it.
+    /// </summary>
+    public event Action<string, MediaInfo?>? BlobStored;
 
     /// <summary>Tests: called with the profile's id while a create or delete holds the workspace lock, after the store changed.</summary>
     internal Action<string>? StoreChanged;
@@ -810,7 +814,7 @@ public sealed class Workspace : IDisposable
                 },
             }
             : info with { MediaError = Body(check.Errors.FirstOrDefault() ?? new SpecError("", "media.format", "The bytes aren't a media asset.")) with { Path = "" } };
-        BlobStored?.Invoke(id);
+        BlobStored?.Invoke(id, check.Errors.Count == 0 ? check.Info : null);
         return new StoredBlob(info, created);
     }
 
