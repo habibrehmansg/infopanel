@@ -61,6 +61,13 @@ public sealed partial class EngineOptions
     /// </summary>
     public bool Mock { get; init; }
 
+    /// <summary>
+    /// The folder of the data folders' local channels (<see cref="LocalChannel"/>), from the <c>Engine:RunDir</c> setting
+    /// (a host setting, not a flag: tests give their engines their own); null means
+    /// <see cref="LocalChannel.DefaultRunDirectory"/>.
+    /// </summary>
+    public string? RunDir { get; init; }
+
     [GeneratedRegex("^[A-Za-z0-9_-]{1,256}$")]
     private static partial Regex TokenPattern();
 
@@ -159,6 +166,20 @@ public sealed partial class EngineOptions
         if (webRoot != null && !Directory.Exists(webRoot))
             problems.Add($"--web-root '{webRoot}' does not exist.");
 
+        var runDir = Value(section, "RunDir");
+        string? fullRunDir = null;
+        if (runDir != null)
+        {
+            try
+            {
+                fullRunDir = Path.GetFullPath(runDir);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                problems.Add($"Engine:RunDir '{runDir}' is not a valid path: {ex.Message}");
+            }
+        }
+
         errors = problems;
         if (problems.Count > 0)
             return null;
@@ -177,6 +198,7 @@ public sealed partial class EngineOptions
             Fresh = fresh,
             MockSeed = seed,
             Mock = mock,
+            RunDir = fullRunDir,
         };
     }
 

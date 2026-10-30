@@ -285,6 +285,10 @@ try
     builder.Services.AddSingleton<IFolderOpener>(sp => new FolderOpener(sp.GetRequiredService<ILogger<FolderOpener>>()));
     builder.Services.AddHostedService<SensorService>();
     builder.Services.AddHostedService<EngineLifetime>();
+    // The data folder's local channel, for companions on this computer (an AI app's front): opened once the engine is up.
+    builder.Services.AddSingleton<ILocalChannelHandler, NoChannelTools>();
+    builder.Services.AddSingleton<LocalChannelService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<LocalChannelService>());
 
     // Desktop windows: on macOS the main thread runs AppKit and the host runs on a worker (DesktopHost).
     var desktop = DesktopHost.Create(options);
