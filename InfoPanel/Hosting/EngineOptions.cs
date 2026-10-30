@@ -80,6 +80,15 @@ public sealed partial class EngineOptions
     /// <summary>Be the MCP server an AI app starts (<c>--mcp</c>), not the engine.</summary>
     public bool Mcp { get; init; }
 
+    /// <summary>Start no plugin hosts (<c>--no-plugins</c>): the <c>plugins</c> source stays empty.</summary>
+    public bool NoPlugins { get; init; }
+
+    /// <summary>
+    /// The bundled plugins' folder (<c>--bundled-plugins</c>), a full path to a folder that exists; null means
+    /// <c>{BaseDirectory}/plugins</c>.
+    /// </summary>
+    public string? BundledPlugins { get; init; }
+
     [GeneratedRegex("^[A-Za-z0-9_-]{1,256}$")]
     private static partial Regex TokenPattern();
 
@@ -114,6 +123,7 @@ public sealed partial class EngineOptions
         var noWindows = Flag(section, "NoWindows", "--no-windows", problems);
         var fresh = Flag(section, "Fresh", "--fresh", problems);
         var offline = Flag(section, "Offline", "--offline", problems);
+        var noPlugins = Flag(section, "NoPlugins", "--no-plugins", problems);
 
         var token = Value(section, "Token");
         if (token != null && !TokenPattern().IsMatch(token))
@@ -198,6 +208,10 @@ public sealed partial class EngineOptions
             }
         }
 
+        var bundledPlugins = Value(section, "BundledPlugins");
+        if (bundledPlugins != null && !Directory.Exists(bundledPlugins))
+            problems.Add($"--bundled-plugins '{bundledPlugins}' does not exist.");
+
         errors = problems;
         if (problems.Count > 0)
             return null;
@@ -220,6 +234,8 @@ public sealed partial class EngineOptions
             RunDir = fullRunDir,
             McpText = mcpText == null ? null : Path.GetFullPath(mcpText),
             Mcp = mcp,
+            NoPlugins = noPlugins,
+            BundledPlugins = bundledPlugins == null ? null : Path.GetFullPath(bundledPlugins),
         };
     }
 

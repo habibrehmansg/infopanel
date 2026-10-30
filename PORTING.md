@@ -10,7 +10,7 @@ The 2.0 targets are the seams in `InfoPanel.Core` (`ISensorSource`, `IImageSourc
 |---|---|---|
 | HWHash (HWiNFO shared memory) | `ISensorSource` | `InfoPanel/HWHash/HWHash.cs` |
 | LibreMonitor | `ISensorSource` | `InfoPanel/Monitors/LibreMonitor.cs` |
-| PluginMonitor + proxies | `ISensorSource`, plus `IImageSource` for `plugin-image://` | `InfoPanel/Monitors/PluginMonitor.cs`, `InfoPanel/Monitors/PluginHostConnection.cs`, `InfoPanel/Monitors/PluginProcessManager.cs`, `InfoPanel/Monitors/PluginProxies/*.cs` |
+| PluginMonitor + proxies | done for sensors: the `plugins` source and the hosts' manager (`InfoPanel/Plugins/`, docs/2.0/plugins.md); `IImageSource` for `plugin-image://` later | `InfoPanel/Monitors/PluginMonitor.cs`, `InfoPanel/Monitors/PluginHostConnection.cs`, `InfoPanel/Monitors/PluginProcessManager.cs`, `InfoPanel/Monitors/PluginProxies/*.cs` |
 | SensorReader (static reads, missing reading → null) | `ISensorReader` / sensor hub (M4); stale, unavailable and denied are distinct statuses (done, `SensorStatus`); Windows sources build on `PolledSensorSource` | `InfoPanel/Models/SensorReader.cs` |
 | GraphDraw's lazy history queues (sampled at `TargetGraphUpdateRate`) | `ISensorHistory` service (M4) | `InfoPanel/Drawing/GraphDraw.cs` |
 | HWiNFO smart import (remap sensors by name) | `ISensorSource.TryResolveByName`, later | `InfoPanel/Models/SharedModel.cs` (~l.900, "Smart imported") |
@@ -81,7 +81,7 @@ Port the protocol and device code (`JlPanel/*`, `VmaxPanel/*`, `JonsboPanel/*`, 
 
 ### Plugin host
 
-The host side runs on `2.0.x` (net8.0, not loaded by the engine yet); these two touch the app side, which comes over with `PluginMonitor` and the `plugin-image://` source (see the Sensors and Images tables above).
+The host runs as a mode of the engine (`--plugin-host`) and the app side's sensors are ported (`InfoPanel/Plugins/`); these two touch what is still to come: actions, with the plugin settings and actions API, and the `plugin-image://` source (see the Images table above).
 
 | Commit | What it does |
 |---|---|
@@ -110,5 +110,5 @@ The 1.x import already reads guides from the raw XML and reports `RefreshInterva
 | AIDA64 SensorPanel import | later | `InfoPanel/Models/SharedModel.SensorPanelImport.cs` |
 | ConfigModel / Settings (app settings) | the engine settings (`SettingsStore`, `GET`/`PATCH /api/settings`) hold the frame rate, graph rate, log level and the Libre source's settings; the devices', tray's, autostart's, hotkeys', autosave's and web server's settings later, each with its feature | `InfoPanel/Models/ConfigModel.cs`, `InfoPanel/Models/Settings.cs` |
 | PawnIO driver setup | later (Windows adapter) | `InfoPanel/Utils/PawnIoHelper.cs`, `InfoPanel/Resources/PawnIO_setup.exe` |
-| JobObject (plugin host lifetime) | later (plugin host on macOS) | `InfoPanel/Utils/JobObject.cs` |
+| JobObject (plugin host lifetime) | later (Windows; elsewhere a host exits when its pipe ends, and the engine kills what is left when it stops) | `InfoPanel/Utils/JobObject.cs` |
 | Installer | later | `InnoSetup/setup.iss` |

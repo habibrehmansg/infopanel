@@ -8,6 +8,7 @@ using InfoPanel.Images;
 using InfoPanel.Import;
 using InfoPanel.Output;
 using InfoPanel.Persistence;
+using InfoPanel.Plugins;
 using InfoPanel.Preview;
 using InfoPanel.Scenes;
 using InfoPanel.Security;
@@ -270,6 +271,8 @@ try
     {
         builder.Services.AddSingleton<ISensorSource>(sp => MacSensorSource.Create(sp.GetRequiredService<TimeProvider>()));
     }
+    // Plugin sensors, after the built-in sources; their hosts start once the engine listens.
+    builder.Services.AddPlugins(options, paths, settings);
 
     builder.Services.AddSingleton(sp => new SensorHub(sp.GetServices<ISensorSource>(), new SensorHubOptions { SimulateUnknown = options.Mock }));
     builder.Services.AddSingleton<ISensorReader>(sp => sp.GetRequiredService<SensorHub>());

@@ -27,6 +27,7 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
     };
 
     private Thread? _hung;
+    private Thread? _spew;
     private Timer? _exit;
 
     public TestFixturePlugin() : base(FixtureMode.Current.Id ?? DefaultId, "Test Fixture", "A plugin for the engine's tests.")
@@ -85,6 +86,30 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
 
         if (mode.TextChars is { } chars)
             _status.Value = new string('x', chars);
+
+        if (mode.SpewBytes is { } bytes)
+        {
+            _spew = new Thread(() => Spew(bytes)) { IsBackground = true, Name = "fixture-spew" };
+            _spew.Start();
+        }
+    }
+
+    /// <summary>Writes <paramref name="bytes"/> to stdout and to stderr with no newline, then <c>spew-end</c> to stderr.</summary>
+    private static void Spew(int bytes)
+    {
+        // The process's own streams, not Console's writers: no newline, no buffering of ours.
+        var stdout = Console.OpenStandardOutput();
+        var stderr = Console.OpenStandardError();
+        var chunk = new byte[64 * 1024];
+        foreach (var (stream, fill) in new[] { (stdout, (byte)'o'), (stderr, (byte)'e') })
+        {
+            Array.Fill(chunk, fill);
+            for (var left = bytes; left > 0; left -= chunk.Length)
+                stream.Write(chunk, 0, Math.Min(chunk.Length, left));
+            stream.Flush();
+        }
+        stderr.Write("spew-end"u8);
+        stderr.Flush();
     }
 
     public override void Load(List<IPluginContainer> containers)

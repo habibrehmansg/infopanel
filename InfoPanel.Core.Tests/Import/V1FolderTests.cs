@@ -339,6 +339,31 @@ public sealed class V1FolderTests : IDisposable
     }
 
     [Fact]
+    public void WriteProblem_AFolderTheEngineWritesInsideTheDataFolderStaysOutOfThe1xData()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");
+        var v1 = _kit.Temp.Combine("InfoPanel");
+        Directory.CreateDirectory(Path.Combine(v1, "assets"));
+        Directory.CreateDirectory(Path.Combine(v1, "elsewhere"));
+        // The default layout: the data folder is the 1.x folder's v2.
+        var data = Path.Combine(v1, "v2");
+        var settings = Path.Combine(data, "plugin-settings");
+        Directory.CreateDirectory(settings);
+        Directory.CreateSymbolicLink(Path.Combine(settings, "InfoPanel.IntoAssets"), Path.Combine(v1, "assets"));
+        Directory.CreateSymbolicLink(Path.Combine(settings, "InfoPanel.IntoV1"), Path.Combine(v1, "elsewhere"));
+        Directory.CreateSymbolicLink(Path.Combine(settings, "InfoPanel.HoldsV1"), _kit.Temp.Path);
+
+        Assert.Equal(
+            (false, false, true, true, true, true),
+            (V1Folder.FindWriteProblem(v1, data, Path.Combine(settings, "InfoPanel.Plain")) is not null,
+                V1Folder.FindWriteProblem(v1, data, Path.Combine(data, "logs", "plugins")) is not null,
+                V1Folder.FindWriteProblem(v1, data, Path.Combine(settings, "InfoPanel.IntoAssets")) is not null,
+                V1Folder.FindWriteProblem(v1, data, Path.Combine(settings, "InfoPanel.IntoAssets", "not-yet")) is not null,
+                V1Folder.FindWriteProblem(v1, data, Path.Combine(settings, "InfoPanel.IntoV1")) is not null,
+                V1Folder.FindWriteProblem(v1, data, Path.Combine(settings, "InfoPanel.HoldsV1")) is not null));
+    }
+
+    [Fact]
     public void Overlap_IsCheckedOnRealPathsToo()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");

@@ -116,16 +116,49 @@ public sealed class V1Folder
         {
             return $"The 2.0 data folder {data} and the 1.x folder {v1} can't be checked with links resolved: {ex.Message}";
         }
+    }
 
-        static bool Overlaps(string v1, IReadOnlyList<string> protectedFolders, string data, IEnumerable<string> entries, PathNameRules names) =>
-            names.IsInside(v1, data)
-            || protectedFolders.Any(folder => Nested(folder, data, names))
-            || entries.Any(entry =>
-                names.IsInside(v1, entry)
-                || protectedFolders.Any(folder => Nested(folder, entry, names))
-                || (names.IsInside(entry, v1) && !names.IsInside(entry, data)));
+    /// <summary>
+    /// Whether the data folder holds the 1.x folder or nests with its protected folders, or any of <paramref name="entries"/>
+    /// (in the data folder) holds the 1.x folder, nests with a protected folder, or is inside the 1.x folder elsewhere than
+    /// in the data folder.
+    /// </summary>
+    private static bool Overlaps(string v1, IReadOnlyList<string> protectedFolders, string data, IEnumerable<string> entries, PathNameRules names) =>
+        names.IsInside(v1, data)
+        || protectedFolders.Any(folder => Nested(folder, data, names))
+        || entries.Any(entry =>
+            names.IsInside(v1, entry)
+            || protectedFolders.Any(folder => Nested(folder, entry, names))
+            || (names.IsInside(entry, v1) && !names.IsInside(entry, data)));
 
-        static bool Nested(string a, string b, PathNameRules names) => names.IsInside(a, b) || names.IsInside(b, a);
+    private static bool Nested(string a, string b, PathNameRules names) => names.IsInside(a, b) || names.IsInside(b, a);
+
+    /// <summary>
+    /// Why the engine mustn't write in <paramref name="path"/>, a folder in the data folder <paramref name="dataRoot"/>
+    /// it gives to someone else to write in (a plugin host's settings or log folder), or null: as
+    /// <see cref="FindOverlap(string, string)"/> checks the data folder's own entries at start-up, with links resolved
+    /// it must neither be, hold nor be inside the 1.x <c>profiles</c> or <c>assets</c> folder, nor hold the 1.x folder or
+    /// be inside it elsewhere than in the data folder. Checked whenever the folder is given out, since a link deeper in
+    /// the data folder than its own entries isn't seen at start-up.
+    /// </summary>
+    public static string? FindWriteProblem(string v1Root, string dataRoot, string path) => FindWriteProblem(v1Root, dataRoot, path, PathNameRules.Platform);
+
+    /// <summary>As <see cref="FindWriteProblem(string, string, string)"/>, comparing names by <paramref name="names"/>.</summary>
+    internal static string? FindWriteProblem(string v1Root, string dataRoot, string path, PathNameRules names)
+    {
+        var v1 = Path.GetFullPath(v1Root);
+        try
+        {
+            var realV1 = PathExtensions.ResolveRealPath(v1Root);
+            var real = PathExtensions.ResolveRealPath(path);
+            return Overlaps(realV1, RealProtectedFolders(v1Root, realV1), PathExtensions.ResolveRealPath(dataRoot), [real], names)
+                ? $"{path} is {real} with links resolved, which is the 1.x folder {v1}'s, and the engine never writes there."
+                : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"{path} and the 1.x folder {v1} can't be checked with links resolved: {ex.Message}";
+        }
     }
 
     /// <summary>The real paths of the 1.x <c>profiles</c> and <c>assets</c> folders, and of every entry with those names ignoring case.</summary>

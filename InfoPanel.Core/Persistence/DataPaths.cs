@@ -44,6 +44,9 @@ public sealed class DataPaths
     /// <summary>The data folder's marker (<see cref="StoreMarker"/>), at its root.</summary>
     public const string StoreFileName = "store.json";
 
+    /// <summary>Which plugins the user turned off, in the data folder.</summary>
+    public const string PluginStateFileName = "plugin-state.json";
+
     /// <summary>
     /// The top-level files the engine writes in its data folder: the folder's marker, the 2.0 store's profile order, the
     /// integration tokens, the engine settings, the runtime file, the lock, step-1's profile list (which this engine leaves
@@ -51,13 +54,13 @@ public sealed class DataPaths
     /// nothing else, and the 1.x import keeps the 1.x folder clear of them.
     /// </summary>
     public static IReadOnlyList<string> EngineFiles { get; } =
-        [StoreFileName, "profiles.json", "tokens.json", SettingsFileName, "runtime.json", "engine.lock", "profiles.xml", ImportRecordFileName];
+        [StoreFileName, "profiles.json", "tokens.json", SettingsFileName, "runtime.json", "engine.lock", "profiles.xml", ImportRecordFileName, PluginStateFileName];
 
     /// <summary>The top-level folders the engine writes in its data folder (<c>assets</c> is step-1's).</summary>
-    public static IReadOnlyList<string> EngineFolders { get; } = ["profiles", "blobs", "fonts", "logs", "assets"];
+    public static IReadOnlyList<string> EngineFolders { get; } = ["profiles", "blobs", "fonts", "logs", "assets", "plugins", "plugin-settings"];
 
     /// <summary>The engine files written by renaming a temp file (<c>{name}.{32 hex}.tmp</c>) over them.</summary>
-    private static readonly string[] ReplacedFiles = [StoreFileName, "profiles.json", "tokens.json", SettingsFileName, "runtime.json", "profiles.xml", ImportRecordFileName];
+    private static readonly string[] ReplacedFiles = [StoreFileName, "profiles.json", "tokens.json", SettingsFileName, "runtime.json", "profiles.xml", ImportRecordFileName, PluginStateFileName];
 
     private static readonly Regex EngineTempFile = new(
         $"\\A({string.Join('|', ReplacedFiles.Select(Regex.Escape))})\\.[0-9a-f]{{32}}\\.tmp\\z",
@@ -89,6 +92,15 @@ public sealed class DataPaths
     public string FontsDirectory => Path.Combine(Root, "fonts");
 
     public string LogsDirectory => Path.Combine(Root, "logs");
+
+    /// <summary>Plugins the user installed, one <c>InfoPanel.{Name}</c> folder each.</summary>
+    public string PluginsDirectory => Path.Combine(Root, "plugins");
+
+    /// <summary>The plugins' settings, <c>{package folder}/{plugin id}.json</c>, written by their hosts.</summary>
+    public string PluginSettingsDirectory => Path.Combine(Root, "plugin-settings");
+
+    /// <summary>The plugin hosts' logs, <c>{package folder}-{yyyyMMdd}.log</c>.</summary>
+    public string PluginLogsDirectory => Path.Combine(LogsDirectory, "plugins");
 
     /// <summary>
     /// Written by the running engine (pid, port, url) so launchers and companions can find it: a hint, since a crash

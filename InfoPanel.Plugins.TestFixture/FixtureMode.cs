@@ -13,6 +13,8 @@ namespace InfoPanel.TestFixture;
 /// <item><c>exit-after-ms=N</c>: the host process exits (code 3) N ms after the plugin starts, saying so on stderr.</item>
 /// <item><c>entries=N</c>: N more sensors, in a container of their own.</item>
 /// <item><c>text-chars=N</c>: the status text is N characters long.</item>
+/// <item><c>spew-bytes=N</c>: once started, N bytes to stdout and N to stderr with no newline, then <c>spew-end</c> on
+/// stderr, and the plugin runs on.</item>
 /// </list>
 /// </summary>
 public sealed class FixtureMode
@@ -30,6 +32,7 @@ public sealed class FixtureMode
     public int? ExitAfterMs { get; private init; }
     public int Entries { get; private init; }
     public int? TextChars { get; private init; }
+    public int? SpewBytes { get; private init; }
 
     private static FixtureMode Load()
     {
@@ -56,6 +59,7 @@ public sealed class FixtureMode
             ExitAfterMs = Number("exit-after-ms"),
             Entries = Number("entries") ?? 0,
             TextChars = Number("text-chars"),
+            SpewBytes = Number("spew-bytes"),
         };
     }
 }

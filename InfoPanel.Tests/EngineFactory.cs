@@ -75,6 +75,8 @@ public class EngineFactory : WebApplicationFactory<Program>
         builder.UseSetting("Engine:MockSeed", "42");
         // Media providers connect only to this computer: no test engine reaches the network.
         builder.UseSetting("Engine:Offline", "true");
+        // No plugin hosts unless a test asks (Engine:NoPlugins false, Engine:BundledPlugins its folder).
+        builder.UseSetting("Engine:NoPlugins", "true");
         builder.UseSetting("Engine:DevOrigins:0", DevOrigin);
         builder.UseSetting("Engine:AllowOrigins:0", CrossOrigin);
         // No video decoder, whatever the machine has (INFOPANEL_FFMPEG_DIR included): a test that plays video sets its own.

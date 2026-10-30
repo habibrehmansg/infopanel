@@ -26,6 +26,7 @@ public static class EngineCommandLine
         ["--token"] = "Token",
         ["--mock-seed"] = "MockSeed",
         ["--mcp-text"] = "McpText",
+        ["--bundled-plugins"] = "BundledPlugins",
     };
 
     private static readonly Dictionary<string, string> Flags = new(StringComparer.Ordinal)
@@ -36,6 +37,7 @@ public static class EngineCommandLine
         ["--mock"] = "Mock",
         ["--offline"] = "Offline",
         ["--mcp"] = "Mcp",
+        ["--no-plugins"] = "NoPlugins",
     };
 
     private const string DevOrigin = "--dev-origin";
@@ -81,6 +83,9 @@ public static class EngineCommandLine
                                 the engine on the data folder, starting it when it isn't running.
                                 Takes only --data-dir; the engine it starts gets the flags of the
                                 folder's last start (its launch record) and --no-browser
+          --no-plugins          Start no plugin hosts
+          --bundled-plugins <dir>
+                                The bundled plugins' folder (default: plugins next to the engine)
           --help                Show this help
         """;
 

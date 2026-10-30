@@ -39,6 +39,34 @@
     <EmbeddedResource Include="Mcp\Text\**\*.json;Mcp\Text\**\*.md" LogicalName="InfoPanel.Mcp.Text/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- The bundled plugins: InfoPanel.Extras is built and its output copied into plugins/InfoPanel.Extras/ beside the
+       engine (on build and on publish), where the engine finds it. Copied, not referenced (it is net8.0-windows), and
+       not as content, so projects that reference the engine (the tests) don't get a plugins folder. -->
+  <Target Name="BuildBundledPlugins">
+    <MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained;PublishDir">
+      <Output TaskParameter="TargetOutputs" PropertyName="_ExtrasPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <_ExtrasDir>$([System.IO.Path]::GetDirectoryName($(_ExtrasPath)))</_ExtrasDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_BundledPluginFile Include="$(_ExtrasDir)\**\*" />
+      <_BundledPluginFile>
+        <RelativePath>plugins\InfoPanel.Extras\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+      </_BundledPluginFile>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="CopyBundledPlugins" AfterTargets="CopyFilesToOutputDirectory" DependsOnTargets="BuildBundledPlugins">
+    <Copy SourceFiles="@(_BundledPluginFile)" DestinationFiles="@(_BundledPluginFile->'$(OutDir)%(RelativePath)')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="PublishBundledPlugins" BeforeTargets="ComputeResolvedFilesToPublishList" DependsOnTargets="BuildBundledPlugins">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="@(_BundledPluginFile)" RelativePath="%(_BundledPluginFile.RelativePath)" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
   <!-- The engine's build, which GET /api/session reports (engineBuild): EngineBuild.targets records it. -->
   <Import Project="EngineBuild.targets" />
 

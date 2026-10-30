@@ -19,6 +19,10 @@ The engine keeps everything it stores in one folder: `{LocalApplicationData}/Inf
 | `runtime.json` | The running engine's pid, port and URL: a hint ([below](#finding-the-running-engine)) |
 | `fonts/` | User fonts (`.ttf`, `.otf`, `.ttc`, `.otc`, at any depth, read through links with each real folder walked once; at most 10,000 entries looked at and 256 MiB a font; past either, the fonts found are registered and the rest skipped with a warning) |
 | `logs/` | The engine's log, `infopanel-{yyyyMMdd}.log` by local date (`_001`, `_002`… past 100 MiB), the newest 7 files kept. Only a regular file is written: when the folder or the day's file is anything else (a FIFO, a device, a link to nothing), the engine logs to the console only for the run and says so there once; so it does when a rollover finds 8 full files in a row, or the day's files are full up to the last number a name holds |
+| `logs/plugins/` | The plugin hosts' logs, `{package}-{yyyyMMdd}.log`, written by each host ([plugins](plugins.md#what-a-host-writes)) |
+| `plugins/` | Plugins the user added, one `InfoPanel.{Name}` folder each ([plugins](plugins.md)); a package folder that is a link isn't followed |
+| `plugin-settings/{package}/{plugin id}.json` | Configurable plugins' settings, written by their hosts |
+| `plugin-state.json` | Reserved for which plugins the user turned off |
 | `profiles.xml`, `profiles/{guid}.xml`, `assets/` | Step-1 data, left untouched and unread |
 
 Every file the engine replaces is written to `{name}.{32 hex}.tmp` beside it, flushed and renamed over it, so a crash leaves the old file or the new one. `--fresh` (a development flag) wipes a folder only when it holds nothing but these entries and their temp files.
