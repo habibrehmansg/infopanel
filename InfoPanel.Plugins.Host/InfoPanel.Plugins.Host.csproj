@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- A library: the engine executable runs it as its plugin host mode (the plugin-host flag, PluginHostEntry). -->
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The update loop's one-cycle method and test entry point are internal. -->
+    <!-- The update loop's one-cycle method and test entry points are internal. -->
     <InternalsVisibleTo Include="InfoPanel.Tests" />
   </ItemGroup>
 

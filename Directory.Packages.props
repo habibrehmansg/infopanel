@@ -10,7 +10,6 @@
     <PackageVersion Include="ini-parser-netstandard" Version="2.5.3" />
     <PackageVersion Include="NAudio.Wasapi" Version="2.3.0" />
     <PackageVersion Include="OpenWeatherMap.Cache" Version="3.0.0" />
-    <PackageVersion Include="Sentry" Version="6.4.0" />
     <PackageVersion Include="Serilog" Version="4.3.1" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />

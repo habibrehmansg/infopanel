@@ -1,9 +1,12 @@
 ﻿using InfoPanel.Plugins;
 using NAudio.CoreAudioApi;
 using System.ComponentModel;
+using System.Runtime.Versioning;
 
 namespace InfoPanel.Extras
 {
+    // Reads Windows audio (NAudio, WASAPI): the loader skips it on other operating systems.
+    [SupportedOSPlatform("windows")]
     public class VolumePlugin : BasePlugin
     {
         private readonly List<PluginContainer> _containers = [];

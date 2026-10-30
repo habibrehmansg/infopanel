@@ -1,9 +1,12 @@
 ﻿using InfoPanel.Plugins;
 using Microsoft.Win32;
 using System.Collections.Concurrent;
+using System.Runtime.Versioning;
 
 namespace InfoPanel.Extras
 {
+    // Reads the Windows registry: the loader skips it on other operating systems.
+    [SupportedOSPlatform("windows")]
     public class HWiNFORegistryPlugin : BasePlugin
     {
         public override string? ConfigFilePath => null;

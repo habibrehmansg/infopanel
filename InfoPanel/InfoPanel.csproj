@@ -27,6 +27,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Core\InfoPanel.Core.csproj" />
+    <!-- The plugin host (net8.0, as the plugin SDK): the engine executable runs it as its plugin host mode. -->
+    <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
   </ItemGroup>
 
   <!-- The built-in text for AI apps (tool wording, the guide, the checks' thresholds): embedded under its path, not

@@ -26,6 +26,10 @@ using System.Text.Json.Serialization;
 // sensors, renders every output with the scene runtime and serves the web client. Exit codes: 0 clean, 1 fatal error
 // (a data folder whose marker this engine can't honour included), 2 bad arguments, 3 data folder in use.
 
+// A plugin host (the engine starts one per plugin DLL): nothing of the engine runs, not even its command line.
+if (InfoPanel.Plugins.Host.PluginHostEntry.IsHostMode(args))
+    return await InfoPanel.Plugins.Host.PluginHostEntry.RunAsync(args);
+
 var parsed = EngineCommandLine.Parse(args);
 if (parsed.ShowHelp)
 {

@@ -1,7 +1,5 @@
-extern alias PluginHost;
-
 using InfoPanel.Plugins;
-using PluginHost::InfoPanel.Plugins.Host;
+using InfoPanel.Plugins.Host;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
 using StreamJsonRpc;

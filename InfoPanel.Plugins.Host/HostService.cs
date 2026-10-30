@@ -13,8 +13,10 @@ namespace InfoPanel.Plugins.Host
 {
     public class HostService : IPluginHostService
     {
-        private static readonly ILogger Logger = Log.ForContext<HostService>();
+        private readonly ILogger Logger;
         private readonly string _pluginPath;
+        // Where the plugins' settings are kept ({plugin id}.json), the folder the engine gives; null keeps them in memory.
+        private readonly string? _settingsDirectory;
         private JsonRpc? _jsonRpc;
         private readonly List<PluginWrapper> _wrappers = [];
         private readonly SensorSnapshotManager _snapshotManager = new();
@@ -34,9 +36,17 @@ namespace InfoPanel.Plugins.Host
         /// </summary>
         public Action? OnShutdownRequested { get; set; }
 
-        public HostService(string pluginPath)
+        /// <param name="pluginPath">The plugin DLL.</param>
+        /// <param name="settingsDirectory">
+        /// The folder for the plugins' settings, one <c>{plugin id}.json</c> each (the engine gives each package its own);
+        /// null keeps settings in memory only.
+        /// </param>
+        /// <param name="logger">The log; the process's by default.</param>
+        public HostService(string pluginPath, string? settingsDirectory = null, ILogger? logger = null)
         {
             _pluginPath = pluginPath;
+            _settingsDirectory = settingsDirectory;
+            Logger = logger ?? Log.ForContext<HostService>();
         }
 
         public void SetJsonRpc(JsonRpc jsonRpc)
@@ -48,7 +58,12 @@ namespace InfoPanel.Plugins.Host
         {
             Logger.Information("Initializing plugins from {PluginPath}", _pluginPath);
 
-            var plugins = PluginLoader.InitializePlugin(_pluginPath);
+            var loaded = PluginLoader.Load(_pluginPath);
+            foreach (var skipped in loaded.Skipped)
+            {
+                Logger.Information("Skipped plugin type {Type}: it runs only on {Platforms}", skipped.TypeName, string.Join(", ", skipped.Platforms));
+            }
+            var plugins = loaded.Plugins;
             var pluginInfo = PluginLoader.GetPluginInfo(Path.GetDirectoryName(_pluginPath)!);
             var descriptor = new PluginDescriptor(_pluginPath, pluginInfo);
             var metadataList = new List<PluginMetadataDto>();
@@ -70,7 +85,7 @@ namespace InfoPanel.Plugins.Host
                     {
                         LoadAndApplyConfig(wrapper, earlyConfigurable);
                         // Ensure the sidecar JSON exists (creates with defaults if missing)
-                        if (!File.Exists(GetConfigFilePath(wrapper)))
+                        if (GetConfigFilePath(wrapper) is { } sidecar && !File.Exists(sidecar))
                         {
                             SaveConfig(wrapper, earlyConfigurable);
                         }
@@ -230,8 +245,9 @@ namespace InfoPanel.Plugins.Host
 
         public Task<List<PluginConfigPropertyDto>> ApplyConfigAsync(string pluginId, string key, object? value)
         {
-            Logger.Information("ApplyConfigAsync called: pluginId={PluginId}, key={Key}, valueType={ValueType}, value={Value}",
-                pluginId, key, value?.GetType().Name ?? "null", value);
+            // Settings can be secrets (an API key): the key is logged, never the value.
+            Logger.Information("ApplyConfigAsync called: pluginId={PluginId}, key={Key}, valueType={ValueType}",
+                pluginId, key, value?.GetType().Name ?? "null");
 
             var wrapper = _wrappers.FirstOrDefault(w => w.Id == pluginId);
             if (wrapper?.Plugin is IPluginConfigurable configurable)
@@ -242,8 +258,8 @@ namespace InfoPanel.Plugins.Host
                 var prop = configurable.ConfigProperties.FirstOrDefault(p => p.Key == key);
                 var nativeValue = prop != null ? CoerceValue(value, prop.Type) : value;
 
-                Logger.Information("Config coercion: key={Key}, rawType={RawType}, nativeType={NativeType}, nativeValue={NativeValue}",
-                    key, value?.GetType().Name ?? "null", nativeValue?.GetType().Name ?? "null", nativeValue);
+                Logger.Debug("Config coercion: key={Key}, rawType={RawType}, nativeType={NativeType}",
+                    key, value?.GetType().Name ?? "null", nativeValue?.GetType().Name ?? "null");
 
                 try
                 {
@@ -267,7 +283,7 @@ namespace InfoPanel.Plugins.Host
             return Task.FromResult(new List<PluginConfigPropertyDto>());
         }
 
-        private static object? CoerceValue(object? value, PluginConfigType type)
+        private object? CoerceValue(object? value, PluginConfigType type)
         {
             if (value is JToken jt)
             {
@@ -291,7 +307,7 @@ namespace InfoPanel.Plugins.Host
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning(ex, "Failed to coerce JToken value {Value} to {Type}, returning default", jt, type);
+                    Logger.Warning("Failed to coerce a {TokenType} value to {Type} ({Error}), returning default", jt.Type, type, ex.GetType().Name);
                     return type switch
                     {
                         PluginConfigType.Boolean => false,
@@ -318,7 +334,7 @@ namespace InfoPanel.Plugins.Host
             }
             catch (Exception ex)
             {
-                Logger.Warning(ex, "Failed to coerce CLR value {Value} to {Type}, returning default", value, type);
+                Logger.Warning("Failed to coerce a {ValueType} value to {Type} ({Error}), returning default", value?.GetType().Name ?? "null", type, ex.GetType().Name);
                 return type switch
                 {
                     PluginConfigType.Boolean => false,
@@ -598,19 +614,24 @@ namespace InfoPanel.Plugins.Host
 
         private static readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
 
-        private static string GetConfigFilePath(PluginWrapper wrapper)
+        /// <summary>
+        /// The plugin's settings file, <c>{settings folder}/{plugin id}.json</c>, in the folder the engine gave; null
+        /// without one (settings kept in memory) or for an id that isn't a plain file name.
+        /// </summary>
+        private string? GetConfigFilePath(PluginWrapper wrapper)
         {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "InfoPanel", "plugins");
-            Directory.CreateDirectory(dir);
-            return Path.Combine(dir, $"{wrapper.Id}.config.json");
+            if (_settingsDirectory == null) return null;
+            var id = wrapper.Id;
+            if (id.Length == 0 || id is "." or ".." || id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+                || id.Contains('/') || id.Contains('\\'))
+                return null;
+            return Path.Combine(_settingsDirectory, $"{id}.json");
         }
 
         private void LoadAndApplyConfig(PluginWrapper wrapper, IPluginConfigurable configurable)
         {
             var configPath = GetConfigFilePath(wrapper);
-            if (!File.Exists(configPath)) return;
+            if (configPath == null || !File.Exists(configPath)) return;
 
             try
             {
@@ -635,7 +656,7 @@ namespace InfoPanel.Plugins.Host
                     }
                 }
 
-                Logger.Information("Loaded stored config for plugin {PluginId} from {Path}", wrapper.Id, configPath);
+                Logger.Information("Loaded stored settings for plugin {PluginId} from {Path}", wrapper.Id, configPath);
             }
             catch (Exception ex)
             {
@@ -645,20 +666,45 @@ namespace InfoPanel.Plugins.Host
 
         private void SaveConfig(PluginWrapper wrapper, IPluginConfigurable configurable)
         {
+            var configPath = GetConfigFilePath(wrapper);
+            if (configPath == null) return;
             try
             {
-                var configPath = GetConfigFilePath(wrapper);
                 var values = new Dictionary<string, object?>();
                 foreach (var prop in configurable.ConfigProperties)
                 {
                     values[prop.Key] = prop.Value;
                 }
-                var json = JsonSerializer.Serialize(values, _jsonOptions);
-                File.WriteAllText(configPath, json);
+                WriteAtomically(configPath, JsonSerializer.SerializeToUtf8Bytes(values, _jsonOptions));
             }
             catch (Exception ex)
             {
                 Logger.Warning(ex, "Failed to save config for plugin {PluginId}", wrapper.Id);
+            }
+        }
+
+        /// <summary>
+        /// Writes <paramref name="bytes"/> to a temp file beside <paramref name="path"/>, flushes it and renames it over the
+        /// path, so the file is always its previous content or the new, never a mix.
+        /// </summary>
+        private static void WriteAtomically(string path, byte[] bytes)
+        {
+            var folder = Path.GetDirectoryName(path)!;
+            Directory.CreateDirectory(folder);
+            var temp = $"{path}.{Guid.NewGuid():N}.tmp";
+            try
+            {
+                using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    stream.Write(bytes);
+                    stream.Flush(flushToDisk: true);
+                }
+                File.Move(temp, path, overwrite: true);
+            }
+            catch
+            {
+                try { File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                throw;
             }
         }
 

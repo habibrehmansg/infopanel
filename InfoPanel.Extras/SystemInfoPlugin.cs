@@ -2,9 +2,12 @@
 using System;
 using System.Data;
 using System.Diagnostics;
+using System.Runtime.Versioning;
 
 namespace InfoPanel.Extras
 {
+    // Reads Windows performance counters: the loader skips it on other operating systems.
+    [SupportedOSPlatform("windows")]
     public class SystemInfoPlugin : BasePlugin, IPluginConfigurable
     {
         private readonly PluginText _uptimeFormattedSensor = new("Formatted", "-");

@@ -28,9 +28,30 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel\InfoPanel.csproj" />
-    <!-- The plugin host (net8.0) whose behaviour 2.0 keeps. Its internals are visible to these tests, its top-level
-         Program among them, so it is referenced under an alias: Program here is the engine's. -->
-    <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" Aliases="PluginHost" />
+    <!-- The plugin host (net8.0), a library the engine runs in its host mode; its internals are visible to these tests. -->
+    <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
   </ItemGroup>
+
+  <!-- Plugins the tests run in hosts, each built and copied into plugin-fixtures/{folder}/: the test plugin and the
+       bundled Extras. Not into plugins/, so an engine started from this folder finds no bundled plugins unless a test
+       points the bundled-plugins flag here. -->
+  <Target Name="CopyPluginFixtures" AfterTargets="CopyFilesToOutputDirectory">
+    <MSBuild Projects="..\InfoPanel.Plugins.TestFixture\InfoPanel.Plugins.TestFixture.csproj" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained">
+      <Output TaskParameter="TargetOutputs" PropertyName="_FixturePluginPath" />
+    </MSBuild>
+    <MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained">
+      <Output TaskParameter="TargetOutputs" PropertyName="_ExtrasPluginPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <_FixturePluginDir>$([System.IO.Path]::GetDirectoryName($(_FixturePluginPath)))</_FixturePluginDir>
+      <_ExtrasPluginDir>$([System.IO.Path]::GetDirectoryName($(_ExtrasPluginPath)))</_ExtrasPluginDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_FixturePluginFile Include="$(_FixturePluginDir)\**\*" />
+      <_ExtrasPluginFile Include="$(_ExtrasPluginDir)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_FixturePluginFile)" DestinationFiles="@(_FixturePluginFile->'$(OutDir)plugin-fixtures\InfoPanel.TestFixture\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_ExtrasPluginFile)" DestinationFiles="@(_ExtrasPluginFile->'$(OutDir)plugin-fixtures\InfoPanel.Extras\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>
