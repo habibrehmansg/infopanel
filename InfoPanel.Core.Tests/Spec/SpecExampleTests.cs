@@ -670,10 +670,38 @@ internal static class ApiBodyRules
                     if (!seen.Add(bounds.GetProperty("id").GetString()!)) errors.Add(($"/itemBounds/{i}/id", "id.duplicate"));
                     i++;
                 }
+                errors.AddRange(FrameVideo(body));
                 break;
             }
         }
         return errors;
+    }
+
+    /// <summary>
+    /// <c>frame.video</c>: an <c>h264</c> frame has <c>keyframe</c>; a keyframe has <c>codec</c>, <c>description</c> and
+    /// <c>encoder</c>; the video members are only on <c>h264</c> frames, and <c>fallback</c> only on <c>png</c> frames.
+    /// The host tests' socket check (<c>SocketContract.CheckFrame</c>) holds every frame the engine sends to the same rule.
+    /// </summary>
+    internal static IEnumerable<(string Path, string Code)> FrameVideo(JsonElement header)
+    {
+        var encoding = header.GetProperty("encoding").GetString();
+        if (encoding == "h264")
+        {
+            if (!header.TryGetProperty("keyframe", out var keyframe))
+                yield return ("", "frame.video");
+            else if (keyframe.GetBoolean() && !(header.TryGetProperty("codec", out _) && header.TryGetProperty("description", out _) && header.TryGetProperty("encoder", out _)))
+                yield return ("", "frame.video");
+            if (header.TryGetProperty("fallback", out _))
+                yield return ("/fallback", "frame.video");
+        }
+        else
+        {
+            foreach (var member in (string[])["keyframe", "codec", "description", "encoder"])
+                if (header.TryGetProperty(member, out _))
+                    yield return ("/" + member, "frame.video");
+            if (encoding != "png" && header.TryGetProperty("fallback", out _))
+                yield return ("/fallback", "frame.video");
+        }
     }
 
     private static void Items(JsonElement items, string path, long rev, List<(string, string)> errors)

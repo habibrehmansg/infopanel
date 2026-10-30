@@ -1,0 +1,19 @@
+{
+  "profileId": "3dd19c0e-675a-4591-b096-83417853861f",
+  "rev": 43,
+  "tick": 1820,
+  "frameId": 5113,
+  "encoding": "h264",
+  "scale": 2,
+  "pixelWidth": 1601,
+  "pixelHeight": 961,
+  "profileWidth": 800,
+  "profileHeight": 480,
+  "keyframe": true,
+  "codec": "avc1.42C028",
+  "description": "AUIAKP/hAA4nQgAoq0AyA801AQEBAgEABCjOPIA=",
+  "encoder": "hardware",
+  "encodeMs": 5.62,
+  "skipped": 0,
+  "itemBounds": []
+}

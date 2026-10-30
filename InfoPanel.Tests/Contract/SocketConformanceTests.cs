@@ -31,7 +31,7 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         Assert.Equal(SpecSchemas.Api + "#/$defs/clientMessage", socket.ClientMessage);
         Assert.Equal(SpecSchemas.Api + "#/$defs/serverMessage", socket.ServerMessage);
         Assert.Equal(SpecSchemas.Api + "#/$defs/frameHeader", socket.FrameHeader);
-        Assert.Equal(["auth", "subscribe", "view", "unsubscribe"], ApiContract.MessageTypes(socket.ClientMessage));
+        Assert.Equal(["auth", "subscribe", "view", "keyframe", "unsubscribe"], ApiContract.MessageTypes(socket.ClientMessage));
         Assert.Equal(["hello", "doc", "profiles", "settings", "error"], ApiContract.MessageTypes(socket.ServerMessage));
     }
 
@@ -51,6 +51,48 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         {
             Assert.Null(SocketContract.CheckServerText(JsonSerializer.Serialize(message, message.GetType(), SpecJson.Options)));
         }
+    }
+
+    /// <summary>Frame headers as the engine writes them (<see cref="FrameCodec.EncodePrefix"/>): PNG, PNG that says why it isn't video, and video.</summary>
+    [Fact]
+    public void TheFrameHeadersTheEngineWrites_AreFrameHeaders()
+    {
+        var png = new FrameHeader
+        {
+            ProfileId = "3dd19c0e-675a-4591-b096-83417853861f", Rev = 1, Tick = 2, FrameId = 3, Encoding = "png", Scale = 1, PixelWidth = 800,
+            PixelHeight = 480, ProfileWidth = 800, ProfileHeight = 480, ItemBounds = [], EncodeMs = 9.25, Skipped = 2,
+        };
+        foreach (var header in new[]
+                 {
+                     png,
+                     png with { Fallback = "encoder.unavailable" },
+                     png with { Encoding = "h264", Keyframe = true, Codec = "avc1.42C028", Description = "AUIAKP/hAA4nQgAoq0AyA801AQEBAgEABCjOPIA=", Encoder = "hardware" },
+                     png with { Encoding = "h264", Keyframe = false },
+                 })
+        {
+            Assert.Null(SocketContract.CheckFrame(FrameCodec.Encode(header, [1, 2, 3])));
+        }
+    }
+
+    [Theory]
+    // The video members agree with the encoding (frame.video), beyond what the schema says.
+    [InlineData("""{"encoding":"h264"}""")]
+    [InlineData("""{"encoding":"h264","keyframe":true,"codec":"avc1.42C028","encoder":"hardware"}""")]
+    [InlineData("""{"encoding":"h264","keyframe":false,"fallback":"encoder.failed"}""")]
+    [InlineData("""{"encoding":"png","keyframe":false}""")]
+    [InlineData("""{"encoding":"png","encoder":"hardware"}""")]
+    public void AFrameHeaderWhoseVideoMembersDisagree_IsCaught(string members)
+    {
+        const string Common = """
+            {"profileId":"3dd19c0e-675a-4591-b096-83417853861f","rev":1,"tick":2,"frameId":3,"scale":1,"pixelWidth":8,"pixelHeight":8,"profileWidth":8,"profileHeight":8,"itemBounds":[],"encodeMs":1,"skipped":0,
+            """;
+        var header = Common + members[1..];
+        var json = System.Text.Encoding.UTF8.GetBytes(header);
+        var message = new byte[FrameCodec.PrefixSize + json.Length];
+        FrameCodec.Magic.CopyTo(message);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(message.AsSpan(4), (uint)json.Length);
+        json.CopyTo(message.AsSpan(FrameCodec.PrefixSize));
+        Assert.NotNull(SocketContract.CheckFrame(message));
     }
 
     [Theory]
@@ -76,6 +118,9 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
     [InlineData("""{"type":"subscribe","profileId":"3dd19c0e-675a-4591-b096-83417853861f","zoom":2}""")]
     [InlineData("""{"type":"view","bounds":false}""")]
     [InlineData("""{"type":"auth","token":"t","resume":"x"}""")]
+    [InlineData("""{"type":"keyframe","force":true}""")]
+    [InlineData("""{"type":"subscribe","profileId":"3dd19c0e-675a-4591-b096-83417853861f","encoding":"vp8"}""")]
+    [InlineData("""{"type":"view","encoding":"h264"}""")]
     public void AClientMessageOutsideTheSpec_IsCaught(string text) => Assert.NotNull(SocketContract.CheckClientText(text));
 
     /// <summary>The client messages the spec's examples refuse: <c>api/{subscribe,view,unsubscribe}Message/invalid/*</c>.</summary>
@@ -138,7 +183,7 @@ public class SocketConformanceTests(EngineFactory factory) : IClassFixture<Engin
         var header = new FrameHeader
         {
             ProfileId = "3dd19c0e-675a-4591-b096-83417853861f", Rev = 1, Tick = 0, FrameId = 0, Encoding = "png", Scale = 1,
-            PixelWidth = 10, PixelHeight = 10, ProfileWidth = 10, ProfileHeight = 10, ItemBounds = [],
+            PixelWidth = 10, PixelHeight = 10, ProfileWidth = 10, ProfileHeight = 10, ItemBounds = [], EncodeMs = 0, Skipped = 0,
         };
         Assert.Null(SocketContract.CheckFrame(FrameCodec.Encode(header, [1, 2, 3])));
         Assert.NotNull(SocketContract.CheckFrame(FrameCodec.Encode(header with { Scale = 5 }, [1, 2, 3])));

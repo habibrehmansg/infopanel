@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using InfoPanel.Documents;
 using InfoPanel.Hosting;
 using InfoPanel.Output;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using SkiaSharp;
 using Xunit;
@@ -185,6 +186,64 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
     }
 
     [Fact]
+    public async Task EveryFrame_SaysItsEncodeTime_AndWhatItSkipped()
+    {
+        var id = await ExampleProfileId();
+        await using var client = await Connect();
+        await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.5, encoding = "png" }, Ct);
+        var (header, png) = await client.ReceiveFrameAsync(Ct);
+        Assert.Equal("png", header.Encoding);
+        Assert.Equal(PngSignature, png[..8].ToArray());
+        Assert.True(header.EncodeMs >= 0);
+        Assert.Equal(0, header.Skipped);
+        Assert.Null(header.Fallback);
+        Assert.Null(header.Keyframe);
+    }
+
+    [Fact]
+    public async Task AnH264Subscription_WithoutAnEncoder_GetsPngFramesThatSayWhy()
+    {
+        using var engine = new EngineFactory();
+        using var off = engine.WithWebHostBuilder(b => b.UseSetting("Engine:H264", "off"));
+        await using var client = await PreviewClient.ConnectAsync(off, Ct);
+        await client.ReceiveTextAsync("hello", Ct);
+        using var api = off.CreateClient();
+        api.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+        var profiles = await api.GetFromJsonAsync<JsonElement>("/api/profiles", Ct);
+        var id = profiles.EnumerateArray().First().GetProperty("id").GetString()!;
+
+        await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.5, encoding = "h264" }, Ct);
+        await client.ReceiveTextAsync("doc", Ct);
+        var (header, png) = await client.ReceiveFrameAsync(Ct);
+        Assert.Equal("png", header.Encoding);
+        Assert.Equal("encoder.unavailable", header.Fallback);
+        Assert.Equal(PngSignature, png[..8].ToArray());
+
+        // A keyframe asked for on PNG frames does nothing: no error, frames go on.
+        await client.SendAsync(new { type = "keyframe" }, Ct);
+        await client.SendAsync(new { type = "view", scale = 0.25 }, Ct);
+        var next = await client.ReceiveAsync(Ct);
+        Assert.NotNull(next.Frame);
+        Assert.Equal(("png", "encoder.unavailable"), (next.Frame!.Encoding, next.Frame.Fallback));
+    }
+
+    [Fact]
+    public async Task AKeyframeMessage_WithoutASubscription_IsSubscriptionMissing_AndOnPngFramesDoesNothing()
+    {
+        await using var client = await Connect();
+        await client.SendAsync(new { type = "keyframe" }, Ct);
+        Assert.Equal(("subscription.missing", ""), CodeAndPath(await client.ReceiveTextAsync("error", Ct)));
+
+        await client.SendAsync(new { type = "subscribe", profileId = await ExampleProfileId(), scale = 0.5 }, Ct);
+        await client.ReceiveFrameAsync(Ct);
+        await client.SendAsync(new { type = "keyframe" }, Ct);
+        await client.SendAsync(new { type = "view", scale = 0.25 }, Ct);
+        var next = await client.ReceiveAsync(Ct);
+        Assert.NotNull(next.Frame);
+        Assert.Null(next.Frame!.Fallback);
+    }
+
+    [Fact]
     public async Task SubscribingToAProfileThatCantBeOpened_IsAnError()
     {
         var workspace = factory.Services.GetRequiredService<Workspace>();
@@ -282,6 +341,11 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
     [InlineData("""{"type":"view","scale":2,"zoom":1}""", "Unknown member \"zoom\" in view.", "schema", "/zoom")]
     [InlineData("""{"type":"subscribe","zoom":1}""", "Unknown member \"zoom\" in subscribe.", "schema", "/zoom")]
     [InlineData("""{"type":"unsubscribe","a/b~c":1}""", "Unknown member \"a/b~c\" in unsubscribe.", "schema", "/a~1b~0c")]
+    [InlineData("""{"type":"keyframe","force":true}""", "Unknown member \"force\" in keyframe.", "schema", "/force")]
+    [InlineData("""{"type":"view","encoding":"h264"}""", "Unknown member \"encoding\" in view.", "schema", "/encoding")]
+    [InlineData("""{"type":"subscribe","profileId":"6f1b8a3e-0000-4000-8000-000000000000","encoding":"vp8"}""", "encoding", "schema", "/encoding")]
+    [InlineData("""{"type":"subscribe","profileId":"6f1b8a3e-0000-4000-8000-000000000000","encoding":7}""", "encoding", "schema", "/encoding")]
+    [InlineData("""{"type":"keyframe"}""", "subscribe first", "subscription.missing", "")]
     public async Task BadMessages_GetAnErrorWithItsCodeAndPath_AndTheConnectionStaysUsable(string text, string expected, string code, string path)
     {
         await using var client = await Connect();

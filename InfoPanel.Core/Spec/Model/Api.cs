@@ -423,6 +423,27 @@ public sealed record FrameHeader
     public required int ProfileWidth { get; init; }
     public required int ProfileHeight { get; init; }
     public required IReadOnlyList<ItemBounds> ItemBounds { get; init; }
+
+    /// <summary>On an <c>h264</c> frame: whether it decodes on its own.</summary>
+    public bool? Keyframe { get; init; }
+
+    /// <summary>On an <c>h264</c> keyframe: the codec string, <c>avc1.PPCCLL</c>.</summary>
+    public string? Codec { get; init; }
+
+    /// <summary>On an <c>h264</c> keyframe: the avcC record, base64.</summary>
+    public string? Description { get; init; }
+
+    /// <summary>On an <c>h264</c> keyframe: <c>hardware</c> or <c>software</c>.</summary>
+    public string? Encoder { get; init; }
+
+    /// <summary>On a <c>png</c> frame of an <c>h264</c> subscription: why it isn't video (<c>encoder.*</c>).</summary>
+    public string? Fallback { get; init; }
+
+    /// <summary>Milliseconds from handing the pixels to the encoder to having the encoded frame.</summary>
+    public required double EncodeMs { get; init; }
+
+    /// <summary>Frames drawn for the subscription and not sent since the last one sent.</summary>
+    public required long Skipped { get; init; }
 }
 
 [SpecDef("urn:infopanel:api:1#/$defs/docEvent")]
@@ -713,6 +734,9 @@ public sealed record SubscribeMessage
     public required string ProfileId { get; init; }
     public double? Scale { get; init; }
     public int? MaxFps { get; init; }
+
+    /// <summary><c>png</c> (when absent) or <c>h264</c>.</summary>
+    public string? Encoding { get; init; }
 }
 
 /// <summary>Changes the subscription's scale or frame rate. <see cref="Type"/> is always <c>view</c>.</summary>
@@ -722,6 +746,13 @@ public sealed record ViewMessage
     public required string Type { get; init; }
     public double? Scale { get; init; }
     public int? MaxFps { get; init; }
+}
+
+/// <summary>Asks for a keyframe on the subscription's video stream. <see cref="Type"/> is always <c>keyframe</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/keyframeMessage")]
+public sealed record KeyframeMessage
+{
+    public required string Type { get; init; }
 }
 
 /// <summary>Ends the subscription. <see cref="Type"/> is always <c>unsubscribe</c>.</summary>

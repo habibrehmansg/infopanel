@@ -2,6 +2,7 @@ using InfoPanel.Spec;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 
 namespace InfoPanel.Output;
@@ -31,6 +32,7 @@ public sealed class RenderedFrame
     private readonly Lock _lock = new();
     private SKImage? _image;
     private ReadOnlyMemory<byte>? _png;
+    private double _pngMs;
     private bool _closed;
 
     internal RenderedFrame(SKImage image)
@@ -90,13 +92,21 @@ public sealed class RenderedFrame
             if (_closed)
                 throw new InvalidOperationException("GetPng() was called after OnFrame returned; call it inside OnFrame and keep the bytes.");
 
+            var started = Stopwatch.GetTimestamp();
             using var pixmap = _image!.PeekPixels();
             using var data = pixmap.Encode(PngOptions)
                 ?? throw new InvalidOperationException("PNG encoding failed.");
             png = data.ToArray();
             _png = png;
+            _pngMs = Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds, 2);
             return png;
         }
+    }
+
+    /// <summary>How long <see cref="GetPng"/>'s one encoding took, in milliseconds (0 before it has encoded the frame).</summary>
+    public double PngMs
+    {
+        get { lock (_lock) return _pngMs; }
     }
 
     /// <summary>True once <see cref="GetPng"/> has encoded the frame (for the render loop's statistics and tests).</summary>

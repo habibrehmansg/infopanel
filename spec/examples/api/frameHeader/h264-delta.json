@@ -1,0 +1,16 @@
+{
+  "profileId": "3dd19c0e-675a-4591-b096-83417853861f",
+  "rev": 43,
+  "tick": 1821,
+  "frameId": 5114,
+  "encoding": "h264",
+  "scale": 2,
+  "pixelWidth": 1601,
+  "pixelHeight": 961,
+  "profileWidth": 800,
+  "profileHeight": 480,
+  "keyframe": false,
+  "encodeMs": 4.9,
+  "skipped": 3,
+  "itemBounds": []
+}

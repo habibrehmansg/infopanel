@@ -1,0 +1,16 @@
+{
+  "profileId": "3dd19c0e-675a-4591-b096-83417853861f",
+  "rev": 43,
+  "tick": 1820,
+  "frameId": 5113,
+  "encoding": "png",
+  "scale": 4,
+  "pixelWidth": 4800,
+  "pixelHeight": 2880,
+  "profileWidth": 1200,
+  "profileHeight": 720,
+  "fallback": "encoder.size",
+  "encodeMs": 61.3,
+  "skipped": 1,
+  "itemBounds": []
+}

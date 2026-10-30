@@ -33,7 +33,30 @@ internal static class SocketContract
         var length = BinaryPrimitives.ReadUInt32LittleEndian(message[4..8]);
         if (length > message.Length - FrameCodec.PrefixSize)
             return $"A frame header of {length} bytes in a message of {message.Length}.";
-        return Check(Encoding.UTF8.GetString(message.Slice(FrameCodec.PrefixSize, (int)length)), ApiContract.Instance.Socket.FrameHeader, "frameHeader");
+        var text = Encoding.UTF8.GetString(message.Slice(FrameCodec.PrefixSize, (int)length));
+        return Check(text, ApiContract.Instance.Socket.FrameHeader, "frameHeader") ?? CheckFrameVideo(text);
+    }
+
+    /// <summary>
+    /// <c>frame.video</c> (spec/docs/api.md, "Checks beyond the schema"; the examples' check is the Core tests'
+    /// <c>ApiBodyRules.FrameVideo</c>): an <c>h264</c> frame has <c>keyframe</c>; a keyframe has <c>codec</c>,
+    /// <c>description</c> and <c>encoder</c>; the video members are only on <c>h264</c> frames, <c>fallback</c> only on <c>png</c> ones.
+    /// </summary>
+    internal static string? CheckFrameVideo(string header)
+    {
+        using var json = JsonDocument.Parse(header);
+        var root = json.RootElement;
+        bool Has(string member) => root.TryGetProperty(member, out _);
+        var problem = root.GetProperty("encoding").GetString() switch
+        {
+            "h264" when !Has("keyframe") => "an h264 frame without keyframe",
+            "h264" when root.GetProperty("keyframe").GetBoolean() && !(Has("codec") && Has("description") && Has("encoder")) => "a keyframe without codec, description or encoder",
+            "h264" when Has("fallback") => "fallback on an h264 frame",
+            not "h264" when Has("keyframe") || Has("codec") || Has("description") || Has("encoder") => "video members on a frame that isn't h264",
+            not ("h264" or "png") when Has("fallback") => "fallback on a frame that isn't png",
+            _ => null,
+        };
+        return problem == null ? null : $"frame.video: {problem} {Excerpt(header)}";
     }
 
     /// <summary>A text message's <c>type</c>, or null when it has none.</summary>

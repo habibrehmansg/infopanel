@@ -237,8 +237,9 @@ public static class PreviewSocketHandler
     internal static readonly IReadOnlyDictionary<string, string[]> ClientMessageMembers = new Dictionary<string, string[]>
     {
         ["auth"] = ["type", "token"],
-        ["subscribe"] = ["type", "profileId", "scale", "maxFps"],
+        ["subscribe"] = ["type", "profileId", "scale", "maxFps", "encoding"],
         ["view"] = ["type", "scale", "maxFps"],
+        ["keyframe"] = ["type"],
         ["unsubscribe"] = ["type"],
     };
 
@@ -542,7 +543,7 @@ internal sealed class PreviewSession
             }
 
             var type = typeElement.GetString()!;
-            if (type is "subscribe" or "view" or "unsubscribe" && PreviewSocketHandler.UnknownMember(root, type) is { } unknown)
+            if (type is "subscribe" or "view" or "keyframe" or "unsubscribe" && PreviewSocketHandler.UnknownMember(root, type) is { } unknown)
             {
                 SendError("schema", PreviewSocketHandler.Pointer(unknown), $"Unknown member \"{Truncate(unknown)}\" in {type}.");
                 return;
@@ -555,6 +556,9 @@ internal sealed class PreviewSession
                     break;
                 case "view":
                     View(root);
+                    break;
+                case "keyframe":
+                    Keyframe();
                     break;
                 case "unsubscribe":
                     Unsubscribe();
@@ -585,6 +589,18 @@ internal sealed class PreviewSession
         if (!TryReadRequest(message, new FrameRequest(1, RenderLoop.DefaultFps), out var request))
             return;
 
+        var encoding = WebPreviewSink.Png;
+        if (message.TryGetProperty("encoding", out var encodingElement))
+        {
+            if (encodingElement.ValueKind != JsonValueKind.String || encodingElement.GetString() is not (WebPreviewSink.Png or WebPreviewSink.H264))
+            {
+                SendError("schema", "/encoding", "\"encoding\" must be \"png\" or \"h264\".");
+                return;
+            }
+
+            encoding = encodingElement.GetString()!;
+        }
+
         var found = _workspace.Find(profileId);
         if (found.Document is not { } doc)
         {
@@ -601,7 +617,7 @@ internal sealed class PreviewSession
         WebPreviewSink sink;
         lock (_lock)
         {
-            sink = new WebPreviewSink(profileId, request, Wake, OnSinkClosed);
+            sink = new WebPreviewSink(profileId, request, Wake, OnSinkClosed, encoding);
             _sink = sink;
             _subscriptions++;
             _doc = doc;
@@ -648,6 +664,22 @@ internal sealed class PreviewSession
 
         sink.Request = request;
         _render.RequestChanged(sink);
+    }
+
+    /// <summary>The client lost its video decoder's state: the subscription's next video frame is a keyframe (nothing for PNG frames).</summary>
+    private void Keyframe()
+    {
+        WebPreviewSink? sink;
+        lock (_lock)
+            sink = _sink;
+
+        if (sink == null)
+        {
+            SendError("subscription.missing", "", "keyframe needs a subscription; send subscribe first.");
+            return;
+        }
+
+        sink.RequestKeyframe();
     }
 
     /// <summary>
@@ -940,7 +972,7 @@ internal sealed class PreviewSession
             if (sink != null && Volatile.Read(ref _docSubscribed) == 0 && sink.TryTakeFrame(out var frame) && CanSend)
             {
                 await _socket.SendAsync(frame.Prefix, WebSocketMessageType.Binary, false, ct);
-                await _socket.SendAsync(frame.Png, WebSocketMessageType.Binary, true, ct);
+                await _socket.SendAsync(frame.Payload, WebSocketMessageType.Binary, true, ct);
             }
         }
     }

@@ -26,6 +26,8 @@ public static class FrameHeaders
         ProfileWidth = frame.ProfileWidth,
         ProfileHeight = frame.ProfileHeight,
         ItemBounds = includeBounds ? frame.Bounds : [],
+        EncodeMs = 0,
+        Skipped = 0,
     };
 }
 

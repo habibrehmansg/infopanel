@@ -9,5 +9,7 @@
   "pixelHeight": 3840,
   "profileWidth": 800,
   "profileHeight": 480,
+  "encodeMs": 4.25,
+  "skipped": 0,
   "itemBounds": []
 }

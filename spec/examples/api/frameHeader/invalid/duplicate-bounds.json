@@ -9,6 +9,8 @@
   "pixelHeight": 480,
   "profileWidth": 800,
   "profileHeight": 480,
+  "encodeMs": 4.25,
+  "skipped": 2,
   "itemBounds": [
     {"id": "cpu-bar", "frame": {"x": 20, "y": 60, "w": 240, "h": 20}, "ink": {"x": 20, "y": 60, "w": 240, "h": 20}, "rotation": 0},
     {"id": "cpu-bar", "frame": {"x": 20, "y": 90, "w": 240, "h": 20}, "ink": {"x": 20, "y": 90, "w": 240, "h": 20}, "rotation": 0}

@@ -649,7 +649,7 @@ export interface Rect {
   h: number;
 }
 
-/** The JSON header of a frame message on /ws (docs/api.md): the document revision and tick the frame was drawn from, its scale and size, and where every item is. */
+/** The JSON header of a frame message on /ws (docs/api.md): the document revision and tick the frame was drawn from, its encoding, scale and size, and where every item is. */
 export interface FrameHeader {
   profileId: DocumentId;
   /** The document revision drawn. */
@@ -665,10 +665,37 @@ export interface FrameHeader {
    */
   frameId: number;
   /**
-   * How the payload after the header is encoded: `png`, the whole frame as a PNG.
+   * How the payload after the header is encoded: `png`, the whole frame as a PNG; `h264`, one H.264 access unit of the subscription's video stream (docs/api.md#video-frames). A subscription gets only the encodings it can ask for.
    * Length: 1–32.
    */
   encoding: string;
+  /** On an `h264` frame: whether it decodes on its own. A decoder starts, and after a size change starts again, at a keyframe. */
+  keyframe?: boolean;
+  /**
+   * On an `h264` keyframe: the codec string `avc1.PPCCLL` (profile, constraint flags and level, in hexadecimal, from the stream's SPS) to configure a decoder with.
+   * Pattern: `^avc1\.[0-9A-F]{6}$`.
+   */
+  codec?: string;
+  /**
+   * On an `h264` keyframe: the decoder configuration record (avcC, ISO/IEC 14496-15) of the stream from this keyframe on, in base64. Its SPS says the stream never reorders frames.
+   * Length: 1–65536.
+   * Pattern: `^[A-Za-z0-9+/]+={0,2}$`.
+   */
+  description?: string;
+  /** On an `h264` keyframe: whether the stream from it on is encoded in `hardware` or `software`. A client shows a value it doesn't know as it is. */
+  encoder?: "hardware" | "software";
+  /** On a `png` frame of an `h264` subscription: why it isn't video. `encoder.unavailable`: the engine has no working H.264 encoder; `encoder.failed`: its encoders failed or are busy during this subscription; `encoder.size`: the frame is larger than the video size, or no encoder takes its size. A client reads a value it doesn't know as "video unavailable for this frame". */
+  fallback?: "encoder.unavailable" | "encoder.failed" | "encoder.size";
+  /**
+   * The milliseconds from handing the frame's pixels to its encoder to having the encoded frame: for `h264`, copying and encoding, waiting for the encoder included; for `png`, that PNG's encoding (one PNG may serve several subscriptions).
+   * Range: ≥ 0.
+   */
+  encodeMs: number;
+  /**
+   * The frames the engine drew for this subscription and didn't send since the last one it sent (dropped before encoding, or replaced by a newer one before it could be sent).
+   * Range: 0–9007199254740991.
+   */
+  skipped: number;
   /**
    * Frame pixels per profile pixel: 0.1 or a multiple of 0.25 from 0.25 to 4. The subscription's scale rounded to a step of 0.25, then lowered while the frame would be over 16 Mpx (docs/api.md#frames).
    * Range: 0.1–4.
@@ -1101,7 +1128,7 @@ export interface DisplayInfo {
 }
 
 /** A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket). */
-export type ClientMessage = AuthMessage | SubscribeMessage | ViewMessage | UnsubscribeMessage;
+export type ClientMessage = AuthMessage | SubscribeMessage | ViewMessage | KeyframeMessage | UnsubscribeMessage;
 
 /** The first message on /ws when no `auth.{token}` subprotocol was offered: the token, within 5 seconds of the upgrade. The engine sends nothing before it; a token it doesn't accept, any other message, or none in time closes the socket with 1008. */
 export interface AuthMessage {
@@ -1116,6 +1143,8 @@ export interface SubscribeMessage {
   profileId: DocumentId;
   scale?: FrameRequestScale;
   maxFps?: FrameRequestFps;
+  /** How the subscription's frames are encoded: `png` (the default), each frame a PNG; or `h264`, an H.264 video stream, with PNG frames that say why (`fallback`) where the engine can't send video (docs/api.md#video-frames). To change it, a client subscribes again. */
+  encoding?: "png" | "h264";
 }
 
 /** Changes the current subscription's scale or frame rate; a member left out keeps its value. Without a subscription it is answered with an error message. */
@@ -1123,6 +1152,11 @@ export interface ViewMessage {
   type: "view";
   scale?: FrameRequestScale;
   maxFps?: FrameRequestFps;
+}
+
+/** The client lost its video decoder's state: the engine's next `h264` frame of the current subscription is a keyframe, drawn at once if nothing changes. Nothing for a `png` subscription. Without a subscription it is answered with an error message. */
+export interface KeyframeMessage {
+  type: "keyframe";
 }
 
 /** Ends the subscription: no more doc messages or frames until the next subscribe. */

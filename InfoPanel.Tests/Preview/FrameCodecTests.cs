@@ -26,6 +26,18 @@ public class FrameCodecTests
             new ItemBounds { Id = "cpu-bar", Frame = Rect(648, 84, 624, 160), Ink = Rect(646, 82, 628, 164), Rotation = 0 },
             new ItemBounds { Id = "group-1", Frame = Rect(10.5, -3.25, 1, 0), Ink = Rect(10.5, -3.25, 1, 0), Rotation = 37.5, Problem = "invalid" },
         ],
+        EncodeMs = 12.5,
+        Skipped = 3,
+    };
+
+    /// <summary>A video keyframe's header: the PNG header's with the video members.</summary>
+    private static readonly FrameHeader VideoKeyframe = Header with
+    {
+        Encoding = "h264",
+        Keyframe = true,
+        Codec = "avc1.42C028",
+        Description = "AUIAKP/hAA4nQgAoq0AyA801AQEBAgEABCjOPIA=",
+        Encoder = "hardware",
     };
 
     private static BoundsRect Rect(double x, double y, double w, double h) => new() { X = x, Y = y, W = w, H = h };
@@ -58,7 +70,8 @@ public class FrameCodecTests
         using var json = JsonDocument.Parse(message.AsMemory(8, length));
         var root = json.RootElement;
         // The API's frameHeader (spec/docs/api.md, "Frames"), as its schema describes it.
-        Assert.Equal(["profileId", "rev", "tick", "frameId", "encoding", "scale", "pixelWidth", "pixelHeight", "profileWidth", "profileHeight", "itemBounds"],
+        Assert.Equal(["profileId", "rev", "tick", "frameId", "encoding", "scale", "pixelWidth", "pixelHeight", "profileWidth", "profileHeight", "itemBounds",
+                "encodeMs", "skipped"],
             root.EnumerateObject().Select(p => p.Name));
         Assert.True(SpecSchemas.Strict.Validate(root, SpecSchemas.Api + "#/$defs/frameHeader").IsValid);
         Assert.Equal("0f8fad5b-d9cb-469f-a165-70867728950e", root.GetProperty("profileId").GetString());
@@ -68,6 +81,25 @@ public class FrameCodecTests
         var bound = root.GetProperty("itemBounds")[1];
         Assert.Equal(["id", "frame", "ink", "rotation", "problem"], bound.EnumerateObject().Select(p => p.Name));
         Assert.Equal(-3.25, bound.GetProperty("frame").GetProperty("y").GetDouble());
+    }
+
+    [Fact]
+    public void AVideoFramesMembers_RoundTrip_AndAPngFramesFallback()
+    {
+        foreach (var sent in new[] { VideoKeyframe, VideoKeyframe with { Keyframe = false, Codec = null, Description = null, Encoder = null }, Header with { Fallback = "encoder.size" } })
+        {
+            var (header, payload) = FrameCodec.Decode(FrameCodec.Encode(sent, Payload));
+            Assert.Equal(Text(sent), Text(header));
+            Assert.Equal((sent.Keyframe, sent.Codec, sent.Description, sent.Encoder, sent.Fallback), (header.Keyframe, header.Codec, header.Description, header.Encoder, header.Fallback));
+            Assert.Equal((12.5, 3L), (header.EncodeMs, header.Skipped));
+            Assert.Equal(Payload, payload.ToArray());
+        }
+
+        using var json = JsonDocument.Parse(Text(VideoKeyframe));
+        Assert.Equal(["profileId", "rev", "tick", "frameId", "encoding", "scale", "pixelWidth", "pixelHeight", "profileWidth", "profileHeight", "itemBounds",
+                "keyframe", "codec", "description", "encoder", "encodeMs", "skipped"],
+            json.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.True(SpecSchemas.Strict.Validate(json.RootElement, SpecSchemas.Api + "#/$defs/frameHeader").IsValid);
     }
 
     [Fact]

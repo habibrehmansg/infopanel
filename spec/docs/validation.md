@@ -89,6 +89,7 @@ Each code is reported at the value it is about ([versioning](versioning.md#error
 | `opId.reused` | An `opId` already applied with a different body ([commits](commit.md)). |
 | `baseRev.future` | Not a check on content: a commit's or op's `baseRev`, or an undo's, redo's or revert's, greater than the document's `rev`, a revision it hasn't reached ([commits](commit.md#baserev-conflicts)). |
 | `rev.mismatch` | Not a check on content: an engine API body whose revisions disagree, such as a document response whose `rev` isn't its document's ([API](api.md#checks-beyond-the-schema)). |
+| `frame.video` | Not a check on content: a frame header whose video members disagree with its `encoding` ([API](api.md#checks-beyond-the-schema)). |
 | `op.target` | `setDesign` or `setBindings` on a group. |
 | `op.parent` | An `insert` or `move` into an item that isn't a group. |
 | `op.cycle` | A group moved into itself or into something it contains. |

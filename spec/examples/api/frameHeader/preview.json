@@ -9,6 +9,8 @@
   "pixelHeight": 960,
   "profileWidth": 800,
   "profileHeight": 480,
+  "encodeMs": 9.5,
+  "skipped": 0,
   "itemBounds": [
     {
       "id": "stats",

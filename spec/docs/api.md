@@ -289,12 +289,13 @@ After an `auth` failure, the engine waits at most 2 seconds for the client's clo
 
 A client sends JSON text messages of at most 4,096 bytes in UTF-8 (`socketMessageBytes`, [limits](limits.md#socket-limits); `clientMessage`):
 
-- `subscribe` (`subscribeMessage`): `profileId`, and optionally `scale` (frame pixels per profile pixel, 1 when absent, [frame size](#frame-size)) and `maxFps` (30 when absent; the engine draws at most 60). A subscription the engine starts ends any earlier one, and is answered with a `doc` message, then frames; one it can't start is answered with an `error` and leaves the earlier one as it was.
+- `subscribe` (`subscribeMessage`): `profileId`, and optionally `scale` (frame pixels per profile pixel, 1 when absent, [frame size](#frame-size)) `maxFps` (30 when absent; the engine draws at most 60) and `encoding` (`png` when absent, or `h264`, [video frames](#video-frames)). A subscription the engine starts ends any earlier one, and is answered with a `doc` message, then frames; one it can't start is answered with an `error` and leaves the earlier one as it was.
 - `view` (`viewMessage`): a new `scale` or `maxFps` for the current subscription; a member left out keeps its value.
+- `keyframe` (`keyframeMessage`): the client lost its video decoder's state; the next `h264` frame of the subscription is a keyframe, drawn at once if nothing changes ([video frames](#video-frames)). It does nothing for a `png` subscription.
 - `unsubscribe` (`unsubscribeMessage`): no more `doc` messages or frames until the next `subscribe`.
 - `auth` (`authMessage`): only as the first message, above.
 
-The engine reads each message as the formats read JSON ([validation](validation.md#json)) before reading any member of it, members it doesn't define included: a message nested deeper than `jsonDepth`, with a number that rounds to ±∞, an object that repeats a member name (never resolved by keeping one) or a string or member name that isn't Unicode text is one it can't act on. Client messages are closed ([versioning](versioning.md#unknown-members-and-values)): a message with a member its definition doesn't have is one the engine can't act on, and it acts on no part of it. It answers `error` to a message it can't act on and keeps the socket open: one that isn't JSON as the formats read it or isn't a JSON object with a string `type`, a binary message, an unknown `type`, a member the message's definition doesn't have, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number or a `maxFps` that isn't a whole number from 1 to 2,147,483,647, or a `view` without a subscription.
+The engine reads each message as the formats read JSON ([validation](validation.md#json)) before reading any member of it, members it doesn't define included: a message nested deeper than `jsonDepth`, with a number that rounds to ±∞, an object that repeats a member name (never resolved by keeping one) or a string or member name that isn't Unicode text is one it can't act on. Client messages are closed ([versioning](versioning.md#unknown-members-and-values)): a message with a member its definition doesn't have is one the engine can't act on, and it acts on no part of it. It answers `error` to a message it can't act on and keeps the socket open: one that isn't JSON as the formats read it or isn't a JSON object with a string `type`, a binary message, an unknown `type`, a member the message's definition doesn't have, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number, a `maxFps` that isn't a whole number from 1 to 2,147,483,647 or an `encoding` the engine doesn't take, or a `view` or `keyframe` without a subscription.
 
 The engine sends (`serverMessage`):
 
@@ -312,8 +313,8 @@ An `error` names what went wrong with a `code`, and with a `path`: the JSON poin
 |---|---|---|
 | `json` | The value, or `""` | The message isn't JSON as the formats read it ([validation](validation.md#json)): it isn't UTF-8 JSON text, or is binary (at `""`); a number rounds to ±∞ (at the number); a string isn't Unicode text (at the string; a member name's at its object) |
 | `limit.jsonDepth` | `""` | The message is nested deeper than `jsonDepth` |
-| `schema` | The value | The message isn't an object with a `type` (at `""`); its `type` isn't a string, or is a type the engine doesn't take (at `/type`); it has a member its definition doesn't (at the member) or repeats a member name (at its object); a `subscribe` has no `profileId` (at `""`) or one that isn't a string (at `/profileId`); a `scale` that isn't a positive number (at `/scale`); a `maxFps` that isn't a whole number from 1 to 2,147,483,647 (at `/maxFps`) |
-| `subscription.missing` | `""` | A `view` without a subscription |
+| `schema` | The value | The message isn't an object with a `type` (at `""`); its `type` isn't a string, or is a type the engine doesn't take (at `/type`); it has a member its definition doesn't (at the member) or repeats a member name (at its object); a `subscribe` has no `profileId` (at `""`) or one that isn't a string (at `/profileId`); a `scale` that isn't a positive number (at `/scale`); a `maxFps` that isn't a whole number from 1 to 2,147,483,647 (at `/maxFps`); an `encoding` that isn't one the engine takes (at `/encoding`: a client that gets it subscribes again with one it knows) |
+| `subscription.missing` | `""` | A `view` or `keyframe` without a subscription |
 | `profile.missing` | `/profileId` | A `subscribe` to a profile that doesn't exist |
 | `profile.unsupported`, `profile.unreadable` | `/profileId` | A `subscribe` to a profile that can't be opened: `profile.` and its status ([profiles](#profiles)) |
 | `profile.deleted` | `/profileId`, or `""` | The profile was deleted: at `/profileId` as the `subscribe` started, else at `""`. The subscription has ended |
@@ -327,21 +328,43 @@ The `doc` message (`docEvent`) is the subscribed document's state: its tag (`ins
 
 ### Frames
 
-A frame message is binary: the four bytes `IPF1`, the header's length N as an unsigned 32-bit little-endian integer, N bytes of UTF-8 JSON (`frameHeader`), then the frame in the header's `encoding` (`png`: the whole frame as a PNG).
+A frame message is binary: the four bytes `IPF1`, the header's length N as an unsigned 32-bit little-endian integer, N bytes of UTF-8 JSON (`frameHeader`), then the frame in the header's `encoding` (`png`: the whole frame as a PNG; `h264`: [video frames](#video-frames)).
 
 ```jsonc
 { "profileId": "3dd19c0e-675a-4591-b096-83417853861f", "rev": 43, "tick": 1820, "frameId": 5113,
   "encoding": "png", "scale": 2, "pixelWidth": 1600, "pixelHeight": 960, "profileWidth": 800, "profileHeight": 480,
-  "itemBounds": [ { "id": "cpu-bar", "frame": { "x": 20, "y": 60, "w": 240, "h": 20 }, "ink": { … }, "rotation": 0 } ] }
+  "encodeMs": 9.5, "skipped": 0, "itemBounds": [ { "id": "cpu-bar", "frame": { "x": 20, "y": 60, "w": 240, "h": 20 }, "ink": { … }, "rotation": 0 } ] }
 ```
 
 - `rev` is the document revision drawn and `tick` the tick it was drawn from. The pixels and `itemBounds` come from that one tick snapshot ([identity](identity.md#the-tick-snapshot)), so the bounds always describe the pixels they arrive with, at `rev`. Within one subscription, frames with the same `tick` were drawn from the same snapshot, and tick numbers never go down.
 - `frameId` is unique within one run of the engine and greater for a frame rendered later.
 - `scale` is the frame's pixels per profile pixel, `pixelWidth` and `pixelHeight` the frame's size, and `profileWidth` and `profileHeight` the canvas size at `rev` ([frame size](#frame-size)).
+- `encodeMs` is the milliseconds from handing the frame's pixels to its encoder to having the encoded frame: for an `h264` frame, copying and encoding it, waiting for the encoder included; for a `png` frame, that PNG's encoding, which may serve several subscriptions. `skipped` counts the frames the engine drew for this subscription and didn't send since the last one it sent: dropped before encoding, or replaced by a newer one before it could be sent.
 - `itemBounds` holds the bounds of every visible item that has bounds ([geometry](geometry.md#measured-bounds-reported-by-the-engine)), each id once, in document order: a group before its children, the first item at the back. A hidden item, everything in a hidden group and a group with no visible children are absent. They are in profile pixels, like the document.
 - An item's `media`, when present, is the first problem the media it shows had in that tick, `{ code, message }`: `media.loading`, `media.missing` (an asset that isn't stored, or was refused), `media.provider` and `media.address` ([providers](providers.md#asking-and-what-each-item-shows)), `media.budget` (a video past the engine's decode sessions, [video files](smart-nodes.md#video-files)), or the code a fetched answer was refused with. `message` says why, for people, in at most 1,024 characters (a longer one is cut, ending in "…": it can carry text from the answer). A client treats a code it doesn't know as media that can't be shown. The item isn't a placeholder: its media draws the missing-media placeholder, or a provider's last good media while it says why the newest couldn't be had.
 
 The engine sends a frame only when its pixels, its bounds (an item's `media` included) or its revision changed.
+
+#### Video frames
+
+A subscription with `encoding` `h264` gets an H.264 video stream. Its frames are `h264` while the engine has a working H.264 encoder and the frame is within the video size: each side at most 4,096 pixels and at most 9,437,184 pixels in all (4096 × 2304). Every other frame of it is a `png` frame with `fallback`, which says why:
+
+- `encoder.unavailable`: the engine has no working H.264 encoder (none found, turned off, or every one given up in this run);
+- `encoder.failed`: its encoders failed, or are busy, during this subscription; PNG frames until it ends, unless a busy encoder frees up. A new subscription tries again;
+- `encoder.size`: this frame is larger than the video size, or no working encoder takes its size; video resumes, with a keyframe, when frames fit again.
+
+The list may grow: a client reads a `fallback` it doesn't know as "video unavailable for this frame". The engine never refuses an `h264` subscription for want of an encoder, so a client that can show `png` frames can always show the subscription.
+
+The stream:
+
+- **One access unit per frame**, AVCC: each NAL unit preceded by its length as a 4-byte big-endian integer; no parameter sets in the stream itself. Each keyframe's header has `codec` and `description`, the decoder configuration record (avcC) for the frames from it on, and `encoder` (`hardware` or `software`, open: a client shows a value it doesn't know as it is); every `h264` frame has `keyframe`.
+- **In order, and never dropped once encoded**: frames are dropped only before encoding, so every `h264` frame sent must be decoded, in the order sent. There are no B-frames and no reordering, which the avcC's SPS declares (`max_num_reorder_frames` 0 in its VUI's `bitstream_restriction`): a decoder can output each frame as soon as it has decoded it.
+- **A keyframe** begins the subscription's video, and follows a size change, PNG frames, a change or restart of the engine's encoder, and a `keyframe` message.
+- **Padded to even sides**: the coded picture may be a pixel wider or taller than `pixelWidth` × `pixelHeight`, the frame's own size, which a client crops to.
+- **Opaque**: transparent pixels show as if over black.
+- **BT.709** primaries, transfer and matrix, limited range, also written in the SPS's VUI.
+
+The bit rate and which encoder the engine uses are the engine's choice. `view`'s `maxFps` applies to the running stream, and a `view` that changes the frame's size is followed by a keyframe. To change the encoding, a client subscribes again.
 
 #### Frame size
 
@@ -366,3 +389,4 @@ Some agreements between members of an engine body can't be written in JSON Schem
 
 - `rev.mismatch`: a `documentResponse`'s `rev` is its `document.rev`, and no `rev` in the document (the profile's, an item's) is greater; a `commitResult`'s `items` values and `profileRev` all equal its `rev` (they changed at that revision).
 - `id.duplicate`: a `frameHeader`'s `itemBounds` lists each id once.
+- `frame.video`: in a `frameHeader`, an `h264` frame has `keyframe`; a keyframe has `codec`, `description` and `encoder`; `keyframe`, `codec`, `description` and `encoder` are only on `h264` frames, and `fallback` only on `png` frames.

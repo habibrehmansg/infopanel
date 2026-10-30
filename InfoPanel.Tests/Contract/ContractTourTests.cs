@@ -265,6 +265,12 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await socket.ReceiveFrameAsync(Ct);
         await socket.SendAsync(new { type = "view", scale = 0.25 }, Ct);
         await socket.ReceiveFrameAsync(Ct, header => header.Scale == 0.25);
+        // Video: an h264 subscription's frames (through the test engine's own encoder), and a keyframe asked for.
+        await socket.SendAsync(new { type = "subscribe", profileId = id, scale = 0.5, maxFps = 10, encoding = "h264" }, Ct);
+        await socket.ReceiveFrameAsync(Ct, header => header.Encoding == "h264" || header.Fallback != null);
+        await socket.SendAsync(new { type = "keyframe" }, Ct);
+        await socket.SendAsync(new { type = "view", scale = 0.25 }, Ct);
+        await socket.ReceiveFrameAsync(Ct, header => header.Scale == 0.25);
         await Send(session, "POST", "/api/profiles", 201, Body($$"""{"id":"{{NewId()}}","name":"Tour, listed","width":100,"height":50}"""));
         await socket.ReceiveTextAsync("profiles", Ct);
         await Send(session, "PATCH", "/api/settings", 200, Body("""{"frameRate":25}"""));
