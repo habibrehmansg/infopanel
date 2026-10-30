@@ -73,6 +73,16 @@ public sealed class TextFitTests
     public void A_text_that_fits_with_overflow_ellipsis_fits() =>
         Assert.Equal(TextFit.Fits, Assert.Single(Texts(Text("CPU", "'w':120,'h':30,", ",'wrap':'word','overflow':'ellipsis'"))).Fit);
 
+    [Theory]
+    [InlineData("CPU")]
+    [InlineData("Processor package temperature")]
+    public void One_line_that_fits_with_overflow_ellipsis_fits(string text) =>
+        Assert.Equal(TextFit.Fits, Assert.Single(Texts(Text(text, "'w':300,", ",'overflow':'ellipsis'"))).Fit);
+
+    [Fact]
+    public void Lines_up_to_maxLines_fit() =>
+        Assert.Equal(TextFit.Fits, Assert.Single(Texts(Text("CPU", "'w':300,", ",'wrap':'word','maxLines':1"))).Fit);
+
     [Fact]
     public void A_clipped_text_is_reported() =>
         Assert.Equal(TextFit.Clipped, Assert.Single(Texts(Text(Long, "'w':80,'h':30,", ",'overflow':'clip'"))).Fit);

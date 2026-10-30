@@ -436,9 +436,10 @@ internal static class TextLayoutEngine
             cap = Cap();
             limit = (int)Math.Min(2L * limit, cap);
         }
-        // A whole layout's cap is maxLines (one more line than the budget allows has thrown above), so RichTextKit
-        // truncating means lines past maxLines, or the one line an ellipsis keeps.
-        truncated = float.IsPositiveInfinity(stopBelow) && tb.Truncated;
+        // A whole layout's cap is maxLines (one more line than the budget allows has thrown above). RichTextKit's
+        // Truncated is also set when the lines merely reach the cap, so text left out is what it laid out falling
+        // short of the paragraph: lines past maxLines, or a line cut with "…".
+        truncated = float.IsPositiveInfinity(stopBelow) && tb.MeasuredLength < tb.Length;
 
         var lines = new List<LaidLine>();
         var made = 0f; // the lines' height so far
