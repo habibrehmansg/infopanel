@@ -63,6 +63,8 @@ public sealed record ProfileEntry
     public int? Height { get; init; }
     public long? Rev { get; init; }
     public bool? Dirty { get; init; }
+    /// <summary>When the unsaved changes restored at open were kept (UTC to the second), until a save or revert; ok only.</summary>
+    public string? Recovered { get; init; }
     public ValidationErrorBody? Problem { get; init; }
 }
 
@@ -119,6 +121,8 @@ public sealed record DocumentResponse
     public required bool Dirty { get; init; }
     public required bool CanUndo { get; init; }
     public required bool CanRedo { get; init; }
+    /// <summary>When the unsaved changes restored at open were kept (UTC to the second), until a save or revert.</summary>
+    public string? Recovered { get; init; }
     public required Document Document { get; init; }
 }
 
@@ -414,6 +418,8 @@ public sealed record DocEvent
     public required bool Dirty { get; init; }
     public required bool CanUndo { get; init; }
     public required bool CanRedo { get; init; }
+    /// <summary>When the unsaved changes restored at open were kept (UTC to the second), until a save or revert.</summary>
+    public string? Recovered { get; init; }
 }
 
 /// <summary>One format the engine reads: its newest minor version, the format's optional capabilities it has, the format's limits.</summary>

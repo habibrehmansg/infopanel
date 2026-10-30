@@ -1,0 +1,23 @@
+{
+  "instance": "5b0e7d2a9c4f4e1b8a6d3c2f1e0d9b8a",
+  "rev": 2,
+  "dirty": true,
+  "canUndo": true,
+  "canRedo": false,
+  "recovered": "2026-10-30T14:32:05Z",
+  "document": {
+    "format": "infopanel.document/1",
+    "id": "3dd19c0e-675a-4591-b096-83417853861f",
+    "rev": 2,
+    "profile": {"rev": 1, "name": "Desk", "width": 800, "height": 480, "background": "#101418ff"},
+    "items": [
+      {
+        "kind": "scene",
+        "id": "cpu-bar",
+        "rev": 2,
+        "placement": {"x": 40, "y": 120},
+        "scene": {"format": "infopanel.scene/1", "nodes": [{"kind": "rect", "w": 200, "h": 16, "fill": "#2f80edff"}]}
+      }
+    ]
+  }
+}

@@ -174,10 +174,11 @@ internal sealed class LiveEngine : IDisposable
 }
 
 /// <summary>A document's state as a <c>doc</c> message or a <c>documentResponse</c> carries it.</summary>
-internal readonly record struct DocState(long Rev, bool Dirty, bool CanUndo, bool CanRedo)
+internal readonly record struct DocState(long Rev, bool Dirty, bool CanUndo, bool CanRedo, string? Recovered = null)
 {
     public static DocState From(JsonElement json) => new(json.GetProperty("rev").GetInt64(), json.GetProperty("dirty").GetBoolean(),
-        json.GetProperty("canUndo").GetBoolean(), json.GetProperty("canRedo").GetBoolean());
+        json.GetProperty("canUndo").GetBoolean(), json.GetProperty("canRedo").GetBoolean(),
+        json.TryGetProperty("recovered", out var recovered) ? recovered.GetString() : null);
 }
 
 /// <summary>

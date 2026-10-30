@@ -68,6 +68,7 @@ public static class ProfileEndpoints
                 Dirty = state.Dirty,
                 CanUndo = state.CanUndo,
                 CanRedo = state.CanRedo,
+                Recovered = state.RecoveredText,
                 Document = state.Document,
             });
         })).RequireScope(ApiScope.Read);

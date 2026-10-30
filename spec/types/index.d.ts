@@ -103,6 +103,8 @@ export interface ProfileEntryOk {
   rev: Revision;
   /** The document has changes that aren't saved. */
   dirty: boolean;
+  /** When the document's unsaved changes were kept before the engine last stopped (docs/document.md#revisions): present from the restore until the document is saved or reverted. A client shows it only while `dirty`. */
+  recovered?: Timestamp;
 }
 
 /** A profile whose document needs a format major version or a document capability this engine lacks. */
@@ -250,6 +252,8 @@ export interface DocumentResponse {
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  /** When the document's unsaved changes were kept before the engine last stopped (docs/document.md#revisions): present from the restore until the document is saved or reverted. A client shows it only while `dirty`. */
+  recovered?: Timestamp;
   document: ResponseDocument;
 }
 
@@ -681,6 +685,8 @@ export interface DocEvent {
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  /** When the document's unsaved changes were kept before the engine last stopped (docs/document.md#revisions): present from the restore until the document is saved or reverted. A client shows it only while `dirty`. */
+  recovered?: Timestamp;
 }
 
 /** What an engine supports (part of GET /api/session), by format string: every format it reads, each with the newest minor version of it the engine reads, the format's optional capabilities the engine has and the format's limits. A client ignores a format string it doesn't know. */

@@ -156,6 +156,9 @@ public sealed class Workspace : IDisposable
     private readonly Lock _lock = new();
     private readonly Dictionary<string, Slot> _slots = new(StringComparer.Ordinal);
     private readonly RecoveryScheduler _recovery;
+
+    /// <summary>Held for the whole of <see cref="Dispose"/>, so a second call returns only once the first is done.</summary>
+    private readonly Lock _disposing = new();
     private long _version;
     private bool _disposed;
 
@@ -659,6 +662,7 @@ public sealed class Workspace : IDisposable
             Height = profile.Height,
             Rev = status.Rev,
             Dirty = status.Dirty,
+            Recovered = status.RecoveredText,
         };
     }
 
@@ -952,9 +956,16 @@ public sealed class Workspace : IDisposable
     /// <summary>
     /// The engine is stopping: stops the recovery scheduler (waiting for a checkpoint under way), keeps each dirty
     /// document's unsaved changes not yet kept at its current revision, then disposes every open document. A document
-    /// that can't be kept is logged; the others still are.
+    /// that can't be kept is logged; the others still are. A call while another is under way (the host's, and a
+    /// caller's of its own) returns once that one is done.
     /// </summary>
     public void Dispose()
+    {
+        lock (_disposing)
+            DisposeCore();
+    }
+
+    private void DisposeCore()
     {
         List<ProfileDocument> open;
         using (EnterLock())

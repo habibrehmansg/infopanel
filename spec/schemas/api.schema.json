@@ -85,7 +85,8 @@
         "width": { "description": "The canvas width in pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
         "height": { "description": "The canvas height in pixels.", "type": "integer", "minimum": 1, "maximum": 16384 },
         "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's current revision." },
-        "dirty": { "description": "The document has changes that aren't saved.", "type": "boolean" }
+        "dirty": { "description": "The document has changes that aren't saved.", "type": "boolean" },
+        "recovered": { "$ref": "#/$defs/timestamp", "description": "When the document's unsaved changes were kept before the engine last stopped (docs/document.md#revisions): present from the restore until the document is saved or reverted. A client shows it only while `dirty`." }
       }
     },
     "profileEntryUnsupported": {
@@ -264,6 +265,7 @@
         "dirty": { "description": "The document differs from the saved one.", "type": "boolean" },
         "canUndo": { "type": "boolean" },
         "canRedo": { "type": "boolean" },
+        "recovered": { "$ref": "#/$defs/timestamp", "description": "When the document's unsaved changes were kept before the engine last stopped (docs/document.md#revisions): present from the restore until the document is saved or reverted. A client shows it only while `dirty`." },
         "document": { "$ref": "#/$defs/responseDocument" }
       }
     },
@@ -804,7 +806,8 @@
         "rev": { "$ref": "urn:infopanel:common:1#/$defs/revision", "description": "The document's revision." },
         "dirty": { "description": "The document differs from the saved one.", "type": "boolean" },
         "canUndo": { "type": "boolean" },
-        "canRedo": { "type": "boolean" }
+        "canRedo": { "type": "boolean" },
+        "recovered": { "$ref": "#/$defs/timestamp", "description": "When the document's unsaved changes were kept before the engine last stopped (docs/document.md#revisions): present from the restore until the document is saved or reverted. A client shows it only while `dirty`." }
       }
     },
 

@@ -128,14 +128,18 @@ public sealed class RetryTests
         var drop = new ResponseDropper();
         string id;
         byte[] bytes;
+        InfoPanel.Documents.Workspace stopped;
         using (var first = LiveEngine.Start(engine, drop.Install))
         {
+            stopped = first.Services.GetRequiredService<InfoPanel.Documents.Workspace>();
             using var api = first.Client();
             id = await CreateAsync(api, Doc("Retry", 300, 100, Scene("a", 0, 0)), Ct);
             bytes = LiveEngine.Commit(await LiveEngine.Tag(api, id, Ct), 1, null, Place("a", 50, 0, baseRev: 1));
             var held = await drop.Lose(() => LiveEngine.PostBytes(api, $"/api/profiles/{id}/commit", bytes, Ct), $"/api/profiles/{id}/commit");
             Assert.Equal(StatusCodes.Status200OK, held.Status);
         }
+        // The host disposes the workspace on its own thread as it finishes stopping: this returns once that is done.
+        stopped.Dispose();
 
         using var second = LiveEngine.Start(engine);
         using var client = second.Client();

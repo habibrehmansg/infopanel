@@ -33,6 +33,9 @@ internal static class RecoveryFile
         return bytes;
     }
 
+    /// <summary><paramref name="time"/> as <see cref="Written(DateTimeOffset)"/>; null for null.</summary>
+    public static string? TextOf(DateTimeOffset? time) => time is { } t ? Written(t) : null;
+
     /// <summary><paramref name="time"/> in UTC to the second, as the file and the API write it.</summary>
     public static string Written(DateTimeOffset time) =>
         time.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);

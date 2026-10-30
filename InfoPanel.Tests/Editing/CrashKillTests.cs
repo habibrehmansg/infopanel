@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using InfoPanel.Documents;
 using InfoPanel.Hosting;
 using SkiaSharp;
 using Xunit;
@@ -18,7 +19,10 @@ namespace InfoPanel.Tests.Editing;
 /// A crash never exposes a mixed generation (the document store's crash safety, end to end): the built engine runs as
 /// a child process on a temp data folder and an ephemeral port while a client drives commits, saves, creates, deletes
 /// and blob uploads, and is killed with SIGKILL at a seeded random point. After each kill it starts again on the same
-/// folder, and every profile's document is the last one saved or the save in flight, every blob a document refers to
+/// folder, and every profile's saved document is the last one saved or the save in flight, its current document that or
+/// one of the generations acknowledged since (unsaved changes kept across the restart, never older than the saved one),
+/// and after a seeded share of kills that came once the client had paused for 3 s, exactly the last one acknowledged;
+/// every blob a document refers to
 /// is stored, every acknowledged upload still within its 24-hour grace reads back byte for byte under its SHA-256, no
 /// deleted profile comes back, no temp or deleted entry is listed or left behind, and the engine serves. The client may
 /// see a broken connection only once the kill has started; a transport error before it, or a client that stops before
@@ -51,6 +55,12 @@ public sealed partial class CrashKillTests
 
     private static readonly string[] Writes = ["commit", "save", "blob", "create", "delete"];
 
+    /// <summary>
+    /// How long the client pauses before a paused kill: past the engine's 2 s after the last change at which it keeps
+    /// unsaved changes (docs/2.0/data-folder.md, "Unsaved changes"), with room for the write.
+    /// </summary>
+    private static readonly TimeSpan Pause = TimeSpan.FromSeconds(3);
+
     [Fact]
     public async Task AnEngineKilledAtRandom_RestartsWithOnlySavedGenerations()
     {
@@ -64,6 +74,8 @@ public sealed partial class CrashKillTests
         var model = new Model();
         var tally = new Dictionary<string, int>();
         var leftovers = 0;
+        var paused = 0;
+        var afterPause = false;
 
         try
         {
@@ -73,7 +85,7 @@ public sealed partial class CrashKillTests
                 leftovers += found.Count > 0 ? 1 : 0;
                 await using var engine = await Engine.Start(data, $"seed {seed}, cycle {cycle}");
                 using var api = engine.Client();
-                await Verify(engine, api, data, model, $"seed {seed}, after kill {cycle}");
+                await Verify(engine, api, data, model, $"seed {seed}, after kill {cycle}", afterPause);
                 if (cycle == kills)
                     break;
 
@@ -81,12 +93,24 @@ public sealed partial class CrashKillTests
                 // still be running when the delay is up (it stops only on a transport error, which before the kill is a
                 // failure), and the kill is attributed to the request in flight at that moment.
                 var delay = TimeSpan.FromMilliseconds(rng.Next(10, 400));
+                afterPause = rng.Next(5) == 0;
                 var run = new Run();
                 var driver = Drive(api, model, run, new Random(rng.Next()), Ct);
                 if (await Task.WhenAny(driver, Task.Delay(delay, Ct)) == driver)
                 {
                     await driver;
                     Assert.Fail($"seed {seed}, cycle {cycle}: the client stopped before the kill");
+                }
+
+                if (afterPause)
+                {
+                    // The client finishes what it sent and stops; the engine keeps its unsaved changes; then the kill.
+                    run.Quiesce();
+                    await driver;
+                    await Task.Delay(Pause, Ct);
+                    run.Kill(engine);
+                    paused++;
+                    continue;
                 }
 
                 var inFlight = run.Kill(engine);
@@ -104,10 +128,11 @@ public sealed partial class CrashKillTests
         }
 
         var writes = tally.Where(t => Writes.Contains(t.Key)).Sum(t => t.Value);
-        Log($"{kills} kills; in flight at the kill: {string.Join(", ", tally.OrderBy(t => t.Key, StringComparer.Ordinal).Select(t => $"{t.Key} {t.Value}"))} " +
+        var unpaused = kills - paused;
+        Log($"{kills} kills, {paused} after a pause; in flight at the others: {string.Join(", ", tally.OrderBy(t => t.Key, StringComparer.Ordinal).Select(t => $"{t.Key} {t.Value}"))} " +
             $"({writes} with a write in flight); {leftovers} restarts found temp or deleted entries to clean up; " +
             $"{model.Saves} saves, {model.Creates} creates, {model.Deletes} deletes, {model.Uploads} uploads acknowledged ({model.Blobs.Count} blobs)");
-        Assert.True(kills < MinKillsForShare || writes >= MinWriteShare * kills, $"Seed {seed}: only {writes} of {kills} kills landed with a write request in flight");
+        Assert.True(unpaused < MinKillsForShare || writes >= MinWriteShare * unpaused, $"Seed {seed}: only {writes} of {unpaused} kills without a pause landed with a write request in flight");
     }
 
     /// <summary>
@@ -120,6 +145,19 @@ public sealed partial class CrashKillTests
         private readonly object _gate = new();
         private string _phase = "none";
         private bool _killing;
+        private bool _quiescing;
+
+        /// <summary>The client is to stop after what it has sent (a paused kill follows).</summary>
+        public bool Quiescing
+        {
+            get { lock (_gate) return _quiescing; }
+        }
+
+        public void Quiesce()
+        {
+            lock (_gate)
+                _quiescing = true;
+        }
 
         /// <summary>Sends a request as <paramref name="phase"/> (a write's kind, or <c>read</c>) and reads its answer.</summary>
         /// <exception cref="Killed">The kill had started before it could be sent, or broke it.</exception>
@@ -207,6 +245,18 @@ public sealed partial class CrashKillTests
 
         public byte[]? SaveInFlight { get; set; }
 
+        /// <summary>
+        /// The current document after each commit acknowledged since the last acknowledged save (an export right after
+        /// it), oldest first: what the engine may have kept as unsaved changes.
+        /// </summary>
+        public List<byte[]> Since { get; } = [];
+
+        /// <summary>
+        /// A commit was sent and its answer (and the export after it) not read yet: the document it makes, worked out
+        /// before it was sent (an export of it once applied); null when none is in flight.
+        /// </summary>
+        public byte[]? CommitInFlight { get; set; }
+
         public long Rev { get; set; }
 
         /// <summary>The document's tag in the running engine, which its commits and its delete name.</summary>
@@ -216,7 +266,7 @@ public sealed partial class CrashKillTests
     }
 
     /// <summary>The checks after a (re)start, then the model reset to what is stored now.</summary>
-    private static async Task Verify(Engine engine, HttpClient api, string data, Model model, string context)
+    private static async Task Verify(Engine engine, HttpClient api, string data, Model model, string context, bool afterPause)
     {
         // Start-up removed every temp and deleted entry the crash left.
         Assert.True(Leftovers(data) is { Count: 0 } left, $"{context}: left after start-up: {string.Join(", ", Leftovers(data))}");
@@ -232,7 +282,7 @@ public sealed partial class CrashKillTests
         {
             // The first start: the example profile is the only one, saved.
             var only = Assert.Single(ids);
-            model.Profiles[only] = new Profile { Saved = await Export(api, only) };
+            model.Profiles[only] = new Profile { Saved = File.ReadAllBytes(SavedFile(data, only)) };
         }
 
         foreach (var id in model.Deleted)
@@ -245,23 +295,46 @@ public sealed partial class CrashKillTests
 
         foreach (var id in ids)
         {
-            var stored = await Export(api, id);
+            // The saved document on disk, and the current one (unsaved changes kept across the restart, or the saved one).
+            var stored = File.ReadAllBytes(SavedFile(data, id));
+            var current = await Export(api, id);
+            var state = await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", Ct);
             if (model.Profiles.TryGetValue(id, out var profile))
             {
-                Assert.True(stored.AsSpan().SequenceEqual(profile.Saved) || (profile.SaveInFlight != null && stored.AsSpan().SequenceEqual(profile.SaveInFlight)),
+                var savedIsLast = stored.AsSpan().SequenceEqual(profile.Saved);
+                var savedInFlight = profile.SaveInFlight != null && stored.AsSpan().SequenceEqual(profile.SaveInFlight);
+                Assert.True(savedIsLast || savedInFlight,
                     $"{context}: {id} is neither its last saved document nor the one in flight:\n{Encoding.UTF8.GetString(stored)}");
+                Assert.True(IsKnownCurrent(profile, stored, savedIsLast, current),
+                    $"{context}: {id}'s current document is neither its saved one, a generation acknowledged since, nor the one its commit in flight makes:\n{Encoding.UTF8.GetString(current)}");
+                if (afterPause)
+                {
+                    var last = profile.Since.Count > 0 ? profile.Since[^1] : profile.Saved;
+                    Assert.True(current.AsSpan().SequenceEqual(last), $"{context}: after a pause, {id} isn't its last acknowledged generation:\n{Encoding.UTF8.GetString(current)}");
+                }
                 profile.Saved = stored;
                 profile.SaveInFlight = null;
+                profile.Since.Clear();
+                if (!current.AsSpan().SequenceEqual(stored))
+                    profile.Since.Add(current);
+                profile.CommitInFlight = null;
             }
             else
             {
                 Assert.True(model.CreateInFlight is { } create && create.Id == id, $"{context}: {id} was never created");
                 Assert.True(stored.AsSpan().SequenceEqual(model.CreateInFlight!.Value.Bytes), $"{context}: {id} isn't the document its create sent:\n{Encoding.UTF8.GetString(stored)}");
+                Assert.True(current.AsSpan().SequenceEqual(stored), $"{context}: {id}, created and never changed, has unsaved changes");
                 model.Profiles[id] = new Profile { Saved = stored };
             }
 
-            // Every blob it refers to is one the client uploaded, stored on disk and through the API.
-            foreach (Match blob in BlobPattern().Matches(Encoding.UTF8.GetString(stored)))
+            // Dirty exactly when the current document isn't the saved one, and then restored: revision 2, recovered.
+            var dirty = !current.AsSpan().SequenceEqual(stored);
+            Assert.Equal(dirty, state.GetProperty("dirty").GetBoolean());
+            Assert.Equal(dirty, state.TryGetProperty("recovered", out _));
+            Assert.Equal(dirty ? 2 : 1, state.GetProperty("rev").GetInt64());
+
+            // Every blob it refers to, saved or unsaved, is one the client uploaded, stored on disk and through the API.
+            foreach (Match blob in BlobPattern().Matches(Encoding.UTF8.GetString(stored) + Encoding.UTF8.GetString(current)))
             {
                 Assert.True(model.Blobs.ContainsKey(blob.Value), $"{context}: {id} refers to {blob.Value}, which was never acknowledged");
                 Assert.True(File.Exists(Path.Combine(data, "blobs", blob.Groups[1].Value)), $"{context}: {id} refers to {blob.Value}, which isn't stored");
@@ -270,10 +343,8 @@ public sealed partial class CrashKillTests
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             }
 
-            var state = await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", Ct);
             model.Profiles[id].Rev = state.GetProperty("rev").GetInt64();
             model.Profiles[id].Tag = state.GetProperty("instance").GetString()!;
-            Assert.False(state.GetProperty("dirty").GetBoolean());
         }
 
         foreach (var id in model.Profiles.Keys.Where(id => !ids.Contains(id)).ToList())
@@ -334,7 +405,7 @@ public sealed partial class CrashKillTests
     {
         try
         {
-            while (true)
+            while (!run.Quiescing)
             {
                 var ids = model.Profiles.Keys.Order(StringComparer.Ordinal).ToList();
                 var roll = rng.Next(100);
@@ -364,6 +435,7 @@ public sealed partial class CrashKillTests
                         });
                         model.Profiles[id].Saved = current;
                         model.Profiles[id].SaveInFlight = null;
+                        model.Profiles[id].Since.Clear();
                         model.Saves++;
                         break;
                     }
@@ -443,6 +515,7 @@ public sealed partial class CrashKillTests
         }
 
         var bytes = LiveEngine.Commit(profile.Tag, profile.Rev, null, op);
+        profile.CommitInFlight = Applied(document, op);
         var body = await run.Send("commit", async () =>
         {
             using var response = await LiveEngine.PostBytes(api, $"/api/profiles/{id}/commit", bytes, ct);
@@ -451,6 +524,70 @@ public sealed partial class CrashKillTests
             return answer;
         });
         profile.Rev = body.GetProperty("rev").GetInt64();
+        // The generation it made, as the engine would keep it (a read): the one worked out before it was sent.
+        var made = await run.Send("read", () => Export(api, id));
+        Assert.True(made.AsSpan().SequenceEqual(profile.CommitInFlight), $"The commit made another document than the one worked out for it:\n{Encoding.UTF8.GetString(made)}");
+        profile.Since.Add(made);
+        profile.CommitInFlight = null;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="current"/>, a profile's current document after a restart, is one the client may find: its
+    /// saved document (<paramref name="stored"/>), or, when that is its last acknowledged save, a generation acknowledged
+    /// since or the one its commit in flight makes (kept only once 2 s passed after it). Never older than the saved
+    /// document: with the save in flight done, nothing kept before it applies.
+    /// </summary>
+    private static bool IsKnownCurrent(Profile profile, byte[] stored, bool savedIsLast, byte[] current)
+    {
+        var allowed = new List<byte[]> { stored };
+        if (savedIsLast)
+        {
+            allowed.AddRange(profile.Since);
+            if (profile.CommitInFlight is { } pending)
+                allowed.Add(pending);
+        }
+        return allowed.Any(a => a.AsSpan().SequenceEqual(current));
+    }
+
+    /// <summary>
+    /// The document <paramref name="op"/> makes of <paramref name="document"/> (an export), as stored: applied to an
+    /// in-memory document opened from it, with its revisions as of that document.
+    /// </summary>
+    private static byte[] Applied(JsonObject document, JsonObject op)
+    {
+        using var json = JsonDocument.Parse(document.ToJsonString());
+        var (opened, check) = ProfileDocument.Open(json.RootElement);
+        Assert.True(opened is not null, string.Join("; ", check.Errors.Select(e => $"{e.Code} {e.Path}")));
+        using var doc = opened;
+        var local = op.DeepClone().AsObject();
+        if (local.ContainsKey("baseRev"))
+            local["baseRev"] = doc.Rev;
+        var outcome = doc.Commit(LiveEngine.Commit(doc.Instance, doc.Rev, null, local));
+        Assert.True(outcome.Result is not null, $"The commit doesn't apply to the document it was made for: {outcome.Status}");
+        return Workspace.Serialize(doc.Current);
+    }
+
+    [Fact]
+    public void TheOracle_AcceptsACommitInFlightOnlyAsTheDocumentItMakes()
+    {
+        var saved = "{\"saved\":1}"u8.ToArray();
+        var acknowledged = "{\"acknowledged\":1}"u8.ToArray();
+        var pending = "{\"pending\":1}"u8.ToArray();
+        var other = "{\"other\":1}"u8.ToArray();
+        var profile = new Profile { Saved = saved };
+        profile.Since.Add(acknowledged);
+
+        Assert.True(IsKnownCurrent(profile, saved, true, saved));
+        Assert.True(IsKnownCurrent(profile, saved, true, acknowledged));
+        Assert.False(IsKnownCurrent(profile, saved, true, pending));
+        Assert.False(IsKnownCurrent(profile, saved, true, other));
+
+        profile.CommitInFlight = pending;
+        Assert.True(IsKnownCurrent(profile, saved, true, pending));
+        Assert.False(IsKnownCurrent(profile, saved, true, other));
+        // After the save in flight landed, nothing made before it applies.
+        Assert.False(IsKnownCurrent(profile, saved, false, pending));
+        Assert.False(IsKnownCurrent(profile, saved, false, acknowledged));
     }
 
     private static JsonObject MediaScene(string blob) => new()
@@ -506,6 +643,9 @@ public sealed partial class CrashKillTests
 
         return found;
     }
+
+    /// <summary>A profile's saved document on disk (read only by the test; a client reads the current one).</summary>
+    private static string SavedFile(string data, string id) => Path.Combine(data, "profiles", id, "document.json");
 
     private static byte[] Replace(byte[] bytes, string from, string to)
     {

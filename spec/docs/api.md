@@ -191,7 +191,7 @@ The engine reads the displays on the thread that runs its desktop windows; when 
 
 | `status` | Meaning | Members besides `id`, `status` and `instance` |
 |---|---|---|
-| `ok` | The engine opens the document. A document with invalid or unsupported scenes is `ok`: those items are placeholders ([unsupported content](unsupported.md)). | `name`, `width`, `height`, `rev`, `dirty` |
+| `ok` | The engine opens the document. A document with invalid or unsupported scenes is `ok`: those items are placeholders ([unsupported content](unsupported.md)). | `name`, `width`, `height`, `rev`, `dirty`; `recovered` when the document's unsaved changes were restored at open ([below](#documents)) |
 | `unsupported` | The document needs a format major version (`unsupported.format`, at `/format`) or a document capability (`unsupported.capability`, at `/requires/i`) this engine lacks. | `problem`; `name` when the document's `profile.name` is a string of 1–256 characters |
 | `unreadable` | The stored file can't be read (`io`), isn't JSON (`json`), or breaks the document schema or a document limit outside its scenes (the document check's code and path, [validation](validation.md)). | `problem` |
 
@@ -238,7 +238,9 @@ A client that lost the answer and deletes again gets 404 for the profile it dele
 
 ## Documents
 
-`GET /api/profiles/{id}` answers `documentResponse`: the current document (the latest revision, saved or not), the document's state (`rev`, the same as `document.rev`; `dirty`, `canUndo`, `canRedo`) and its tag, `instance`, which its revisions belong to ([above](#a-documents-tag)). The document is in the shape the engine returns (`responseDocument`): `infopanel.document/1` with every revision member set (the `rev` of the document, of the profile and of every item), and every scene exactly as stored (`storedScene`). A scene the engine draws normally matches the scene schema; one it draws as a placeholder (it needs a newer format or a capability the engine lacks, breaks a rule or limit, or can't be compiled) comes back unchanged and may not, so a client checks a scene before it reads it as one. The `rev` read here is what a commit's `baseRev` is based on ([commits](commit.md)).
+`GET /api/profiles/{id}` answers `documentResponse`: the current document (the latest revision, saved or not), the document's state (`rev`, the same as `document.rev`; `dirty`, `canUndo`, `canRedo`; `recovered`) and its tag, `instance`, which its revisions belong to ([above](#a-documents-tag)). The document is in the shape the engine returns (`responseDocument`): `infopanel.document/1` with every revision member set (the `rev` of the document, of the profile and of every item), and every scene exactly as stored (`storedScene`). A scene the engine draws normally matches the scene schema; one it draws as a placeholder (it needs a newer format or a capability the engine lacks, breaks a rule or limit, or can't be compiled) comes back unchanged and may not, so a client checks a scene before it reads it as one. The `rev` read here is what a commit's `baseRev` is based on ([commits](commit.md)).
+
+`recovered` (a timestamp, UTC to the second) is set when the engine restored the document's unsaved changes as it opened it after a restart ([document](document.md#revisions)): when those changes were kept. It stays from the restore until the document is saved or reverted; an undo back to the saved document and a redo leave it. A client shows it only while `dirty` ("Unsaved changes restored, kept at 14:32"); a document without it has nothing restored.
 
 ## Blobs
 
@@ -319,7 +321,7 @@ A `profile.*` code means there is no subscription to that profile. One at `""`, 
 
 ### Change events
 
-The `doc` message (`docEvent`) is the subscribed document's state: its tag (`instance`, [above](#a-documents-tag)), `rev`, `dirty`, `canUndo`, `canRedo`. The engine sends it when the subscription starts and after every change to the document or to its state: every commit, undo, redo, revert and save that changes either, whichever client made it. It keeps only the latest state to send, so a client that falls behind gets the newest one and may skip revisions, and the last `doc` message it gets is always the current state. It carries no content: the document at that revision is read with `GET /api/profiles/{id}`.
+The `doc` message (`docEvent`) is the subscribed document's state: its tag (`instance`, [above](#a-documents-tag)), `rev`, `dirty`, `canUndo`, `canRedo`, and `recovered` while the document has it ([above](#documents)). The engine sends it when the subscription starts and after every change to the document or to its state: every commit, undo, redo, revert and save that changes either, whichever client made it. It keeps only the latest state to send, so a client that falls behind gets the newest one and may skip revisions, and the last `doc` message it gets is always the current state. It carries no content: the document at that revision is read with `GET /api/profiles/{id}`.
 
 ### Frames
 

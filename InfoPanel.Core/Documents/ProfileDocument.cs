@@ -100,10 +100,18 @@ public sealed record CommitOutcome
 }
 
 /// <summary>A consistent read of a document: its generation, the document with every <c>rev</c> member set, and its state.</summary>
-public sealed record DocumentState(Generation Generation, Document Document, bool Dirty, bool CanUndo, bool CanRedo, DateTimeOffset? Recovered = null);
+public sealed record DocumentState(Generation Generation, Document Document, bool Dirty, bool CanUndo, bool CanRedo, DateTimeOffset? Recovered = null)
+{
+    /// <summary><see cref="Recovered"/> as the API writes it (<c>recovered</c>: UTC to the second); null when not set.</summary>
+    public string? RecoveredText => RecoveryFile.TextOf(Recovered);
+}
 
 /// <summary>A document's revision and state, read together (the <c>/ws</c> <c>doc</c> event, the profile list).</summary>
-public readonly record struct DocumentStatus(long Rev, bool Dirty, bool CanUndo, bool CanRedo, DateTimeOffset? Recovered = null);
+public readonly record struct DocumentStatus(long Rev, bool Dirty, bool CanUndo, bool CanRedo, DateTimeOffset? Recovered = null)
+{
+    /// <summary><see cref="Recovered"/> as the API writes it (<c>recovered</c>: UTC to the second); null when not set.</summary>
+    public string? RecoveredText => RecoveryFile.TextOf(Recovered);
+}
 
 public enum DocumentChange
 {
@@ -220,7 +228,10 @@ public sealed class ProfileDocument : IDisposable
         return (load.Generation is { } g ? new ProfileDocument(g, options) : null, load.Check);
     }
 
-    /// <summary>Raised after every new revision and every save, outside the lock.</summary>
+    /// <summary>
+    /// Raised after every new revision and every save, outside the lock; and after a revert that takes no step but ends
+    /// <see cref="Recovered"/> (<see cref="DocumentChange.Revert"/> with the current generation).
+    /// </summary>
     public event EventHandler<DocumentChangedEventArgs>? Changed;
 
     public string Id => _saved.Document.Id;
@@ -739,6 +750,7 @@ public sealed class ProfileDocument : IDisposable
         CommitResult result;
         Generation? published = null;
         long endCheckpoint;
+        var recoveredEnded = false;
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -752,6 +764,7 @@ public sealed class ProfileDocument : IDisposable
             _history.EndMerge();
             if (change == DocumentChange.Revert)
             {
+                recoveredEnded = _recovered is not null;
                 _recovered = null;
                 if (!DirtyCore) result = Result(current.Rev, null, null);
                 else
@@ -783,6 +796,11 @@ public sealed class ProfileDocument : IDisposable
         {
             Raise(published, change);
             _options.HistoryBudget.NotifyEvicted();
+        }
+        else if (recoveredEnded)
+        {
+            // No step, but the state changed (recovered ended): told as a revert of the current revision.
+            Raise(_current, change);
         }
         return new CommitOutcome { Result = result };
     }

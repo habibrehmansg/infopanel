@@ -810,6 +810,7 @@ internal sealed class PreviewSession
             Dirty = status.Dirty,
             CanUndo = status.CanUndo,
             CanRedo = status.CanRedo,
+            Recovered = status.RecoveredText,
         }, SpecJson.Options);
     }
 
