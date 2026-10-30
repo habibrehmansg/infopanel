@@ -27,6 +27,7 @@ public static class EngineCommandLine
         ["--mock-seed"] = "MockSeed",
         ["--mcp-text"] = "McpText",
         ["--bundled-plugins"] = "BundledPlugins",
+        ["--h264"] = "H264",
     };
 
     private static readonly Dictionary<string, string> Flags = new(StringComparer.Ordinal)
@@ -86,6 +87,8 @@ public static class EngineCommandLine
           --no-plugins          Start no plugin hosts
           --bundled-plugins <dir>
                                 The bundled plugins' folder (default: plugins next to the engine)
+          --h264 <mode>         H.264 encoders the live preview's video may use: auto (default;
+                                hardware, then software), hardware, software or off (images only)
           --help                Show this help
         """;
 

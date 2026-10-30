@@ -85,6 +85,24 @@ public class EngineOptionsTests
         Assert.True(Load(["--mock=false", "--mock-seed", "1"], out _)!.Mock);
     }
 
+    [Theory]
+    [InlineData(new string[0], "auto")]
+    [InlineData(new[] { "--h264", "hardware" }, "hardware")]
+    [InlineData(new[] { "--h264", "software" }, "software")]
+    [InlineData(new[] { "--h264=off" }, "off")]
+    public void H264_ChoosesTheEncodersTheVideoMayUse(string[] args, string expected)
+    {
+        Assert.Equal(expected, Load(args, out var errors)!.H264);
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void H264_RefusesAModeItDoesntKnow()
+    {
+        Assert.Null(Load(["--h264", "vp8"], out var errors));
+        Assert.Contains(errors, e => e.Contains("--h264 must be auto, hardware, software or off", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void InlineValues()
     {

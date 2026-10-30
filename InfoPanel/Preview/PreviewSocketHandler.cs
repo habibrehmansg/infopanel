@@ -10,6 +10,8 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 
+using InfoPanel.Preview.Video;
+
 namespace InfoPanel.Preview;
 
 /// <summary>How long a <c>/ws</c> connection without an <c>auth.{token}</c> subprotocol has to send its <c>auth</c> message.</summary>
@@ -72,7 +74,7 @@ public static class PreviewSocketHandler
 
     private static async Task HandleAsync(HttpContext context, Workspace workspace, RenderService render,
         IHostApplicationLifetime lifetime, ILoggerFactory loggers, EngineRuntime runtime, TokenStore tokens, PreviewSocketOptions options,
-        SettingsStore settings)
+        SettingsStore settings, H264Backends backends, TimeProvider time)
     {
         if (!context.WebSockets.IsWebSocketRequest)
         {
@@ -99,7 +101,7 @@ public static class PreviewSocketHandler
         }
 
         // The settings' changes go to the session token's connections alone: an integration token can't read the settings.
-        var session = new PreviewSession(socket, workspace, render, logger, caller?.Allows(ApiScope.Session) == true ? settings : null);
+        var session = new PreviewSession(socket, workspace, render, logger, caller?.Allows(ApiScope.Session) == true ? settings : null, backends, time);
         var tokenId = caller?.TokenId;
         void OnRevoked(string id)
         {
@@ -349,8 +351,11 @@ internal readonly record struct PreviewError(string Code, string Path, string Me
 /// <item><c>settings</c> (a session token's connection only): a slot holding the newest settings version seen; sent when it
 /// is newer than the last one sent, and ahead of <c>profiles</c>.</item>
 /// <item><c>profiles</c>: a slot holding the newest workspace version seen; sent when it is newer than the last one sent.</item>
-/// <item>The newest frame of the current subscription (each subscription has its own sink and one-slot channel).</item>
+/// <item>Frames of the current subscription (each subscription has its own sink): at most <see cref="FramesPerTurn"/> a
+/// turn, in order, with a wake left pending when more wait, so neither a video stream nor an error flood starves the
+/// other or the close.</item>
 /// </list>
+/// The close is checked first on every wake, and errors go at most <see cref="ErrorsPerTurn"/> a turn.
 /// </summary>
 internal sealed class PreviewSession
 {
@@ -387,13 +392,25 @@ internal sealed class PreviewSession
     private string _closeDescription = "";
     private CancellationTokenSource? _abort;
 
-    public PreviewSession(WebSocket socket, Workspace workspace, RenderService render, ILogger logger, SettingsStore? settings = null)
+    /// <summary>Frames sent on one turn of the send loop at most, before everything else gets its turn.</summary>
+    internal const int FramesPerTurn = 4;
+
+    /// <summary>Errors sent on one turn of the send loop at most.</summary>
+    internal const int ErrorsPerTurn = 8;
+
+    private readonly H264Backends? _backends;
+    private readonly TimeProvider _time;
+
+    public PreviewSession(WebSocket socket, Workspace workspace, RenderService render, ILogger logger, SettingsStore? settings = null,
+        H264Backends? backends = null, TimeProvider? time = null)
     {
         _socket = socket;
         _workspace = workspace;
         _render = render;
         _logger = logger;
         _settings = settings;
+        _backends = backends;
+        _time = time ?? TimeProvider.System;
     }
 
     /// <summary>Tests: called with the profile's id after a subscribe found its document, before frames are attached.</summary>
@@ -617,7 +634,11 @@ internal sealed class PreviewSession
         WebPreviewSink sink;
         lock (_lock)
         {
-            sink = new WebPreviewSink(profileId, request, Wake, OnSinkClosed, encoding);
+            var backends = _backends;
+            sink = new WebPreviewSink(profileId, request, Wake, OnSinkClosed, encoding, backends == null ? null
+                : (wake, refresh, skipped) => new VideoStream(backends, request.MaxFps, wake, refresh, skipped, _logger, _time));
+            var created = sink;
+            created.Refresh = () => _render.Refresh(created);
             _sink = sink;
             _subscriptions++;
             _doc = doc;
@@ -919,21 +940,26 @@ internal sealed class PreviewSession
         {
             await _signal.WaitAsync(ct);
 
-            while (_errors.Reader.TryRead(out var error))
-            {
-                if (IsStale(error.Ends))
-                    continue;
-                if (!CanSend)
-                    return;
-                await SendTextAsync(error.Text, ct);
-            }
-
             if (_closing)
             {
                 if (_socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
                     await _socket.CloseOutputAsync(_closeStatus, _closeDescription, ct);
                 return;
             }
+
+            var errors = 0;
+            while (errors < ErrorsPerTurn && _errors.Reader.TryRead(out var error))
+            {
+                if (IsStale(error.Ends))
+                    continue;
+                if (!CanSend)
+                    return;
+                await SendTextAsync(error.Text, ct);
+                errors++;
+            }
+
+            if (errors == ErrorsPerTurn && _errors.Reader.Count > 0)
+                Wake();
 
             // Clear the marks before reading the state: a change after the read marks the slot again and wakes us.
             var subscribed = Interlocked.Exchange(ref _docSubscribed, 0) == 1;
@@ -968,12 +994,22 @@ internal sealed class PreviewSession
             lock (_lock)
                 sink = _sink;
 
-            // A subscribe whose doc hasn't gone out yet (it came after the check above): its frame waits a turn.
-            if (sink != null && Volatile.Read(ref _docSubscribed) == 0 && sink.TryTakeFrame(out var frame) && CanSend)
+            // A subscribe whose doc hasn't gone out yet (it came after the check above): its frames wait a turn.
+            if (sink == null || Volatile.Read(ref _docSubscribed) != 0)
+                continue;
+            var frames = 0;
+            while (frames < FramesPerTurn && !_closing && sink.TryTakeFrame(out var frame))
             {
+                if (!CanSend)
+                    return;
                 await _socket.SendAsync(frame.Prefix, WebSocketMessageType.Binary, false, ct);
                 await _socket.SendAsync(frame.Payload, WebSocketMessageType.Binary, true, ct);
+                frames++;
             }
+
+            // More may wait (a video stream's queue): another turn, after everything else.
+            if (frames == FramesPerTurn)
+                Wake();
         }
     }
 

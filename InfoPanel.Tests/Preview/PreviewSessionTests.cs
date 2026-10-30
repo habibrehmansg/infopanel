@@ -2,6 +2,8 @@ using System.Net.WebSockets;
 using InfoPanel.Documents;
 using InfoPanel.Output;
 using InfoPanel.Preview;
+using InfoPanel.Preview.Video;
+using InfoPanel.Tests.Preview.Video;
 using InfoPanel.Scenes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -28,10 +30,10 @@ public sealed class PreviewSessionTests(EngineFactory factory) : IClassFixture<E
 
     public async ValueTask DisposeAsync() => await _render.DisposeAsync();
 
-    private async Task<(FakeWebSocket Socket, PreviewSession Session, Task Run)> Start()
+    private async Task<(FakeWebSocket Socket, PreviewSession Session, Task Run)> Start(H264Backends? backends = null)
     {
         var socket = new FakeWebSocket();
-        var session = new PreviewSession(socket, Workspace, _render, NullLogger.Instance);
+        var session = new PreviewSession(socket, Workspace, _render, NullLogger.Instance, backends: backends);
         var run = session.RunAsync(CancellationToken.None, CancellationToken.None);
         Assert.True((await socket.NextAsync()).IsText("hello"));
         return (socket, session, run);
@@ -301,5 +303,138 @@ public sealed class PreviewSessionTests(EngineFactory factory) : IClassFixture<E
             target.OnFrame(frame);
             Interlocked.Increment(ref _relayed);
         }
+    }
+
+    /// <summary>Subscribes to <paramref name="id"/> as video over a fake encoder; returns the sink once the doc went out.</summary>
+    private static async Task<WebPreviewSink> SubscribeVideo(FakeWebSocket socket, PreviewSession session, string id)
+    {
+        await socket.ReceiveAsync(new { type = "subscribe", profileId = id, maxFps = 60, encoding = "h264" });
+        await socket.NextAsync(m => m.IsText("doc"));
+        return session.CurrentSink!;
+    }
+
+    /// <summary>Draws a changed frame of <paramref name="id"/> and waits until the stream has queued it.</summary>
+    private async Task QueueVideoFrame(WebPreviewSink sink, string id, int x, int queued)
+    {
+        MoveTo(Workspace.Open(id)!, x);
+        await Task.Delay(25); // Past the subscription's frame interval: the loop draws for it.
+        Assert.Equal(1, _render.Tick(id));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (sink.Video!.Queued < queued)
+        {
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"{queued} frames queued");
+            await Task.Delay(2);
+        }
+    }
+
+    [Fact]
+    public async Task AVideoFlood_DoesntDelayTheDoc_MoreThanOneTurnsFrames()
+    {
+        var id = NewProfile("Video flood");
+        var (socket, session, run) = await Start(new H264Backends([new FakeH264Backend()], NullLogger.Instance));
+        var sink = await SubscribeVideo(socket, session, id);
+
+        // The first frame on the wire, held; eight more queued behind it, then a change to the document.
+        var held = socket.PauseWhen(m => m.Type == WebSocketMessageType.Binary);
+        Assert.Equal(1, _render.Tick(id));
+        await held;
+        for (var i = 1; i <= VideoStream.QueueSlots; i++)
+            await QueueVideoFrame(sink, id, 10 + i, i);
+        var revision = MoveTo(Workspace.Open(id)!, 99);
+        socket.Resume();
+
+        Assert.True((await socket.NextAsync()).Type == WebSocketMessageType.Binary);
+        var framesBeforeDoc = 0;
+        while (true)
+        {
+            var next = await socket.NextAsync();
+            if (next.IsText("doc"))
+            {
+                Assert.Equal(revision, Revision(next));
+                break;
+            }
+
+            Assert.Equal(WebSocketMessageType.Binary, next.Type);
+            framesBeforeDoc++;
+        }
+
+        // The held frame was the turn's first: at most the rest of that turn's frames go before the doc.
+        Assert.True(framesBeforeDoc <= PreviewSession.FramesPerTurn - 1, $"{framesBeforeDoc} frames went before the doc");
+        // Every queued frame is still sent, in order, after it.
+        var ticks = new List<long>();
+        for (var i = framesBeforeDoc; i < VideoStream.QueueSlots; i++)
+            ticks.Add((await socket.NextAsync(m => m.Type == WebSocketMessageType.Binary)).Frame.Tick);
+        Assert.Equal(ticks.Order(), ticks);
+        await Stop(socket, run);
+    }
+
+    [Fact]
+    public async Task AnErrorFlood_DoesntStarveFrames()
+    {
+        var id = NewProfile("Error flood, frames");
+        var (socket, session, run) = await Start();
+        await socket.ReceiveAsync(new { type = "subscribe", profileId = id });
+        await socket.NextAsync(m => m.IsText("doc"));
+
+        var held = socket.PauseWhen(m => m.IsText("error"));
+        await socket.ReceiveTextAsync("""{"type":"dance"}""");
+        await held;
+        for (var i = 0; i < 30; i++)
+            await socket.ReceiveTextAsync("""{"type":"dance"}""");
+        Assert.Equal(1, _render.Tick(id));
+        socket.Resume();
+
+        Assert.True((await socket.NextAsync()).IsText("error"));
+        var errorsBeforeFrame = 0;
+        while (!(await socket.NextAsync()).Type.Equals(WebSocketMessageType.Binary))
+            errorsBeforeFrame++;
+        Assert.True(errorsBeforeFrame <= PreviewSession.ErrorsPerTurn - 1, $"{errorsBeforeFrame} errors went before the frame");
+        await Stop(socket, run);
+    }
+
+    [Fact]
+    public async Task AnErrorFlood_DoesntDelayTheClose()
+    {
+        var (socket, session, run) = await Start();
+        var held = socket.PauseWhen(m => m.IsText("error"));
+        await socket.ReceiveTextAsync("""{"type":"dance"}""");
+        await held;
+        for (var i = 0; i < 30; i++)
+            await socket.ReceiveTextAsync("""{"type":"dance"}""");
+        session.BeginClose(WebSocketCloseStatus.EndpointUnavailable, "The engine is stopping.");
+        socket.Resume();
+
+        Assert.True((await socket.NextAsync()).IsText("error"));
+        var errorsBeforeClose = 0;
+        while ((await socket.NextAsync()).Type != WebSocketMessageType.Close)
+            errorsBeforeClose++;
+        // The held error's turn finishes; the next turn closes before any more errors.
+        Assert.True(errorsBeforeClose <= PreviewSession.ErrorsPerTurn - 1, $"{errorsBeforeClose} errors went before the close");
+        await Stop(socket, run);
+    }
+
+    [Fact]
+    public async Task AVideoSubscription_TakesItsFramesFromTheStream_AndAKeyframeMessageIsAnswered()
+    {
+        var id = NewProfile("Video subscription");
+        var (socket, session, run) = await Start(new H264Backends([new FakeH264Backend()], NullLogger.Instance));
+        await SubscribeVideo(socket, session, id);
+        Assert.Equal(1, _render.Tick(id));
+        var first = (await socket.NextAsync(m => m.Type == WebSocketMessageType.Binary)).Frame;
+        Assert.Equal(("h264", true, "hardware"), (first.Encoding, first.Keyframe, first.Encoder));
+
+        MoveTo(Workspace.Open(id)!, 40);
+        await Task.Delay(25);
+        Assert.Equal(1, _render.Tick(id));
+        Assert.False((await socket.NextAsync(m => m.Type == WebSocketMessageType.Binary)).Frame.Keyframe);
+
+        // A still panel: the keyframe asked for comes with the frame the refresh asks the loop for.
+        await socket.ReceiveAsync(new { type = "keyframe" });
+        await Task.Delay(25);
+        Assert.Equal(1, _render.Tick(id));
+        var answered = (await socket.NextAsync(m => m.Type == WebSocketMessageType.Binary)).Frame;
+        Assert.True(answered.Keyframe);
+        Assert.Equal(first.Description, answered.Description);
+        await Stop(socket, run);
     }
 }

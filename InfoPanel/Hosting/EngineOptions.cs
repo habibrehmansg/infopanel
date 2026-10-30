@@ -89,6 +89,12 @@ public sealed partial class EngineOptions
     /// </summary>
     public string? BundledPlugins { get; init; }
 
+    /// <summary>
+    /// Which H.264 encoders the preview's video may use (<c>--h264</c>): <c>auto</c> (every one, hardware first),
+    /// <c>hardware</c>, <c>software</c> or <c>off</c> (none: an <c>h264</c> subscription's frames are PNG).
+    /// </summary>
+    public string H264 { get; init; } = "auto";
+
     [GeneratedRegex("^[A-Za-z0-9_-]{1,256}$")]
     private static partial Regex TokenPattern();
 
@@ -185,6 +191,10 @@ public sealed partial class EngineOptions
             }
         }
 
+        var h264 = Value(section, "H264") ?? "auto";
+        if (!Preview.Video.H264Backends.Modes.Contains(h264))
+            problems.Add($"--h264 must be auto, hardware, software or off (got '{h264}').");
+
         var webRoot = Value(section, "WebRoot");
         if (webRoot != null && !Directory.Exists(webRoot))
             problems.Add($"--web-root '{webRoot}' does not exist.");
@@ -236,6 +246,7 @@ public sealed partial class EngineOptions
             Mcp = mcp,
             NoPlugins = noPlugins,
             BundledPlugins = bundledPlugins == null ? null : Path.GetFullPath(bundledPlugins),
+            H264 = h264,
         };
     }
 

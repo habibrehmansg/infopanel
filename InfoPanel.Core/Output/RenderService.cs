@@ -163,6 +163,26 @@ public sealed class RenderService : IAsyncDisposable
     }
 
     /// <summary>
+    /// Makes the sink fresh, so it gets the loop's next frame whatever it holds, and wakes its loop: for a sink whose
+    /// output needs a new frame though its <see cref="IFrameSink.Request"/> didn't change (a video stream's keyframe).
+    /// Does nothing if it isn't attached.
+    /// </summary>
+    public void Refresh(IFrameSink sink)
+    {
+        RenderLoop? loop = null;
+        lock (_lock)
+        {
+            if (_sinkLoops.TryGetValue(sink, out var attached))
+            {
+                Volatile.Write(ref attached.Entry.Fresh, true);
+                loop = attached.Loop;
+            }
+        }
+
+        loop?.Wake();
+    }
+
+    /// <summary>
     /// Runs one tick of the profile's loop now, on the calling thread, and returns the number of frames delivered
     /// (0 when nothing is rendering the profile). For tests and hand-driven loops (<see cref="RenderServiceOptions.AutoTick"/> false).
     /// </summary>

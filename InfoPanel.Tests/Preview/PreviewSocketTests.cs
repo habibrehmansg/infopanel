@@ -228,6 +228,31 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
     }
 
     [Fact]
+    public async Task AnH264Subscription_GetsAKeyframe_ThenDeltas_AndAKeyframeAfterASizeChange()
+    {
+        // The test engine's encoder is a fake (EngineFactory), so this runs anywhere; VideoToolboxTests drive the real one.
+        var (id, shape) = await CreateProfile("Video frames");
+        await using var client = await Connect();
+        await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.5, maxFps = 60, encoding = "h264" }, Ct);
+        var (first, _) = await client.ReceiveFrameAsync(Ct);
+        Assert.Equal(("h264", true, "hardware"), (first.Encoding, first.Keyframe, first.Encoder));
+        Assert.StartsWith("avc1.42", first.Codec);
+        Assert.NotNull(first.Description);
+        Assert.Null(first.Fallback);
+
+        using var api = factory.CreateApiClient();
+        (await TestDocs.CommitAsync(api, id, Ct, TestDocs.Place(shape, 40, 10))).EnsureSuccessStatusCode();
+        var (delta, _) = await client.ReceiveFrameAsync(Ct, h => h.Tick > first.Tick);
+        Assert.Equal(("h264", false), (delta.Encoding, delta.Keyframe));
+        Assert.Null(delta.Codec);
+
+        await client.SendAsync(new { type = "view", scale = 0.25 }, Ct);
+        var (resized, _) = await client.ReceiveFrameAsync(Ct, h => h.Scale == 0.25);
+        Assert.True(resized.Keyframe);
+        Assert.Equal((120, 80), (resized.PixelWidth, resized.PixelHeight));
+    }
+
+    [Fact]
     public async Task AKeyframeMessage_WithoutASubscription_IsSubscriptionMissing_AndOnPngFramesDoesNothing()
     {
         await using var client = await Connect();

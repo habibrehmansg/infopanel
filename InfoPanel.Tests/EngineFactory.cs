@@ -1,7 +1,9 @@
 using System.Net.Http.Headers;
 using InfoPanel.Hosting;
+using InfoPanel.Preview.Video;
 using InfoPanel.Scenes;
 using InfoPanel.Tests.Contract;
+using InfoPanel.Tests.Preview.Video;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -84,6 +86,9 @@ public class EngineFactory : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton(Regional);
+            // A fake H.264 encoder as the run's only one (as --h264 enables it), so video runs on any machine.
+            services.AddSingleton(sp => new H264Backends(H264Backends.Enabled([new FakeH264Backend()], sp.GetRequiredService<EngineOptions>().H264),
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger("InfoPanel.Preview.Video")));
             services.AddSingleton<IFolderOpener>(Folders);
             // Every test engine has --no-browser; one that turns it off gets a launcher that opens nothing.
             services.AddSingleton(sp => new BrowserLauncher(sp.GetRequiredService<ILogger<BrowserLauncher>>(),

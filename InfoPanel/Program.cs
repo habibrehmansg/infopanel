@@ -10,6 +10,7 @@ using InfoPanel.Output;
 using InfoPanel.Persistence;
 using InfoPanel.Plugins;
 using InfoPanel.Preview;
+using InfoPanel.Preview.Video;
 using InfoPanel.Scenes;
 using InfoPanel.Security;
 using InfoPanel.Sensors;
@@ -341,6 +342,7 @@ try
         sp.GetRequiredService<TimeProvider>(),
         sp.GetService<RenderServiceOptions>()));
     builder.Services.AddSingleton(new PreviewSocketOptions());
+    builder.Services.AddSingleton(sp => H264Backends.ForThisComputer(options.H264, sp.GetRequiredService<ILoggerFactory>().CreateLogger("InfoPanel.Preview.Video")));
     builder.Services.AddSingleton<BrowserLauncher>();
     builder.Services.AddSingleton<IFolderOpener>(sp => new FolderOpener(sp.GetRequiredService<ILogger<FolderOpener>>()));
     builder.Services.AddHostedService<SensorService>();
