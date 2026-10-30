@@ -20,11 +20,16 @@ public readonly record struct PointRect(double X, double Y, double Width, double
 }
 
 /// <summary>
-/// A display: its <paramref name="Name"/> (macOS: <c>NSScreen.localizedName</c>), its <paramref name="Frame"/> in
-/// desktop points and its <paramref name="Scale"/> (backing pixels per point).
+/// A display: its <paramref name="Name"/>, which a profile's <c>window.display</c> matches (macOS:
+/// <c>NSScreen.localizedName</c>), its <paramref name="Frame"/> in desktop points, its <paramref name="Scale"/> (backing
+/// pixels per point), and its <paramref name="Label"/>, the name the system shows people, where that isn't
+/// <paramref name="Name"/> (null: the same).
 /// </summary>
-public sealed record DisplayInfo(string Name, PointRect Frame, double Scale)
+public sealed record DisplayInfo(string Name, PointRect Frame, double Scale, string? Label = null)
 {
+    /// <summary>The display's name for people: <see cref="Label"/>, else <see cref="Name"/>.</summary>
+    public string DisplayLabel => Label ?? Name;
+
     /// <summary>The display's width in backing pixels.</summary>
     public int PixelWidth => (int)Math.Round(Frame.Width * Scale);
 

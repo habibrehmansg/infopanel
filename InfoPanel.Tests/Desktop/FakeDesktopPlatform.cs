@@ -15,6 +15,7 @@ public sealed class FakeDesktopPlatform : IDesktopPlatform, IDisposable
     private readonly BlockingCollection<Action> _queue = [];
     private readonly Thread _thread;
     private int _uiThreadId;
+    private int _displaysListed;
 
     public FakeDesktopPlatform(params DisplayInfo[] displays)
     {
@@ -39,9 +40,18 @@ public sealed class FakeDesktopPlatform : IDesktopPlatform, IDisposable
 
     public void Post(Action action) => _queue.Add(action);
 
+    /// <summary>When set, <see cref="GetDisplays"/> throws it, as a system that fails to list its displays.</summary>
+    public Exception? DisplaysFailure { get; set; }
+
+    /// <summary>Calls to <see cref="GetDisplays"/>.</summary>
+    public int DisplaysListed => Volatile.Read(ref _displaysListed);
+
     public IReadOnlyList<DisplayInfo> GetDisplays()
     {
         AssertUiThread();
+        Interlocked.Increment(ref _displaysListed);
+        if (DisplaysFailure is { } failure)
+            throw failure;
         return [.. Displays];
     }
 

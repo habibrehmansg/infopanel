@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:infopanel:api:1",
-  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, integration tokens, sensors and their readings, the engine settings, the engine's recent log entries, and the preview socket's messages, frame headers (with item bounds) and change events. spec/openapi.json says which request carries which. See docs/api.md, docs/commit.md and docs/geometry.md.",
+  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, integration tokens, sensors and their readings, the engine settings, the engine's recent log entries, the displays, and the preview socket's messages, frame headers (with item bounds) and change events. spec/openapi.json says which request carries which. See docs/api.md, docs/commit.md and docs/geometry.md.",
   "$defs": {
     "session": {
       "description": "GET /api/session: the engine, this run of it and what it supports.",
@@ -893,7 +893,7 @@
       }
     },
     "problem": {
-      "description": "application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept), 404 (no such profile, blob, token, folder or endpoint), 405, 413 (a blob over mediaBytes) and 500 (an engine error, or a folder the engine couldn't open). Its members are for people; a client acts on the status (docs/api.md#errors).",
+      "description": "application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept), 404 (no such profile, blob, token, folder or endpoint), 405, 413 (a blob over mediaBytes) and 500 (an engine error, a folder the engine couldn't open, or displays it couldn't list). Its members are for people; a client acts on the status (docs/api.md#errors).",
       "type": "object",
       "required": ["title", "status"],
       "additionalProperties": false,
@@ -1128,6 +1128,40 @@
         "source": { "description": "The part of the engine that logged it, for people, or empty; one longer than 256 characters is cut, ending in \"…\".", "type": "string", "maxLength": 256 },
         "message": { "description": "What it says, for people; one longer than 4,096 characters is cut, ending in \"…\".", "type": "string", "maxLength": 4096 },
         "exception": { "description": "The error it records, as text for people, when there is one; one longer than 8,192 characters is cut, ending in \"…\".", "type": "string", "maxLength": 8192 }
+      }
+    },
+
+    "displayList": {
+      "description": "GET /api/displays: the displays of the computer the engine runs on, read when the request came (docs/api.md#displays). Read tolerantly: a client ignores members it doesn't know.",
+      "type": "object",
+      "required": ["supported", "displays"],
+      "additionalProperties": false,
+      "properties": {
+        "supported": {
+          "description": "Whether this engine shows desktop windows, and so can list the displays. When false, `displays` is empty: a client tells \"no displays\" (true, and empty) from \"this engine can't list them\".",
+          "type": "boolean"
+        },
+        "displays": {
+          "description": "The displays, the primary one first, then in the order the system gives them.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/displayInfo" }
+        }
+      }
+    },
+    "displayInfo": {
+      "description": "One display (docs/api.md#displays). `name`, `width`, `height`, `x` and `y` are exactly the `displayMatch` a profile's `window.display` takes to put its window on this display (urn:infopanel:document:1#/$defs/displayMatch).",
+      "type": "object",
+      "required": ["name", "width", "height", "x", "y", "label", "scale", "primary"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "description": "The name the engine matches the display by, at most 256 characters (a longer one is cut).", "type": "string", "maxLength": 256 },
+        "width": { "description": "The display's width in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "height": { "description": "The display's height in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "x": { "description": "The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).", "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "y": { "description": "The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).", "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "label": { "description": "The display's name for people, at most 256 characters (a longer one is cut): the same as `name` where the system has one name for it, else the name the system shows people.", "type": "string", "maxLength": 256 },
+        "scale": { "description": "The display's pixels per unit of the desktop's own coordinates (2 on a Retina display on macOS).", "type": "number", "exclusiveMinimum": 0 },
+        "primary": { "description": "Whether it is the primary display (the main one, where a window without `display` goes). Only the first display listed is.", "type": "boolean" }
       }
     },
 

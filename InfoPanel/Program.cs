@@ -289,6 +289,7 @@ try
     var desktop = DesktopHost.Create(options);
     builder.Services.AddSingleton(desktop.Platform);
     builder.Services.AddSingleton<DisplayWindowManager>();
+    builder.Services.AddSingleton<DisplayLister>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<DisplayWindowManager>());
 
     var app = builder.Build();
@@ -313,6 +314,7 @@ try
     app.MapSettingsEndpoints();
     app.MapLogEndpoints();
     app.MapFolderEndpoints();
+    app.MapDisplayEndpoints();
     app.MapPreviewSocket();
     app.MapClientFallback(webRoot);
 

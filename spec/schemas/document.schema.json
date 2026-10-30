@@ -72,7 +72,7 @@
       }
     },
     "windowSettings": {
-      "description": "The profile's desktop window (one per profile), shown at one frame pixel per pixel of the display it is on (docs/document.md).",
+      "description": "The profile's desktop window (one per profile), shown at one frame pixel per pixel of the display it is on, up to the 16,777,216-pixel frame cap, above which the frame is drawn smaller and stretched over the window (docs/document.md).",
       "type": "object",
       "required": ["enabled"],
       "additionalProperties": false,

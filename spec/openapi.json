@@ -185,6 +185,25 @@
         }
       }
     },
+    "/api/displays": {
+      "get": {
+        "operationId": "listDisplays",
+        "summary": "The computer's displays, the primary one first, each in the shape a profile's window.display takes.",
+        "description": "docs/api.md#displays.",
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {
+            "description": "The displays, read when the request came; none, and `supported` false, where the engine doesn't show desktop windows.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/displayList"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "500": {
+            "description": "The engine couldn't list the displays: the system didn't answer within 5 seconds, or failed. The error is in the engine's log.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
     "/api/profiles": {
       "get": {
         "operationId": "listProfiles",

@@ -16,6 +16,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `PATCH /api/settings` | `settingsChange` | `engineSettings`; 409 `settingsStatusProblem`; 422 `invalidProblem` ([below](#changing-settings)) |
 | `GET /api/logs` | | `logPage`; 400 for an `after` that isn't a whole number from 0 to 9,007,199,254,740,991 ([below](#logs)) |
 | `POST /api/folders/{folder}/open` | | 204; 404 for a `folder` other than `data` and `logs`; 500 when the engine can't open it ([below](#folders)) |
+| `GET /api/displays` | | `displayList`; 500 when the engine can't list the displays ([below](#displays)) |
 | `GET /api/profiles` | | An array of `profileEntry`, in display order |
 | `POST /api/profiles` | `createProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` ([below](#creating-and-duplicating)) |
 | `POST /api/profiles/{id}/duplicate` | `duplicateProfileRequest` | 201 `profileEntry`; 409 `existsProblem`; 422 `invalidProblem` |
@@ -71,7 +72,7 @@ Every request under `/api` carries a token, as `Authorization: Bearer {token}`. 
 
 | Scope | Allows |
 |---|---|
-| `read` | Every `GET` and `HEAD` under `/api` but the session token's own (below): the session, fonts, sensors, the profile list, documents, exports and archives, thumbnails, blobs, the 1.x migration's state; and the preview socket, `doc` messages and frames included |
+| `read` | Every `GET` and `HEAD` under `/api` but the session token's own (below): the session, fonts, sensors, the displays, the profile list, documents, exports and archives, thumbnails, blobs, the 1.x migration's state; and the preview socket, `doc` messages and frames included |
 | `edit` | Every request that changes a profile, a document or a blob, or the engine's data: creating, duplicating and deleting profiles, commits, undo, redo, revert, save, `POST /api/blobs`, opening a profile archive, and the 1.x import's reads (which store blobs) and record. `edit` implies `read`: a token made with `edit` has both |
 
 Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token), uses the token endpoints, reads and changes the engine settings ([below](#settings)), reads the engine's recent log entries ([below](#logs)) and opens the engine's folders ([below](#folders)). Scopes fail closed: a request that neither scope covers needs the session token.
@@ -173,6 +174,16 @@ With `after`, only the entries whose `seq` is greater are answered; without it, 
 ## Folders
 
 `POST /api/folders/{folder}/open` opens one of the engine's own folders in the file manager of the computer the engine runs on, and answers 204: `data`, the folder it keeps its data in (the session's `dataDir`), or `logs`, the folder of its log files. Only the session token opens them ([authentication](#authentication)). Any other `folder` is answered 404 `problem`: the engine opens only its own folders, never a path a client gives. The 204 says the engine asked the system to open the folder; what the system shows is its own. A request for a folder the engine asked to open less than a second before, or one made while four file managers it started haven't exited, is answered 204 without asking again: repeated requests open one window, and file managers that don't exit don't pile up. When the engine can't (the folder isn't there, or the file manager can't be started) it logs why and answers 500 `problem`.
+
+## Displays
+
+`GET /api/displays` answers the displays of the computer the engine runs on, `displayList`, read from the system when the request comes, so a display added or removed since shows in the next answer. `supported` says whether this engine shows desktop windows (a profile's `window`, [document](document.md#the-desktop-window)); where it doesn't, it lists no displays and `supported` is false, so a client tells an engine that can't list them from a computer without displays.
+
+Each display (`displayInfo`) has `name`, `width`, `height`, `x` and `y`: exactly the `displayMatch` a profile's `window.display` takes to put its window on that display (its name, its size in its own pixels and its top-left in the desktop's own coordinates). `label` is its name for people: the same as `name` where the system has one name for a display, else the name the system shows people while `name` is the one the engine matches by. `scale` is its pixels per unit of the desktop's coordinates (2 on a Retina display on macOS). `primary` is true for the primary display, the one a window without `display` goes on, which is listed first; the others follow in the order the system gives them.
+
+To fill a display with a profile, a client commits one `profile` op ([commits](commit.md)) setting `width` and `height` to the display's `width` and `height`, and `window` with `x` and `y` 0 and `display` the display's `name`, `width`, `height`, `x` and `y` (its other members as they were): while `window.enabled` is true, the window then covers the display exactly, one frame pixel per pixel of it. A display of more than 16,777,216 pixels is over the frame cap ([limits](limits.md#run-time-limits)): its window still covers it, but the frame is drawn at the largest scale within the cap ([frame size](#frame-size)) and stretched over the window. It is one change, undone like any other.
+
+The engine reads the displays on the thread that runs its desktop windows; when that thread doesn't answer within 5 seconds, or the system fails, the engine logs why and answers 500 `problem`.
 
 ## Profiles
 

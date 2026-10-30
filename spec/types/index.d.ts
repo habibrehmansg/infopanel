@@ -776,7 +776,7 @@ export interface ScopeProblem {
   scope: "read" | "edit" | "session";
 }
 
-/** application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept), 404 (no such profile, blob, token, folder or endpoint), 405, 413 (a blob over mediaBytes) and 500 (an engine error, or a folder the engine couldn't open). Its members are for people; a client acts on the status (docs/api.md#errors). */
+/** application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept), 404 (no such profile, blob, token, folder or endpoint), 405, 413 (a blob over mediaBytes) and 500 (an engine error, a folder the engine couldn't open, or displays it couldn't list). Its members are for people; a client acts on the status (docs/api.md#errors). */
 export interface Problem {
   /** A URI for the kind of error: the HTTP status's section of RFC 9110. */
   type?: string;
@@ -1004,6 +1004,55 @@ export interface LogEntry {
    * Length: ≤ 8192.
    */
   exception?: string;
+}
+
+/** GET /api/displays: the displays of the computer the engine runs on, read when the request came (docs/api.md#displays). Read tolerantly: a client ignores members it doesn't know. */
+export interface DisplayList {
+  /** Whether this engine shows desktop windows, and so can list the displays. When false, `displays` is empty: a client tells "no displays" (true, and empty) from "this engine can't list them". */
+  supported: boolean;
+  /** The displays, the primary one first, then in the order the system gives them. */
+  displays: DisplayInfo[];
+}
+
+/** One display (docs/api.md#displays). `name`, `width`, `height`, `x` and `y` are exactly the `displayMatch` a profile's `window.display` takes to put its window on this display (urn:infopanel:document:1#/$defs/displayMatch). */
+export interface DisplayInfo {
+  /**
+   * The name the engine matches the display by, at most 256 characters (a longer one is cut).
+   * Length: ≤ 256.
+   */
+  name: string;
+  /**
+   * The display's width in its own pixels.
+   * Range: 0–1000000.
+   */
+  width: number;
+  /**
+   * The display's height in its own pixels.
+   * Range: 0–1000000.
+   */
+  height: number;
+  /**
+   * The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).
+   * Range: -1000000–1000000.
+   */
+  x: number;
+  /**
+   * The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).
+   * Range: -1000000–1000000.
+   */
+  y: number;
+  /**
+   * The display's name for people, at most 256 characters (a longer one is cut): the same as `name` where the system has one name for it, else the name the system shows people.
+   * Length: ≤ 256.
+   */
+  label: string;
+  /**
+   * The display's pixels per unit of the desktop's own coordinates (2 on a Retina display on macOS).
+   * Range: > 0.
+   */
+  scale: number;
+  /** Whether it is the primary display (the main one, where a window without `display` goes). Only the first display listed is. */
+  primary: boolean;
 }
 
 /** A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket). */
@@ -1565,7 +1614,7 @@ export interface Profile {
   editor?: Opaque;
 }
 
-/** The profile's desktop window (one per profile), shown at one frame pixel per pixel of the display it is on (docs/document.md). */
+/** The profile's desktop window (one per profile), shown at one frame pixel per pixel of the display it is on, up to the 16,777,216-pixel frame cap, above which the frame is drawn smaller and stretched over the window (docs/document.md). */
 export interface WindowSettings {
   /** Show the profile in a desktop window. */
   enabled: boolean;
@@ -3619,6 +3668,24 @@ export interface ApiOperations {
       /** No such folder: `folder` is neither `data` nor `logs`. The engine opens no other path. */
       404: Problem;
       /** The engine couldn't open the folder: it isn't there, or the file manager couldn't be started. The error is in the engine's log. */
+      500: Problem;
+    };
+  };
+  /**
+   * listDisplays: The computer's displays, the primary one first, each in the shape a profile's window.display takes.
+   *
+   * docs/api.md#displays.
+   */
+  "GET /api/displays": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The displays, read when the request came; none, and `supported` false, where the engine doesn't show desktop windows. */
+      200: DisplayList;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The engine couldn't list the displays: the system didn't answer within 5 seconds, or failed. The error is in the engine's log. */
       500: Problem;
     };
   };

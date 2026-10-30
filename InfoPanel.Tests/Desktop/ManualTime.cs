@@ -32,6 +32,13 @@ public sealed class ManualTime(DateTimeOffset start) : TimeProvider
             return _timers.Any(t => t.DueAt == at.Ticks);
     }
 
+    /// <summary>How many timers are due exactly <paramref name="at"/> after the start (as <see cref="HasTimerDueAt"/>).</summary>
+    public int TimersDueAt(TimeSpan at)
+    {
+        lock (_lock)
+            return _timers.Count(t => t.DueAt == at.Ticks);
+    }
+
     public void Advance(TimeSpan by)
     {
         var now = Interlocked.Add(ref _ticks, by.Ticks);

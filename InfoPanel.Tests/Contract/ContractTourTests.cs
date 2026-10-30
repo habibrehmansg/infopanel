@@ -3,8 +3,10 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using InfoPanel.Desktop;
 using InfoPanel.Hosting;
 using InfoPanel.Spec;
+using InfoPanel.Tests.Desktop;
 using InfoPanel.Tests.Preview;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -142,6 +144,20 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         {
             failingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
             await Send(failingSession, "POST", "/api/folders/data/open", 500);
+        }
+
+        // The displays, every token's: none where the engine shows no desktop windows (this one); listed by an engine of
+        // its own on a fake desktop, then 500 once that desktop fails to list them. No test needs a real display.
+        Assert.False((await Send(reader, "GET", "/api/displays", 200)).GetProperty("supported").GetBoolean());
+        using (var desktop = new FakeDesktopPlatform(new DisplayInfo("Built-in", new PointRect(0, 0, 1512, 982), 2)))
+        using (var listing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", Path.Combine(factory.Root, "displays"))
+                   .ConfigureTestServices(s => s.AddSingleton<IDesktopPlatform>(desktop))))
+        using (var listingSession = listing.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            listingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            Assert.Equal(1, (await Send(listingSession, "GET", "/api/displays", 200)).GetProperty("displays").GetArrayLength());
+            desktop.DisplaysFailure = new InvalidOperationException("no displays");
+            await Send(listingSession, "GET", "/api/displays", 500);
         }
 
         // Profiles: create (from a document and empty), duplicate, list.

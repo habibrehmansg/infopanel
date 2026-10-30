@@ -79,4 +79,16 @@ public sealed class DisplayMatcherTests
         var target = DisplayMatcher.TargetOf(Primary);
         Assert.Equal((0, 0, 3024, 1964, "Built-in"), (target.X, target.Y, target.Width, target.Height, target.Name));
     }
+
+    [Fact]
+    public void Cut_KeepsAtMost256UnicodeCharacters_NeverSplittingASurrogatePair()
+    {
+        var emoji = "\U0001F600";
+        Assert.Equal(new string('a', 255) + emoji, DisplayMatcher.Cut(new string('a', 255) + emoji)); // 256 characters, 257 UTF-16 units
+        Assert.Equal(new string('a', 256), DisplayMatcher.Cut(new string('a', 256) + emoji));
+        Assert.Equal(new string('a', 255) + emoji, DisplayMatcher.Cut(new string('a', 255) + emoji + "b"));
+        Assert.Equal(string.Concat(Enumerable.Repeat(emoji, 256)), DisplayMatcher.Cut(string.Concat(Enumerable.Repeat(emoji, 300))));
+        Assert.Equal(new string('n', 256), DisplayMatcher.Cut(new string('n', 300)));
+        Assert.Equal("", DisplayMatcher.Cut(""));
+    }
 }

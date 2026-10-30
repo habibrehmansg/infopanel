@@ -12,18 +12,20 @@ public static class DisplayMatcher
     /// The window's display (spec/docs/document.md, <c>window.display</c>; 1.x's matching): the display with the
     /// target's name and pixel size (among several, the one at the target's <c>x</c>/<c>y</c>); unless
     /// <paramref name="strict"/>, then the first with its name, then the first with its size, then the first display.
-    /// Strict with no exact match: null, and the window is hidden. No target: the main (first) display.
+    /// Strict with no exact match: null, and the window is hidden. No target: the main (first) display. A display's name
+    /// is compared as <see cref="TargetOf"/> writes it (<see cref="MatchName"/>), so a target written or listed from a
+    /// display with a long name matches it.
     /// </summary>
     public static DisplayInfo? Match(IReadOnlyList<DisplayInfo> displays, DisplayMatch? target, bool strict)
     {
         if (target == null)
             return displays.FirstOrDefault();
 
-        var exact = displays.Where(d => d.Name == target.Name && d.PixelWidth == target.Width && d.PixelHeight == target.Height).ToList();
+        var exact = displays.Where(d => MatchName(d) == target.Name && d.PixelWidth == target.Width && d.PixelHeight == target.Height).ToList();
         var match = exact.FirstOrDefault(d => (int)Math.Round(d.Frame.X) == target.X && (int)Math.Round(d.Frame.Y) == target.Y) ?? exact.FirstOrDefault();
         if (!strict)
         {
-            match ??= displays.FirstOrDefault(d => d.Name == target.Name);
+            match ??= displays.FirstOrDefault(d => MatchName(d) == target.Name);
             match ??= displays.FirstOrDefault(d => d.PixelWidth == target.Width && d.PixelHeight == target.Height);
             match ??= displays.FirstOrDefault();
         }
@@ -59,12 +61,37 @@ public static class DisplayMatcher
     /// </summary>
     public static DisplayMatch TargetOf(DisplayInfo display) => new()
     {
-        Name = display.Name.Length <= 256 ? display.Name : display.Name[..256],
+        Name = MatchName(display),
         Width = display.PixelWidth,
         Height = display.PixelHeight,
         X = (int)Math.Round(display.Frame.X),
         Y = (int)Math.Round(display.Frame.Y),
     };
+
+    /// <summary>The most Unicode characters (code points) a <c>window.display.name</c> holds, and so a listed display's name and label.</summary>
+    public const int NameLength = 256;
+
+    /// <summary>
+    /// The display's name as a <c>window.display.name</c> holds it: <see cref="Cut"/> to its 256 characters, the longest
+    /// the document takes.
+    /// </summary>
+    public static string MatchName(DisplayInfo display) => Cut(display.Name);
+
+    /// <summary>
+    /// <paramref name="text"/> cut to at most <see cref="NameLength"/> Unicode characters, as the schema's <c>maxLength</c>
+    /// counts them: never inside a surrogate pair, which would leave a lone surrogate that JSON writes as U+FFFD and a
+    /// comparison keeps.
+    /// </summary>
+    public static string Cut(string text)
+    {
+        if (text.Length <= NameLength)
+            return text;
+
+        var end = 0;
+        for (var count = 0; count < NameLength && end < text.Length; count++)
+            end += char.IsHighSurrogate(text[end]) && end + 1 < text.Length && char.IsLowSurrogate(text[end + 1]) ? 2 : 1;
+        return text[..end];
+    }
 
     /// <summary>True when two frames are the same to within a thousandth of a point.</summary>
     public static bool SameFrame(PointRect a, PointRect b) =>

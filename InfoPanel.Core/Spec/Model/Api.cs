@@ -619,6 +619,36 @@ public sealed record LogEntryBody
     public string? Exception { get; init; }
 }
 
+// The computer's displays (GET /api/displays).
+
+/// <summary>
+/// The displays, the primary first; none, and <see cref="Supported"/> false, where the engine doesn't show desktop windows.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/displayList")]
+public sealed record DisplayList
+{
+    public required bool Supported { get; init; }
+    public required IReadOnlyList<DisplayInfoBody> Displays { get; init; }
+}
+
+/// <summary>
+/// One display: <see cref="Name"/>, <see cref="Width"/>, <see cref="Height"/>, <see cref="X"/> and <see cref="Y"/> are
+/// exactly the <see cref="DisplayMatch"/> a profile's <c>window.display</c> takes; <see cref="Label"/> is its name for
+/// people, <see cref="Scale"/> its pixels per desktop unit.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/displayInfo")]
+public sealed record DisplayInfoBody
+{
+    public required string Name { get; init; }
+    public required int Width { get; init; }
+    public required int Height { get; init; }
+    public required int X { get; init; }
+    public required int Y { get; init; }
+    public required string Label { get; init; }
+    public required double Scale { get; init; }
+    public required bool Primary { get; init; }
+}
+
 // The preview socket's text messages (the schema's clientMessage and serverMessage; docEvent is above).
 
 /// <summary>The first message on <c>/ws</c> when the token wasn't offered as a subprotocol. <see cref="Type"/> is always <c>auth</c>.</summary>
