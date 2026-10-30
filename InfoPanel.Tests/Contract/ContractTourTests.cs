@@ -221,7 +221,7 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         // Blobs.
         var blob = (await Send(session, "POST", "/api/blobs", 201, new ByteArrayContent([1, 2, 3, 4]))).GetProperty("id").GetString();
         await Send(session, "POST", "/api/blobs", 200, new ByteArrayContent([1, 2, 3, 4]));
-        await Send(session, "POST", "/api/blobs", 413, new ByteArrayContent(new byte[SpecLimits.Default.MediaBytes + 1]));
+        await Send(session, "POST", "/api/blobs", 413, new BlobUploadTests.GeneratedContent(SpecLimits.Default.VideoBytes + 1L, declareLength: true));
         await Send(session, "HEAD", $"/api/blobs/{blob}", 200);
         await Send(session, "HEAD", $"/api/blobs/{AbsentBlob}", 404);
         await Send(session, "GET", $"/api/blobs/{blob}", 200);

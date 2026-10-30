@@ -730,9 +730,47 @@ public sealed class ProfileArchiveTests : IDisposable
 
         Assert.Equal("limit.documentBytes", Assert.Throws<ImportRefusal>(() => Open(WithDocument(Document()), small)).Code);
 
-        var withBlob = NewWorkspace("blob", new SpecLimits { MediaBytes = 1000 });
+        // A blob is held to videoBytes, the blob store's cap: one over mediaBytes is a picture refused as media, still carried.
+        var withBlob = NewWorkspace("blob", new SpecLimits { VideoBytes = 1000 });
         var refusal = Assert.Throws<ImportRefusal>(() => Open(WithDocument(Document(), ("blobs/" + Hex(Png), Png)), withBlob));
-        Assert.Equal(("limit.mediaBytes", ImportRefusal.EntryPath("blobs/" + Hex(Png))), (refusal.Code, refusal.Errors[0].Path));
+        Assert.Equal(("limit.videoBytes", ImportRefusal.EntryPath("blobs/" + Hex(Png))), (refusal.Code, refusal.Errors[0].Path));
+        var carried = Open(WithDocument(Document(), ("blobs/" + Hex(Png), Png)), NewWorkspace("carried", new SpecLimits { MediaBytes = 100 }));
+        Assert.Equal("limit.mediaBytes", Assert.Single(carried.Blobs).MediaError!.Code);
+    }
+
+    /// <summary>An archive's bytes, telling <paramref name="reading"/> each read's position. (Span reads come through Stream's own.)</summary>
+    private sealed class WatchedArchive(byte[] bytes, Action<long> reading) : MemoryStream(bytes, writable: false)
+    {
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            reading(Position);
+            return base.Read(buffer, offset, count);
+        }
+    }
+
+    [Fact]
+    public void Import_WritesEachBlobToDiskAsItIsRead_NotIntoMemoryFirst()
+    {
+        // A 1 MB blob (a video's size, say): while the archive is still being read, the blob's bytes are already in the
+        // store's upload file, as POST /api/blobs streams a body.
+        var big = new byte[1_000_000];
+        new Random(7).NextBytes(big);
+        var zip = WithDocument(Document(data: new JsonObject { ["clip"] = BlobStore.IdOf(big) }), ("blobs/" + Hex(big), big));
+        var target = NewWorkspace("streamed");
+        var folder = target.Blobs.Paths.BlobsDirectory;
+        var seen = new List<long>();
+        var archive = new WatchedArchive(zip, _ =>
+        {
+            if (Directory.Exists(folder) && Directory.GetFiles(folder, BlobStore.UploadName + ".*.tmp") is [var upload])
+                seen.Add(new FileInfo(upload).Length);
+        });
+
+        var contents = ProfileArchive.Open(archive, target);
+
+        Assert.Equal(BlobStore.IdOf(big), Assert.Single(contents.Blobs).Id);
+        Assert.Contains(seen, length => length > 0);
+        Assert.Equal(big, target.Blobs.ReadVerified(BlobStore.IdOf(big)));
+        Assert.Empty(Directory.GetFiles(folder, "*.tmp"));
     }
 
     [Fact]

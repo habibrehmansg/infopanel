@@ -19,6 +19,9 @@ namespace InfoPanel.Images
     {
         /// <summary>The asset's bytes, or null when the store has no such asset.</summary>
         byte[]? Read(string hash);
+
+        /// <summary>The stored asset's size in bytes, unchecked, or null when unknown; a picture over <c>mediaBytes</c> isn't read.</summary>
+        long? Size(string hash) => null;
     }
 
     /// <summary>
@@ -479,6 +482,12 @@ namespace InfoPanel.Images
             byte[]? bytes;
             try
             {
+                // A blob over mediaBytes (a video's, or a picture's refused as media) is never read whole to be refused.
+                if (_store.Size(asset.Hash) is { } size && size > _options.Limits.MediaBytes)
+                {
+                    Fail(asset, "limit.mediaBytes", $"{size} bytes is over the limit of {_options.Limits.MediaBytes} (mediaBytes).");
+                    return;
+                }
                 bytes = _store.Read(asset.Hash);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)

@@ -106,12 +106,12 @@ public class BlobStoreTests
     }
 
     [Fact]
-    public void Put_RefusesMoreThanMediaBytes()
+    public void Put_RefusesMoreThanVideoBytes()
     {
         using var temp = new TempDirectory();
-        Assert.Equal(SpecLimits.Default.MediaBytes, new BlobStore(new DataPaths(temp.Path)).MaxBytes);
+        Assert.Equal(SpecLimits.Default.VideoBytes, new BlobStore(new DataPaths(temp.Path)).MaxBytes);
 
-        var store = new BlobStore(new DataPaths(temp.Path), SpecLimits.Default.With(new Dictionary<string, double> { ["mediaBytes"] = 4 }));
+        var store = new BlobStore(new DataPaths(temp.Path), SpecLimits.Default.With(new Dictionary<string, double> { ["videoBytes"] = 4 }));
         Assert.Equal(BlobStore.IdOf("four"u8), store.Put("four"u8.ToArray()));
         Assert.Throws<ArgumentOutOfRangeException>(() => store.Put("five!"u8.ToArray()));
         Assert.Single(Directory.GetFiles(store.Paths.BlobsDirectory));
@@ -403,15 +403,15 @@ public class BlobStoreTests
     }
 
     /// <summary>
-    /// A file over <c>mediaBytes</c> under a blob's name (only a file changed on disk can be) is not stored, refused from
+    /// A file over <c>videoBytes</c> under a blob's name (only a file changed on disk can be) is not stored, refused from
     /// its length before it is read: no checked read hashes it, even when its bytes do hash to its name.
     /// </summary>
     [Fact]
-    public void VerifiedReads_RefuseAFileOverMediaBytes_WithoutHashingIt()
+    public void VerifiedReads_RefuseAFileOverVideoBytes_WithoutHashingIt()
     {
         using var temp = new TempDirectory();
         var paths = new DataPaths(temp.Path);
-        var limits = SpecLimits.Default.With(new Dictionary<string, double> { ["mediaBytes"] = 4 });
+        var limits = SpecLimits.Default.With(new Dictionary<string, double> { ["videoBytes"] = 4 });
         var large = "five!"u8.ToArray();
         var id = BlobStore.IdOf(large);
         Directory.CreateDirectory(paths.BlobsDirectory);

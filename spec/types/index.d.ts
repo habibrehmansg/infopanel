@@ -317,7 +317,7 @@ export type StoredScene = Opaque & {
   format: string;
 };
 
-/** POST /api/blobs: a stored blob. The engine stores any bytes up to the `mediaBytes` limit (more: 413, not stored), named by their SHA-256, and inspects them as a media asset: the answer has `media`, what it found, or `mediaError`, why they can't be used as media (a scene's media naming such a blob draws the missing-media placeholder). */
+/** POST /api/blobs: a stored blob. The engine stores any bytes up to the `videoBytes` limit (more: 413, not stored), named by their SHA-256, and inspects them as a media asset: the answer has `media`, what it found, or `mediaError`, why they can't be used as media (a scene's media naming such a blob draws the missing-media placeholder). */
 export type BlobInfo = BlobInfoMedia | BlobInfoMediaError;
 
 /** A stored blob that is a media asset within the media limits. */
@@ -325,23 +325,23 @@ export interface BlobInfoMedia {
   /** `sha256:` and the SHA-256 of the bytes as sent, in lower-case hex. */
   id: BlobId;
   /**
-   * The blob's size in bytes: at most `mediaBytes` (32 MiB, docs/limits.md).
-   * Range: 0–33554432.
+   * The blob's size in bytes: at most `videoBytes` (256 MiB, docs/limits.md); a picture's used as media at most `mediaBytes` (32 MiB).
+   * Range: 0–268435456.
    */
   bytes: number;
   media: MediaInfo;
 }
 
-/** A stored blob that can't be used as media: not media at all, or media that breaks a media check other than its size in bytes. */
+/** A stored blob that can't be used as media: not media at all, or media that breaks a media check (a picture over `mediaBytes` included). */
 export interface BlobInfoMediaError {
   /** `sha256:` and the SHA-256 of the bytes as sent, in lower-case hex. */
   id: BlobId;
   /**
-   * The blob's size in bytes: at most `mediaBytes` (32 MiB, docs/limits.md).
-   * Range: 0–33554432.
+   * The blob's size in bytes: at most `videoBytes` (256 MiB, docs/limits.md); a picture's used as media at most `mediaBytes` (32 MiB).
+   * Range: 0–268435456.
    */
   bytes: number;
-  /** Why the bytes can't be used as media: the media check's first error (docs/validation.md: `media.*`, or a `limit.*` code other than `limit.mediaBytes`), with path "". */
+  /** Why the bytes can't be used as media: the media check's first error (docs/validation.md: `media.*`, or a `limit.*` code: `limit.mediaBytes` for a picture over 32 MiB, never `limit.videoBytes`, whose bytes aren't stored), with path "". */
   mediaError: ValidationError;
 }
 
@@ -4038,7 +4038,7 @@ export interface ApiOperations {
       401: Problem;
       /** The token lacks the scope the request needs. */
       403: ScopeProblem;
-      /** The bytes are over mediaBytes; nothing was stored. */
+      /** The bytes are over videoBytes; nothing was stored. */
       413: Problem;
     };
   };

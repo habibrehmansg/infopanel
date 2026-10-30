@@ -96,7 +96,12 @@ public sealed record SpecLimits
     public int SettingsBytes { get; init; } = 1_048_576;
 
     // Per media asset, from its header (MediaProbe), before decoding.
+
+    /// <summary>A picture's bytes; a larger one is stored (within <see cref="VideoBytes"/>) and refused as media.</summary>
     public int MediaBytes { get; init; } = 33_554_432;
+
+    /// <summary>A video file's bytes, and any stored blob's: a larger blob isn't stored.</summary>
+    public int VideoBytes { get; init; } = 268_435_456;
     public int SvgBytes { get; init; } = 1_048_576;
     public int MediaSide { get; init; } = 8_192;
     public long MediaArea { get; init; } = 16_777_216;
@@ -237,7 +242,7 @@ public sealed record SpecLimits
         "sceneBytes", "nodes", "depth", "inputs", "values", "stateCells", "exprDepth", "exprWork", "pathCommands", "geometry",
         "textNodes", "seriesNodes", "tableNodes", "mediaNodes", "sequence", "effectCost", "composeDepth",
         // Media limits.
-        "mediaBytes", "svgBytes", "mediaSide", "mediaArea", "mediaFrames", "mediaDuration", "mediaFrameArea", "svgElements",
+        "mediaBytes", "videoBytes", "svgBytes", "mediaSide", "mediaArea", "mediaFrames", "mediaDuration", "mediaFrameArea", "svgElements",
         "svgNumber", "svgDepth", "svgDrawnDepth", "svgGradientChain",
         // Run-time limits.
         "textLength",

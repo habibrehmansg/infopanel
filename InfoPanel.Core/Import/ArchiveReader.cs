@@ -5,6 +5,8 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace InfoPanel.Import;
 
@@ -379,6 +381,71 @@ public sealed class ArchiveReader : IDisposable
         catch (InvalidDataException ex)
         {
             throw ImportRefusal.Entry("archive.zip", entry.Name, "The entry's data can't be decompressed: " + ex.Message, ex);
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="entry"/>'s data as a stream read once, never held whole: every decompressed byte counted against
+    /// the request's budget as it is read, and at its end its length checked against its headers'. Its reads throw the
+    /// refusals <see cref="Read(ArchiveEntry, long)"/> does (<c>archive.expanded</c>, <c>archive.zip</c>); opening it,
+    /// <c>archive.method</c>.
+    /// </summary>
+    public Stream OpenRead(ArchiveEntry entry) =>
+        new EntryStream(this, entry, entry.Record.Method is Stored or Deflated ? OpenData(entry) : Open(entry));
+
+    private sealed class EntryStream(ArchiveReader reader, ArchiveEntry entry, Stream source) : Stream
+    {
+        private long _read;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => _read; set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            int read;
+            try
+            {
+                read = source.Read(buffer);
+                reader._budget.Take(read);
+            }
+            catch (ImportBudgetExceededException ex)
+            {
+                throw reader.Expanded(ex);
+            }
+            catch (InvalidDataException ex)
+            {
+                throw ImportRefusal.Entry("archive.zip", entry.Name, "The entry's data can't be decompressed: " + ex.Message, ex);
+            }
+            _read += read;
+            if (read == 0 && buffer.Length > 0 && _read != entry.DeclaredLength)
+                throw ImportRefusal.Entry("archive.zip", entry.Name, $"The entry holds {_read} bytes, but its headers claim {entry.DeclaredLength}.");
+            return read;
+        }
+
+        // Read where it is asked for: the archive is a local file, and the budget is one request's, read in order.
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(Read(buffer.Span));
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) source.Dispose();
+            base.Dispose(disposing);
         }
     }
 

@@ -685,7 +685,7 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
     }
 
     [Fact]
-    public async Task Blobs_ThatArentMediaOrBreakAMediaLimit_AreStoredWithAMediaError_AndOverMediaBytesIs413()
+    public async Task Blobs_ThatArentMediaOrBreakAMediaLimit_AreStoredWithAMediaError_AndOverVideoBytesIs413()
     {
         using var notes = await PostBytes("/api/blobs", "{\"a client's\": \"notes\"}"u8.ToArray());
         Assert.Equal(HttpStatusCode.Created, notes.StatusCode);
@@ -700,13 +700,18 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         Assert.Equal(HttpStatusCode.Created, tooWide.StatusCode);
         Assert.Equal("limit.mediaSide", (await Body(tooWide)).GetProperty("mediaError").GetProperty("code").GetString());
 
+        // Over mediaBytes: a picture refused as media, still stored.
         var limit = InfoPanel.Spec.SpecLimits.Default.MediaBytes;
-        using var huge = await PostBytes("/api/blobs", new byte[limit + 1]);
-        await Problem(huge, HttpStatusCode.RequestEntityTooLarge);
-        Assert.False(File.Exists(Path.Combine(factory.DataDir, "blobs", Convert.ToHexStringLower(SHA256.HashData(new byte[limit + 1])))));
+        using var large = await PostBytes("/api/blobs", new byte[limit + 1]);
+        Assert.Equal(HttpStatusCode.Created, large.StatusCode);
+        Assert.Equal("limit.mediaBytes", (await Body(large)).GetProperty("mediaError").GetProperty("code").GetString());
+        Assert.True(File.Exists(Path.Combine(factory.DataDir, "blobs", Convert.ToHexStringLower(SHA256.HashData(new byte[limit + 1])))));
 
-        // Exactly the limit is stored.
-        using var full = await PostBytes("/api/blobs", new byte[limit]);
-        Assert.Equal(HttpStatusCode.Created, full.StatusCode);
+        // Over videoBytes: 413, nothing stored.
+        using var api = Api();
+        var blobs = Directory.GetFiles(Path.Combine(factory.DataDir, "blobs")).Order().ToArray();
+        using var huge = await api.PostAsync("/api/blobs", new BlobUploadTests.GeneratedContent(InfoPanel.Spec.SpecLimits.Default.VideoBytes + 1L, declareLength: false), Ct);
+        await Problem(huge, HttpStatusCode.RequestEntityTooLarge);
+        Assert.Equal(blobs, Directory.GetFiles(Path.Combine(factory.DataDir, "blobs")).Order().ToArray());
     }
 }

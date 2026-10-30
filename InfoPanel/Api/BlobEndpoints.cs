@@ -6,9 +6,10 @@ namespace InfoPanel.Api;
 
 /// <summary>
 /// Blobs (spec/docs/api.md, "Blobs"): <c>POST /api/blobs</c> stores bytes and answers <c>blobInfo</c> (201 new, 200
-/// already stored, 413 over <c>mediaBytes</c>; the <c>edit</c> scope); <c>HEAD</c> and <c>GET /api/blobs/{id}</c> answer its
+/// already stored, 413 over <c>videoBytes</c>; the <c>edit</c> scope); <c>HEAD</c> and <c>GET /api/blobs/{id}</c> answer its
 /// size and bytes (<c>read</c>). A stored file whose bytes don't hash to its id is not the blob: both answer 404, and the
-/// next <c>POST</c> of the right bytes stores it again (<see cref="BlobStore"/>'s checked reads).
+/// next <c>POST</c> of the right bytes stores it again (<see cref="BlobStore"/>'s checked reads). The body is streamed to
+/// disk as it arrives (<see cref="Workspace.PutBlobAsync"/>), never held in memory whole.
 /// </summary>
 public static class BlobEndpoints
 {
@@ -18,15 +19,15 @@ public static class BlobEndpoints
 
         api.MapPost("", async (HttpRequest request, Workspace workspace, CancellationToken ct) =>
         {
-            var limit = workspace.Limits.MediaBytes;
-            var (body, over) = await ReadBodyAsync(request, limit, ct);
-            if (over)
+            var limit = workspace.Limits.VideoBytes;
+            // A declared length over the limit is refused before any of the body is read.
+            var stored = request.ContentLength > limit ? null : await workspace.PutBlobAsync(request.Body, ct);
+            if (stored is null)
             {
                 return Results.Problem(statusCode: StatusCodes.Status413PayloadTooLarge, title: "Payload Too Large",
-                    detail: $"A blob is at most {limit} bytes (mediaBytes); nothing was stored.");
+                    detail: $"A blob is at most {limit} bytes (videoBytes); nothing was stored.");
             }
 
-            var stored = workspace.PutBlob(body);
             return Json(stored.Info, stored.Created ? StatusCodes.Status201Created : StatusCodes.Status200OK);
         }).WithOwnBodyLimit().RequireScope(ApiScope.Edit);
 

@@ -791,16 +791,41 @@ public sealed class Workspace : IDisposable
     }
 
     /// <summary>
-    /// <c>POST /api/blobs</c>: stores <paramref name="bytes"/> (at most <c>mediaBytes</c>) and inspects them as media,
-    /// from the header only. <see cref="StoredBlob.Created"/> is the store's own answer, so of concurrent identical
-    /// uploads exactly one is new.
+    /// Stores <paramref name="bytes"/> (at most <c>videoBytes</c>) and inspects them as media, from the header only, as
+    /// <see cref="PutBlobAsync"/> does. <see cref="StoredBlob.Created"/> is the store's own answer, so of concurrent
+    /// identical uploads exactly one is new.
     /// </summary>
     /// <exception cref="IOException">The blob couldn't be stored.</exception>
     public StoredBlob PutBlob(ReadOnlyMemory<byte> bytes)
     {
         var id = Blobs.Put(bytes, out var created);
-        var check = MediaValidator.Check(bytes.Span, Limits);
-        var info = new BlobInfo { Id = id, Bytes = bytes.Length };
+        return Described(id, bytes.Length, created, MediaValidator.Check(bytes.Span, Limits));
+    }
+
+    /// <summary>
+    /// <c>POST /api/blobs</c>: stores what <paramref name="body"/> holds, streamed to disk (<see cref="BlobStore.PutAsync"/>),
+    /// then inspects the stored file as media from its header or container (<see cref="MediaValidator.Check(Stream, SpecLimits?)"/>),
+    /// reading a picture whole only when it is within <c>mediaBytes</c>. Null, with nothing stored, when the body holds more
+    /// than <c>videoBytes</c>.
+    /// </summary>
+    /// <exception cref="IOException">The blob couldn't be stored.</exception>
+    public async System.Threading.Tasks.Task<StoredBlob?> PutBlobAsync(Stream body, CancellationToken ct = default) =>
+        await Blobs.PutAsync(body, ct).ConfigureAwait(false) is { } stored ? Inspected(stored) : null;
+
+    /// <summary>A blob <see cref="BlobStore.PutAsync(Stream, string?, CancellationToken)"/> stored, inspected as media as <see cref="PutBlobAsync"/> does.</summary>
+    /// <exception cref="IOException">The blob can't be opened.</exception>
+    internal StoredBlob Inspected(BlobStore.StreamedBlob stored)
+    {
+        // The file just stored or found (blobs are only removed by the start-up sweep), read in place.
+        MediaCheck check;
+        using (var file = Blobs.OpenRead(stored.Id) ?? throw new IOException($"Blob {stored.Id} was stored but can't be opened."))
+            check = MediaValidator.Check(file, Limits);
+        return Described(stored.Id, stored.Length, stored.Created, check);
+    }
+
+    private StoredBlob Described(string id, long length, bool created, MediaCheck check)
+    {
+        var info = new BlobInfo { Id = id, Bytes = length };
         info = check.Info is { } media && check.Errors.Count == 0
             ? info with
             {
@@ -956,5 +981,8 @@ public sealed class Workspace : IDisposable
 /// </summary>
 public sealed class BlobMediaStore(BlobStore blobs) : IMediaAssetStore
 {
-    public byte[]? Read(string hash) => BlobStore.IsValidId(hash) ? blobs.ReadVerified(hash) : null;
+    /// <summary>A picture's bytes: null for a blob over <c>mediaBytes</c>, which is never read whole.</summary>
+    public byte[]? Read(string hash) => BlobStore.IsValidId(hash) && !(blobs.Size(hash) > blobs.MediaBytes) ? blobs.ReadVerified(hash) : null;
+
+    public long? Size(string hash) => BlobStore.IsValidId(hash) ? blobs.Size(hash) : null;
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace InfoPanel.Spec;
 
@@ -33,14 +34,54 @@ public static class MediaValidator
     public static MediaCheck Check(ReadOnlySpan<byte> bytes, SpecLimits? limits = null)
     {
         limits ??= SpecLimits.Default;
-        if (bytes.Length > limits.MediaBytes)
-            return new(null, [Over("mediaBytes", bytes.Length, limits.MediaBytes)]);
+        // A video is held to videoBytes, anything else to mediaBytes: the container is told by its first bytes.
+        if (SizeError(bytes[..Math.Min(bytes.Length, 12)], bytes.Length, limits) is { } size)
+            return new(null, [size]);
 
         // SVG is parsed, so its byte limit comes before anything reads it, and parsing stops past the element limit.
         if (MediaProbe.LooksLikeSvg(bytes) && bytes.Length > limits.SvgBytes)
             return new(null, [Over("svgBytes", bytes.Length, limits.SvgBytes)]);
 
         var info = MediaProbe.Inspect(bytes, out var problem, limits, out var rebuilt);
+        return Limited(info, problem, limits, rebuilt);
+    }
+
+    /// <summary>
+    /// As <see cref="Check(ReadOnlySpan{byte}, SpecLimits?)"/>, for a stored file (seekable, from its start): a video's
+    /// container is read in place, never whole; anything else is read whole only when it is within <c>mediaBytes</c>.
+    /// </summary>
+    public static MediaCheck Check(Stream stream, SpecLimits? limits = null)
+    {
+        limits ??= SpecLimits.Default;
+        var length = stream.Length;
+        Span<byte> head = stackalloc byte[12];
+        stream.Position = 0;
+        var n = 0;
+        while (n < head.Length && stream.Read(head[n..]) is var read and > 0) n += read;
+        if (SizeError(head[..n], length, limits) is { } size)
+            return new(null, [size]);
+        if (VideoProbe.Detect(head[..n], out _) == VideoProbe.Container.None)
+        {
+            // Within mediaBytes: read whole, as an upload in memory is checked.
+            var bytes = new byte[length];
+            stream.Position = 0;
+            stream.ReadExactly(bytes);
+            return Check(bytes, limits);
+        }
+        stream.Position = 0;
+        var info = VideoProbe.Inspect(stream, out var problem);
+        return Limited(info, problem, limits, null);
+    }
+
+    /// <summary>The size error for <paramref name="length"/> bytes starting <paramref name="head"/>: over <c>videoBytes</c> for a video, <c>mediaBytes</c> for anything else.</summary>
+    private static SpecError? SizeError(ReadOnlySpan<byte> head, long length, SpecLimits limits) =>
+        VideoProbe.Detect(head, out _) != VideoProbe.Container.None
+            ? length > limits.VideoBytes ? Over("videoBytes", length, limits.VideoBytes) : null
+            : length > limits.MediaBytes ? Over("mediaBytes", length, limits.MediaBytes) : null;
+
+    /// <summary>What a probe found, held to the media limits.</summary>
+    private static MediaCheck Limited(MediaInfo? info, MediaProblem? problem, SpecLimits limits, byte[]? rebuilt)
+    {
         if (info is null) return new(null, [new SpecError("", problem?.Code ?? "media.malformed", problem?.Message ?? "Unreadable media.")]);
         if (info.Format == MediaFormat.Svg && info.Elements > limits.SvgElements)
             return new(null, [new SpecError("", "limit.svgElements", $"Over {limits.SvgElements} elements; the limit is {limits.SvgElements} (svgElements).")]);

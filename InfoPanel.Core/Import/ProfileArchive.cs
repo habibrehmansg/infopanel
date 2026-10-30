@@ -207,8 +207,8 @@ public static partial class ProfileArchive
     /// (<c>archive.name</c>); no document (<c>archive.document</c>); a
     /// document over <c>documentBytes</c> (in its canonical form; or over <see cref="DocumentStore.ReadCap"/> as stored, not
     /// read), not JSON, or one a create would refuse (its errors under <c>/document</c>); a
-    /// blob the document doesn't refer to (<c>archive.unreferenced</c>), over <c>mediaBytes</c>
-    /// (<c>limit.mediaBytes</c>), or whose bytes don't hash to its name (<c>archive.hash</c>).
+    /// blob the document doesn't refer to (<c>archive.unreferenced</c>), over <c>videoBytes</c>
+    /// (<c>limit.videoBytes</c>), or whose bytes don't hash to its name (<c>archive.hash</c>).
     /// </exception>
     public static ArchiveContents Open(Stream archive, Workspace workspace, ImportLimits? limits = null)
     {
@@ -281,16 +281,21 @@ public static partial class ProfileArchive
                     throw ImportRefusal.Entry("archive.unreferenced", entry.Name, "The document doesn't refer to this blob.");
             }
 
-            // Each blob read, hashed against its name, then stored as POST /api/blobs stores it.
+            // Each blob streamed to disk as POST /api/blobs streams a body, never held whole, hashed on the way: stored only
+            // when its bytes hash to its name.
             var blobs = new List<BlobInfo>();
             foreach (var entry in blobEntries)
             {
                 var id = BlobStore.IdPrefix + entry.Name[BlobsFolder.Length..];
-                var bytes = reader.Read(entry, workspace.Limits.MediaBytes)
-                    ?? throw ImportRefusal.Entry("limit.mediaBytes", entry.Name, $"The blob is larger than {workspace.Limits.MediaBytes} bytes (mediaBytes).");
-                if (BlobStore.IdOf(bytes) != id)
+                BlobStore.StreamedBlob? stored;
+                using (var data = reader.OpenRead(entry))
+                    // The import runs synchronously on a worker with no synchronization context: waiting for the write is safe.
+                    stored = workspace.Blobs.PutAsync(data, id).GetAwaiter().GetResult();
+                if (stored is not { } blob)
+                    throw ImportRefusal.Entry("limit.videoBytes", entry.Name, $"The blob is larger than {workspace.Limits.VideoBytes} bytes (videoBytes).");
+                if (blob.Id != id)
                     throw ImportRefusal.Entry("archive.hash", entry.Name, "The blob's bytes don't hash to its name.");
-                blobs.Add(workspace.PutBlob(bytes).Info);
+                blobs.Add(workspace.Inspected(blob).Info);
             }
 
             var carried = blobs.Select(b => b.Id).ToHashSet(StringComparer.Ordinal);

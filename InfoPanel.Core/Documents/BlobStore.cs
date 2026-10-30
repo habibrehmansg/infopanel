@@ -112,7 +112,7 @@ public sealed partial class BlobStore
         }
     }
 
-    /// <param name="limits">Sets <see cref="MaxBytes"/> (<see cref="SpecLimits.MediaBytes"/>); the defaults when null.</param>
+    /// <param name="limits">Sets <see cref="MaxBytes"/> (<see cref="SpecLimits.VideoBytes"/>); the defaults when null.</param>
     public BlobStore(DataPaths paths, SpecLimits? limits = null) : this(paths, limits, faults: null)
     {
     }
@@ -120,15 +120,25 @@ public sealed partial class BlobStore
     internal BlobStore(DataPaths paths, SpecLimits? limits, IStorageFaults? faults, int verdictCapacity = VerdictCapacity)
     {
         Paths = paths;
-        MaxBytes = (limits ?? SpecLimits.Default).MediaBytes;
+        MaxBytes = (limits ?? SpecLimits.Default).VideoBytes;
+        MediaBytes = (limits ?? SpecLimits.Default).MediaBytes;
         _faults = faults;
         _verdicts = new VerdictCache(verdictCapacity);
     }
 
     public DataPaths Paths { get; }
 
-    /// <summary>The largest blob stored: <c>mediaBytes</c>, the largest single file the formats refer to.</summary>
+    /// <summary>The largest blob stored: <c>videoBytes</c>, the largest single file the formats refer to.</summary>
     public int MaxBytes { get; }
+
+    /// <summary><c>mediaBytes</c>: the largest picture a reader decodes, which <see cref="BlobMediaStore"/> reads whole.</summary>
+    public int MediaBytes { get; }
+
+    /// <summary>The name a streamed upload is written under in <c>blobs/</c> until its hash is known: <c>upload.{32 hex}.tmp</c>.</summary>
+    internal const string UploadName = "upload";
+
+    /// <summary>What <see cref="PutAsync"/> stored: the blob's id, its length, and whether this call wrote it.</summary>
+    public readonly record struct StreamedBlob(string Id, long Length, bool Created);
 
     /// <summary>The store's lock, which <see cref="BlobSweep"/> holds for the whole sweep.</summary>
     internal Lock SyncRoot => _lock;
@@ -166,7 +176,7 @@ public sealed partial class BlobStore
 
     /// <summary>
     /// Start-up only: removes the temp files interrupted writes left in <c>blobs/</c> (only <c>{64 hex}.{32 hex}.tmp</c>,
-    /// the names <see cref="AtomicFile"/> gives them).
+    /// the names <see cref="AtomicFile"/> gives them, and <c>upload.{32 hex}.tmp</c>, a streamed upload's).
     /// </summary>
     /// <exception cref="IOException">
     /// <c>blobs/</c> can't be listed: a link whose target can't be reached (<see cref="UnresolvedLinkException"/>), or
@@ -191,7 +201,7 @@ public sealed partial class BlobStore
             foreach (var entry in entries)
             {
                 var temp = entry.FullName;
-                if (entry is not FileInfo || !AtomicFile.IsTempFile(entry.Name, name => BlobFileName().IsMatch(name)))
+                if (entry is not FileInfo || !AtomicFile.IsTempFile(entry.Name, name => name == UploadName || BlobFileName().IsMatch(name)))
                     continue;
                 try
                 {
@@ -270,6 +280,133 @@ public sealed partial class BlobStore
             created = true;
             return id;
         }
+    }
+
+    /// <summary>
+    /// Stores what <paramref name="content"/> holds, read to its end, without holding it in memory: written as it arrives
+    /// to <c>blobs/upload.{32 hex}.tmp</c> and hashed as it is written, flushed, then, under the store's lock, renamed to
+    /// the blob's name (or, when that blob is already stored with these bytes, dropped and the stored blob's time renewed)
+    /// and <c>blobs/</c> flushed, as <see cref="Put(ReadOnlyMemory{byte}, out bool)"/> stores bytes. Null, with nothing
+    /// stored and the temp file removed, when <paramref name="content"/> holds more than <see cref="MaxBytes"/>: it is read
+    /// only until then. A temp file a crash leaves is removed by the next <see cref="Open"/>.
+    /// </summary>
+    /// <exception cref="IOException">The write, or flushing it to disk, failed; nothing is stored, and the temp file is removed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="ct"/> was cancelled; nothing is stored.</exception>
+    public System.Threading.Tasks.Task<StreamedBlob?> PutAsync(Stream content, CancellationToken ct = default) => PutAsync(content, null, ct);
+
+    /// <summary>
+    /// As <see cref="PutAsync(Stream, CancellationToken)"/>, storing the bytes only when they hash to
+    /// <paramref name="expectedId"/> (any id when null): otherwise nothing is stored, the temp file is removed, and the
+    /// answer's <see cref="StreamedBlob.Id"/> is the id they do hash to.
+    /// </summary>
+    /// <exception cref="IOException">The write, or flushing it to disk, failed; nothing is stored, and the temp file is removed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="ct"/> was cancelled; nothing is stored.</exception>
+    public async System.Threading.Tasks.Task<StreamedBlob?> PutAsync(Stream content, string? expectedId, CancellationToken ct = default)
+    {
+        AtomicFile.CreateFolder(Paths.BlobsDirectory, Paths.Root, _faults);
+        var temp = Path.Combine(Paths.BlobsDirectory, $"{UploadName}.{AtomicFile.NewRandom()}{AtomicFile.TempSuffix}");
+        var kept = false;
+        try
+        {
+            string id;
+            long length = 0;
+            _faults?.Before(StorageStep.CreateTemp, temp);
+            using (var file = new FileStream(temp, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, BufferSize = 0 }))
+            using (var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+            {
+                var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(81920);
+                try
+                {
+                    var first = true;
+                    while (true)
+                    {
+                        // Never more than the room left plus one byte: the extra byte is what tells a body is over.
+                        var room = (int)Math.Min(buffer.Length, MaxBytes + 1L - length);
+                        var read = await content.ReadAsync(buffer.AsMemory(0, room), ct).ConfigureAwait(false);
+                        if (read == 0)
+                            break;
+                        length += read;
+                        if (length > MaxBytes)
+                            return null;
+                        hash.AppendData(buffer, 0, read);
+                        await file.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+                        if (first)
+                        {
+                            _faults?.Before(StorageStep.WriteTemp, temp);
+                            first = false;
+                        }
+                    }
+                }
+                finally
+                {
+                    System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+                }
+                _faults?.Before(StorageStep.FlushTemp, temp);
+                file.Flush(flushToDisk: true);
+                id = IdPrefix + Convert.ToHexStringLower(hash.GetHashAndReset());
+            }
+            if (expectedId is not null && id != expectedId)
+                return new StreamedBlob(id, length, false); // not these bytes' name: nothing stored, the temp file removed
+
+            var path = Paths.BlobFile(id);
+            using (Locks.Enter(_lock, WaitingForLock))
+            {
+                _changed = true;
+                using (var existing = OpenFile(id))
+                {
+                    if (existing is not null && RandomAccess.GetLength(existing.SafeFileHandle) == length)
+                    {
+                        // As Put: touched first, so the verdict is for the version hashed; the stored file is kept.
+                        _faults?.Before(StorageStep.TouchFile, path);
+                        File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
+                        var compared = Identity(existing);
+                        if (HashOf(existing) == id)
+                        {
+                            Compared?.Invoke();
+                            if (Identity(existing) == compared)
+                                _verdicts.Set(id, new Verdict(compared.Length, compared.LastWriteUtc, Good: true));
+                            else
+                                _verdicts.Remove(id);
+                            DeleteTemp(temp);
+                            AtomicFile.SyncFolder(Paths.BlobsDirectory, _faults);
+                            return new StreamedBlob(id, length, false);
+                        }
+                    }
+                    if (existing is not null)
+                        Logger.Warning("Blob {BlobId} on disk ({Bytes} bytes) doesn't hash to its name; writing it again", id, existing.Length);
+                }
+
+                _verdicts.Remove(id);
+                _faults?.Before(StorageStep.ReplaceFile, path);
+                File.Move(temp, path, overwrite: true);
+                kept = true;
+                AtomicFile.SyncFolder(Paths.BlobsDirectory, _faults);
+                return new StreamedBlob(id, length, true);
+            }
+        }
+        finally
+        {
+            if (!kept)
+            {
+                try
+                {
+                    DeleteTemp(temp);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Logger.Warning(ex, "Could not remove {Path}", temp);
+                }
+            }
+        }
+    }
+
+    /// <summary>Removes an upload's temp file when it is there (a fault test's crash leaves it for the next <see cref="Open"/>).</summary>
+    private void DeleteTemp(string temp)
+    {
+        if (!File.Exists(temp))
+            return;
+        _faults?.Before(StorageStep.DeleteFile, temp);
+        File.Delete(temp);
     }
 
     /// <summary>Whether the open file holds exactly <paramref name="content"/> (the length first, so a larger file isn't read).</summary>
