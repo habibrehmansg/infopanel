@@ -1,0 +1,20 @@
+{
+  "instructions": "InfoPanel draws dashboards of a computer's sensors (temperatures, loads, clocks, media) on desktop windows and small displays. Each dashboard is a profile: a canvas of a fixed size holding items, and each item draws a scene (shapes, text, sensor values). Use list_profiles to see the profiles, get_profile to read one, list_sensors to find sensor keys and their current values, and render_preview to see a profile as a picture. get_design_guide has the scene format and design guidance. A tool that fails says why and what to do next.",
+  "tools": {
+    "list_profiles": {
+      "description": "Lists the profiles (dashboards): id, name, size in pixels, status (ok, or why it can't be opened) and whether it has unsaved changes. Name a profile to the other tools by its id or its exact name."
+    },
+    "get_profile": {
+      "description": "Reads one profile: its name, size, revision and items. Each item has its id, name, kind (scene or group), position (x, y), box (w, h) when it has one, visibility, sensor bindings (input name to sensor key) and what made it. Give item (an item's id or exact name) to also get that item's scene and source."
+    },
+    "list_sensors": {
+      "description": "Lists the sensors this computer has: key (what a binding names), name, group, unit, status (live, stale, simulated, unavailable, denied, missing) and current value. query keeps the sensors whose key, name or group contains every word of it, e.g. \"cpu temp\". At most limit (200 by default)."
+    },
+    "render_preview": {
+      "description": "Draws a profile as it shows now and returns the picture (PNG). width is the picture's width in pixels (the profile's own, at most 1200, by default); the height follows the profile's proportions."
+    },
+    "get_design_guide": {
+      "description": "The guide to making panels. With no arguments, the list of topics, palettes and examples. topic is a topic's id from that list (for example scenes, the scene format in short) or palettes; example is an example's id."
+    }
+  }
+}

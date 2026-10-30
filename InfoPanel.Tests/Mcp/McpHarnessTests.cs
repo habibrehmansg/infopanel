@@ -29,7 +29,11 @@ public sealed class McpHarnessTests
         Assert.Equal("2025-06-18", init["result"]!["protocolVersion"]!.GetValue<string>());
         Assert.Equal(McpServerVersions.Newest, (await front.InitializeAsync("1999-01-01"))["result"]!["protocolVersion"]!.GetValue<string>());
         var list = await front.RequestAsync("tools/list");
-        Assert.NotNull(list["result"]!["tools"]!.AsArray());
+        // Listed without an engine: the executable's own list, every tool with its built-in wording.
+        Assert.Equal(["list_profiles", "get_profile", "list_sensors", "render_preview", "get_design_guide"],
+            list["result"]!["tools"]!.AsArray().Select(t => t!["name"]!.GetValue<string>()));
+        Assert.All(list["result"]!["tools"]!.AsArray(), t => Assert.False(string.IsNullOrEmpty(t!["description"]!.GetValue<string>())));
+        Assert.Contains("profile", init["result"]!["instructions"]!.GetValue<string>());
         await front.RequestAsync("ping");
 
         // Nothing was started: no engine answers, nothing was written in the data folder.
@@ -90,6 +94,41 @@ public sealed class McpHarnessTests
         var text = McpHarness.TextOf(await front.CallAsync("no_such_tool"));
         Assert.DoesNotContain("was started", text);
         Assert.Equal(engine.Id, await folder.PidAsync());
+        front.AssertStdoutIsOnlyProtocol();
+    }
+
+    [Fact]
+    public async Task Attached_TheToolsAnswer_ProfilesSensorsAPreviewAndAProfile()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        using var folder = new HarnessFolder();
+        await folder.StartEngineAsync();
+        await using var front = new McpHarness(folder.Data);
+        await front.InitializeAsync();
+        Assert.Equal(5, (await front.RequestAsync("tools/list"))["result"]!["tools"]!.AsArray().Count);
+
+        var profiles = McpHarness.TextOf(await front.CallAsync("list_profiles"));
+        Assert.Contains("\"name\":\"Wide bar\"", profiles); // the first-run example with mock sensors
+
+        var sensors = await front.CallAsync("list_sensors", new JsonObject { ["query"] = "cpu" });
+        Assert.False(sensors["isError"]!.GetValue<bool>());
+        Assert.Contains("plugin:/infopanel.mock/cpu/", McpHarness.TextOf(sensors));
+
+        var preview = await front.CallAsync("render_preview", new JsonObject { ["profile"] = "Wide bar", ["width"] = 640 });
+        var image = preview["content"]!.AsArray().Single(c => c!["type"]!.GetValue<string>() == "image")!;
+        Assert.Equal("image/png", image["mimeType"]!.GetValue<string>());
+        using (var bitmap = SkiaSharp.SKBitmap.Decode(Convert.FromBase64String(image["data"]!.GetValue<string>())))
+            Assert.Equal((640, 160), (bitmap.Width, bitmap.Height));
+
+        var profile = System.Text.Json.Nodes.JsonNode.Parse(McpHarness.TextOf(await front.CallAsync("get_profile", new JsonObject { ["profile"] = "Wide bar" })))!;
+        Assert.Equal(1920, profile["width"]!.GetValue<int>());
+        Assert.NotEmpty(profile["items"]!.AsArray());
+
+        var missing = await front.CallAsync("get_profile", new JsonObject { ["profile"] = "Nope" });
+        Assert.True(missing["isError"]!.GetValue<bool>());
+        Assert.Contains("There's no profile Nope", McpHarness.TextOf(missing));
         front.AssertStdoutIsOnlyProtocol();
     }
 
@@ -187,14 +226,19 @@ public sealed class McpHarnessTests
         Directory.CreateDirectory(web);
         File.WriteAllText(Path.Combine(web, "index.html"), "<!doctype html><title>launch-record-web-root</title>");
         const string origin = "https://client.example";
+        var text = Path.Combine(folder.Root, "text");
+        Directory.CreateDirectory(Path.Combine(text, "guide"));
+        File.WriteAllText(Path.Combine(text, "guide", "owner-topic.md"), "# The owner's topic\nlaunch-record-live-text");
 
-        var byHand = await folder.StartEngineAsync("--web-root", web, "--allow-origin", origin);
+        var byHand = await folder.StartEngineAsync("--web-root", web, "--allow-origin", origin, "--mcp-text", text);
         byHand.Kill();
         await byHand.WaitForExitAsync(Ct);
 
         await using var front = new McpHarness(folder.Data);
         await front.InitializeAsync();
-        Assert.Contains("was started", McpHarness.TextOf(await front.CallAsync("no_such_tool")));
+        var guide = McpHarness.TextOf(await front.CallAsync("get_design_guide", new JsonObject { ["topic"] = "owner-topic" }));
+        Assert.Contains("was started", guide);
+        Assert.Contains("launch-record-live-text", guide);
 
         var started = (await folder.PidAsync())!.Value;
         var port = 0;

@@ -943,17 +943,3 @@ public sealed class LocalChannelService(
             await server.DisposeAsync().ConfigureAwait(false);
     }
 }
-
-/// <summary>The handler until the engine has tools: lists none and answers every call that the tool isn't there.</summary>
-public sealed class NoChannelTools : ILocalChannelHandler
-{
-    public Task<JsonObject> ListAsync(CancellationToken ct) =>
-        Task.FromResult(new JsonObject { ["tools"] = new JsonArray(), ["instructions"] = "" });
-
-    public Task<JsonObject> CallAsync(string tool, JsonElement arguments, CancellationToken ct) =>
-        Task.FromResult(new JsonObject
-        {
-            ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = $"There's no tool {tool}." }),
-            ["isError"] = true,
-        });
-}

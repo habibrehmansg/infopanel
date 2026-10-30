@@ -29,6 +29,14 @@
     <ProjectReference Include="..\InfoPanel.Core\InfoPanel.Core.csproj" />
   </ItemGroup>
 
+  <!-- The built-in text for AI apps (tool wording, the guide, the checks' thresholds): embedded under its path, not
+       copied to the output as content. -->
+  <ItemGroup>
+    <Content Remove="Mcp\Text\**" />
+    <None Remove="Mcp\Text\**" />
+    <EmbeddedResource Include="Mcp\Text\**\*.json;Mcp\Text\**\*.md" LogicalName="InfoPanel.Mcp.Text/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- The engine's build, which GET /api/session reports (engineBuild): EngineBuild.targets records it. -->
   <Import Project="EngineBuild.targets" />
 
