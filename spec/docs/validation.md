@@ -80,6 +80,7 @@ Each code is reported at the value it is about ([versioning](versioning.md#error
 | `limit.<name>` | Over the named limit ([limits](limits.md)): `limit.nodes`, `limit.exprWork`, `limit.documentNodes`, `limit.jsonDepth`, `limit.mediaSide`, ... |
 | `media.format` | Not a supported media format. |
 | `media.truncated`, `media.malformed` | The header or container structure is incomplete or broken. |
+| `media.codec` | A video whose first video track's codec isn't one of those [video files](smart-nodes.md#video-files) list. |
 | `media.svg-external` | An SVG outside the [SVG profile](svg.md), an allowlist: an element, attribute, `style` property or value it doesn't list, a reference to anything outside the file (`data:` URIs included) or that doesn't resolve, a reference cycle, a CDATA section or processing instruction, ... |
 | `media.svg-size` | An SVG whose `width` or `height` is in a unit other than `px`, a percentage, or not a non-negative number: unsupported. |
 | `media.svg-parse` | An SVG that isn't well-formed UTF-8 XML (an XML declaration naming another encoding included), has a DTD, or is too long to read. |

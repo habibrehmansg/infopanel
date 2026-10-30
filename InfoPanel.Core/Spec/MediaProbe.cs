@@ -7,7 +7,8 @@ using System.Xml;
 
 namespace InfoPanel.Spec;
 
-public enum MediaFormat { Png, Jpeg, Gif, WebP, Svg }
+/// <summary>A media asset's format: an image's, or a video's container (<see cref="Mp4"/> for ISO BMFF: mp4 and mov; <see cref="Matroska"/>: mkv and webm).</summary>
+public enum MediaFormat { Png, Jpeg, Gif, WebP, Svg, Mp4, Matroska, Avi }
 
 /// <summary>
 /// What a probe found. <paramref name="Elements"/> is the SVG's expanded element count (spec/docs/svg.md, "Expanded
@@ -17,13 +18,17 @@ public enum MediaFormat { Png, Jpeg, Gif, WebP, Svg }
 /// are, where it is larger than <paramref name="Width"/> x <paramref name="Height"/>, the size other renderers may draw
 /// (0 otherwise): an SVG's size as written, rounded up, where rounding its numbers for the rebuilt document made it
 /// smaller, or with one of <c>width</c> and <c>height</c>, the other from the <c>viewBox</c>'s aspect ratio. The size
-/// limits hold both (<see cref="Extent"/>).
+/// limits hold both (<see cref="Extent"/>). <paramref name="Codec"/> is a video's codec (<see cref="VideoProbe.Codecs"/>),
+/// null for an image; a video's <paramref name="Frames"/> is the count its container states (1 when it states none).
 /// </summary>
 public sealed record MediaInfo(MediaFormat Format, int Width, int Height, int Frames, double DurationSeconds, int Elements = 0,
-    int ExtentWidth = 0, int ExtentHeight = 0)
+    int ExtentWidth = 0, int ExtentHeight = 0, string? Codec = null)
 {
     /// <summary>The size the media limits apply to: <see cref="Width"/> x <see cref="Height"/>, or the extent where larger.</summary>
     public (int Width, int Height) Extent => (Math.Max(Width, ExtentWidth), Math.Max(Height, ExtentHeight));
+
+    /// <summary>Whether this is a video file (<see cref="VideoProbe"/>), not an image.</summary>
+    public bool IsVideo => VideoProbe.IsVideo(Format);
 }
 
 /// <summary>
@@ -75,6 +80,12 @@ public static class MediaProbe
         rebuiltSvg = null;
         try
         {
+            // Video containers first: a RIFF file is a WebP or an AVI by its form type.
+            if (VideoProbe.Detect(bytes[..Math.Min(bytes.Length, 12)], out bool videoPrefix) != VideoProbe.Container.None)
+                return VideoProbe.Inspect(bytes, out problem);
+            if (videoPrefix)
+                return Fail(out problem, TruncatedCode, "The video's signature is incomplete.");
+
             if (bytes.Length > 0 && IsPrefixOrMatch(bytes, PngSignature, out bool full))
                 return full ? InspectPng(bytes, out problem) : Fail(out problem, TruncatedCode, "PNG signature is incomplete.");
 
@@ -99,7 +110,7 @@ public static class MediaProbe
             if (LooksLikeSvg(bytes))
                 return SvgProfile.Read(bytes, out problem, limits, out rebuiltSvg);
 
-            return Fail(out problem, FormatCode, "Not a supported image format (PNG, JPEG, GIF, WebP or SVG).");
+            return Fail(out problem, FormatCode, "Not a supported media format (PNG, JPEG, GIF, WebP, SVG, or a video in mp4, mov, mkv, webm or avi).");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

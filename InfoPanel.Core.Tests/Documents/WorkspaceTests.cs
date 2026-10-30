@@ -673,6 +673,18 @@ public sealed class WorkspaceTests : IDisposable
         Assert.Equal("a client's notes"u8.ToArray(), new BlobMediaStore(workspace.Blobs).Read(other.Info.Id));
     }
 
+    [Fact]
+    public void AVideoBlob_IsDescribedByItsContainer()
+    {
+        var workspace = With();
+        var stored = workspace.PutBlob(VideoFixtures.Read("clip-hevc.mkv"));
+        var media = stored.Info.Media!;
+        Assert.Equal(("matroska", "hevc", 64, 48, 10), (media.Format, media.Codec, media.Width, media.Height, media.Frames));
+        Assert.InRange(media.Duration, 0.95, 1.05);
+        Assert.Equal("media.codec", workspace.PutBlob(VideoFixtures.Read("outside-mpeg2.mkv")).Info.MediaError!.Code);
+        Assert.Null(workspace.PutBlob(VideoFixtures.Read("png-named.mp4")).Info.Media!.Codec);
+    }
+
     // ---- one lifetime per document: creates, deletes and what runs alongside them ---------------------------------------
 
     /// <summary>How long a test waits for a step another request must reach; only a failure takes it.</summary>

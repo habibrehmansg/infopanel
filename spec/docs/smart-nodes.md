@@ -62,3 +62,15 @@ Examples: `image.json`, `gauge-sequence.json`, `provider-media.json`.
 | `sampling` | `linear` (default) or `nearest` (pixel art). |
 
 Formats: PNG (and animated PNG), JPEG, GIF, WebP (still and animated) and SVG (static, self-contained, in the allowlisted profile of [SVG](svg.md): shapes, groups, symbols, `use`, gradients, clip paths and masks; no text, style sheets, images, filters, scripts or references outside the file; sizes in pixels). Every asset is inspected from its header before anything decodes it, and refused if it is over the media limits ([limits](limits.md)). A scene refers to media only by asset hash or through a configured provider, never by file path or URL, so a document is self-contained and an imported one can't reach outside its assets. Media that isn't available (a missing asset, an unconfigured provider, one still loading) draws the engine's missing-media placeholder in the box and is reported; the item is not "unsupported". Where the size is natural, an asset still loading whose size the engine measured in this run (from its header when the asset was stored, or when it was decoded) takes that size, the size it is drawn at once decoded, so its bounds don't change when it arrives; the engine keeps a bounded number of these sizes, the most recently used. In a crossfade that size is the lower asset's, the upper's only when the lower has none, whichever is drawn. Media with no such size takes 100 × 100: missing, refused, from a provider, or an asset stored before this run (a document opened at start-up) that hasn't been read yet.
+
+### Video files
+
+A video file is a media asset too: its container is read from its headers, without decoding anything, before any decoder sees the file, and the first video track is what the engine uses (other tracks, sound included, are ignored).
+
+| Container | Files | Codecs |
+|---|---|---|
+| ISO BMFF (`mp4`) | `.mp4`, `.mov`, `.m4v` | H.264, HEVC, VP8, VP9, AV1, MPEG-4 Part 2, Motion JPEG, ProRes |
+| Matroska (`matroska`) | `.mkv`, `.webm` | the same |
+| AVI (`avi`) | `.avi` | the same, ProRes excepted |
+
+The codecs are named `h264`, `hevc`, `vp8`, `vp9`, `av1`, `mpeg4`, `mjpeg` and `prores` (the asset's `codec`, [API](api.md#blobs)). A video whose first video track uses another codec is refused (`media.codec`), as is a container whose structure is broken or incomplete (`media.malformed`, `media.truncated`), whatever the file's name: the engine reads what the bytes are. Its size is the track's coded size as the container states it; the size limits apply to it ([limits](limits.md#media-limits-checked-from-the-header-before-decoding)), the frame and duration limits don't. A video isn't a picture: media whose `asset` names one draws the missing-media placeholder.

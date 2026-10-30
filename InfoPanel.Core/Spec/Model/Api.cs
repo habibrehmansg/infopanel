@@ -135,12 +135,14 @@ public sealed record BlobInfo
 [SpecDef("urn:infopanel:api:1#/$defs/mediaInfo")]
 public sealed record MediaInfoBody
 {
-    /// <summary><c>png</c>, <c>jpeg</c>, <c>gif</c>, <c>webp</c> or <c>svg</c>.</summary>
+    /// <summary><c>png</c>, <c>jpeg</c>, <c>gif</c>, <c>webp</c> or <c>svg</c>; a video's container, <c>mp4</c>, <c>matroska</c> or <c>avi</c>.</summary>
     public required string Format { get; init; }
     public required int Width { get; init; }
     public required int Height { get; init; }
     public required int Frames { get; init; }
     public required double Duration { get; init; }
+    /// <summary>A video's codec (<see cref="VideoProbe.Codecs"/>); absent for an image.</summary>
+    public string? Codec { get; init; }
 }
 
 [SpecDef("urn:infopanel:api:1#/$defs/commitRequest")]

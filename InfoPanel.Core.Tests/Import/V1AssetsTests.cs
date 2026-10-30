@@ -81,7 +81,8 @@ public sealed class V1AssetsTests : IDisposable
         Assert.True(_kit.Stored(logo) && _kit.Stored(gif) && _kit.Stored(svg));
 
         // Not stored: the media check's code is the reason.
-        Assert.Equal(("import.asset.media", "media.format"), (assets[3].Code, assets[3].Reason));
+        // The video stub is an ftyp box alone: an mp4 with no moov.
+        Assert.Equal(("import.asset.media", "media.malformed"), (assets[3].Code, assets[3].Reason));
         Assert.Equal(("import.asset.media", "media.format"), (assets[4].Code, assets[4].Reason));
         Assert.Equal("import.asset.media", assets[5].Code);
         Assert.StartsWith("media.svg", assets[5].Reason);

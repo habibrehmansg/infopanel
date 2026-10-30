@@ -811,6 +811,7 @@ public sealed class Workspace : IDisposable
                     Height = media.Height,
                     Frames = media.Frames,
                     Duration = media.DurationSeconds,
+                    Codec = media.Codec,
                 },
             }
             : info with { MediaError = Body(check.Errors.FirstOrDefault() ?? new SpecError("", "media.format", "The bytes aren't a media asset.")) with { Path = "" } };

@@ -345,24 +345,26 @@ export interface BlobInfoMediaError {
   mediaError: ValidationError;
 }
 
-/** A media asset as the engine read it from its header, without decoding it (docs/validation.md). Sizes are in pixels; an SVG's come from its `width` and `height` or its `viewBox` (docs/svg.md). */
+/** A media asset as the engine read it from its header or container, without decoding it (docs/validation.md). Sizes are in pixels; an SVG's come from its `width` and `height` or its `viewBox` (docs/svg.md); a video's are its first video track's coded size (docs/smart-nodes.md, video files). */
 export interface MediaInfo {
-  /** The asset's format. A client treats a format it doesn't know as it treats the others: media the engine draws. */
-  format: "png" | "jpeg" | "gif" | "webp" | "svg";
+  /** The asset's format: an image's, or a video's container (`mp4` for mp4 and mov, `matroska` for mkv and webm, `avi`). A client treats a format it doesn't know as it treats the others: media the engine draws. */
+  format: "png" | "jpeg" | "gif" | "webp" | "svg" | "mp4" | "matroska" | "avi";
   /** Range: ≥ 0. */
   width: number;
   /** Range: ≥ 0. */
   height: number;
   /**
-   * 1 for a still image; an animation's frame count.
+   * 1 for a still image; an animation's frame count; a video's frame count as its container states it, 1 when it states none.
    * Range: ≥ 1.
    */
   frames: number;
   /**
-   * An animation's length in seconds (one loop); 0 for a still image.
+   * An animation's length in seconds (one loop); 0 for a still image; a video's length as its container states it, 0 when it states none.
    * Range: ≥ 0.
    */
   duration: number;
+  /** A video's codec; absent for an image. A client treats a codec it doesn't know as it treats the others: a video the engine plays. */
+  codec?: "h264" | "hevc" | "vp8" | "vp9" | "av1" | "mpeg4" | "mjpeg" | "prores";
 }
 
 /** POST /api/profiles/{id}/commit. The ops apply in order, all or none, as one undo step (or merged into the previous one, see coalesceKey). */

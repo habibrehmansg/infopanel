@@ -23,9 +23,10 @@ public sealed record MediaCheck(MediaInfo? Info, IReadOnlyList<SpecError> Errors
 
 /// <summary>
 /// Checks a media asset's bytes before anything decodes them (spec/docs/limits.md, "Media"): the header and container
-/// structure (<see cref="MediaProbe"/>; an SVG's byte limit first, and its element limit while it is read), then the
-/// size, dimension (of <see cref="MediaInfo.Extent"/>), frame and duration limits. An accepted SVG comes back rebuilt
-/// (<see cref="MediaCheck.Sanitized"/>).
+/// structure (<see cref="MediaProbe"/>; an SVG's byte limit first, and its element limit while it is read; a video's
+/// container through <see cref="VideoProbe"/>), then the size, dimension (of <see cref="MediaInfo.Extent"/>), frame and
+/// duration limits; a video, decoded a frame at a time as it plays, is held to the dimension limits only. An accepted
+/// SVG comes back rebuilt (<see cref="MediaCheck.Sanitized"/>).
 /// </summary>
 public static class MediaValidator
 {
@@ -52,6 +53,8 @@ public static class MediaValidator
             errors.Add(Over("mediaSide", Math.Max(width, height), limits.MediaSide));
         else if (area > limits.MediaArea)
             errors.Add(Over("mediaArea", area, limits.MediaArea));
+        // A video is decoded as it plays, a frame at a time: only its size is held to the limits.
+        if (info.IsVideo) return new(info, errors);
         var sizeFailed = errors.Count > 0;
         if (info.Frames > limits.MediaFrames) errors.Add(Over("mediaFrames", info.Frames, limits.MediaFrames));
         // One cause, one error: a size already over a limit isn't counted against the frame area too.
