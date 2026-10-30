@@ -67,7 +67,7 @@ public sealed class McpToolHost : ILocalChannelHandler
         new GetProfileTool(workspace!),
         new ListSensorsTool(sensors!),
         new ListFontsTool(),
-        new RenderPreviewTool(workspace!, render!),
+        new RenderPreviewTool(workspace!, render!, text),
         new GetDesignGuideTool(text),
         new CreateProfileTool(changes!),
         new AddItemTool(changes!),

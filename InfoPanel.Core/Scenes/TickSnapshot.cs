@@ -66,10 +66,16 @@ public enum TextFit
 public readonly record struct CanvasBox(double X, double Y, double W, double H);
 
 /// <summary>
-/// One drawn text node of a tick: its item, its text (its spans joined), where its lines are drawn on the canvas (the
-/// axis-aligned box of the lines, clipped to its box when it is clipped), and whether it fits its box.
+/// One drawn text node of a tick: its item, its text (its spans joined), where its lines are drawn on the canvas
+/// (<see cref="Lines"/>, each line's axis-aligned box from its own start to its end, clipped to the node's box when it is
+/// clipped; <see cref="Box"/>, the box around them all), and whether it fits its box. For contrast:
+/// <see cref="Colors"/>, its spans' colours (0xRRGGBBAA, straight alpha) when every span is filled with a single colour,
+/// else null (a gradient or a composed paint), <see cref="Opacity"/>, its own opacity times its groups', and
+/// <see cref="Blended"/>, whether a group it is in composites with a blend mode other than normal (its colour on what is
+/// below is then no longer its colour and opacity).
 /// </summary>
-public sealed record TextReport(string ItemId, string Text, CanvasBox Box, TextFit Fit);
+public sealed record TextReport(string ItemId, string Text, CanvasBox Box, TextFit Fit, IReadOnlyList<uint>? Colors = null, double Opacity = 1,
+    bool Blended = false, IReadOnlyList<CanvasBox>? Lines = null);
 
 /// <summary>
 /// One tick of one document generation (spec/docs/identity.md, "The tick snapshot"): the clock, every input, the text
@@ -146,23 +152,43 @@ public sealed class TickSnapshot : IDisposable
                     foreach (var child in g.Children) Item(child);
                     break;
                 case SnapScene { Nodes: { } nodes } s:
-                    foreach (var node in nodes) Node(s.Id, node, s.World);
+                    foreach (var node in nodes) Node(s.Id, node, s.World, 1, false);
                     break;
             }
         }
-        void Node(string id, RNode node, SKMatrix matrix)
+        void Node(string id, RNode node, SKMatrix matrix, double opacity, bool blended)
         {
             if (node.Opacity <= 0) return; // not drawn
+            opacity *= node.Opacity;
             switch (node)
             {
                 case RGroup g:
                     var inner = g.Matrix.IsIdentity ? matrix : matrix.PreConcat(g.Matrix);
-                    foreach (var child in g.Children) Node(id, child, inner);
+                    blended |= g.Blend != SKBlendMode.SrcOver;
+                    foreach (var child in g.Children) Node(id, child, inner, opacity, blended);
                     break;
                 case RText t:
-                    var box = matrix.MapRect(t.Lines);
+                    var lines = new List<CanvasBox>(t.Lines.Length);
+                    var box = SKRect.Empty;
+                    foreach (var line in t.Lines)
+                    {
+                        var mapped = matrix.MapRect(line);
+                        lines.Add(new CanvasBox(mapped.Left, mapped.Top, mapped.Width, mapped.Height));
+                        box = box.IsEmpty ? mapped : SKRect.Union(box, mapped);
+                    }
                     var text = t.Runs.Length == 1 ? t.Runs[0].Text : string.Concat(t.Runs.Select(r => r.Text));
-                    result.Add(new TextReport(id, text, new CanvasBox(box.Left, box.Top, box.Width, box.Height), t.Fit));
+                    List<uint>? colors = [];
+                    foreach (var fill in t.SpanFills)
+                    {
+                        if (fill is null) continue;
+                        if (fill.SolidColor is not { } solid)
+                        {
+                            colors = null;
+                            break;
+                        }
+                        if (!colors.Contains(solid)) colors.Add(solid);
+                    }
+                    result.Add(new TextReport(id, text, new CanvasBox(box.Left, box.Top, box.Width, box.Height), t.Fit, colors, opacity, blended, lines));
                     break;
             }
         }
@@ -210,15 +236,30 @@ public sealed class TickSnapshot : IDisposable
     /// Draws the frame: the background over the canvas (0, 0)–(width, height) × <paramref name="scale"/>, then every
     /// visible item, clipped to the canvas. Only the canvas matrix changes with the scale.
     /// </summary>
-    public void Draw(SKCanvas canvas, float scale)
+    public void Draw(SKCanvas canvas, float scale) => Draw(canvas, scale, withoutText: false);
+
+    /// <summary>
+    /// <see cref="Draw(SKCanvas, float)"/>, or with <paramref name="withoutText"/> the same frame with its text nodes left
+    /// out: what lies under the text, for the preview checks. Not an output.
+    /// </summary>
+    public void Draw(SKCanvas canvas, float scale, bool withoutText)
     {
         if (IsReleased) throw new ObjectDisposedException(nameof(TickSnapshot));
         var count = canvas.Save();
-        canvas.Scale(scale);
-        canvas.ClipRect(new SKRect(0, 0, Width, Height));
-        canvas.DrawColor(SceneColor.ToSk(Background), SKBlendMode.Src);
-        DrawItems(canvas, _items);
-        canvas.RestoreToCount(count);
+        var was = SceneDrawer.WithoutText;
+        SceneDrawer.WithoutText = withoutText;
+        try
+        {
+            canvas.Scale(scale);
+            canvas.ClipRect(new SKRect(0, 0, Width, Height));
+            canvas.DrawColor(SceneColor.ToSk(Background), SKBlendMode.Src);
+            DrawItems(canvas, _items);
+        }
+        finally
+        {
+            SceneDrawer.WithoutText = was;
+            canvas.RestoreToCount(count);
+        }
     }
 
     /// <summary>Renders the frame to a new bitmap (premultiplied, the platform's byte order) at <paramref name="scale"/>.</summary>

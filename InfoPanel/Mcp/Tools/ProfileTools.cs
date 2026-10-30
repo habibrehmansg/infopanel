@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using InfoPanel.Documents;
+using InfoPanel.Mcp.Text;
 using InfoPanel.Output;
 using InfoPanel.Security;
 using InfoPanel.Spec;
@@ -248,8 +249,11 @@ public sealed class GetProfileTool(Workspace workspace) : McpTool
     }
 }
 
-/// <summary><c>render_preview</c>: a profile drawn as a PNG, as it shows now (the live frame's tick when it is on show).</summary>
-public sealed class RenderPreviewTool(Workspace workspace, RenderService render) : McpTool
+/// <summary>
+/// <c>render_preview</c>: a profile drawn as a PNG, as it shows now (the live frame's tick when it is on show), and the
+/// preview checks (<see cref="PreviewChecks"/>) on the same tick, with the text layers' thresholds read on every call.
+/// </summary>
+public sealed class RenderPreviewTool(Workspace workspace, RenderService render, McpText text) : McpTool
 {
     public const int MaxWidth = 1200;
 
@@ -263,13 +267,21 @@ public sealed class RenderPreviewTool(Workspace workspace, RenderService render)
     public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
     {
         var document = ProfileNames.Find(workspace, arguments.String("profile")!);
-        var profile = document.Current.Document.Profile;
-        var width = arguments.Integer("width") ?? Math.Clamp(profile.Width, Thumbnail.MinWidth, MaxWidth);
-        var (w, h, _) = Thumbnail.Size(profile.Width, profile.Height, width);
+        var thresholds = text.Checks();
+        DocumentProfile profile;
+        int w, h;
         byte[] png;
+        PreviewCheckReport checks;
         try
         {
-            png = render.RenderOnce(document, width);
+            // One generation and one tick for the picture, its size and the checks (Codex p2 #6).
+            (profile, w, h, png, checks) = render.Inspect(document, (snapshot, generation) =>
+            {
+                var shown = generation.Document.Profile;
+                var width = arguments.Integer("width") ?? Math.Clamp(shown.Width, Thumbnail.MinWidth, MaxWidth);
+                var (pw, ph, _) = Thumbnail.Size(shown.Width, shown.Height, width);
+                return (shown, pw, ph, Thumbnail.RenderPng(snapshot, width), PreviewChecks.Run(snapshot, generation.Document, thresholds));
+            });
         }
         catch (ObjectDisposedException)
         {
@@ -279,7 +291,7 @@ public sealed class RenderPreviewTool(Workspace workspace, RenderService render)
         return Task.FromResult(new ToolResult(
         [
             new JsonObject { ["type"] = "image", ["data"] = Convert.ToBase64String(png), ["mimeType"] = "image/png" },
-            new JsonObject { ["type"] = "text", ["text"] = $"{profile.Name}: a {w}×{h} picture of the {profile.Width}×{profile.Height} profile." },
+            new JsonObject { ["type"] = "text", ["text"] = $"{profile.Name}: a {w}×{h} picture of the {profile.Width}×{profile.Height} profile.\n\n{checks.Text}" },
         ], false, "ok"));
     }
 }

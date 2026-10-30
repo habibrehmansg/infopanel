@@ -154,6 +154,37 @@ public sealed class RenderLoop
         }
     }
 
+    /// <summary>
+    /// A snapshot of the document's current generation for an inspection, retained for the caller, with that generation;
+    /// null once stopped. Under the tick lock: the latest tick when it shows that generation's revision, else the
+    /// generation loaded as the next tick would load it and a one-off of it admitted through the process budget by this
+    /// loop's runtime (<see cref="SceneRuntime.Snapshot(DateTimeOffset, bool)"/>), so it holds back what the live output
+    /// must (Codex p2-2 #2), with the reservation the next tick keeps.
+    /// </summary>
+    internal (TickSnapshot Snapshot, Generation Generation)? Inspection(DateTimeOffset now)
+    {
+        lock (_tickLock)
+        {
+            if (_shutDown)
+                return null;
+
+            var generation = Document.Current;
+            if (_runtime.Current is { } latest)
+            {
+                if (latest.Rev == generation.Rev)
+                    return (latest, generation);
+                latest.Dispose();
+            }
+
+            if (!ReferenceEquals(generation, _loaded))
+            {
+                _runtime.Load(generation);
+                _loaded = generation;
+            }
+            return (_runtime.Snapshot(now, admit: true), generation);
+        }
+    }
+
     /// <summary>Stops ticking and releases the bitmaps and the runtime; the task completes when the loop has stopped.</summary>
     internal Task Stop()
     {

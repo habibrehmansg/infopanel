@@ -18,6 +18,12 @@ internal static class SceneDrawer
     /// </summary>
     [ThreadStatic] internal static Action<RStroke, SKPath, SKPaint, SKMatrix>? StrokeProbe;
 
+    /// <summary>
+    /// Set on the drawing thread while <see cref="TickSnapshot.Draw(SKCanvas, float, bool)"/> draws a frame without its
+    /// text nodes (what the preview checks sample under the text); never for an output.
+    /// </summary>
+    [ThreadStatic] internal static bool WithoutText;
+
     public static void Draw(SKCanvas canvas, RNode[] nodes)
     {
         foreach (var n in nodes) Draw(canvas, n);
@@ -30,7 +36,7 @@ internal static class SceneDrawer
         {
             case RGroup g: DrawGroup(canvas, g); break;
             case RShape s: DrawShape(canvas, s); break;
-            case RText t: DrawText(canvas, t); break;
+            case RText t: if (!WithoutText) DrawText(canvas, t); break;
             case RMedia m: DrawMedia(canvas, m); break;
         }
     }

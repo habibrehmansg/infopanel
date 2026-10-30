@@ -190,6 +190,35 @@ public sealed class RenderService : IAsyncDisposable
         return Thumbnail.RenderPng(snapshot, width);
     }
 
+    /// <summary>
+    /// Hands <paramref name="inspect"/> one tick snapshot and the document generation it was drawn from, and releases the
+    /// snapshot after: one tick for a picture and whatever is measured from it (its bounds, its text, the same frame drawn
+    /// without text), with the document's content of that same generation (its items' names and kinds), so they all
+    /// agree. The generation is the document's current one: the live loop's latest tick when it shows that generation,
+    /// else a one-off of it (a change the loop hasn't ticked yet is drawn and measured as it is now, Codex p2 #6). The
+    /// one-off goes through the process budget as a live tick does, holding its reservation until the inspection is
+    /// done, and draws what doesn't fit as budget placeholders (Codex p2-2 #2): the loop's runtime admits it when the
+    /// profile has a loop (<see cref="RenderLoop.Inspection"/>), a runtime of its own otherwise.
+    /// </summary>
+    public T Inspect<T>(ProfileDocument document, Func<TickSnapshot, Generation, T> inspect)
+    {
+        RenderLoop? loop;
+        lock (_lock)
+            _loops.TryGetValue(document.Id, out loop);
+
+        if (loop?.Inspection(_time.GetUtcNow()) is { } shown)
+        {
+            using (shown.Snapshot)
+                return inspect(shown.Snapshot, shown.Generation);
+        }
+
+        var generation = document.Current;
+        using var runtime = new SceneRuntime(SceneOptions);
+        runtime.Load(generation);
+        using var snapshot = runtime.Snapshot(_time.GetUtcNow(), admit: true);
+        return inspect(snapshot, generation);
+    }
+
     /// <summary>The snapshot of the latest tick of the profile's loop, retained for the caller; null when no loop has ticked.</summary>
     public TickSnapshot? LatestSnapshot(string profileId)
     {

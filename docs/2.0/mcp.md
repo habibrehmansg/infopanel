@@ -13,7 +13,7 @@ isn't running. Nothing goes over the network.
 | `get_profile` | read | A profile's name, size, revision and items (position, box, visibility, bindings, what made each; listed within 4 MiB, then "… and N more items"); with `item`, that item's scene and source |
 | `list_sensors` | read | The sensors: key, name, group, unit, status, value; `query` filters, `limit` caps (200) |
 | `list_fonts` | read | The font families a scene's text can name, the bundled ones (Inter) first and marked; `query` keeps those whose name holds it, in any case |
-| `render_preview` | read | A profile drawn as a PNG, `width` pixels wide (the profile's, at most 1,200) |
+| `render_preview` | read | A profile drawn as a PNG, `width` pixels wide (the profile's, at most 1,200), and the checks on the same tick (below), of the profile as it is now (the live frame's tick when it shows the newest change; what the live output holds back over the process budget is held back here too) |
 | `get_design_guide` | read | The guide's topics (built-in: `scenes`, the scene format in short), palettes and examples, from the text folder |
 | `create_profile` | edit | An empty profile (`name`, `width`, `height`, `background`), stored and saved at once |
 | `add_item` | edit | An item drawing a `scene`, at `x`, `y`, with an optional box (`width`, `height`), `name`, `bindings`, `group`, `index` |
@@ -31,7 +31,23 @@ changes just before it applied (decided as the commit applies); otherwise it is 
 saved: ‹name› has unsaved changes from the editor; save there." A save refused because another change landed at the
 same moment, or one the data folder refuses (no space, no write access), leaves the change applied: "Changed, but not
 saved", never an error that would invite a second copy. `create_profile` saves the new profile at once; an
-interrupted build leaves it saved and unfinished. Every problem comes back as a tool result marked as an error, with its
+interrupted build leaves it saved and unfinished.
+
+**The preview's checks** (heuristics, and they say so), with the thresholds of `checks.json`:
+1. **Text that doesn't fit its box**, as the text layout knows it: cut with "…", lines left out, clipped, drawn past its
+   box, or shrunk to its `fit` minimum and still too big.
+2. **Past the canvas:** an item's drawing more than `canvasTolerance` (1 px) outside the canvas.
+3. **Overlap:** two visible items whose boxes overlap by more than `overlapMin` (10 %) of the smaller, unless the one
+   that holds the other is drawn below it (a card behind its content). Boxes, not shapes.
+4. **Contrast:** solid-colour text, its colour with its own and its groups' opacity, against the pixels under its
+   lines, each where it is drawn (not the box's unused width), in the same tick drawn without text: the colour covering 70 % of them, else the worst covering 10 %; below
+   `contrastMin` (4.5:1, WCAG's ratio) is a problem.
+
+Each problem names the item and a next step. What they couldn't look at is listed under "Not checked" per item:
+gradient-filled text, text in a group drawn with a blend mode (the checks don't model compositing), text over a background with no main colour, and whatever is past the budgets (4,000,000 pixels
+sampled, 10,000 item pairs compared). With neither: "The checks found nothing (they cover fit, the canvas edge, box
+overlap and contrast)", never a bare "no problems". An item whose picture was still loading when the preview was drawn
+(a placeholder in it) gets a last line, "‹item›: its picture is still loading; preview again"; the preview never waits. Every problem comes back as a tool result marked as an error, with its
 cause and a next step (for example "There's no profile Desk (notFound). list_profiles names them."), so the AI can
 explain it. The tools are always listed, also while the engine isn't running, then with the wording of the text folder the
 launch record names (`--mcp-text`, read as the engine reads it), so an app that connects first gets the same text. A

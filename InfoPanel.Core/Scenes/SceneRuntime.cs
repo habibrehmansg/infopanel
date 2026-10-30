@@ -200,13 +200,22 @@ public sealed class SceneRuntime : IDisposable
     /// A one-off snapshot of the loaded document that advances nothing (spec/docs/identity.md): every state cell at
     /// init, elapsed 0, the current inputs and <paramref name="now"/>. For a thumbnail of a document no output renders.
     /// </summary>
-    public TickSnapshot Snapshot(DateTimeOffset now)
+    public TickSnapshot Snapshot(DateTimeOffset now) => Snapshot(now, admit: false);
+
+    /// <summary>
+    /// <see cref="Snapshot(DateTimeOffset)"/>; with <paramref name="admit"/>, through the process budget as a
+    /// <see cref="Tick"/> is: the runtime reserves the document's nodes when it holds no reservation (and keeps it until
+    /// its next <see cref="Load(Generation)"/> or its disposal, as a tick does), and a document that doesn't fit is drawn
+    /// as budget placeholders. Without it, nothing is reserved and nothing is held back (a thumbnail).
+    /// </summary>
+    public TickSnapshot Snapshot(DateTimeOffset now, bool admit)
     {
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             var model = _model ?? throw new InvalidOperationException("No document is loaded.");
-            return Build(model, 0, now, advance: false, overProcessBudget: false);
+            if (admit && _reserved < 0 && _options.ProcessBudget.TryReserve(model.NodeCount)) _reserved = model.NodeCount;
+            return Build(model, 0, now, advance: false, overProcessBudget: admit && _reserved < 0);
         }
     }
 

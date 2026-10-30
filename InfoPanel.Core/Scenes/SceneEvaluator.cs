@@ -651,10 +651,17 @@ internal sealed class SceneEvaluator
 
         // For the preview checks: where the lines are, and whether the text fits its box. A marquee scrolls instead.
         r.Runs = _texts[t.TextIndex].Item1.Runs;
-        var drawn = linesRect;
-        if (r.ClipRect is { } clip && !drawn.IntersectsWith(clip)) drawn = SKRect.Empty;
-        else if (r.ClipRect is { } c) drawn.Intersect(c);
-        r.Lines = drawn;
+        // Each line where it is drawn, not the box's unused width (Codex p2 #5).
+        var drawn = new List<SKRect>(layout.Lines.Length);
+        foreach (var line in layout.Lines)
+        {
+            var lx = marquee ? x : left0 + (alignWidth - line.Width) * t.AlignFraction;
+            var lineRect = new SKRect(lx, top + line.Top, lx + (marquee ? w!.Value : line.Width), top + line.Top + line.Height);
+            if (r.ClipRect is { } clip && !lineRect.IntersectsWith(clip)) continue;
+            if (r.ClipRect is { } c) lineRect.Intersect(c);
+            if (!lineRect.IsEmpty) drawn.Add(lineRect);
+        }
+        r.Lines = [.. drawn];
         var larger = (w is { } bw && layout.Width > bw + FitTolerance) || (h is { } bh2 && layout.Height > bh2 + FitTolerance);
         r.Fit = marquee ? TextFit.Fits
             : layout.FitFailed ? TextFit.FitMinimum

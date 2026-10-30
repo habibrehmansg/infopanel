@@ -44,5 +44,9 @@ A profile is a canvas (`width` × `height` pixels, a `background` colour) holdin
   colours or texts), `value` (a named value) and `state` (a cell that keeps its value between ticks, for smoothing).
 - **The box**: a scene that reads `box` follows its item's `layout` when the item is resized; one that doesn't is drawn
   at its own size.
+- **The preview's checks**: `render_preview` lists text that doesn't fit its box (give text a `w` and, for a value
+  that grows, `fit` or `overflow: ellipsis`), items whose drawing passes the canvas edge, items whose boxes overlap
+  (a card drawn before its content is fine), and solid-colour text with low contrast against what is under it. Text
+  filled with a gradient isn't checked. They are heuristics: look at the picture too.
 
 The full format is in the engine's `spec/docs` (`scene.md`, `smart-nodes.md`, `expressions.md`, `bindings.md`).

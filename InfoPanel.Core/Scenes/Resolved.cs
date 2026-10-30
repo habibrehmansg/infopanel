@@ -522,8 +522,11 @@ internal sealed class RText : RNode
     /// <summary>The runs laid out (shared with the layout's key), for the report's text.</summary>
     public TextRun[] Runs = [];
 
-    /// <summary>Where the lines are drawn, in the node's coordinates (within <see cref="ClipRect"/> when clipped).</summary>
-    public SKRect Lines;
+    /// <summary>
+    /// Where each line is drawn, in the node's coordinates: from its own start (aligned within the box) to its end, a
+    /// marquee's across its box; within <see cref="ClipRect"/> when clipped, a line wholly outside it left out.
+    /// </summary>
+    public SKRect[] Lines = [];
 
     private SKRect[]? _glyphs; // an array, so a racing first read publishes it atomically
 

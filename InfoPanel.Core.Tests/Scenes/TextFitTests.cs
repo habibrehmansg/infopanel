@@ -37,6 +37,26 @@ public sealed class TextFitTests
         Assert.InRange(report.Box.W, 20, 45); // the lines' own width, not the box's
     }
 
+    /// <summary>Codex p2 #5: end-aligned text in a wide box is reported where its lines are, not over the box's unused width.</summary>
+    [Fact]
+    public void Aligned_text_is_reported_where_its_lines_are_drawn()
+    {
+        var end = Assert.Single(Texts(Text("CPU", "'w':200,", ",'align':'end'")));
+        Assert.InRange(end.Box.X + end.Box.W, 209, 211); // x 10, box 200 wide
+        Assert.InRange(end.Box.X, 160, 195);
+        var middle = Assert.Single(Texts(Text("CPU", "'w':200,", ",'align':'center'")));
+        Assert.InRange(middle.Box.X + middle.Box.W / 2, 109, 111);
+        Assert.InRange(middle.Box.W, 20, 45);
+
+        // Line by line: a short second line is reported over its own width, centred, not the first line's.
+        var two = Assert.Single(Texts(Text("A much wider first line\\nB", "'w':300,", ",'align':'center'")));
+        Assert.Equal(2, two.Lines!.Count);
+        Assert.True(two.Lines[1].W < two.Lines[0].W / 4, $"{two.Lines[0]} {two.Lines[1]}");
+        Assert.All(two.Lines, l => Assert.InRange(l.X + l.W / 2, 159, 161)); // x 10, box 300 wide
+        Assert.True(two.Lines[1].Y >= two.Lines[0].Y + two.Lines[0].H - 0.5);
+        Assert.Equal(two.Lines.Min(l => l.X), two.Box.X, 3);
+    }
+
     [Fact]
     public void A_text_without_a_box_always_fits() =>
         Assert.Equal(TextFit.Fits, Assert.Single(Texts(Text(Long, ""))).Fit);
