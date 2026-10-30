@@ -48,6 +48,30 @@ public class BlobSweepTests
         Assert.False(stores.Blobs.Exists(unrelated));
     }
 
+    /// <summary>
+    /// A blob that only a profile's unsaved changes name (its recovery file, kept by the orderly stop), past the grace
+    /// period, is kept by the next start's sweep: every file in a profile's folder is a root.
+    /// </summary>
+    [Fact]
+    public void ABlobOnlyUnsavedChangesNameIsKept()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var options = new WorkspaceOptions { HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes), ExamplesWanted = static () => false };
+        var workspace = Workspace.Start(paths, options, Now);
+        Assert.NotNull(workspace.Create(Encoding.UTF8.GetBytes($"{{\"id\":\"{A}\",\"name\":\"a\",\"width\":100,\"height\":100}}")).Entry);
+        var blob = workspace.PutBlob("named by unsaved changes only"u8.ToArray()).Info.Id;
+        var doc = workspace.Open(A)!;
+        doc.Ok(DocKit.Commit(doc, "name", null, DocKit.Profile(new System.Text.Json.Nodes.JsonObject { ["name"] = blob })));
+        workspace.Dispose();
+        File.SetLastWriteTimeUtc(paths.BlobFile(blob), Now.AddDays(-2).UtcDateTime);
+
+        using var again = Workspace.Start(paths, options, Now);
+
+        Assert.True(again.Blobs.Exists(blob));
+        Assert.Equal(blob, again.Open(A)!.Current.Document.Profile.Name);
+    }
+
     [Fact]
     public void GracePeriodHolds()
     {

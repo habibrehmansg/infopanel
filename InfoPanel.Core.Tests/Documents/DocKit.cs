@@ -18,6 +18,19 @@ internal sealed class MemoryPersistence : IDocumentPersistence
         Before?.Invoke(generation);
         lock (Saved) Saved.Add(generation);
     }
+
+    /// <summary>What each <see cref="Checkpoint"/> kept, and null for each <see cref="ClearCheckpoint"/>, in order.</summary>
+    public List<Generation?> Checkpoints { get; } = [];
+
+    public void Checkpoint(Generation generation)
+    {
+        lock (Checkpoints) Checkpoints.Add(generation);
+    }
+
+    public void ClearCheckpoint()
+    {
+        lock (Checkpoints) Checkpoints.Add(null);
+    }
 }
 
 /// <summary>Documents, items and commits for the document tests, as JSON (what a client sends), with a pinned clock.</summary>
@@ -204,6 +217,16 @@ internal static class DocKit
     public static CommitResult Redo(this ProfileDocument doc) => Done(doc.Redo(Here(doc)));
 
     public static CommitResult Revert(this ProfileDocument doc) => Done(doc.Revert(Here(doc)));
+
+    /// <summary>An undo naming the document's own tag (a workspace's) at its current revision, which must answer 200.</summary>
+    public static CommitResult UndoOwn(this ProfileDocument doc) => Done(doc.Undo(Own(doc)));
+
+    public static CommitResult RedoOwn(this ProfileDocument doc) => Done(doc.Redo(Own(doc)));
+
+    public static CommitResult RevertOwn(this ProfileDocument doc) => Done(doc.Revert(Own(doc)));
+
+    /// <summary>A history request naming the document's own tag at its current revision.</summary>
+    public static HistoryRequest Own(ProfileDocument doc) => new() { Instance = doc.Instance, BaseRev = doc.Rev };
 
     /// <summary>A history request of this instance at the document's current revision.</summary>
     public static HistoryRequest Here(ProfileDocument doc) => new() { Instance = Instance, BaseRev = doc.Rev };

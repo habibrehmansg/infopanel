@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -14,6 +15,15 @@ public interface IDocumentPersistence
 {
     /// <summary>Writes <paramref name="generation"/> as the document's saved version. Throws when it can't; the document then stays dirty.</summary>
     void Save(Generation generation);
+
+    /// <summary>
+    /// Keeps <paramref name="generation"/>, a dirty one, as the document's unsaved changes, made against the version
+    /// last saved (or opened), so they survive a restart; replaces what was kept before. Throws when it can't.
+    /// </summary>
+    void Checkpoint(Generation generation);
+
+    /// <summary>Removes what <see cref="Checkpoint"/> kept, when anything is; on disk before it returns. Throws when it can't.</summary>
+    void ClearCheckpoint();
 }
 
 /// <summary>
@@ -90,10 +100,10 @@ public sealed record CommitOutcome
 }
 
 /// <summary>A consistent read of a document: its generation, the document with every <c>rev</c> member set, and its state.</summary>
-public sealed record DocumentState(Generation Generation, Document Document, bool Dirty, bool CanUndo, bool CanRedo);
+public sealed record DocumentState(Generation Generation, Document Document, bool Dirty, bool CanUndo, bool CanRedo, DateTimeOffset? Recovered = null);
 
 /// <summary>A document's revision and state, read together (the <c>/ws</c> <c>doc</c> event, the profile list).</summary>
-public readonly record struct DocumentStatus(long Rev, bool Dirty, bool CanUndo, bool CanRedo);
+public readonly record struct DocumentStatus(long Rev, bool Dirty, bool CanUndo, bool CanRedo, DateTimeOffset? Recovered = null);
 
 public enum DocumentChange
 {
@@ -132,6 +142,11 @@ public sealed class DocumentChangedEventArgs(Generation generation, DocumentChan
 /// group that differs between the two generations.</item>
 /// <item>Dirty is exact: the saved and current generations are the same content, or equal item by item.</item>
 /// <item><see cref="Changed"/> is raised after the lock is released.</item>
+/// <item>Unsaved changes are kept across a restart through the persistence seam (<see cref="Checkpoint()"/>, called off
+/// every request path), under the save lock, so a checkpoint is serialised with saves and disposal. Whenever a change
+/// leaves the document clean, what was kept is removed before that change answers, so a change undone, reverted or saved
+/// never comes back after a crash; a save rewrites it at once against the new saved version when commits came during
+/// it. <see cref="Restore"/> applies kept changes at open.</item>
 /// </list>
 /// Lock order: save, then the document, then the history budget.
 /// </summary>
@@ -157,6 +172,34 @@ public sealed class ProfileDocument : IDisposable
     private Generation _saved;
     private bool? _dirty;
     private bool _disposed;
+
+    /// <summary>When the changes <see cref="Restore"/> applied were kept; null once saved or reverted. Under the lock.</summary>
+    private DateTimeOffset? _recovered;
+
+    /// <summary>
+    /// Whether a checkpoint may be on disk: one restored or found at open, or one written or being written. Set under the
+    /// save lock and the lock before a checkpoint is written, cleared under the save lock once one is removed; a change
+    /// that leaves the document clean reads it under both, once a save or checkpoint under way is done, so neither is missed.
+    /// </summary>
+    private bool _checkpointOnDisk;
+
+    /// <summary>
+    /// The revision the checkpoint on disk holds, against the saved version, or the oldest it may hold (a replacement that
+    /// failed leaves it or a newer one); 0 when none is known. Under the lock.
+    /// </summary>
+    private long _keptRev;
+
+    /// <summary>
+    /// A removal of what was kept failed (the change that asked for it still answered): <see cref="Checkpoint()"/> tries
+    /// it again while the document is clean, and a checkpoint that replaces the file ends it. Under the lock.
+    /// </summary>
+    private bool _removalPending;
+
+    /// <summary>
+    /// The revisions of commits that left the document clean whose removal of what was kept hasn't finished: a retry of
+    /// one waits for it before it answers. Under the lock.
+    /// </summary>
+    private readonly HashSet<long> _ending = [];
 
     /// <summary>A document whose saved version is <paramref name="saved"/> (also the current one).</summary>
     public ProfileDocument(Generation saved, ProfileDocumentOptions? options = null)
@@ -195,6 +238,198 @@ public sealed class ProfileDocument : IDisposable
 
     public long Rev => _current.Rev;
 
+    /// <summary>
+    /// When the unsaved changes restored at open (<see cref="Restore"/>) were kept, from the restore until the first
+    /// save or revert; null otherwise. A client shows it only while the document is dirty.
+    /// </summary>
+    public DateTimeOffset? Recovered
+    {
+        get { lock (_lock) return _recovered; }
+    }
+
+    /// <summary>
+    /// Applies unsaved changes kept before the engine stopped (<paramref name="recovered"/>, made against this document's
+    /// saved version and kept at <paramref name="written"/>), as the document opens and before anything reads it: one
+    /// step on top of the saved version, published as revision 2 with every field group it changed stamped, recorded as
+    /// one undo step; the document is then dirty and <see cref="Recovered"/> is <paramref name="written"/>. The persistence
+    /// holds them already, so nothing is written again for that revision. Content equal to the saved version makes no step
+    /// and removes what was kept; false then.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The document has changed since it opened.</exception>
+    public bool Restore(Generation recovered, DateTimeOffset written)
+    {
+        bool restored;
+        lock (_saveLock)
+        {
+            lock (_lock)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (!ReferenceEquals(_current, _saved) || _history.CanUndo || _history.CanRedo)
+                    throw new InvalidOperationException("Kept changes are restored only as the document opens.");
+                _checkpointOnDisk = true;
+                if (!ChangeSet.SameContent(_saved.Content, recovered.Content))
+                {
+                    var before = _current.Content;
+                    var changes = ChangeSet.Diff(before, recovered.Content);
+                    var published = Publish(recovered.Content, changes);
+                    _history.Record(before, recovered.Content, changes.Bytes, null);
+                    _history.EndMerge();
+                    _recovered = written;
+                    _keptRev = published.Rev;
+                }
+                restored = _keptRev != 0;
+            }
+
+            if (!restored)
+            {
+                ClearCheckpointCore();
+                return false;
+            }
+        }
+        _options.HistoryBudget.NotifyEvicted();
+        return true;
+    }
+
+    /// <summary>
+    /// Keeps the current generation through the persistence seam when the document is dirty and that revision isn't
+    /// kept yet, under the save lock: never during a save or after disposal. A clean document is left alone (the change
+    /// that made it clean removed what was kept; a file found at open that couldn't be used stays), unless that removal
+    /// failed (<see cref="RemovalPending"/>): it is tried again. True when it wrote or removed one. Called off every
+    /// request path (the workspace's recovery scheduler, and its disposal).
+    /// </summary>
+    /// <exception cref="IOException">The persistence couldn't keep it, or remove it; it is tried again at the next call.</exception>
+    public bool Checkpoint()
+    {
+        if (_options.Persistence is not { } persistence)
+            return false;
+        lock (_saveLock)
+        {
+            Generation? generation = null;
+            lock (_lock)
+            {
+                if (_disposed)
+                    return false;
+                if (DirtyCore)
+                {
+                    if (_keptRev == _current.Rev)
+                        return false;
+                    generation = _current;
+                    // Before the write: a change that leaves the document clean from now on removes what this writes.
+                    // _keptRev changes only once the write succeeds: one that fails leaves the file it replaces, or a
+                    // newer one, never an older one.
+                    _checkpointOnDisk = true;
+                }
+                else if (!_removalPending)
+                    return false;
+            }
+
+            if (generation is null)
+            {
+                RemoveCheckpoint();
+                return true;
+            }
+            persistence.Checkpoint(generation);
+            lock (_lock)
+            {
+                _keptRev = generation.Rev;
+                _removalPending = false;
+            }
+            return true;
+        }
+    }
+
+    /// <summary>A removal of what was kept failed, and is tried again (<see cref="Checkpoint()"/>) while the document is clean.</summary>
+    internal bool RemovalPending
+    {
+        get { lock (_lock) return _removalPending; }
+    }
+
+    /// <summary>
+    /// After a change that left the document clean at revision <paramref name="cleanRev"/> (0: none): removes what was
+    /// kept before that revision, before the change answers. A checkpoint of that revision or a later one (made since,
+    /// or by a save that made it dirty) is left: it holds changes the clean revision didn't discard. It waits for
+    /// a save or checkpoint under way even when nothing was kept as the change was made: a save that started before it
+    /// keeps the change's content against the version it saved, and the change answers only once that is on disk.
+    /// </summary>
+    private void EndCheckpoint(long cleanRev)
+    {
+        if (cleanRev == 0)
+            return;
+        if (!_saveLock.TryEnter())
+        {
+            WaitingForSave?.Invoke();
+            _saveLock.Enter();
+        }
+        try
+        {
+            lock (_lock)
+            {
+                if (_disposed || !_checkpointOnDisk || _keptRev >= cleanRev)
+                    return;
+            }
+            ClearCheckpointCore();
+        }
+        finally
+        {
+            lock (_lock)
+                _ending.Remove(cleanRev);
+            _saveLock.Exit();
+        }
+    }
+
+    /// <summary>Tests: called on a thread that finds the save lock held by another as it ends a change that left the document clean, before it waits for it.</summary>
+    internal Action? WaitingForSave;
+
+    /// <summary>
+    /// Removes what was kept, under the save lock; a failure is logged, and the removal is pending: tried again on its own
+    /// (<see cref="Checkpoint()"/>) until it succeeds or a checkpoint replaces the file.
+    /// </summary>
+    private void ClearCheckpointCore()
+    {
+        try
+        {
+            RemoveCheckpoint();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Logger.Warning(ex, "Could not remove the unsaved changes kept for document {DocumentId}; tried again on its own, and at the orderly stop", Id);
+        }
+    }
+
+    /// <summary>Removes what was kept, under the save lock; when it can't, the removal is pending and the failure thrown.</summary>
+    private void RemoveCheckpoint()
+    {
+        if (_options.Persistence is not { } persistence)
+            return;
+        try
+        {
+            persistence.ClearCheckpoint();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            lock (_lock)
+                _removalPending = true;
+            throw;
+        }
+
+        lock (_lock)
+        {
+            _checkpointOnDisk = false;
+            _keptRev = 0;
+            _removalPending = false;
+        }
+    }
+
+    /// <summary>
+    /// Tells the document that kept changes it didn't restore are on disk (a file that couldn't be used, or one whose
+    /// removal failed at open): a save, or a change that leaves the document clean, removes them.
+    /// </summary>
+    internal void CheckpointFound()
+    {
+        lock (_lock)
+            _checkpointOnDisk = true;
+    }
+
     public bool Dirty
     {
         get { lock (_lock) return DirtyCore; }
@@ -215,7 +450,7 @@ public sealed class ProfileDocument : IDisposable
     {
         get
         {
-            lock (_lock) return new DocumentStatus(_current.Rev, DirtyCore, _history.CanUndo, _history.CanRedo);
+            lock (_lock) return new DocumentStatus(_current.Rev, DirtyCore, _history.CanUndo, _history.CanRedo, _recovered);
         }
     }
 
@@ -250,7 +485,7 @@ public sealed class ProfileDocument : IDisposable
                 Profile = doc.Profile with { Rev = _revisions.ProfileRev },
                 Items = doc.Items.Select(WithRev).ToArray(),
             };
-            return new DocumentState(generation, document, DirtyCore, _history.CanUndo, _history.CanRedo);
+            return new DocumentState(generation, document, DirtyCore, _history.CanUndo, _history.CanRedo, _recovered);
         }
     }
 
@@ -300,53 +535,65 @@ public sealed class ProfileDocument : IDisposable
 
         CommitResult result;
         Generation? published;
+        long endCheckpoint;
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_ops.TryGet(request.OpId, out var hash, out var stored))
             {
-                return hash.AsSpan().SequenceEqual(prepared.Hash)
-                    ? new CommitOutcome { Result = stored with { Replayed = true } }
-                    : Invalid([new SpecError("/opId", "opId.reused", $"The opId '{request.OpId}' was already applied with a different body.")], "Invalid commit");
-            }
-
-            var current = _current;
-            if (request.Instance != _options.Instance) return InstanceConflict(current.Rev);
-            if (_ops.Expired(request.BaseRev, current.Rev))
-            {
-                return new CommitOutcome
-                {
-                    Expired = new ExpiredProblem
-                    {
-                        Title = "Expired",
-                        Detail = $"The commit is based on revision {request.BaseRev}, and the engine has forgotten commits that old: read the document and commit again with a new opId.",
-                        Status = 409,
-                        Code = "expired",
-                        Rev = current.Rev,
-                    },
-                };
-            }
-            // After the opId (a retry still replays) and the window (which a baseRev newer than the document never meets).
-            if (CommitApplier.FutureBaseRevs(request, current.Rev) is { Count: > 0 } future) return Invalid(future, "Invalid commit");
-
-            var applied = CommitApplier.Apply(current.Content, _revisions, prepared);
-            if (applied.Conflicts.Count > 0) return Conflict(current.Rev, applied.Conflicts, null);
-            if (applied.Errors.Count > 0) return Invalid(applied.Errors, "Invalid commit");
-
-            var warnings = prepared.Warnings.Count > 0 ? prepared.Warnings : null;
-            if (applied.Content is not { } content)
-            {
+                if (!hash.AsSpan().SequenceEqual(prepared.Hash))
+                    return Invalid([new SpecError("/opId", "opId.reused", $"The opId '{request.OpId}' was already applied with a different body.")], "Invalid commit");
+                // A retry answers as the commit did, and only once what that commit removes is gone: it waits for the
+                // removal, or makes it.
                 published = null;
-                result = Result(current.Rev, null, warnings);
+                result = stored with { Replayed = true };
+                endCheckpoint = _ending.Contains(stored.Rev) ? stored.Rev : 0;
             }
             else
             {
-                published = Publish(content, applied.Changes!);
-                _history.Record(current.Content, content, applied.Changes!.Bytes, request.CoalesceKey);
-                result = Result(published.Rev, applied.Changes, warnings);
+                var current = _current;
+                if (request.Instance != _options.Instance) return InstanceConflict(current.Rev);
+                if (_ops.Expired(request.BaseRev, current.Rev))
+                {
+                    return new CommitOutcome
+                    {
+                        Expired = new ExpiredProblem
+                        {
+                            Title = "Expired",
+                            Detail = $"The commit is based on revision {request.BaseRev}, and the engine has forgotten commits that old: read the document and commit again with a new opId.",
+                            Status = 409,
+                            Code = "expired",
+                            Rev = current.Rev,
+                        },
+                    };
+                }
+                // After the opId (a retry still replays) and the window (which a baseRev newer than the document never meets).
+                if (CommitApplier.FutureBaseRevs(request, current.Rev) is { Count: > 0 } future) return Invalid(future, "Invalid commit");
+
+                var applied = CommitApplier.Apply(current.Content, _revisions, prepared);
+                if (applied.Conflicts.Count > 0) return Conflict(current.Rev, applied.Conflicts, null);
+                if (applied.Errors.Count > 0) return Invalid(applied.Errors, "Invalid commit");
+
+                var warnings = prepared.Warnings.Count > 0 ? prepared.Warnings : null;
+                if (applied.Content is not { } content)
+                {
+                    published = null;
+                    result = Result(current.Rev, null, warnings);
+                }
+                else
+                {
+                    published = Publish(content, applied.Changes!);
+                    _history.Record(current.Content, content, applied.Changes!.Bytes, request.CoalesceKey);
+                    result = Result(published.Rev, applied.Changes, warnings);
+                }
+                _ops.Add(request.OpId, prepared.Hash, request.BaseRev, result);
+                // Whether or not anything is kept now: a save under way may keep this content's predecessor.
+                endCheckpoint = published is not null && !result.Dirty ? published.Rev : 0;
+                if (endCheckpoint != 0)
+                    _ending.Add(endCheckpoint);
             }
-            _ops.Add(request.OpId, prepared.Hash, request.BaseRev, result);
         }
+        EndCheckpoint(endCheckpoint);
         if (published is not null)
         {
             Raise(published, DocumentChange.Commit);
@@ -417,11 +664,43 @@ public sealed class ProfileDocument : IDisposable
                 }
             }
             persistence.Save(generation);
+            Generation current;
+            bool clear;
             lock (_lock)
             {
                 _saved = generation;
                 _dirty = null;
-                result = Result(_current.Rev, null, null);
+                _recovered = null;
+                current = _current;
+                result = Result(current.Rev, null, null);
+                clear = !result.Dirty && _checkpointOnDisk;
+                if (result.Dirty)
+                {
+                    // What was kept was made against the version this save replaced: kept again at once, against this one.
+                    _checkpointOnDisk = true;
+                    _keptRev = 0;
+                }
+            }
+
+            if (clear)
+                ClearCheckpointCore();
+            else if (result.Dirty)
+            {
+                try
+                {
+                    persistence.Checkpoint(current);
+                    lock (_lock)
+                    {
+                        _keptRev = current.Rev;
+                        _removalPending = false;
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Kept again at the next checkpoint; until then what is on disk was made against the earlier save,
+                    // which is never restored over this one.
+                    Logger.Warning(ex, "Saved document {DocumentId}, but could not keep the changes made during the save; they are kept at its next checkpoint", Id);
+                }
             }
         }
         Raise(generation, DocumentChange.Saved);
@@ -459,6 +738,7 @@ public sealed class ProfileDocument : IDisposable
 
         CommitResult result;
         Generation? published = null;
+        long endCheckpoint;
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -472,6 +752,7 @@ public sealed class ProfileDocument : IDisposable
             _history.EndMerge();
             if (change == DocumentChange.Revert)
             {
+                _recovered = null;
                 if (!DirtyCore) result = Result(current.Rev, null, null);
                 else
                 {
@@ -494,7 +775,10 @@ public sealed class ProfileDocument : IDisposable
                     result = Result(published.Rev, changes, null);
                 }
             }
+            // Whether or not anything is kept now: a save under way may keep this content's predecessor.
+            endCheckpoint = published is not null && !result.Dirty ? published.Rev : 0;
         }
+        EndCheckpoint(endCheckpoint);
         if (published is not null)
         {
             Raise(published, change);

@@ -145,10 +145,11 @@ public sealed class RetryTests
         Assert.True(Valid(problem, "conflictProblem"));
         Assert.Equal(["op=- id=- instance rev=- fields="], EditOracle.Conflicts(problem));
 
-        // The fresh read: the saved document of the new instance (the lost change was never saved).
+        // The fresh read: the new instance's document. The lost change was never saved, but the orderly stop kept it as
+        // unsaved changes, restored as one step on the saved document (docs/2.0/data-folder.md, "Unsaved changes").
         var state = await Document(client, id);
-        Assert.Equal((1, false), (state.GetProperty("rev").GetInt64(), state.GetProperty("dirty").GetBoolean()));
-        Assert.Equal(0, Placement(state, "a").X);
+        Assert.Equal((2, true), (state.GetProperty("rev").GetInt64(), state.GetProperty("dirty").GetBoolean()));
+        Assert.Equal(50, Placement(state, "a").X);
     }
 
     [Fact]

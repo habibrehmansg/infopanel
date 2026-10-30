@@ -250,4 +250,74 @@ public sealed class DocumentPerformanceTests(ITestOutputHelper output)
             Assert.Equal(DocumentStore.VersionsKept, Directory.GetFiles(Path.Combine(paths.ProfileFolder(id), "versions")).Length);
         }
     }
+    /// <summary>
+    /// Keeping a dirty document of about 16 MiB (<c>documentBytes</c>) across a restart costs commits nothing: its
+    /// checkpoints run on another thread, under the save lock, which a commit doesn't take. Times a placement commit on
+    /// that document without and then during back-to-back checkpoints, and each checkpoint (serialised and written through
+    /// the store, flushed); the bound is loose (three times the p95 without, plus 1 ms), the numbers are what to read.
+    /// </summary>
+    [Fact]
+    public void Commits_are_not_slowed_by_a_16_MiB_document_being_kept()
+    {
+        using var temp = new InfoPanel.Core.Tests.Persistence.TempDirectory();
+        const string id = "0a000000-0000-4000-8000-000000000000";
+        var scene = JsonNode.Parse(OneMebibyteScene().GetRawText())!.AsObject();
+        var items = Enumerable.Range(0, 15).Select(i => Scene($"big{i}", 0, 0, (JsonObject)scene.DeepClone())).Append(Scene("a", 0, 0)).ToArray();
+        var document = JsonNode.Parse(Doc(items).GetRawText())!.AsObject();
+        document["id"] = id;
+        using var workspace = Workspace.Start(new InfoPanel.Persistence.DataPaths(temp.Path), new WorkspaceOptions
+        {
+            // A clock that never moves: the scheduler keeps nothing on its own; this test calls the checkpoints.
+            Time = new InfoPanel.Core.Tests.Editing.ManualTimeProvider(),
+            HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes),
+            ExamplesWanted = static () => false,
+        }, Start);
+        var created = workspace.Create(Encoding.UTF8.GetBytes(new JsonObject { ["id"] = id, ["document"] = document }.ToJsonString()));
+        Assert.True(created.Entry is not null, created.Invalid?.Errors.FirstOrDefault()?.Message);
+        var doc = workspace.Open(id)!;
+        var size = Workspace.Serialize(doc.Current).Length;
+        Assert.InRange(size, 15 * 1_048_000, SpecLimits.Default.DocumentBytes);
+
+        var i = 0;
+        List<double> Commits(int count)
+        {
+            List<double> times = [];
+            for (var n = 0; n < 30 + count; n++, i++)
+            {
+                var body = Encoding.UTF8.GetBytes(Commit(doc, $"keep-{i}", "gesture:perf:keep", Place("a", 100 + i % 50, 40, baseRev: doc.Rev)).GetRawText());
+                var t0 = Stopwatch.GetTimestamp();
+                Assert.NotNull(doc.Commit(body).Result);
+                if (n >= 30)
+                    times.Add(Stopwatch.GetElapsedTime(t0).TotalMilliseconds);
+            }
+            return times;
+        }
+
+        var without = Commits(300);
+        List<double> checkpoints = [];
+        using var stop = new CancellationTokenSource();
+        var keeping = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                var t0 = Stopwatch.GetTimestamp();
+                if (doc.Checkpoint())
+                    checkpoints.Add(Stopwatch.GetElapsedTime(t0).TotalMilliseconds);
+            }
+        });
+        // At least one checkpoint under way before the timed commits start, and after them.
+        Assert.True(SpinWait.SpinUntil(() => checkpoints.Count > 0 || keeping.IsCompleted, TimeSpan.FromMinutes(1)));
+        var during = Commits(300);
+        stop.Cancel();
+        keeping.Wait();
+        Assert.True(File.Exists(Path.Combine(temp.Path, "profiles", id, "recovery.json")));
+
+        var (p50, p95, p99) = ScenePerformanceTests.Percentiles(without);
+        output.WriteLine($"{size} bytes; placement commit without checkpoints: p50 {p50:0.000} ms, p95 {p95:0.000} ms, p99 {p99:0.000} ms");
+        var (d50, d95, d99) = ScenePerformanceTests.Percentiles(during);
+        output.WriteLine($"placement commit during checkpoints: p50 {d50:0.000} ms, p95 {d95:0.000} ms, p99 {d99:0.000} ms");
+        var (c50, c95, c99) = ScenePerformanceTests.Percentiles(checkpoints);
+        output.WriteLine($"{checkpoints.Count} checkpoints of it, off-thread: p50 {c50:0.0} ms, p95 {c95:0.0} ms, p99 {c99:0.0} ms");
+        Assert.True(d95 <= 3 * p95 + 1, $"commit p95 {d95:0.000} ms during checkpoints, {p95:0.000} ms without");
+    }
 }

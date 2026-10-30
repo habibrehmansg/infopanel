@@ -677,6 +677,61 @@ public class DocumentStoreTests
     }
 
     /// <summary>
+    /// A recovery file's temp file (<c>recovery.json.{32 hex}.tmp</c>) is removed at start-up, as the document's is; the
+    /// recovery file itself and every other name are left.
+    /// </summary>
+    [Fact]
+    public void Open_RemovesRecoveryTempFiles_AndLeavesTheRest()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        WriteFolder(paths, A);
+        var hex = Guid.NewGuid().ToString("N");
+        var folder = paths.ProfileFolder(A);
+        var leftover = Path.Combine(folder, $"recovery.json.{hex}.tmp");
+        File.WriteAllText(leftover, "{\"half");
+        var kept = new[]
+        {
+            "recovery.json", $"recovery.json.{hex}.tmp.x", $"recovery.json.{hex[..31]}.tmp", "recovery.json.tmp", $"Recovery.json.{Guid.NewGuid():N}.tmp",
+            $"recovery.jsonx.{hex}.tmp",
+        };
+        foreach (var name in kept)
+            File.WriteAllText(Path.Combine(folder, name), "x");
+
+        Assert.Equal([A], new DocumentStore(paths).Open());
+
+        Assert.False(File.Exists(leftover));
+        Assert.All(kept, name => Assert.True(File.Exists(Path.Combine(folder, name)), name));
+    }
+
+    /// <summary>
+    /// The recovery file is written only while the profile is listed (a write after its delete writes nothing, and never
+    /// makes its folder again), read within the read cap, and removed with nothing left.
+    /// </summary>
+    [Fact]
+    public void Recovery_WrittenOnlyWhileListed_ReadAndRemoved()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var store = new DocumentStore(paths);
+        store.Open();
+        store.Create(A, Document(A, "a"));
+        Assert.Null(store.ReadRecovery(A));
+
+        store.WriteRecovery(A, "{\"kept\":1}"u8.ToArray());
+        Assert.Equal("{\"kept\":1}"u8.ToArray(), store.ReadRecovery(A));
+        store.RemoveRecovery(A);
+        Assert.False(File.Exists(paths.RecoveryFile(A)));
+        store.RemoveRecovery(A);
+
+        store.Delete(A);
+        Assert.Throws<KeyNotFoundException>(() => store.WriteRecovery(A, "{}"u8.ToArray()));
+        Assert.False(Directory.Exists(paths.ProfileFolder(A)));
+        store.RemoveRecovery(A);
+        Assert.Throws<KeyNotFoundException>(() => store.ReadRecovery(A));
+    }
+
+    /// <summary>
     /// A <c>versions</c> entry that isn't a folder of the profile's own (a link, to a folder or to nothing, or a file) is
     /// never followed or written: the save keeps no version and saves.
     /// </summary>

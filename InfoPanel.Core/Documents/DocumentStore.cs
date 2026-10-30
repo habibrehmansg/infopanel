@@ -49,6 +49,12 @@ public sealed partial class DocumentStore
     /// <summary>The saved generation's file name in a profile's folder.</summary>
     public const string DocumentFileName = "document.json";
 
+    /// <summary>
+    /// The file in a profile's folder that keeps its unsaved changes across a restart (<see cref="WriteRecovery"/>;
+    /// docs/2.0/data-folder.md, "Unsaved changes").
+    /// </summary>
+    public const string RecoveryFileName = "recovery.json";
+
     /// <summary>What a deleted profile's folder is renamed to before it is removed: <c>{id}.deleted-{32 hex}</c>.</summary>
     private const string DeletedMarker = ".deleted-";
 
@@ -321,6 +327,64 @@ public sealed partial class DocumentStore
             TryKeepVersion(id, document);
             AtomicFile.Write(Path.Combine(folder, DocumentFileName), document, Paths.Root, _faults);
             TryDropVersions(id);
+        }
+    }
+
+    /// <summary>
+    /// A profile's recovery file as stored (<see cref="RecoveryFileName"/>), read whole within <see cref="MaxBytes"/>;
+    /// null when there is none.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">No profile has this id.</exception>
+    /// <exception cref="IOException">It can't be read (a FIFO or another file that isn't a regular one included).</exception>
+    /// <exception cref="InvalidDataException">It is larger than <see cref="MaxBytes"/>.</exception>
+    public byte[]? ReadRecovery(string id)
+    {
+        lock (_lock)
+        {
+            RequireListed(id);
+            var path = Paths.RecoveryFile(id);
+            return RegularFile.StateOf(path) == PathState.Absent ? null : ReadAtMost(path, MaxBytes);
+        }
+    }
+
+    /// <summary>
+    /// Replaces a profile's recovery file with <paramref name="bytes"/> (<see cref="AtomicFile"/>), only while the profile
+    /// is listed and its folder there: a write that comes after its delete writes nothing, so none can land in a profile
+    /// created again under the id.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">No profile has this id (deleted meanwhile); nothing was written.</exception>
+    /// <exception cref="IOException">The write failed (the previous file is unchanged), or its folder couldn't be flushed.</exception>
+    public void WriteRecovery(string id, ReadOnlyMemory<byte> bytes)
+    {
+        lock (_lock)
+        {
+            RequireListed(id);
+            // AtomicFile makes a missing folder: never the profile's, which only a create makes.
+            if (RegularFile.StateOf(Paths.ProfileFolder(id)) != PathState.Folder)
+                throw new KeyNotFoundException($"Profile {id} has no folder.");
+            AtomicFile.Write(Paths.RecoveryFile(id), bytes, Paths.Root, _faults);
+        }
+    }
+
+    /// <summary>
+    /// Removes a profile's recovery file when there is one, and flushes its folder so the removal is on disk before this
+    /// returns; the folder is flushed when the file is gone already too, since an earlier removal's flush may have
+    /// failed. Nothing to do for a profile that isn't listed (its folder went with it).
+    /// </summary>
+    /// <exception cref="IOException">It couldn't be removed, or the folder couldn't be flushed.</exception>
+    public void RemoveRecovery(string id)
+    {
+        lock (_lock)
+        {
+            if (!IsValidId(id) || !Order.Contains(id))
+                return;
+            var path = Paths.RecoveryFile(id);
+            if (RegularFile.StateOf(path) != PathState.Absent)
+            {
+                _faults?.Before(StorageStep.DeleteFile, path);
+                File.Delete(path);
+            }
+            AtomicFile.SyncFolder(Paths.ProfileFolder(id), _faults);
         }
     }
 
@@ -821,7 +885,7 @@ public sealed partial class DocumentStore
             {
                 foreach (var file in RegularFile.List(entry.FullName, new ListingBudget(RegularFile.MaxListing, $"Listing {entry.FullName}")))
                 {
-                    if (file is FileInfo && AtomicFile.IsTempFile(file.Name, name => name == DocumentFileName))
+                    if (file is FileInfo && AtomicFile.IsTempFile(file.Name, name => name is DocumentFileName or RecoveryFileName))
                         TryDeleteTree(file.FullName);
                 }
 

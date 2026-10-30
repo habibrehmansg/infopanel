@@ -114,6 +114,12 @@ public sealed class DataPaths
     /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid profile id.</exception>
     public string DocumentFile(string id) => Path.Combine(ProfileFolder(id), DocumentStore.DocumentFileName);
 
+    /// <summary>
+    /// A profile's unsaved changes, kept across a restart (<see cref="DocumentStore"/>): <c>profiles/{id}/recovery.json</c>.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid profile id.</exception>
+    public string RecoveryFile(string id) => Path.Combine(ProfileFolder(id), DocumentStore.RecoveryFileName);
+
     /// <summary>A stored document's earlier saved versions (<see cref="DocumentStore"/>): <c>profiles/{id}/versions</c>.</summary>
     /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid profile id.</exception>
     public string VersionsFolder(string id) => Path.Combine(ProfileFolder(id), DocumentStore.VersionsFolderName);

@@ -52,6 +52,9 @@ public sealed class WorkspaceOptions
     /// 1.x data waits to be migrated, whose own profiles arrive instead). True when not set.
     /// </summary>
     public Func<bool> ExamplesWanted { get; init; } = static () => true;
+
+    /// <summary>Tests: the faults the document store's steps meet.</summary>
+    internal IStorageFaults? StorageFaults { get; init; }
 }
 
 /// <summary>Raised when profiles are created or deleted. <see cref="Version"/> goes up by one each time.</summary>
@@ -122,6 +125,11 @@ public sealed record StoredBlob(BlobInfo Info, bool Created);
 /// (a render loop, a <c>/ws</c> subscription, a desktop window) holds the instance it found, and treats it as deleted
 /// once <see cref="IsOpen"/> is false or it throws <see cref="ObjectDisposedException"/>, never acting on a newer
 /// profile of the same id in its place.</item>
+/// <item><b>Unsaved changes are kept across a restart</b> (docs/2.0/data-folder.md, "Unsaved changes"): each open
+/// document's current generation is written to its profile's <c>recovery.json</c> shortly after its changes stop
+/// (<see cref="RecoveryScheduler"/>) and at the orderly stop (<see cref="Dispose"/>), and applied as one undoable step
+/// when the document next opens, when it was made against the saved document as it is (<see cref="ProfileDocument.Restore"/>).
+/// A file that can't be used is logged and left.</item>
 /// <item>Lock order: the workspace, then a document's save lock, then the stores'; <see cref="ProfilesChanged"/> and
 /// <see cref="BlobStored"/> are raised outside the lock.</item>
 /// </list>
@@ -147,6 +155,7 @@ public sealed class Workspace : IDisposable
     private readonly WorkspaceOptions _options;
     private readonly Lock _lock = new();
     private readonly Dictionary<string, Slot> _slots = new(StringComparer.Ordinal);
+    private readonly RecoveryScheduler _recovery;
     private long _version;
     private bool _disposed;
 
@@ -156,6 +165,7 @@ public sealed class Workspace : IDisposable
         Blobs = blobs;
         _options = options ?? new WorkspaceOptions();
         Logger = _options.Logger ?? Log.ForContext<Workspace>();
+        _recovery = new RecoveryScheduler(_options.Time, Logger);
     }
 
     private ILogger Logger { get; }
@@ -192,6 +202,15 @@ public sealed class Workspace : IDisposable
     /// <summary>Tests: called on a thread that finds the workspace lock held by another, before it waits for it.</summary>
     internal Action? WaitingForLock;
 
+    /// <summary>Tests: called with the profile's id when a recovery file is about to be written, under the document's save lock.</summary>
+    internal Action<string>? CheckpointWriting;
+
+    /// <summary>Tests: called with the profile's id when a save is about to write the document, under the document's save lock.</summary>
+    internal Action<string>? Saving;
+
+    /// <summary>Tests: called with the profile's id when a recovery file is about to be removed, under the document's save lock; what it throws is the removal's failure.</summary>
+    internal Action<string>? CheckpointRemoving;
+
     /// <summary>
     /// Checks the data folder's marker (<see cref="StoreMarker.Open"/>: nothing is repaired, swept or written in a folder
     /// this engine can't honour), opens the stores in <paramref name="paths"/>, sweeps the blobs, and on the first run (no
@@ -213,7 +232,7 @@ public sealed class Workspace : IDisposable
                 paths.Root);
         }
 
-        var documents = new DocumentStore(paths, options.Limits);
+        var documents = new DocumentStore(paths, options.Limits, options.StorageFaults);
         var blobs = new BlobStore(paths, options.Limits);
         // The order lists every profile folder once it is open (a link to nothing named by an id included).
         var firstRun = documents.Open().Count == 0 && !hadOrder;
@@ -515,7 +534,11 @@ public sealed class Workspace : IDisposable
                     if (load.Check.Items.Count > 0)
                         Logger.Warning("Profile {ProfileId} has {Count} item(s) drawn as placeholders (first: {ItemId}, {Problem})",
                             id, load.Check.Items.Count, load.Check.Items[0].Id, load.Check.Items[0].Problem);
-                    return new Slot(OpenDocument(id, generation), null);
+                    var doc = OpenDocument(id, generation, bytes);
+                    Recover(id, doc, bytes);
+                    if (doc.RemovalPending)
+                        _recovery.Note(doc);
+                    return new Slot(doc, null);
                 }
 
                 var first = load.Check.Errors.FirstOrDefault() ?? new SpecError("", "schema", "The document can't be opened.");
@@ -542,16 +565,85 @@ public sealed class Workspace : IDisposable
             ? name
             : null;
 
-    private ProfileDocument OpenDocument(string id, Generation generation) =>
-        new(generation, new ProfileDocumentOptions
+    /// <summary>An open document over <paramref name="generation"/>, saved as <paramref name="saved"/>, whose changes are kept from now on.</summary>
+    private ProfileDocument OpenDocument(string id, Generation generation, byte[] saved)
+    {
+        var doc = new ProfileDocument(generation, new ProfileDocumentOptions
         {
             Instance = DocumentTag.New(),
             Time = _options.Time,
             HistoryBudget = _options.HistoryBudget,
-            Persistence = new StorePersistence(Documents, id),
+            Persistence = new StorePersistence(this, id, saved),
             Limits = Limits,
             Support = Support,
         });
+        _recovery.Watch(doc);
+        return doc;
+    }
+
+    /// <summary>
+    /// Applies the unsaved changes kept in the profile's recovery file to <paramref name="doc"/>, just opened from
+    /// <paramref name="saved"/> (<see cref="ProfileDocument.Restore"/>), when the file can be used: a regular file within
+    /// the read cap, <c>infopanel.recovery/1</c>, made against exactly these saved bytes, with a document that opens as a
+    /// stored one (its scenes that can't be drawn as placeholders, its own id replaced by the folder's). Otherwise it is
+    /// logged once and left where it is, and the profile opens as saved. Under the workspace lock.
+    /// </summary>
+    private void Recover(string id, ProfileDocument doc, byte[] saved)
+    {
+        byte[]? bytes;
+        try
+        {
+            bytes = Documents.ReadRecovery(id);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            NotRecovered(id, doc, ex.Message);
+            return;
+        }
+        if (bytes is null)
+            return;
+
+        using var file = RecoveryFile.Read(bytes, out var @base, out var written, out var document, out var problem);
+        if (file is null)
+        {
+            NotRecovered(id, doc, problem!);
+            return;
+        }
+        if (@base != RecoveryFile.BaseOf(saved))
+        {
+            NotRecovered(id, doc, "it was made against another saved version");
+            return;
+        }
+        if (ValidationText.CheckJson(document, Limits.JsonDepth) is { } invalidJson)
+        {
+            var error = ValidationText.Cap(invalidJson)[0];
+            NotRecovered(id, doc, $"its document can't be opened ({error.Code} at {error.Path})");
+            return;
+        }
+
+        var renamed = document.TryGetProperty("id", out var ownId) && ownId.ValueKind == JsonValueKind.String && ownId.GetString() != id
+            ? WithId(document, id)
+            : null;
+        using (renamed)
+        {
+            var load = Generation.Load(renamed?.RootElement ?? document, 1, Limits, Support, null, jsonChecked: true);
+            if (load.Generation is not { } generation)
+            {
+                var first = load.Check.Errors.FirstOrDefault() ?? new SpecError("", "schema", "The document can't be opened.");
+                NotRecovered(id, doc, $"its document can't be opened ({first.Code} at {first.Path})");
+                return;
+            }
+            if (doc.Restore(generation, written))
+                Logger.Information("Restored the unsaved changes of profile {ProfileId}, kept at {Written}", id, RecoveryFile.Written(written));
+        }
+    }
+
+    private void NotRecovered(string id, ProfileDocument doc, string reason)
+    {
+        Logger.Warning("Did not restore the unsaved changes kept for profile {ProfileId}: {Reason}; it opens as saved, and the file is left until the profile's next change keeps its own, a save or a delete",
+            id, reason);
+        doc.CheckpointFound();
+    }
 
     private static ProfileEntry EntryOf(ProfileDocument doc)
     {
@@ -723,7 +815,7 @@ public sealed class Workspace : IDisposable
             }
 
             StoreChanged?.Invoke(id);
-            doc = OpenDocument(id, generation);
+            doc = OpenDocument(id, generation, bytes);
             _slots[id] = new Slot(doc, null);
         }
 
@@ -772,8 +864,11 @@ public sealed class Workspace : IDisposable
                     if (gone)
                     {
                         StoreChanged?.Invoke(id);
-                        if (_slots.Remove(id, out var slot))
-                            slot.Document?.Dispose();
+                        if (_slots.Remove(id, out var slot) && slot.Document is { } removed)
+                        {
+                            _recovery.Forget(removed);
+                            removed.Dispose();
+                        }
                     }
                 }
             }
@@ -854,7 +949,11 @@ public sealed class Workspace : IDisposable
         ProfilesChanged?.Invoke(this, new ProfilesChangedEventArgs(version));
     }
 
-    /// <summary>Disposes every open document (the engine is stopping).</summary>
+    /// <summary>
+    /// The engine is stopping: stops the recovery scheduler (waiting for a checkpoint under way), keeps each dirty
+    /// document's unsaved changes not yet kept at its current revision, then disposes every open document. A document
+    /// that can't be kept is logged; the others still are.
+    /// </summary>
     public void Dispose()
     {
         List<ProfileDocument> open;
@@ -867,8 +966,19 @@ public sealed class Workspace : IDisposable
             _slots.Clear();
         }
 
+        _recovery.Dispose();
         foreach (var doc in open)
+        {
+            try
+            {
+                doc.Checkpoint();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Logger.Warning(ex, "Could not keep the unsaved changes of profile {ProfileId} as the engine stopped", doc.Id);
+            }
             doc.Dispose();
+        }
     }
 
     // ---- helpers ---------------------------------------------------------------------------------------------------
@@ -967,10 +1077,68 @@ public sealed class Workspace : IDisposable
 
     private sealed record Slot(ProfileDocument? Document, ProfileEntry? Entry);
 
-    /// <summary>Saves a document's generations in its profile folder.</summary>
-    private sealed class StorePersistence(DocumentStore store, string id) : IDocumentPersistence
+    /// <summary>
+    /// Saves a document's generations in its profile folder, and keeps its unsaved changes beside them
+    /// (<see cref="RecoveryFile"/>), made against the saved bytes it knows: those it was opened or created with, then each
+    /// save's. Called under the document's save lock, one call at a time.
+    /// </summary>
+    private sealed class StorePersistence(Workspace workspace, string id, byte[] saved) : IDocumentPersistence
     {
-        public void Save(Generation generation) => store.Save(id, Serialize(generation));
+        /// <summary>The <c>base</c> of a recovery now: the saved bytes' hash; null when they aren't known (a save failed and they can't be read).</summary>
+        private string? _base = RecoveryFile.BaseOf(saved);
+
+        private DocumentStore Store => workspace.Documents;
+
+        public void Save(Generation generation)
+        {
+            var bytes = Serialize(generation);
+            workspace.Saving?.Invoke(id);
+            try
+            {
+                Store.Save(id, bytes);
+                _base = RecoveryFile.BaseOf(bytes);
+            }
+            catch
+            {
+                // The file is the old bytes, or the new ones when only its flush failed: whichever it holds.
+                _base = SavedBase();
+                throw;
+            }
+        }
+
+        private string? SavedBase()
+        {
+            try
+            {
+                return RecoveryFile.BaseOf(Store.Read(id));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or KeyNotFoundException)
+            {
+                return null;
+            }
+        }
+
+        public void Checkpoint(Generation generation)
+        {
+            var @base = _base ?? SavedBase() ?? throw new IOException($"The saved document of profile {id} can't be read, so no changes can be kept against it.");
+            _base = @base;
+            var bytes = RecoveryFile.Build(@base, workspace._options.Time.GetUtcNow(), Serialize(generation));
+            workspace.CheckpointWriting?.Invoke(id);
+            try
+            {
+                Store.WriteRecovery(id, bytes);
+            }
+            catch (KeyNotFoundException)
+            {
+                // Deleted meanwhile: nothing to keep, and nothing written.
+            }
+        }
+
+        public void ClearCheckpoint()
+        {
+            workspace.CheckpointRemoving?.Invoke(id);
+            Store.RemoveRecovery(id);
+        }
     }
 }
 

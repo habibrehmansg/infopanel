@@ -1,5 +1,6 @@
 using System.Text;
 using InfoPanel.Core.Tests.Persistence;
+using InfoPanel.Core.Tests.Sensors;
 using InfoPanel.Documents;
 using InfoPanel.Persistence;
 using Xunit;
@@ -348,6 +349,212 @@ public class CrashSafetyTests
                 Assert.Equal(a, reopened.Documents.Read(A));
             },
             openFirst: false);
+    }
+
+    // ---- unsaved changes kept across a restart (docs/2.0/data-folder.md, "Unsaved changes") -------------------------
+
+    private const string D0 = "a=10,b=50";
+    private const string R1 = "a=20,b=50";
+
+    private static WorkspaceOptions RecoveryOptions() => new()
+    {
+        Time = new TimerTimeProvider(DocKit.Start),
+        HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes),
+        ExamplesWanted = static () => false,
+        Logger = Serilog.Core.Logger.None,
+    };
+
+    /// <summary>Profile A after a restart: its saved and current <c>a</c> and <c>b</c>, and whether a recovery file was there.</summary>
+    private sealed record Reopened(bool Listed, string Saved, string Current, bool Dirty, bool Restored, bool HadFile);
+
+    private static string Xs(Generation g) => $"a={g.Item("a").Placement.X},b={g.Item("b").Placement.X}";
+
+    private static Reopened Restart(DataPaths paths)
+    {
+        using var workspace = Workspace.Start(paths, RecoveryOptions(), DocKit.Start);
+        var hadFile = File.Exists(paths.RecoveryFile(A));
+        if (workspace.Open(A) is not { } doc)
+            return new Reopened(false, "", "", false, false, hadFile);
+        return new Reopened(true, Xs(doc.Saved), Xs(doc.Current), doc.Dirty, doc.Recovered is not null, hadFile);
+    }
+
+    private static ProfileDocument CreateA(Workspace workspace)
+    {
+        var doc = System.Text.Json.Nodes.JsonNode.Parse(DocKit.Doc(DocKit.Scene("a", 10, 10), DocKit.Scene("b", 50, 10)).GetRawText())!.AsObject();
+        doc["id"] = A;
+        Assert.NotNull(workspace.Create(Encoding.UTF8.GetBytes($"{{\"id\":\"{A}\",\"document\":{doc.ToJsonString()}}}")).Entry);
+        return workspace.Open(A)!;
+    }
+
+    private static void MoveA(ProfileDocument doc, double x, string item = "a") =>
+        doc.Ok(DocKit.Commit(doc, $"op-{Guid.NewGuid():N}", null, DocKit.Place(item, x, 10)));
+
+    /// <summary>
+    /// <paramref name="act"/> on a workspace over stores failing at every step (as a crash, which no catch stops, or as an
+    /// I/O error), never disposed; then a restart on the folder, handed to <paramref name="check"/> with whether the act
+    /// returned and whether a fault fired. Before it, profile A is saved with <see cref="D0"/>, and with
+    /// <paramref name="keepMove"/> its unsaved move to <see cref="R1"/> is kept by an orderly stop.
+    /// </summary>
+    private static int ForEveryRecoveryStep(bool crash, bool keepMove, Action<Workspace> act, Action<Reopened, bool, bool> check) =>
+        ForEveryStep(crash,
+            arrange: s =>
+            {
+                using var workspace = new Workspace(s.Documents, s.Blobs, RecoveryOptions());
+                var doc = CreateA(workspace);
+                if (keepMove)
+                    MoveA(doc, 20);
+            },
+            act: s => act(new Workspace(s.Documents, s.Blobs, RecoveryOptions())),
+            check: (faults, live, reopened, completed) => check(Restart(reopened.Documents.Paths), completed, faults.Fired));
+
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public void Recovery_FirstCheckpoint_IsNoneOrWhole(bool crash)
+    {
+        var steps = ForEveryRecoveryStep(crash, keepMove: false,
+            act: workspace =>
+            {
+                var doc = workspace.Open(A)!;
+                MoveA(doc, 20);
+                doc.Checkpoint();
+            },
+            check: (r, completed, faulted) =>
+            {
+                Assert.Equal(D0, r.Saved);
+                Assert.Contains(r.Current, new[] { D0, R1 });
+                Assert.Equal(r.Current == R1, r.Dirty && r.Restored);
+                if (completed && !faulted)
+                    Assert.Equal(R1, r.Current);
+            });
+        Assert.True(steps >= 4, $"{steps} steps");
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public void Recovery_ACheckpointReplacingAnother_IsTheOldOrTheNew(bool crash)
+    {
+        var steps = ForEveryRecoveryStep(crash, keepMove: true,
+            act: workspace =>
+            {
+                var doc = workspace.Open(A)!;
+                MoveA(doc, 30);
+                doc.Checkpoint();
+            },
+            check: (r, completed, faulted) =>
+            {
+                Assert.Equal(D0, r.Saved);
+                Assert.Contains(r.Current, new[] { R1, "a=30,b=50" });
+                Assert.True(r.Dirty && r.Restored);
+                if (completed && !faulted)
+                    Assert.Equal("a=30,b=50", r.Current);
+            });
+        Assert.True(steps >= 4, $"{steps} steps");
+    }
+
+    /// <summary>An undo back to the saved version removes the file before it answers: once it has, nothing comes back.</summary>
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public void Recovery_TheRemoval_OnceAnsweredNothingComesBack(bool crash)
+    {
+        var steps = ForEveryRecoveryStep(crash, keepMove: true,
+            act: workspace => workspace.Open(A)!.UndoOwn(),
+            check: (r, completed, faulted) =>
+            {
+                Assert.Equal(D0, r.Saved);
+                Assert.Contains(r.Current, new[] { D0, R1 });
+                Assert.Equal(r.Current == R1, r.Dirty && r.Restored);
+                // An I/O error removing it is logged and the undo answers; a crash never lets it answer.
+                if (completed && !faulted)
+                    Assert.Equal((D0, false), (r.Current, r.HadFile));
+                if (completed && crash)
+                    Assert.Equal(D0, r.Current);
+            });
+        Assert.True(steps >= 2, $"{steps} steps");
+    }
+
+    /// <summary>
+    /// A save with a commit during it: the saved document is replaced first, then the file rewritten against it, so a
+    /// crash between them leaves a file whose base is the old save, never applied over the new one.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public void Recovery_SaveThenRewrite_NeverReachesPastTheNewSave(bool crash)
+    {
+        var steps = ForEveryRecoveryStep(crash, keepMove: true,
+            act: workspace =>
+            {
+                var doc = workspace.Open(A)!;
+                var committed = false;
+                workspace.Saving = _ =>
+                {
+                    if (committed)
+                        return;
+                    committed = true;
+                    MoveA(doc, 77, "b");
+                };
+                doc.Save();
+            },
+            check: (r, completed, faulted) =>
+            {
+                Assert.Contains(r.Saved, new[] { D0, R1 });
+                if (r.Saved == D0)
+                    Assert.Equal((R1, true), (r.Current, r.Restored));
+                else
+                    Assert.Contains(r.Current, new[] { R1, "a=20,b=77" });
+                Assert.Equal(r.Current != r.Saved, r.Dirty && r.Restored);
+                if (completed && !faulted)
+                    Assert.Equal((R1, "a=20,b=77"), (r.Saved, r.Current));
+            });
+        Assert.True(steps >= 10, $"{steps} steps");
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public void Recovery_SaveThenRemoval_NeverReachesPastTheNewSave(bool crash)
+    {
+        var steps = ForEveryRecoveryStep(crash, keepMove: true,
+            act: workspace => workspace.Open(A)!.Save(),
+            check: (r, completed, faulted) =>
+            {
+                Assert.Contains(r.Saved, new[] { D0, R1 });
+                Assert.Equal(R1, r.Current);
+                Assert.Equal(r.Saved == D0, r.Dirty && r.Restored);
+                if (completed && !faulted)
+                    Assert.Equal((R1, false, false), (r.Saved, r.Dirty, r.HadFile));
+            });
+        Assert.True(steps >= 8, $"{steps} steps");
+    }
+
+    /// <summary>A checkpoint, then a delete, then a checkpoint that comes too late: the profile is gone with its file, or there whole without it.</summary>
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public void Recovery_DeleteWithACheckpointWaiting_LeavesNothingBehind(bool crash)
+    {
+        var steps = ForEveryRecoveryStep(crash, keepMove: false,
+            act: workspace =>
+            {
+                var doc = workspace.Open(A)!;
+                MoveA(doc, 20);
+                Assert.True(doc.Checkpoint());
+                Assert.True(File.Exists(workspace.Documents.Paths.RecoveryFile(A)));
+                workspace.DeleteWithItsTag(A);
+                Assert.False(doc.Checkpoint());
+            },
+            check: (r, completed, faulted) =>
+            {
+                if (r.Listed)
+                {
+                    Assert.Equal(D0, r.Saved);
+                    Assert.Contains(r.Current, new[] { D0, R1 });
+                }
+                else
+                {
+                    Assert.False(r.HadFile);
+                }
+                if (completed)
+                    Assert.False(r.Listed);
+            });
+        Assert.True(steps >= 6, $"{steps} steps");
     }
 
     private static void AgeAllBlobs(Stores stores)
