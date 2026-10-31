@@ -290,7 +290,8 @@ public sealed class PluginHostManagerTests : IDisposable
         _ = launcher.Started[0].Host.SendHugeErrorAsync(17 * 1024 * 1024).ContinueWith(t => t.Exception, TaskScheduler.Default);
 
         await Eventually.Until(() => runner.State == PluginHostState.Restarting, "the host's connection is closed and it restarts");
-        Assert.True(launcher.Started[0].Killed);
+        // The restart kills the host after the state is set: waited for, not read at once.
+        await Eventually.Until(() => launcher.Started[0].Killed, "the host is killed");
         Assert.Contains("over the 16777216", runner.Errors[^1]);
     }
 
@@ -312,7 +313,7 @@ public sealed class PluginHostManagerTests : IDisposable
             _ = Flood(host, count: 100, chars: 10);
 
             await Eventually.Until(() => runner.State == PluginHostState.Restarting, "the flooding host's connection is closed and it restarts");
-            Assert.True(launcher.Started[0].Killed);
+            await Eventually.Until(() => launcher.Started[0].Killed, "the host is killed");
             Assert.Contains(runner.Errors, e => e.Contains("more than 8 messages"));
         }
         finally
@@ -400,7 +401,7 @@ public sealed class PluginHostManagerTests : IDisposable
         }
 
         await Eventually.Until(() => runner.State == PluginHostState.Restarting, "the host's connection is closed and it restarts");
-        Assert.True(launcher.Started[0].Killed);
+        await Eventually.Until(() => launcher.Started[0].Killed, "the host is killed");
         Assert.Contains(runner.Errors, e => e.Contains("asked for a reply"));
         await Eventually.Until(() => asked.All(t => t.IsCompleted), "every call ends with the connection");
         Assert.DoesNotContain(asked, t => t.IsCompletedSuccessfully);
