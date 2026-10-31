@@ -198,13 +198,23 @@ public sealed class LogEndpointTests
     /// <summary>
     /// A browser that can't be opened when the editor is asked for: what was started names only the private redirect file,
     /// never the link, and the error reaches the console only: the log file, the kept entries and their answer get a failure
-    /// line without it, and none holds the token.
+    /// line without it, and none holds the token. With this computer's default web browser, and with given ones in each
+    /// OS's form, whatever their command does around the file: options after it, the placeholder quoted or not, or none;
+    /// and on Windows with no usable command, where the file is opened by its association.
     /// </summary>
-    [Fact]
-    public async Task ABrowserThatCantBeOpened_KeepsTheTokenOutOfTheLogFile_TheEntries_AndTheirAnswer()
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(BrowserOS.Windows, "\"C:\\Program Files\\Browser\\browser.exe\" \"%1\" --new-window")]
+    [InlineData(BrowserOS.Windows, "\"C:\\Program Files\\Browser\\browser.exe\" %1 --new-window")]
+    [InlineData(BrowserOS.Windows, "C:\\Browser\\browser.exe --single-argument %1")]
+    [InlineData(BrowserOS.Windows, "\"C:\\Program Files\\Browser\\browser.exe\"")]
+    [InlineData(BrowserOS.Windows, "")]
+    [InlineData(BrowserOS.Linux, "browser %u --new-window")]
+    [InlineData(BrowserOS.MacOS, "/Applications/Browser.app")]
+    public async Task ABrowserThatCantBeOpened_KeepsTheTokenOutOfTheLogFile_TheEntries_AndTheirAnswer(BrowserOS? os, string? browser)
     {
         using var engine = new EngineFactory();
-        var attempts = new List<string>();
+        var attempts = new List<(string Started, int Links)>();
         using var factory = engine.WithWebHostBuilder(builder =>
         {
             builder.ConfigureTestServices(services => services.AddSingleton(sp => new BrowserLauncher(
@@ -212,13 +222,23 @@ public sealed class LogEndpointTests
                 sp.GetRequiredService<RedirectFiles>(),
                 command =>
                 {
-                    // What was started, as .NET's launch error names it, in the error and the one it wraps; nothing opens.
-                    var started = string.Join(" ", [command.FileName, .. command.ArgumentList]);
+                    // What was started, in the error and the one it wraps; nothing opens. The arguments are either list
+                    // (macOS, Linux) or one command line (Windows: the http association's command, the file quoted in it).
+                    // Windows with no usable command opens the file itself by its association: the shell's target is the
+                    // file name, with no arguments.
+                    var started = string.Join(" ", new[] { command.FileName, command.Arguments }.Concat(command.ArgumentList).Where(s => s.Length > 0));
+                    // The arguments that are the redirect file, wherever they sit: a file there now that holds the link.
+                    var links = (command.UseShellExecute ? [command.FileName] : Array.Empty<string>())
+                        .Concat(command.ArgumentList.Count > 0 ? [.. command.ArgumentList] : CommandLineWords(command.Arguments))
+                        .Count(a => System.IO.File.Exists(a) && System.IO.File.ReadAllText(a).Contains(EngineFactory.Token));
                     lock (attempts)
-                        attempts.Add(started);
+                        attempts.Add((started, links));
                     throw new Win32Exception($"An error occurred trying to start process '{started}'. The system cannot find the file specified.",
                         new InvalidOperationException($"No handler for {started}"));
-                })));
+                },
+                findChrome: () => null,
+                os: os,
+                findBrowser: browser == null ? null : () => browser)));
         });
         using var api = factory.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false });
         api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
@@ -233,12 +253,13 @@ public sealed class LogEndpointTests
             && DateTime.UtcNow < deadline)
             await Task.Delay(20, Ct);
 
-        // The engine tried to open the editor and failed; what it started names the redirect file, not the token.
+        // The engine tried to open the editor and failed; what it started names the redirect file, as one of its arguments,
+        // and not the token.
         lock (attempts)
         {
             Assert.NotEmpty(attempts);
-            Assert.All(attempts, a => Assert.DoesNotContain(EngineFactory.Token, a));
-            Assert.All(attempts, a => Assert.EndsWith(".html", a));
+            Assert.All(attempts, a => Assert.DoesNotContain(EngineFactory.Token, a.Started));
+            Assert.All(attempts, a => Assert.True(a.Links == 1, $"Not one argument is the redirect file: {a.Started}"));
         }
         // The log file says it couldn't, and holds no token.
         var file = File();
@@ -254,6 +275,39 @@ public sealed class LogEndpointTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("Could not open the browser", text);
         Assert.DoesNotContain(EngineFactory.Token, text);
+    }
+
+    /// <summary>A Windows command line's words: split at spaces outside double quotes, the quotes removed.</summary>
+    private static List<string> CommandLineWords(string line)
+    {
+        var words = new List<string>();
+        var word = new System.Text.StringBuilder();
+        var quoted = false;
+        var inWord = false;
+        foreach (var c in line)
+        {
+            if (c == '"')
+            {
+                quoted = !quoted;
+                inWord = true;
+            }
+            else if (c == ' ' && !quoted)
+            {
+                if (inWord)
+                    words.Add(word.ToString());
+                word.Clear();
+                inWord = false;
+            }
+            else
+            {
+                word.Append(c);
+                inWord = true;
+            }
+        }
+
+        if (inWord)
+            words.Add(word.ToString());
+        return words;
     }
 
     private static string ReadShared(string path)
