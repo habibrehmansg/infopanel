@@ -37,7 +37,10 @@ asked:
 - the menu's **Open Editor** (and the Quit alert's);
 - a **second launch**: starting InfoPanel again on a data folder an engine holds. The new process asks the running engine,
   over the folder's local channel (as a `launch` companion, which may ask nothing else), to open the editor, prints
-  "InfoPanel is already running; opened the editor", and exits 3. With `--no-browser` it asks nothing.
+  "InfoPanel is already running; opened the editor", and exits 3. With `--no-browser` it asks nothing. When nothing
+  answers on the channel, the engine holding the folder is stopping (it closes its channel before it lets go of the
+  folder, which it keeps through its clean-up) or starting: the new process waits for the folder, up to 5 s, and starts
+  once it is free; still held then, it exits 3. So a quick relaunch during a shutdown starts the engine again.
 
 **What opens.** With no web client served here (no `--web-root`, no `wwwroot` beside the engine) and exactly one
 cross origin allowed, the engine opens that origin's pairing link

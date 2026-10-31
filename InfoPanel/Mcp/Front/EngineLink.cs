@@ -51,8 +51,9 @@ public sealed class EngineLinkOptions
 /// <item>else start the engine with the folder's launch record (<see cref="LaunchRecord"/>), <c>--no-browser</c> and
 /// <c>--fresh=false</c>, and
 /// look for the channel every <see cref="EngineLinkOptions.PollInterval"/> until <see cref="EngineLinkOptions.StartTimeout"/>.
-/// The data folder's lock decides: an engine already holding it (one starting, or one too old to have the channel) makes
-/// the new one exit 3 having changed nothing. <c>runtime.json</c> never stops a start (a crash leaves it, and its pid
+/// The data folder's lock decides: an engine already holding it that answers on its channel makes the new one exit 3
+/// having changed nothing; one that doesn't (stopping, starting, or too old to have the channel) makes it wait for the
+/// folder (<see cref="SecondLaunch.HandOff"/>) and start once it is free, else exit 3. <c>runtime.json</c> never stops a start (a crash leaves it, and its pid
 /// may be another process's by now);</item>
 /// <item>still no channel: the answer says what was seen. A started engine that exited 3, or a <c>runtime.json</c>
 /// whose pid is alive, is an older engine; anything else couldn't be started, with the exit code or the wait.</item>

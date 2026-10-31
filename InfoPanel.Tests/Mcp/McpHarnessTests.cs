@@ -169,12 +169,44 @@ public sealed class McpHarnessTests
         using var held = InstanceLock.TryAcquire(Path.Combine(folder.Data, "engine.lock"), out var error);
         Assert.NotNull(held);
 
-        await using var front = new McpHarness(folder.Data, startSeconds: 4);
+        // Longer than the wait the started engine gives the folder (SecondLaunch.HandOff), after which it exits 3.
+        await using var front = new McpHarness(folder.Data, startSeconds: 10);
         await front.InitializeAsync();
         var result = await front.CallAsync("list_profiles");
         Assert.True(result["isError"]!.GetValue<bool>());
         Assert.Contains("older version that can't talk to AI apps", McpHarness.TextOf(result));
         Assert.Null(await folder.PidAsync());
+        front.AssertStdoutIsOnlyProtocol();
+    }
+
+    /// <summary>
+    /// A call while the engine on the folder stops: its channel is closed but it hasn't let go of the folder's lock yet.
+    /// The engine the front starts waits for the folder rather than exiting 3, takes it once the old one lets go, and the
+    /// call is answered by it, not with "an older version". The test holds the lock itself, with no channel, and lets go
+    /// of it a moment after the call.
+    /// </summary>
+    [Fact]
+    public async Task ACallWhileTheEngineStops_IsAnsweredByTheEngineItStarts()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        using var folder = new HarnessFolder();
+        folder.RecordQuietStart();
+        Directory.CreateDirectory(folder.Data);
+        var stopping = InstanceLock.TryAcquire(Path.Combine(folder.Data, "engine.lock"), out var error);
+        Assert.True(stopping != null, error);
+
+        await using var front = new McpHarness(folder.Data, startSeconds: 20);
+        await front.InitializeAsync();
+        var call = front.CallAsync("no_such_tool");
+        await Task.Delay(1500, Ct);
+        stopping!.Dispose();
+
+        var text = McpHarness.TextOf(await call);
+        Assert.Contains("wasn't running, so it was started", text);
+        Assert.DoesNotContain("older version", text);
+        Assert.NotNull(await folder.PidAsync());
         front.AssertStdoutIsOnlyProtocol();
     }
 

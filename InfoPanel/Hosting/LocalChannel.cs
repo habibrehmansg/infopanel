@@ -22,8 +22,15 @@ public sealed record LocalChannelEndpoint(string RunDirectory, string Hash, stri
     public string Name => SocketPath ?? $@"\\.\pipe\{PipeName}";
 }
 
-/// <summary>A channel that can't be used: a run folder or socket path the engine refuses, or a hello refused.</summary>
-public sealed class LocalChannelException(string message) : IOException(message);
+/// <summary>
+/// A channel that can't be used: a run folder or socket path the engine refuses, or a hello refused; or, with
+/// <see cref="Closed"/>, a connection the engine closed before its hello (an engine stopping closes it as it goes).
+/// </summary>
+public sealed class LocalChannelException(string message, bool closed = false) : IOException(message)
+{
+    /// <summary>The engine closed the connection before its hello, rather than refusing it or not being trusted.</summary>
+    public bool Closed { get; } = closed;
+}
 
 /// <summary>
 /// The local channel: a current-user-only connection between the engine that holds a data folder and the companions on
@@ -819,7 +826,8 @@ public sealed class LocalChannelClient : IAsyncDisposable
     /// <summary>
     /// Connects and says hello. Null when nothing listens there (no socket, or one a crash left); throws
     /// <see cref="LocalChannelException"/> when the engine refuses the hello (another channel version, too many
-    /// connections) with its reason, and before any hello when the channel isn't this user's: a run folder that isn't
+    /// connections) with its reason, or closes the connection before its hello (<see cref="LocalChannelException.Closed"/>),
+    /// and before any hello when the channel isn't this user's: a run folder that isn't
     /// this user's alone (<see cref="LocalChannel.CheckRunDirectory"/>), or a peer of another user.
     /// <paramref name="peerOf"/> stands in for the system's answer to who the peer is (<see cref="UnixIdentity.PeerOf"/>) in tests;
     /// <paramref name="client"/> is the companion it says it is (an AI app's front unless said).
@@ -875,7 +883,7 @@ public sealed class LocalChannelClient : IAsyncDisposable
             var reader = new LineReader(stream, LocalChannel.MaxHelloBytes);
             var line = await reader.ReadLineAsync(limit.Token).ConfigureAwait(false);
             if (line == null)
-                throw new LocalChannelException("The engine closed the channel before it said hello.");
+                throw new LocalChannelException("The engine closed the channel before it said hello.", closed: true);
             var hello = JsonNode.Parse(line, documentOptions: LocalChannel.MessageOptions) as JsonObject ?? throw new LocalChannelException("The engine's hello isn't a JSON object.");
             if (hello["refused"]?.GetValue<string>() is { } refused)
                 throw new LocalChannelException(refused);

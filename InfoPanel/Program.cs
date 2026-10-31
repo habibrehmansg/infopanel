@@ -105,17 +105,28 @@ catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 
 // Only a regular file is locked: one another engine holds is exit 3; one that can't be locked (a FIFO, a link whose
 // target can't be reached) stops start-up with exit 1, nothing created.
-using var instanceLock = InstanceLock.TryAcquire(paths.EngineLockFile, out var lockError, out var lockHeld);
-if (instanceLock == null)
+var acquired = InstanceLock.TryAcquire(paths.EngineLockFile, out var lockError, out var lockHeld);
+if (acquired == null && lockHeld)
 {
-    // A second launch: the user started InfoPanel again, so the engine that holds the folder opens the editor (unless
-    // --no-browser). Still exit 3.
-    if (lockHeld && !options.NoBrowser && await SecondLaunch.OpenEditorAsync(options.RunDir ?? LocalChannel.DefaultRunDirectory(), paths.Root))
+    // A second launch: the user started InfoPanel again, so an engine that holds the folder and answers on its channel
+    // opens the editor (unless --no-browser), and this one exits 3. One that doesn't answer is stopping (it closes its
+    // channel before it lets go of the folder): this launch waits for the folder and starts once it is free.
+    var handOff = await SecondLaunch.HandOffAsync(paths.EngineLockFile, options.RunDir ?? LocalChannel.DefaultRunDirectory(), paths.Root,
+        openEditor: !options.NoBrowser, SecondLaunch.HandOff);
+    if (handOff.Opened)
     {
         Console.WriteLine("InfoPanel is already running; opened the editor");
         return 3;
     }
 
+    (acquired, lockError, lockHeld) = (handOff.Lock, handOff.Error ?? lockError, handOff.Held);
+}
+
+// Held until the entry point returns, after every service is disposed and the log written out: the folder is let go
+// only once nothing of this engine writes there.
+using var instanceLock = acquired;
+if (instanceLock == null)
+{
     Console.Error.WriteLine($"InfoPanel: {lockError}");
     return lockHeld ? 3 : 1;
 }
