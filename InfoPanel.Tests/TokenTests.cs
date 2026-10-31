@@ -786,6 +786,8 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
             Assert.Equal(HttpStatusCode.OK, (await use.GetAsync("/api/session", Ct)).StatusCode);
         }
 
+        // The first engine's entry point lets go of the folder's lock only as it returns, which can be after Dispose has.
+        await engine.WaitForTheFolderAsync(Ct);
         using var second = engine.WithWebHostBuilder(_ => { });
         using var again = second.CreateClient();
         again.DefaultRequestHeaders.Authorization = new("Bearer", EngineFactory.Token);

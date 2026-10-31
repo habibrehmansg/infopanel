@@ -108,6 +108,28 @@ public class EngineFactory : WebApplicationFactory<Program>
         return client;
     }
 
+    /// <summary>
+    /// Waits, up to 10 s, until the data folder's lock can be taken. A host's Dispose returns before <c>Program</c>'s entry
+    /// point lets go of <c>engine.lock</c> (it does as it returns, after the log file is closed), so a test that starts
+    /// another engine on the folder right after one stops waits for this first.
+    /// </summary>
+    public async Task WaitForTheFolderAsync(CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (true)
+        {
+            using (var free = InstanceLock.TryAcquire(Path.Combine(DataDir, "engine.lock"), out _))
+            {
+                if (free != null)
+                    return;
+            }
+
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException($"The data folder's lock was still held 10 s after its engine stopped ({DataDir}).");
+            await Task.Delay(10, ct);
+        }
+    }
+
     private int _asserted;
 
     /// <summary>Stops the engine, removes its folders, and fails when any response it gave broke the contract.</summary>

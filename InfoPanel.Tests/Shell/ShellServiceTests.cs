@@ -39,7 +39,11 @@ public sealed class ShellServiceTests : IDisposable
         }));
         // Starts the host.
         _ = _factory.Services;
+        // Taken now: once a quit has stopped the host its services are disposed, and reading them then throws.
+        _stopping = Lifetime.ApplicationStopping;
     }
+
+    private readonly CancellationToken _stopping;
 
     public void Dispose()
     {
@@ -51,7 +55,8 @@ public sealed class ShellServiceTests : IDisposable
 
     private Workspace Workspace => _factory.Services.GetRequiredService<Workspace>();
 
-    private bool Stopping => Lifetime.ApplicationStopping.IsCancellationRequested;
+    /// <summary>Whether the engine began to stop; readable after it has stopped (a quit stops it on another thread).</summary>
+    private bool Stopping => _stopping.IsCancellationRequested;
 
     /// <summary>A new profile named <paramref name="name"/> with a change not yet saved.</summary>
     private string Unsaved(string name)
@@ -187,8 +192,11 @@ public sealed class ShellServiceTests : IDisposable
     [InlineData(ShellService.TestEnvironment, true)]
     public async Task TheTestPromptSetting_AsksAtStart_OnlyWhenTheEngineRunsAsATest(string environment, bool asked)
     {
-        // The data folder is this class's engine's: it stops first.
+        // The data folder is this class's engine's: it stops first. Its entry point lets go of the folder's lock only as
+        // it returns, which can be after Dispose has: an engine started on the folder before then finds it held and exits
+        // without building a host. So wait until the lock is free.
         _factory.Dispose();
+        await _base.WaitForTheFolderAsync(Ct);
         var shell = new FakeShellPlatform();
         using var factory = _base.WithWebHostBuilder(builder =>
         {
