@@ -37,17 +37,22 @@ public sealed class FetchedMediaStore(long maxBytes = FetchedMediaStore.DefaultM
     public static string KeyOf(ReadOnlySpan<byte> bytes) => Prefix + "sha256:" + Convert.ToHexStringLower(SHA256.HashData(bytes));
 
     /// <summary>Keeps <paramref name="bytes"/> (not copied: the caller hands them over) and answers their key.</summary>
-    public string Put(byte[] bytes)
+    public string Put(byte[] bytes) => Put(bytes, out _);
+
+    /// <summary><see cref="Put(byte[])"/>; <paramref name="added"/> says whether the bytes weren't held already.</summary>
+    public string Put(byte[] bytes, out bool added)
     {
         var key = KeyOf(bytes);
         lock (_lock)
         {
+            added = false;
             if (_entries.TryGetValue(key, out var node))
             {
                 _lru.Remove(node);
                 _lru.AddFirst(node);
                 return key;
             }
+            added = true;
             _entries[key] = _lru.AddFirst((key, bytes));
             _bytes += bytes.Length;
             while (_bytes > maxBytes && _lru.Last is { } last && last != _lru.First)
@@ -58,6 +63,17 @@ public sealed class FetchedMediaStore(long maxBytes = FetchedMediaStore.DefaultM
             }
         }
         return key;
+    }
+
+    /// <summary>Drops <paramref name="key"/>'s bytes (a stream's picture no longer shown).</summary>
+    public void Remove(string key)
+    {
+        lock (_lock)
+        {
+            if (!_entries.Remove(key, out var node)) return;
+            _lru.Remove(node);
+            _bytes -= node.Value.Bytes.Length;
+        }
     }
 
     /// <summary>Whether <paramref name="key"/>'s bytes are still held.</summary>

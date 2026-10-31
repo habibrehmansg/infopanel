@@ -1,0 +1,14 @@
+{
+  "format": "infopanel.scene/1",
+  "requires": ["media.provider"],
+  "inputs": {"address": {"type": "text", "label": "Image address"}},
+  "nodes": [
+    {
+      "kind": "media",
+      "w": 160,
+      "h": 160,
+      "fit": "cover",
+      "source": {"provider": "http", "ref": {"op": "input", "name": "address", "field": "text"}, "refresh": 60}
+    }
+  ]
+}

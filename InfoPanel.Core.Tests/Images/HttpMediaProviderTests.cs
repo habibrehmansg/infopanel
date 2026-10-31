@@ -158,7 +158,7 @@ public sealed class HttpMediaProviderTests
 
         var request = Assert.Single(rig.Server.Requests);
         Assert.Equal(("GET", "/radar.png"), (request.Method, request.Path));
-        Assert.Equal("image/*", request.Header("accept"));
+        Assert.Equal("image/*, multipart/x-mixed-replace", request.Header("accept"));
         Assert.Equal("InfoPanel/2.0.0", request.Header("user-agent"));
         Assert.Null(request.Header("cookie"));
         Assert.Null(request.Header("authorization"));

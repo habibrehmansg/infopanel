@@ -30,6 +30,21 @@ internal sealed class ItemRuntime(string id)
     public bool Suspended;
     public long SuspendedAt;
 
+    /// <summary>
+    /// The provider media the item asks for and holds, by provider source (<see cref="CMediaSource.ProviderIndex"/>): kept
+    /// across new generations of its scene, so an edited reference holds the old picture too.
+    /// </summary>
+    public readonly Dictionary<int, ProviderHold> Holds = new();
+
+    /// <summary>When (elapsed seconds) the item last took a new reference: it takes at most one a second.</summary>
+    public double? ReferenceTakenAt;
+
+    /// <summary>The item's live evaluations, counted: a source's wait for its turn counts while it was seen in the last one.</summary>
+    public long HoldTicks;
+
+    /// <summary>The order sources began to wait in for their new references (<see cref="ProviderHold.WaitOrder"/>).</summary>
+    public long WaitOrders;
+
     // The watchdog: ticks whose evaluation or slowest draw took longer than the item budget, counted once per tick
     // however many outputs and scales drew it. Draws mark from their own threads.
     private readonly Lock _watch = new();
@@ -77,6 +92,28 @@ internal sealed class ItemRuntime(string id)
     }
 }
 
+/// <summary>
+/// One provider source's reference across ticks (spec/docs/smart-nodes.md, "Media held across a change of reference"):
+/// the reference asked for, and the one before it, whose media is drawn while the new one loads.
+/// </summary>
+internal sealed class ProviderHold(string provider, string reference)
+{
+    public string Provider = provider;
+    public string Reference = reference;
+
+    /// <summary>Whether the last tick drew the reference's own media.</summary>
+    public bool Shown;
+
+    /// <summary>The reference whose media is drawn until <see cref="Reference"/>'s arrives or fails.</summary>
+    public (string Provider, string Reference)? Held;
+
+    /// <summary>While the source waits to take a new reference: when it began to wait, among the item's sources (first goes first).</summary>
+    public long? WaitOrder;
+
+    /// <summary>The item's live evaluation (<see cref="ItemRuntime.HoldTicks"/>) that last saw the source wait.</summary>
+    public long WaitSeen;
+}
+
 /// <summary>Per-tick services and budgets shared by a document's items.</summary>
 internal sealed class TickServices
 {
@@ -102,6 +139,12 @@ internal sealed class TickServices
 
     /// <summary>This tick's refreshes each provider was told of, by reference: each told once.</summary>
     public readonly HashSet<(string Provider, string Reference, int Refresh)> Refreshes = new();
+
+    /// <summary>The tick, as providers know it: every ask of the tick for one reference shows the same media.</summary>
+    public readonly MediaTick MediaTick = new();
+
+    /// <summary>This tick's asks for held media (a one-off ask: it starts nothing), apart from the live asks.</summary>
+    public readonly Dictionary<(string Provider, string Reference, double Seconds, MediaPlayback Playback), ProvidedMedia> Held = new();
 
     /// <summary>This tick's video lookups, by video, time, playback and box.</summary>
     public readonly Dictionary<(string Hash, double Seconds, MediaPlayback Playback, float? W, float? H), MediaLookup> Videos = new();
@@ -170,6 +213,7 @@ internal sealed class SceneEvaluator
         _rt = rt;
         _services = services;
         _elapsed = clock.Elapsed;
+        if (services.Live) rt.HoldTicks++;
         _diag = diag;
         _laidOut = new RText?[scene.TextNodes.Length];
         _textLayouts = new (TextLayout, float?, float?)?[scene.TextNodes.Length];
@@ -1119,39 +1163,130 @@ internal sealed class SceneEvaluator
                 _diag.AddMedia("media.provider", $"No media provider '{name}' is configured.");
                 return null;
             }
-            // Asked once per tick for each reference, time and playback: every item showing it shows the same answer. An item
-            // sharing it with another refresh tells the provider of that refresh (the shortest applies), and only that.
-            var key = (name, reference, seconds, playback);
-            var request = new MediaRequest(reference, seconds, playback, src.Refresh, _services.Live);
-            if (!_services.Provided.TryGetValue(key, out var provided))
+            // A one-off render asks for the reference as it is; a live tick asks for the one the item took (Take).
+            var hold = _services.Live ? Take(src.ProviderIndex, name, reference) : null;
+            if (hold is not null && (hold.Provider != name || hold.Reference != reference))
             {
-                try
+                name = hold.Provider;
+                reference = hold.Reference;
+                if (!_services.Providers.TryGetValue(name, out provider))
                 {
-                    provided = provider.Get(request);
+                    _diag.AddMedia("media.provider", $"No media provider '{name}' is configured.");
+                    return null;
                 }
-                catch (Exception ex)
-                {
-                    provided = new ProvidedMedia(null, new MediaStatus("media.provider", $"The provider failed: {ex.Message}"));
-                }
-                _services.Provided[key] = provided;
-                _services.Refreshes.Add((name, reference, src.Refresh));
-                if (provided.Sample is { } retained) _services.Retained.Add(retained);
             }
-            else if (_services.Live && _services.Refreshes.Add((name, reference, src.Refresh)))
+            var provided = Ask(provider, name, reference, src.Refresh, seconds, playback);
+            var loading = provided.Sample is null && provided.Status is null or { Code: "media.loading" };
+            MediaSample? held = null;
+            if (hold is not null)
             {
-                try
-                {
-                    provider.Asked(request);
-                }
-                catch (Exception ex)
-                {
-                    _diag.AddMedia("media.provider", $"The provider failed: {ex.Message}");
-                }
+                // The previous reference's media is drawn while this one loads; it arrives, or fails, and the hold ends.
+                if (loading && hold.Held is { } previous && _services.Providers.TryGetValue(previous.Provider, out var heldProvider))
+                    held = AskHeld(heldProvider, previous.Provider, previous.Reference, seconds, playback);
+                if (!loading) hold.Held = null;
+                hold.Shown = provided.Sample is not null;
             }
             if (provided.Status is { } status) _diag.AddMedia(status.Code, status.Message);
             else if (provided.Sample is null) _diag.AddMedia("media.loading", "Loading.");
-            return provided.Sample;
+            return provided.Sample ?? held;
         }
         return null;
+    }
+
+    /// <summary>
+    /// The reference provider source <paramref name="index"/> asks for this tick, with what it holds (spec/docs/smart-nodes.md,
+    /// "Media held across a change of reference"). A new reference (<paramref name="name"/>, <paramref name="reference"/>)
+    /// is taken at once when the item took none in the last second, else on the first tick a second after it did, as it
+    /// reads then (the latest wins); until then the source asks for the one it has. Sources of one item waiting at once
+    /// take their turns in the order they began to wait, so a source that changes every second can't keep another's
+    /// change waiting. Taking one holds the media drawn of the one before, or keeps holding what was held when that one
+    /// drew nothing.
+    /// </summary>
+    private ProviderHold Take(int index, string name, string reference)
+    {
+        if (!_rt.Holds.TryGetValue(index, out var hold))
+        {
+            hold = new ProviderHold(name, reference);
+            _rt.Holds[index] = hold;
+            return hold;
+        }
+        if (hold.Provider == name && hold.Reference == reference)
+        {
+            hold.WaitOrder = null;
+            return hold;
+        }
+        hold.WaitOrder ??= ++_rt.WaitOrders;
+        hold.WaitSeen = _rt.HoldTicks;
+        if (_rt.ReferenceTakenAt is { } taken && _elapsed >= taken && _elapsed - taken < 1) return hold;
+        // Another source that began to wait earlier, and still waited in this evaluation or the one before, goes first.
+        foreach (var other in _rt.Holds.Values)
+            if (other != hold && other.WaitOrder < hold.WaitOrder && other.WaitSeen >= _rt.HoldTicks - 1) return hold;
+        hold.WaitOrder = null;
+        if (hold.Shown) hold.Held = (hold.Provider, hold.Reference);
+        hold.Provider = name;
+        hold.Reference = reference;
+        hold.Shown = false;
+        _rt.ReferenceTakenAt = _elapsed;
+        return hold;
+    }
+
+    /// <summary>
+    /// The provider's answer for <paramref name="reference"/>: asked once per tick for each reference, time and playback,
+    /// so every item showing it shows the same answer. An item sharing it with another refresh tells the provider of that
+    /// refresh (the shortest applies), and only that.
+    /// </summary>
+    private ProvidedMedia Ask(IMediaProvider provider, string name, string reference, int refresh, double seconds, MediaPlayback playback)
+    {
+        var key = (name, reference, seconds, playback);
+        var request = new MediaRequest(reference, seconds, playback, refresh, _services.Live);
+        if (!_services.Provided.TryGetValue(key, out var provided))
+        {
+            try
+            {
+                provided = provider.Get(request, new MediaAsk(_services.MediaTick, _rt));
+            }
+            catch (Exception ex)
+            {
+                provided = new ProvidedMedia(null, new MediaStatus("media.provider", $"The provider failed: {ex.Message}"));
+            }
+            _services.Provided[key] = provided;
+            _services.Refreshes.Add((name, reference, refresh));
+            if (provided.Sample is { } retained) _services.Retained.Add(retained);
+        }
+        else if (_services.Live && _services.Refreshes.Add((name, reference, refresh)))
+        {
+            try
+            {
+                provider.Asked(request);
+            }
+            catch (Exception ex)
+            {
+                _diag.AddMedia("media.provider", $"The provider failed: {ex.Message}");
+            }
+        }
+        return provided;
+    }
+
+    /// <summary>
+    /// Held media: what the provider has for <paramref name="reference"/>, asked as a one-off render asks (it starts no
+    /// fetch and keeps nothing alive), once per tick for each reference, time and playback. Its status isn't the item's.
+    /// </summary>
+    private MediaSample? AskHeld(IMediaProvider provider, string name, string reference, double seconds, MediaPlayback playback)
+    {
+        var key = (name, reference, seconds, playback);
+        if (!_services.Held.TryGetValue(key, out var held))
+        {
+            try
+            {
+                held = provider.Get(new MediaRequest(reference, seconds, playback, 0, Live: false), new MediaAsk(_services.MediaTick, _rt));
+            }
+            catch (Exception)
+            {
+                held = default;
+            }
+            _services.Held[key] = held;
+            if (held.Sample is { } retained) _services.Retained.Add(retained);
+        }
+        return held.Sample;
     }
 }

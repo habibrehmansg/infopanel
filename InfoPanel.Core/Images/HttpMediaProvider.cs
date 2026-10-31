@@ -50,6 +50,20 @@ public sealed class HttpMediaProviderOptions
 
     public int MaxRedirects { get; init; } = 5;
 
+    /// <summary>Streams open at once across the engine.</summary>
+    public int MaxStreams { get; init; } = 16;
+
+    /// <summary>Streams open at once among those one item asked for (in <see cref="IdleAfter"/>).</summary>
+    public int MaxStreamsPerItem { get; init; } = 4;
+
+    /// <summary>
+    /// The bytes the open streams hold between them: each one's newest part waiting for a tick and the part it is reading.
+    /// </summary>
+    public long StreamBytes { get; init; } = 128L * 1024 * 1024;
+
+    /// <summary>A stream no live tick asked for in this long is idle: the first to close when a limit is reached.</summary>
+    public TimeSpan StreamIdleAfter { get; init; } = TimeSpan.FromSeconds(2);
+
     /// <summary>The longest address taken, in characters.</summary>
     public int MaxAddressLength { get; init; } = 2048;
 }
@@ -76,8 +90,12 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     private readonly SemaphoreSlim _slots;
     private readonly CancellationTokenSource _stop = new();
     private readonly HttpClient _client;
+    private readonly ITimer _expiry;
     private readonly long _start;
     private long _lastSweep;
+
+    /// <summary>The bytes the streams hold: each fetcher's part waiting for a tick and each open stream's part being read.</summary>
+    private long _streamBytes;
     private int _active;
     private int _peak;
     private int _waiting;
@@ -92,6 +110,8 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         _start = _options.Time.GetTimestamp();
         _slots = new SemaphoreSlim(Math.Max(1, _options.MaxRequests));
         _client = Client(null);
+        // References no tick asks for expire on their own, with no lookup to notice them (a stream would read on).
+        _expiry = _options.Time.CreateTimer(_ => Expire(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
     /// <summary>
@@ -135,6 +155,18 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         }
     }
 
+    /// <summary>The bytes the streams hold between them (<see cref="HttpMediaProviderOptions.StreamBytes"/>).</summary>
+    internal long StreamBytesHeld
+    {
+        get
+        {
+            lock (_lock) return _streamBytes;
+        }
+    }
+
+    /// <summary>Tests: raised when a stream's part has been read whole, with the address.</summary>
+    internal event Action<string>? PartReceived;
+
     /// <summary>Tests: raised when a fetch has to wait for a slot, with how many wait.</summary>
     internal event Action<int>? Waiting;
 
@@ -146,7 +178,16 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
 
     private long Now() => (long)_options.Time.GetElapsedTime(_start).TotalMilliseconds;
 
-    public ProvidedMedia Get(in MediaRequest request)
+    /// <summary>
+    /// <see cref="Get(in MediaRequest)"/> by an item in a tick: every ask of the tick for an address shows what its first
+    /// live ask chose (so a stream's part is taken once a tick, whatever the time and playback of the asks), and the item
+    /// counts among those asking for the address (for the streams one item may keep open).
+    /// </summary>
+    public ProvidedMedia Get(in MediaRequest request, in MediaAsk ask) => Answer(request, ask.Tick, ask.Item);
+
+    public ProvidedMedia Get(in MediaRequest request) => Answer(request, null, null);
+
+    private ProvidedMedia Answer(in MediaRequest request, MediaTick? tick, object? item)
     {
         if (_disposed) return new ProvidedMedia(null, new MediaStatus("media.provider", "The provider is shut down."));
         if (!TryAddress(request.Reference, _options.MaxAddressLength, out var address, out var uri, out var credential))
@@ -156,6 +197,9 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         string? key;
         string? pending;
         MediaStatus? status;
+        (byte[] Part, long Fetch)? part = null;
+        var chose = false;
+        string? chosen = null;
         List<Fetcher>? dropped = null;
         try
         {
@@ -170,9 +214,12 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
                     fetcher = new Fetcher(address, uri, credential, now);
                     _fetchers[address] = fetcher;
                 }
+                // What the tick's first live ask for the address chose, which every later ask in the tick shows.
+                chose = tick is not null && tick.TryShown(fetcher, out chosen);
                 if (request.Live)
                 {
                     fetcher.LastAsked = now;
+                    if (item is not null) fetcher.Asker(item, now, _options.IdleAfter);
                     fetcher.Asked(request.Refresh, now, _options.IdleAfter);
                     if (!fetcher.Busy && now >= fetcher.DueAt(now, _options.IdleAfter))
                     {
@@ -181,6 +228,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
                         var started = fetcher;
                         _ = Task.Run(() => FetchAsync(started));
                     }
+                    if (!chose) part = NextPart(fetcher);
                 }
                 key = fetcher.Key;
                 pending = fetcher.Pending;
@@ -193,16 +241,59 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
             if (dropped is not null) foreach (var f in dropped) f.Stop();
         }
 
+        if (chose) return Chosen(fetcher, chosen, request);
+        var answer = Present(fetcher, request, part, key, pending, status, out var shown);
+        if (tick is not null && request.Live) tick.Show(fetcher, shown);
+        return answer;
+    }
+
+    /// <summary>
+    /// The media <paramref name="chosen"/> for the fetcher earlier in the tick, at this ask's time and playback: nothing is
+    /// taken, decoded anew or replaced.
+    /// </summary>
+    private ProvidedMedia Chosen(Fetcher fetcher, string? chosen, in MediaRequest request)
+    {
+        MediaStatus? status;
+        lock (_lock) status = fetcher.Status;
+        if (chosen is null) return new ProvidedMedia(null, status ?? new MediaStatus("media.loading", "Loading."));
+        var lookup = _cache.Get(chosen, request.Seconds, request.Playback);
+        return lookup.Sample is { } sample
+            ? new ProvidedMedia(sample, status)
+            : new ProvidedMedia(null, status ?? new MediaStatus("media.loading", "Decoding."));
+    }
+
+    /// <summary>
+    /// What a fetcher shows for an ask, given what the lock read (<paramref name="key"/>, <paramref name="pending"/>,
+    /// <paramref name="status"/>) and the stream <paramref name="part"/> it took: a newer image once decoded, else the one
+    /// shown. <paramref name="shown"/> is the media answered (or being decoded), null for none.
+    /// </summary>
+    private ProvidedMedia Present(Fetcher fetcher, in MediaRequest request, (byte[] Part, long Fetch)? part, string? key, string? pending,
+        MediaStatus? status, out string? shown)
+    {
+        shown = null;
+        // A stream's newest part, at most one a tick: it is decoded as a newer image fetched is.
+        if (part is { } taken)
+        {
+            pending = TakePart(fetcher, taken.Part, taken.Fetch) ?? pending;
+            lock (_lock) status = fetcher.Status;
+        }
+
         // A newer image fetched: it replaces the one shown only once it is decoded, and one that can't be decoded never does.
         if (pending is not null)
         {
             var next = _cache.Get(pending, request.Seconds, request.Playback);
             if (next.Sample is { } decoded)
             {
+                string? replaced = null;
+                (byte[] Part, long Fetch)? after = null;
                 lock (_lock)
                 {
                     if (fetcher.Pending == pending)
                     {
+                        // A stream keeps only the picture it shows: the one before goes, unless another address shows it.
+                        if (fetcher.Stream && fetcher.Key is { } old && old != pending
+                            && !_fetchers.Values.Any(f => f != fetcher && (f.Key == old || f.Pending == old)))
+                            replaced = old;
                         fetcher.Key = pending;
                         fetcher.Pending = null;
                         // Its fetch's all-clear, unless a later fetch answered meanwhile: that one's outcome stands.
@@ -213,7 +304,17 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
                         }
                     }
                     status = fetcher.Status;
+                    // A stream's next part starts decoding now, when this tick took none: it shows from a later tick.
+                    if (part is null && request.Live) after = NextPart(fetcher);
                 }
+                if (replaced is not null)
+                {
+                    _store.Remove(replaced);
+                    _cache.Forget(replaced);
+                }
+                if (after is { } queued && TakePart(fetcher, queued.Part, queued.Fetch) is { } following)
+                    _cache.Get(following, request.Seconds, request.Playback).Sample?.Release();
+                shown = pending;
                 return new ProvidedMedia(decoded, status);
             }
             if (next.State == MediaState.Failed)
@@ -233,7 +334,11 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
 
         if (key is null) return new ProvidedMedia(null, status ?? new MediaStatus("media.loading", "Loading."));
         var lookup = _cache.Get(key, request.Seconds, request.Playback);
-        if (lookup.Sample is { } sample) return new ProvidedMedia(sample, status);
+        if (lookup.Sample is { } sample)
+        {
+            shown = key;
+            return new ProvidedMedia(sample, status);
+        }
         if (lookup.State == MediaState.Failed)
         {
             lock (_lock)
@@ -248,6 +353,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
             if (!_store.Contains(key)) _cache.Retry(key);
             return new ProvidedMedia(null, status ?? new MediaStatus("media.loading", "Loading."));
         }
+        shown = key;
         return new ProvidedMedia(null, status ?? new MediaStatus("media.loading", "Decoding."));
     }
 
@@ -296,10 +402,40 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         lock (_lock)
         {
             dropped = [.. _fetchers.Values];
-            foreach (var f in dropped) f.Dropped = true;
+            foreach (var f in dropped) Drop(f);
             _fetchers.Clear();
         }
         foreach (var f in dropped) f.Stop();
+    }
+
+    /// <summary>
+    /// The timer's sweep (<see cref="Sweep"/>), once a second: a reference no tick asked for expires whether or not any
+    /// lookup comes, and its fetch under way, a stream's blocked read included, is stopped.
+    /// </summary>
+    private void Expire()
+    {
+        if (_disposed) return;
+        List<Fetcher>? dropped;
+        lock (_lock) dropped = Sweep(Now());
+        if (dropped is not null) foreach (var f in dropped) f.Stop();
+    }
+
+    /// <summary>Marks <paramref name="f"/> dropped and gives back the stream bytes it holds. Under the lock.</summary>
+    private void Drop(Fetcher f)
+    {
+        f.Dropped = true;
+        _streamBytes -= f.PartBytes;
+        f.PartBytes = 0;
+        f.Part = null;
+        if (f.Open is { } open) Release(open);
+    }
+
+    /// <summary>Gives back what an open stream's part being read holds; it charges nothing more. Under the lock.</summary>
+    private void Release(OpenStream stream)
+    {
+        stream.Released = true;
+        _streamBytes -= stream.Reading;
+        stream.Reading = 0;
     }
 
     /// <summary>
@@ -314,7 +450,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         List<Fetcher>? dropped = null;
         foreach (var (address, f) in _fetchers.Where(p => now - p.Value.LastAsked >= idle).ToList())
         {
-            f.Dropped = true;
+            Drop(f);
             _fetchers.Remove(address);
             (dropped ??= []).Add(f);
         }
@@ -326,7 +462,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         Validators conditional;
         lock (_lock) conditional = fetcher.Key is null && fetcher.Pending is null ? default : fetcher.Validators;
         Outcome outcome;
-        var waited = false;
+        var slot = new Slot(this);
         // Stopped when the provider shuts down or the fetcher is dropped (no tick asks for it, or the setting changed).
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token, fetcher.Stopped);
         try
@@ -344,27 +480,13 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
                     Interlocked.Decrement(ref _waiting);
                 }
             }
-            waited = true;
+            slot.Taken();
             bool dropped;
             // Dropped while it waited: it never starts.
             lock (_lock) dropped = fetcher.Dropped;
-            if (dropped)
-            {
-                outcome = Outcome.Failed("media.provider", "Dropped.");
-            }
-            else
-            {
-                var active = Interlocked.Increment(ref _active);
-                InterlockedMax(ref _peak, active);
-                try
-                {
-                    outcome = await FetchOnceAsync(fetcher, conditional, stop.Token).ConfigureAwait(false);
-                }
-                finally
-                {
-                    Interlocked.Decrement(ref _active);
-                }
-            }
+            outcome = dropped
+                ? Outcome.Failed("media.provider", "Dropped.")
+                : await FetchOnceAsync(fetcher, conditional, slot.Active(), stop.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested)
         {
@@ -381,7 +503,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         }
         finally
         {
-            if (waited) _slots.Release();
+            slot.Release();
         }
 
         if (Publishing is { } publishing) await publishing(fetcher.Address, outcome.Bytes is not null).ConfigureAwait(false);
@@ -395,6 +517,12 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
             // A dropped fetcher's outcome is nobody's: nothing it fetched is kept.
             if (fetcher.Dropped)
             {
+            }
+            else if (outcome.Closed)
+            {
+                // A stream closed to keep within the streams' limits while no tick asked for it: no failure, and it opens
+                // again as soon as a tick does.
+                fetcher.Refetch = true;
             }
             else if (outcome.Bytes is { } bytes)
             {
@@ -434,13 +562,18 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         Answered?.Invoke(fetcher.Address);
     }
 
-    /// <summary>One fetch of the fetcher's address, following redirects, within the answer's time limit.</summary>
-    private async Task<Outcome> FetchOnceAsync(Fetcher fetcher, Validators conditional, CancellationToken stop)
+    /// <summary>
+    /// One fetch of the fetcher's address, following redirects, within the answer's time limit; or, when it answers with a
+    /// stream, the stream until it ends (<see cref="StreamAsync"/>), which leaves its request <paramref name="slot"/> to
+    /// other fetches once it starts.
+    /// </summary>
+    private async Task<Outcome> FetchOnceAsync(Fetcher fetcher, Validators conditional, Slot slot, CancellationToken stop)
     {
         using var timeout = new CancellationTokenSource(_options.AnswerTimeout, _options.Time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, stop);
         var token = linked.Token;
         var uri = fetcher.Uri;
+        var streaming = false;
         // The reference's own user info, in a client of this fetch's: released with it, and never another reference's.
         using var own = fetcher.Credential is { } credential ? Client(new AddressCredential(fetcher.Uri, credential)) : null;
         var client = own ?? _client;
@@ -449,7 +582,9 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
             for (var hop = 0; ; hop++)
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+                // Pictures, and the cameras' streams (some answer only a request that accepts their stream).
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("image/*"));
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("multipart/x-mixed-replace"));
                 request.Headers.UserAgent.TryParseAdd(_options.UserAgent);
                 // A new connection for every request, so each is made, and checked, under the rules in effect now.
                 request.Headers.ConnectionClose = true;
@@ -475,6 +610,16 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
                 if (code != 200)
                     return Outcome.Failed("media.provider", $"The server answered {code}.");
 
+                if (response.Content.Headers.ContentType is { } type
+                    && string.Equals(type.MediaType, "multipart/x-mixed-replace", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (MultipartStream.BoundaryOf(type) is not { } boundary)
+                        return Outcome.Failed("media.provider", "The stream has no boundary.");
+                    streaming = true;
+                    slot.Release();
+                    return await StreamAsync(fetcher, response, boundary, timeout, token).ConfigureAwait(false);
+                }
+
                 var max = _options.Limits.MediaBytes;
                 if (response.Content.Headers.ContentLength is { } length && length > max)
                     return Outcome.Failed("limit.mediaBytes", $"The image is over {max} bytes (mediaBytes).");
@@ -492,7 +637,13 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
-            return Outcome.Failed("media.provider", $"The server took longer than {_options.AnswerTimeout.TotalSeconds:0} s.");
+            return Outcome.Failed("media.provider", streaming
+                ? $"The stream sent nothing for {_options.AnswerTimeout.TotalSeconds:0} s."
+                : $"The server took longer than {_options.AnswerTimeout.TotalSeconds:0} s.");
+        }
+        catch (MultipartStream.Problem problem)
+        {
+            return Outcome.Failed(problem.Code, problem.Message);
         }
         catch (HttpRequestException e) when (Refused(e) is { } refused)
         {
@@ -508,8 +659,233 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         }
         catch (IOException e)
         {
-            return Outcome.Failed("media.provider", $"The answer broke off: {e.Message}");
+            return Outcome.Failed("media.provider", streaming ? $"The stream broke off: {e.Message}" : $"The answer broke off: {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// A <c>multipart/x-mixed-replace</c> answer (an MJPEG camera): read part by part while ticks ask for it, each part
+    /// within <c>mediaBytes</c> and the newest kept for the next tick to take (<see cref="TakePart"/>), until it ends, breaks,
+    /// or sends no part for the answer's time limit. It ends as a failed fetch: the last picture stays, and it is fetched
+    /// again on the schedule of any failure (the refresh, or the retries).
+    /// </summary>
+    private async Task<Outcome> StreamAsync(Fetcher fetcher, HttpResponseMessage response, string boundary, CancellationTokenSource timeout, CancellationToken token)
+    {
+        using var close = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var stream = new OpenStream(close);
+        List<OpenStream>? closed = null;
+        try
+        {
+            lock (_lock)
+            {
+                if (fetcher.Dropped) return Outcome.Failed("media.provider", "Dropped.");
+                if (Admit(fetcher, Now(), ref closed) is { } refused) return refused;
+                fetcher.Stream = true;
+                fetcher.Open = stream;
+            }
+        }
+        finally
+        {
+            CancelClosed(closed);
+        }
+        try
+        {
+            await using var body = await response.Content.ReadAsStreamAsync(close.Token).ConfigureAwait(false);
+            var parts = new MultipartStream(body, boundary, _options.Limits.MediaBytes, bytes => Charge(fetcher, stream, bytes));
+            while (true)
+            {
+                // Each part has the answer's time limit, from the one before.
+                timeout.CancelAfter(_options.AnswerTimeout);
+                var part = await parts.ReadPartAsync(close.Token).ConfigureAwait(false);
+                if (part is null) return Outcome.Failed("media.provider", "The stream ended.");
+                lock (_lock)
+                {
+                    // Closed or dropped meanwhile: the part is nobody's.
+                    if (stream.Released) continue;
+                    // The part read whole is now the one waiting for a tick, in place of any before it.
+                    _streamBytes -= stream.Reading + fetcher.PartBytes;
+                    stream.Reading = 0;
+                    fetcher.Part = part;
+                    fetcher.PartBytes = part.Length;
+                    _streamBytes += part.Length;
+                    fetcher.PartFetch = fetcher.Fetches;
+                }
+                PartReceived?.Invoke(fetcher.Address);
+            }
+        }
+        catch (OperationCanceledException) when (stream.Closed && !token.IsCancellationRequested)
+        {
+            return Outcome.ClosedIdle;
+        }
+        finally
+        {
+            lock (_lock)
+            {
+                if (!stream.Released) Release(stream);
+                if (fetcher.Open == stream) fetcher.Open = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether a new stream of <paramref name="fetcher"/> may open (spec/docs/providers.md, "Streams"): within the streams
+    /// open at once among those each item asking for it asked for, then across the engine. Past a limit, the idle stream
+    /// asked for longest ago closes (into <paramref name="closed"/>, cancelled once the lock is let go); with none idle,
+    /// the new one is refused. Under the lock.
+    /// </summary>
+    private Outcome? Admit(Fetcher fetcher, long now, ref List<OpenStream>? closed)
+    {
+        var open = _fetchers.Values.Where(f => f != fetcher && f.Open is { Released: false }).ToList();
+        var recent = now - (long)_options.IdleAfter.TotalMilliseconds;
+        foreach (var item in fetcher.AskersSince(recent))
+        {
+            var its = open.Where(f => f.AskedBy(item, recent)).ToList();
+            while (its.Count + 1 > Math.Max(1, _options.MaxStreamsPerItem))
+            {
+                if (Idlest(its, now) is not { } idle)
+                    return Outcome.Failed("media.budget", $"Too many streams for one item: {_options.MaxStreamsPerItem} are open.");
+                CloseStream(idle, ref closed);
+                its.Remove(idle);
+                open.Remove(idle);
+            }
+        }
+        while (open.Count + 1 > Math.Max(1, _options.MaxStreams))
+        {
+            if (Idlest(open, now) is not { } idle)
+                return Outcome.Failed("media.budget", $"Too many streams: {_options.MaxStreams} are open.");
+            CloseStream(idle, ref closed);
+            open.Remove(idle);
+        }
+        return null;
+    }
+
+    /// <summary>The fetcher among <paramref name="candidates"/> no live tick asked for in the streams' idle time, asked for longest ago.</summary>
+    private Fetcher? Idlest(IEnumerable<Fetcher> candidates, long now)
+    {
+        var idle = (long)_options.StreamIdleAfter.TotalMilliseconds;
+        return candidates.Where(f => now - f.LastAsked >= idle).MinBy(f => f.LastAsked);
+    }
+
+    /// <summary>
+    /// Counts <paramref name="bytes"/> more of the part <paramref name="stream"/> is reading against the streams' budget
+    /// (<see cref="HttpMediaProviderOptions.StreamBytes"/>). Past it, idle streams close, the one asked for longest ago
+    /// first, and the parts they hold go; with none idle left, the reading stream ends (<c>media.budget</c>).
+    /// </summary>
+    private void Charge(Fetcher fetcher, OpenStream stream, long bytes)
+    {
+        List<OpenStream>? closed = null;
+        try
+        {
+            lock (_lock)
+            {
+                // Closed or dropped: its read is being stopped, and what it reads is nobody's.
+                if (stream.Released) return;
+                var max = _options.StreamBytes;
+                while (_streamBytes + bytes > max)
+                {
+                    var holding = _fetchers.Values.Where(f => f != fetcher && (f.PartBytes > 0 || f.Open is { Reading: > 0 }));
+                    if (Idlest(holding, Now()) is not { } idle)
+                        throw new MultipartStream.Problem("media.budget", $"The streams are over their budget of {max} bytes.");
+                    CloseStream(idle, ref closed);
+                }
+                _streamBytes += bytes;
+                stream.Reading += bytes;
+            }
+        }
+        finally
+        {
+            CancelClosed(closed);
+        }
+    }
+
+    /// <summary>
+    /// Closes <paramref name="fetcher"/>'s stream for the streams' limits: the part it holds goes, and its open stream, if
+    /// any, stops reading (cancelled once the lock is let go, through <paramref name="closed"/>). The fetcher and the
+    /// picture it shows stay. Under the lock.
+    /// </summary>
+    private void CloseStream(Fetcher fetcher, ref List<OpenStream>? closed)
+    {
+        _streamBytes -= fetcher.PartBytes;
+        fetcher.PartBytes = 0;
+        fetcher.Part = null;
+        if (fetcher.Open is not { Released: false } open) return;
+        open.Closed = true;
+        Release(open);
+        (closed ??= []).Add(open);
+    }
+
+    private static void CancelClosed(List<OpenStream>? closed)
+    {
+        if (closed is null) return;
+        foreach (var s in closed) s.Cancel();
+    }
+
+    /// <summary>
+    /// A stream's newest part, taken by a tick: inspected as an asset is and kept in the store, to be shown once decoded
+    /// (it becomes the fetcher's pending image), and null when there is nothing new to decode. A part that isn't a JPEG is
+    /// skipped; its refusal is the fetcher's status until a later part is shown, while its stream runs.
+    /// </summary>
+    private string? TakePart(Fetcher fetcher, byte[] part, long fetch)
+    {
+        var check = MediaValidator.Check(part, _options.Limits);
+        MediaStatus? refused = null;
+        if (check.Info is null || check.Errors.Count > 0)
+        {
+            var error = check.Errors.FirstOrDefault();
+            refused = new MediaStatus(error?.Code ?? "media.format", error?.Message ?? "A part of the stream isn't a JPEG image.");
+        }
+        else if (check.Info.Format != MediaFormat.Jpeg)
+        {
+            refused = new MediaStatus("media.format", "A part of the stream isn't a JPEG image.");
+        }
+        if (refused is not null)
+        {
+            lock (_lock)
+            {
+                if (!fetcher.Dropped && fetch == fetcher.Fetches) fetcher.Status = refused;
+            }
+            return null;
+        }
+        var key = _store.Put(part, out var added);
+        string? taken = null;
+        lock (_lock)
+        {
+            if (fetcher.Dropped || fetcher.Pending is not null)
+            {
+            }
+            else if (key == fetcher.Key)
+            {
+                if (fetch == fetcher.Fetches)
+                {
+                    fetcher.Status = null;
+                    fetcher.Failures = 0;
+                }
+            }
+            else
+            {
+                fetcher.Pending = key;
+                fetcher.PendingFetch = fetch;
+                taken = key;
+            }
+        }
+        // Its bytes are back, or are new: a lookup that failed, or that read the store before they were there, is
+        // forgotten, as a finite image fetched is (a picture decoded already is left alone).
+        if (added || taken is not null) _cache.Retry(key);
+        return taken;
+    }
+
+    /// <summary>
+    /// The fetcher's newest stream part, when a live tick may take one: nothing else is waiting to be decoded. It leaves
+    /// the streams' budget for the fetched store's. Under the lock; the caller takes it with <see cref="TakePart"/> once
+    /// it has let the lock go.
+    /// </summary>
+    private (byte[] Part, long Fetch)? NextPart(Fetcher fetcher)
+    {
+        if (fetcher.Pending is not null || fetcher.Part is not { } part) return null;
+        fetcher.Part = null;
+        _streamBytes -= fetcher.PartBytes;
+        fetcher.PartBytes = 0;
+        return (part, fetcher.PartFetch);
     }
 
     /// <summary>The body, counted as it is read: null as soon as it is over <paramref name="max"/> bytes.</summary>
@@ -670,6 +1046,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _expiry.Dispose();
         _stop.Cancel();
         _client.Dispose();
     }
@@ -679,13 +1056,16 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         public bool Any => ETag is not null || LastModified is not null;
     }
 
-    private sealed record Outcome(byte[]? Bytes, bool NotModified, Validators Validators, MediaStatus? Status)
+    private sealed record Outcome(byte[]? Bytes, bool NotModified, Validators Validators, MediaStatus? Status, bool Closed = false)
     {
         public static Outcome Fetched(byte[] bytes, Validators validators) => new(bytes, false, validators, null);
 
         public static Outcome Unchanged(Validators validators) => new(null, true, validators, null);
 
         public static Outcome Failed(string code, string message) => new(null, false, default, new MediaStatus(code, message));
+
+        /// <summary>A stream closed for the streams' limits while idle (<see cref="CloseStream"/>).</summary>
+        public static readonly Outcome ClosedIdle = new(null, false, default, null, Closed: true);
     }
 
     /// <summary>One address's state: its newest image, when to fetch next, why the last fetch failed. Under the provider's lock.</summary>
@@ -718,6 +1098,39 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         public MediaStatus? Status;
         public int Failures;
 
+        /// <summary>Whether the address answered with a stream: each image shown replaces the one before, which isn't kept.</summary>
+        public bool Stream;
+
+        /// <summary>A stream's newest part, read whole and not yet taken by a tick: a newer one replaces it.</summary>
+        public byte[]? Part;
+
+        /// <summary>The <see cref="Fetches"/> count when <see cref="Part"/> was read: the stream it came from.</summary>
+        public long PartFetch;
+
+        /// <summary><see cref="Part"/>'s bytes, counted in the streams' budget.</summary>
+        public long PartBytes;
+
+        /// <summary>The stream reading now, if any.</summary>
+        public OpenStream? Open;
+
+        // The items that asked for the address in live ticks (MediaAsk), each with when it last did.
+        private readonly Dictionary<object, long> _askers = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>Notes <paramref name="item"/>'s live ask, and forgets the items that asked longer than <paramref name="idle"/> ago.</summary>
+        public void Asker(object item, long now, TimeSpan idle)
+        {
+            _askers[item] = now;
+            if (_askers.Count <= 1) return;
+            var since = now - (long)idle.TotalMilliseconds;
+            foreach (var old in _askers.Where(p => p.Value < since).Select(p => p.Key).ToList()) _askers.Remove(old);
+        }
+
+        /// <summary>The items that asked for the address since <paramref name="since"/>.</summary>
+        public List<object> AskersSince(long since) => [.. _askers.Where(p => p.Value >= since).Select(p => p.Key)];
+
+        /// <summary>Whether <paramref name="item"/> asked for the address since <paramref name="since"/>.</summary>
+        public bool AskedBy(object item, long since) => _askers.TryGetValue(item, out var at) && at >= since;
+
         /// <summary>Cancelled when the fetcher is dropped: its fetch under way stops, and one waiting for a slot never starts.</summary>
         public CancellationToken Stopped => _stopped.Token;
 
@@ -748,6 +1161,57 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
             if (Status is null && (Key ?? Pending) is not null) return long.MaxValue;
             var backoff = Math.Min(300, 5 * (1L << Math.Min(Math.Max(Failures - 1, 0), 6)));
             return answered + backoff * 1000L;
+        }
+    }
+
+    /// <summary>
+    /// A fetch's hold on one of the request slots (<see cref="HttpMediaProviderOptions.MaxRequests"/>) and its count among
+    /// the fetches under way: given back when the fetch ends, or as soon as its answer turns out to be a stream.
+    /// </summary>
+    private sealed class Slot(HttpMediaProvider provider)
+    {
+        private int _held; // 0 none; 1 a slot; 2 a slot, and counted under way
+
+        public void Taken() => _held = 1;
+
+        public Slot Active()
+        {
+            _held = 2;
+            InterlockedMax(ref provider._peak, Interlocked.Increment(ref provider._active));
+            return this;
+        }
+
+        public void Release()
+        {
+            var held = Interlocked.Exchange(ref _held, 0);
+            if (held == 2) Interlocked.Decrement(ref provider._active);
+            if (held >= 1) provider._slots.Release();
+        }
+    }
+
+    /// <summary>A stream reading, as the streams' limits see it. Its fields are under the provider's lock.</summary>
+    private sealed class OpenStream(CancellationTokenSource close)
+    {
+        /// <summary>The bytes of the part being read, counted in the streams' budget.</summary>
+        public long Reading;
+
+        /// <summary>It counts for nothing any more (closed, dropped or ended): it charges nothing more.</summary>
+        public bool Released;
+
+        /// <summary>Closed for the streams' limits (<see cref="CloseStream"/>), not ended by its own answer.</summary>
+        public volatile bool Closed;
+
+        /// <summary>Stops its read; outside the provider's lock, since what the cancellation runs may take it.</summary>
+        public void Cancel()
+        {
+            try
+            {
+                close.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // It ended meanwhile.
+            }
         }
     }
 

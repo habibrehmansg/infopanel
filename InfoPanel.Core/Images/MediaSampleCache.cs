@@ -40,6 +40,13 @@ namespace InfoPanel.Images
         ProvidedMedia Get(in MediaRequest request);
 
         /// <summary>
+        /// <see cref="Get(in MediaRequest)"/>, told who asks (<paramref name="ask"/>): the tick, so a provider can answer a
+        /// reference the same media for every ask in it, and the item asking. A provider that keeps no such state answers as
+        /// <see cref="Get(in MediaRequest)"/> does.
+        /// </summary>
+        ProvidedMedia Get(in MediaRequest request, in MediaAsk ask) => Get(request);
+
+        /// <summary>
         /// Another ask in the same tick that shares an answer <see cref="Get"/> already gave (the same reference, time and
         /// playback), told for its refresh, which counts as asked (the shortest applies): it answers nothing and fetches
         /// nothing. Told once per refresh per tick, and only by a live tick.
@@ -56,6 +63,38 @@ namespace InfoPanel.Images
     /// answered with what the provider has.
     /// </summary>
     public readonly record struct MediaRequest(string Reference, double Seconds, MediaPlayback Playback, int Refresh = 0, bool Live = true);
+
+    /// <summary>
+    /// Who asks a provider: the <paramref name="Tick"/> (every ask of one document's tick passes the same one) and the
+    /// <paramref name="Item"/> asking (an object that stays the same across the item's ticks).
+    /// </summary>
+    public readonly record struct MediaAsk(MediaTick Tick, object Item);
+
+    /// <summary>
+    /// One tick's identity for providers, with what each chose to show in it: a provider answers a reference the same
+    /// media for every ask of the tick, whatever time or playback the ask has (spec/docs/providers.md, "Streams").
+    /// </summary>
+    public sealed class MediaTick
+    {
+        private readonly Lock _lock = new();
+        private Dictionary<object, string?>? _shown;
+
+        /// <summary>What <paramref name="source"/> (a provider's own key for a reference) showed in this tick, when it chose.</summary>
+        internal bool TryShown(object source, out string? shown)
+        {
+            lock (_lock)
+            {
+                shown = null;
+                return _shown is not null && _shown.TryGetValue(source, out shown);
+            }
+        }
+
+        /// <summary>Records what <paramref name="source"/> shows in this tick: the first choice stands.</summary>
+        internal void Show(object source, string? shown)
+        {
+            lock (_lock) (_shown ??= new()).TryAdd(source, shown);
+        }
+    }
 
     /// <summary>
     /// A problem the media of a reference has, as an item reports it in the frame header (<c>itemBounds[].media</c>):
@@ -324,6 +363,36 @@ namespace InfoPanel.Images
                 if (!_assets.TryGetValue(hash, out var asset) || asset.State == MediaState.Ready) return;
                 // As the idle sweep drops an asset; a decode still running on it frees what it holds when it sees Detached.
                 foreach (var node in _frames.Where(f => f.Key.Item1 == hash).Select(f => f.Value).ToList()) Evict(node);
+                asset.Detached = true;
+                _assets.Remove(hash);
+            }
+        }
+
+        /// <summary>
+        /// Drops <paramref name="hash"/> in whatever state, its frames and decoder, as the idle sweep drops an asset: media a
+        /// provider no longer shows (a stream's earlier picture). Frames others retain stay valid until they release them;
+        /// a decode still running on it frees what it holds when it sees it detached.
+        /// </summary>
+        public void Forget(string hash)
+        {
+            lock (_lock)
+            {
+                if (!_assets.TryGetValue(hash, out var asset)) return;
+                foreach (var node in _frames.Where(f => f.Key.Item1 == hash).Select(f => f.Value).ToList()) Evict(node);
+                if (Monitor.TryEnter(asset.DecodeLock))
+                {
+                    try
+                    {
+                        asset.ReleaseDecoder();
+                        ForgetDecoderLocked(asset);
+                        asset.Vector?.Release();
+                        asset.Vector = null;
+                    }
+                    finally
+                    {
+                        Monitor.Exit(asset.DecodeLock);
+                    }
+                }
                 asset.Detached = true;
                 _assets.Remove(hash);
             }

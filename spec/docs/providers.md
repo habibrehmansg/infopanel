@@ -6,7 +6,7 @@ What a provider supplies is drawn as an asset is: the same formats and media lim
 
 ## Asking, and what each item shows
 
-A provider is asked for its media every tick that shows it, without waiting: it answers the newest media it has for `ref`, or nothing while it has none. It fetches only while ticks ask: a profile no output shows fetches nothing, and a provider drops what it holds for a reference 30 seconds after the last tick asked for it, stopping a fetch of it under way or waiting. A one-off render (a thumbnail of a profile no output shows) is answered with what the provider has and starts no fetch.
+A provider is asked for its media every tick that shows it, without waiting: it answers the newest media it has for `ref`, or nothing while it has none. It fetches only while ticks ask: a profile no output shows fetches nothing, and a provider drops what it holds for a reference 30 seconds after the last tick asked for it, whether or not anything else is asked meanwhile, stopping a fetch of it under way or waiting. A one-off render (a thumbnail of a profile no output shows) is answered with what the provider has and starts no fetch.
 
 - **Before the first media** arrives, or when the first fetch fails, the item draws the missing-media placeholder in its box.
 - **After it**, a failed fetch keeps the last good media: the item goes on showing it, and its status says why the newest couldn't be had. A newer answer replaces it only once it is decoded; one that can't be decoded is a failed fetch (`media.malformed`, …).
@@ -19,16 +19,31 @@ A provider is asked for its media every tick that shows it, without waiting: it 
 - **0:** the reference is fetched once while it is shown, and again once the provider has dropped it (30 seconds after the last tick asked). A failed fetch is tried again 5, 10, 20, 40 … seconds later, at most every 300 seconds, while it is shown.
 - **N:** the next fetch starts N seconds after the last one was answered, while it is shown, conditionally when the answer allowed it (an unchanged answer keeps the media). A failed fetch is tried again at the next refresh.
 - Items showing the same reference use the shortest refresh among them (0 counts as none).
+- A stream is fetched again only after it ends ([streams](#streams)).
+- An item whose reference changes holds the media it showed until the new reference's arrives, and takes at most one new reference a second ([smart nodes](smart-nodes.md#media-held-across-a-change-of-reference)).
 
 ## `http`: web images
 
-`ref` is an absolute `http://` or `https://` address of an image, trimmed of spaces at either end: at most 2,048 characters, with a host that has no `%`. Anything else (empty text, a relative address, another scheme) is refused with `media.provider`, "Not a web address."
+`ref` is an absolute `http://` or `https://` address of an image or a camera's stream ([streams](#streams)), trimmed of spaces at either end: at most 2,048 characters, with a host that has no `%`. Anything else (empty text, a relative address, another scheme) is refused with `media.provider`, "Not a web address."
 
-- **The request** is a `GET` with `Accept: image/*` and a `User-Agent` naming the engine and its version. It sends no cookies and keeps none, uses no proxy, and asks for no compression. The address's own user name and password (`http://user:password@camera.local/snapshot.jpg`) are sent as the server asks (Basic or Digest), only to that address and only for that reference: the same address written without them is asked without credentials.
+- **The request** is a `GET` with `Accept: image/*, multipart/x-mixed-replace` (pictures, and cameras' [streams](#streams)) and a `User-Agent` naming the engine and its version. It sends no cookies and keeps none, uses no proxy, and asks for no compression. The address's own user name and password (`http://user:password@camera.local/snapshot.jpg`) are sent as the server asks (Basic or Digest), only to that address and only for that reference: the same address written without them is asked without credentials.
 - **The answer** must be a 200, or a 304 to a conditional fetch (the media kept). Its body is counted as it is read and refused past `mediaBytes` (`limit.mediaBytes`), then inspected from its header and refused as an asset would be. Up to 5 redirects are followed, each to an `http` or `https` address, each a connection checked as below; a sixth is refused.
 - **Time:** a connection must be made within 5 seconds and the whole answer read within 15.
 - **At once:** one fetch per address at a time, and at most 4 fetches at once in the engine.
 - **TLS** uses the operating system's trusted certificates: a server whose certificate it doesn't trust is refused.
+
+### Streams
+
+An answer of type `multipart/x-mixed-replace` (an MJPEG camera, `http://camera.local/video.mjpg`) is a stream: its connection stays open, and the item shows its newest part.
+
+- **Parts.** Each part is a JPEG. It ends at its `Content-Length`, or else at the next delimiter line; its body is counted as it is read and refused past `mediaBytes`. A tick takes the newest part that has arrived whole, inspects it as an asset and decodes it, so at most one part a tick is decoded and the parts that arrive between two ticks are skipped; the picture changes once it is decoded. A stream's part is taken once a tick: every item and node showing the stream in that tick, whatever its time or playback, shows the same picture. A part that isn't a JPEG, or that the inspection refuses, is skipped, and its code (`media.format`, …) is the status until a later part is shown.
+- **The boundary** is the content type's `boundary` parameter. A delimiter line is `--` and the boundary, or the boundary alone when it starts with `--` itself; a part's line ends may be CRLF or LF, and only blank lines may come before a delimiter line. A stream that declares no boundary, or whose parts don't start with it, is refused with `media.provider`.
+- **The end.** A stream ends when its connection drops or closes, at its closing delimiter (`--` after the boundary), at a part over `mediaBytes` (`limit.mediaBytes`), at a part that breaks the format, and when no part has arrived whole for 15 seconds. That is a failed fetch: the last picture stays, the status says why ("The stream ended.", "The stream sent nothing for 15 s."), and the stream is opened again as a failed fetch is tried again ([refresh](#refresh)): at the next refresh, or with `refresh` 0 after 5, 10, 20 … seconds, at most every 300, while it is shown.
+- **While it runs** `refresh` doesn't apply and no other fetch of the address starts. Once its answer has arrived, a stream no longer counts among the 4 fetches at once. Like any fetch, it stops 30 seconds after the last tick asked for it, even while its camera goes on sending parts.
+- **Open streams.** At most 16 streams are open at once in the engine, and at most 4 among those one item asked for in the last 30 seconds. A stream no tick has asked for in 2 seconds is idle. When a new stream would pass either limit, the idle stream asked for longest ago closes; with none idle, the new one is refused with `media.budget` ("Too many streams: 16 are open."), as a failed fetch.
+- **Memory.** The parts streams hold, each one's newest part waiting for a tick and the part it is reading, are counted as they are read against 128 MiB between all streams. Past it, the idle stream asked for longest ago closes and its parts go; with none idle, the stream reading ends with `media.budget`, as a failed fetch.
+- A stream closed for these limits keeps its picture and is no failure: it opens again as soon as a tick asks for it.
+- Only the picture shown is kept.
 
 ## Addresses
 
