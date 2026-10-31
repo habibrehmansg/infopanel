@@ -67,7 +67,10 @@ internal sealed class PluginHostRunner : IAsyncDisposable
 
     public PluginPackage Package => _package;
 
-    public PluginHostState State { get; private set; } = PluginHostState.Stopped;
+    /// <summary>The package's state, published after its sensors' (<see cref="SetState"/>).</summary>
+    public PluginHostState State => _state;
+
+    private volatile PluginHostState _state = PluginHostState.Stopped;
 
     /// <summary>Why the package failed, while it is <see cref="PluginHostState.Failed"/>.</summary>
     public string? Reason { get; private set; }
@@ -328,10 +331,11 @@ internal sealed class PluginHostRunner : IAsyncDisposable
         Path.Combine(_settings.SettingsDirectory, _package.Folder),
         _settings.LogLevel());
 
+    /// <summary>The sensors first: whoever sees the state sees its sensors' status (live, stale, unavailable) with it.</summary>
     private void SetState(PluginHostState state)
     {
-        State = state;
         _source.SetState(_package.Folder, state);
+        _state = state;
     }
 
     /// <summary>Logs an error of the package's as a warning (Settings › Diagnostics shows it) and keeps it.</summary>
