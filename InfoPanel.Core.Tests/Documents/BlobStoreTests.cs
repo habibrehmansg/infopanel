@@ -303,7 +303,7 @@ public class BlobStoreTests
                     replaceAt = null;
                     var other = Path.Combine(temp.Path, "other");
                     File.WriteAllBytes(other, new byte[new FileInfo(target!).Length]);
-                    File.Move(other, target!, overwrite: true);
+                    RenameOver(other, target!);
                 }
                 return false;
             },
@@ -333,6 +333,43 @@ public class BlobStoreTests
         Assert.Null(store.ReadVerified(freshId));
         Assert.Null(store.StoredSize(freshId));
     }
+
+    /// <summary>
+    /// Renames <paramref name="from"/> over <paramref name="to"/> as another program can while the store has
+    /// <paramref name="to"/> open (it opens blobs sharing delete): a rename on Unix; on Windows a POSIX-semantics rename,
+    /// which replaces a file open that way, where <see cref="File.Move(string, string, bool)"/> (<c>MoveFileEx</c>) is refused.
+    /// </summary>
+    private static void RenameOver(string from, string to)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            File.Move(from, to, overwrite: true);
+            return;
+        }
+
+        const uint delete = 0x00010000; // DELETE
+        const int fileRenameInfoEx = 22;
+        const uint replaceIfExists = 0x1, posixSemantics = 0x2; // FILE_RENAME_FLAG_*
+        using var handle = CreateFileW(from, delete, FileShare.Read | FileShare.Write | FileShare.Delete, IntPtr.Zero, FileMode.Open, 0, IntPtr.Zero);
+        if (handle.IsInvalid)
+            throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastPInvokeError());
+        // FILE_RENAME_INFO: Flags (a DWORD, padded to a pointer), RootDirectory, FileNameLength in bytes, FileName.
+        var name = Encoding.Unicode.GetBytes(Path.GetFullPath(to));
+        var lengthAt = 2 * IntPtr.Size;
+        var info = new byte[lengthAt + 4 + name.Length + 2];
+        BitConverter.GetBytes(replaceIfExists | posixSemantics).CopyTo(info, 0);
+        BitConverter.GetBytes(name.Length).CopyTo(info, lengthAt);
+        name.CopyTo(info, lengthAt + 4);
+        if (!SetFileInformationByHandle(handle, fileRenameInfoEx, info, (uint)info.Length))
+            throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastPInvokeError());
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string name, uint access, FileShare share, IntPtr security, FileMode mode, uint flags, IntPtr template);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle handle, int infoClass, byte[] info, uint size);
 
     /// <summary>
     /// A new blob is written and left without a verdict (Put doesn't read back what it wrote): its first checked read
