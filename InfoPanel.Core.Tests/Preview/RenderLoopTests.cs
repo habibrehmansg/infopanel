@@ -1,4 +1,5 @@
 using InfoPanel.Core.Tests.Documents;
+using InfoPanel.Core.Tests.Scenes;
 using InfoPanel.Output;
 using InfoPanel.Spec;
 using SkiaSharp;
@@ -179,6 +180,20 @@ public class RenderLoopTests
         var frame = Assert.Single(sink.Frames).Frame;
         Assert.Equal(0.75f, frame.Scale);
         Assert.Equal((3073, 3072), (frame.PixelWidth, frame.PixelHeight));
+    }
+
+    [Fact]
+    public async Task A_preview_at_scale_4_keeps_the_items_it_draws()
+    {
+        // Every timed draw takes 100 ms, twice the item budget; at scale 4 that counts 6.25 ms, so no item is suspended.
+        await using var h = new RenderHarness(RenderHarness.BarDocument(), drawTime: new StepTime(100));
+        var sink = h.Attach(scale: 4);
+
+        for (var i = 0; i < 6; i++) h.Tick();
+
+        Assert.NotEmpty(sink.Frames);
+        Assert.All(sink.Frames, f => Assert.All(f.Frame.Bounds, b => Assert.Null(b.Problem)));
+        Assert.Equal(4f, sink.Frames[^1].Frame.Scale);
     }
 
     [Fact]

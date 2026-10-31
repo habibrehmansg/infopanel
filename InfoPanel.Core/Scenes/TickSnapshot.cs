@@ -95,11 +95,13 @@ public sealed class TickSnapshot : IDisposable
     private readonly Lazy<IReadOnlyList<ItemBounds>> _bounds;
     private readonly Lazy<IReadOnlyList<TextReport>> _texts;
     private readonly double _drawBudgetMs;
+    private readonly TimeProvider _drawTime;
     private int _references = 1;
 
     internal TickSnapshot(long generation, long rev, long tick, SceneClock clock, int width, int height, uint background,
-        SnapItem[] items, MediaSample[] samples, IDisposable[] owned, IReadOnlyList<SceneDiagnostic> diagnostics, double drawBudgetMs)
+        SnapItem[] items, MediaSample[] samples, IDisposable[] owned, IReadOnlyList<SceneDiagnostic> diagnostics, double drawBudgetMs, TimeProvider drawTime)
     {
+        _drawTime = drawTime;
         Generation = generation;
         Rev = rev;
         Tick = tick;
@@ -253,7 +255,7 @@ public sealed class TickSnapshot : IDisposable
             canvas.Scale(scale);
             canvas.ClipRect(new SKRect(0, 0, Width, Height));
             canvas.DrawColor(SceneColor.ToSk(Background), SKBlendMode.Src);
-            DrawItems(canvas, _items);
+            DrawItems(canvas, _items, scale);
         }
         finally
         {
@@ -285,20 +287,20 @@ public sealed class TickSnapshot : IDisposable
         return data.ToArray();
     }
 
-    private void DrawItems(SKCanvas canvas, SnapItem[] items)
+    private void DrawItems(SKCanvas canvas, SnapItem[] items, float scale)
     {
         foreach (var item in items)
         {
             switch (item)
             {
                 case SnapGroup g:
-                    DrawItems(canvas, g.Children);
+                    DrawItems(canvas, g.Children, scale);
                     break;
                 case SnapScene s:
                 {
                     var count = canvas.Save();
                     canvas.Concat(in s.World);
-                    var start = Stopwatch.GetTimestamp();
+                    var start = _drawTime.GetTimestamp();
                     if (s.Nodes is { } nodes) SceneDrawer.Draw(canvas, nodes);
                     else Placeholders.DrawItem(canvas, s.PlaceholderBox);
                     canvas.RestoreToCount(count);
@@ -306,7 +308,11 @@ public sealed class TickSnapshot : IDisposable
                     {
                         // The draw watchdog: a slow draw marks this tick slow (once, however many outputs draw it); the
                         // next tick suspends an item slow three ticks running.
-                        if (Stopwatch.GetElapsedTime(start).TotalMilliseconds > _drawBudgetMs) rt.MarkSlow(Tick);
+                        // Counted per canvas pixel: a frame drawn at a scale above 1 has scale² times the pixels, so its
+                        // time is divided by that; at 1 or smaller it counts whole (spec/docs/limits.md).
+                        var area = (double)scale * scale;
+                        var ms = _drawTime.GetElapsedTime(start).TotalMilliseconds / (area > 1 ? area : 1);
+                        if (ms > _drawBudgetMs) rt.MarkSlow(Tick);
                     }
                     break;
                 }

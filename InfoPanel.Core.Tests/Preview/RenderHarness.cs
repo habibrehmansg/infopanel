@@ -26,7 +26,7 @@ internal sealed class RenderHarness : IAsyncDisposable
 
     private readonly TempDirectory _temp = new();
 
-    public RenderHarness(JsonObject document, bool autoTick = false, TimeProvider? time = null)
+    public RenderHarness(JsonObject document, bool autoTick = false, TimeProvider? time = null, TimeProvider? drawTime = null)
     {
         Time = time ?? new ManualClock();
         var paths = new DataPaths(_temp.Path);
@@ -45,12 +45,13 @@ internal sealed class RenderHarness : IAsyncDisposable
         Assert.True(created.Entry is not null, string.Join("; ", created.Invalid?.Errors.Select(e => $"{e.Path} {e.Code} {e.Message}") ?? []));
         ProfileId = ProfileIdOf;
         SetLoad(50);
-        Service = new RenderService(Workspace, Scenes(Workspace, Sensors, History), Time, new RenderServiceOptions(autoTick));
+        Service = new RenderService(Workspace, Scenes(Workspace, Sensors, History, drawTime), Time, new RenderServiceOptions(autoTick));
     }
 
     /// <summary>The runtime options the engine uses, over fake sensors, with the zone and locale pinned.</summary>
-    public static SceneRuntimeOptions Scenes(Workspace workspace, ISensorReader sensors, ISensorHistory history) => new()
+    public static SceneRuntimeOptions Scenes(Workspace workspace, ISensorReader sensors, ISensorHistory history, TimeProvider? drawTime = null) => new()
     {
+        DrawTime = drawTime ?? TimeProvider.System,
         Inputs = new SensorSceneInputs(sensors, history),
         Limits = workspace.Limits,
         Support = workspace.Support,

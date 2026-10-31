@@ -43,6 +43,9 @@ public sealed class SceneRuntimeOptions
     /// <summary>An item whose evaluation or drawing takes longer than this, three times running, is suspended.</summary>
     public double ItemBudgetMs { get; init; } = 50;
 
+    /// <summary>The clock a draw is timed with for the watchdog; tests give one that takes a fixed time for every draw.</summary>
+    internal TimeProvider DrawTime { get; init; } = TimeProvider.System;
+
     /// <summary>How long a suspended item is drawn as over budget before it is tried again.</summary>
     public TimeSpan SuspendFor { get; init; } = TimeSpan.FromSeconds(5);
 
@@ -324,7 +327,7 @@ public sealed class SceneRuntime : IDisposable
             if (Visit(item, SKMatrix.Identity, 0) is { } s) roots.Add(s);
 
         return new TickSnapshot(model.Generation, model.Rev, tick, clock, model.Width, model.Height, model.Background, roots.ToArray(),
-            services.Retained.ToArray(), services.Owned.ToArray(), diagnostics, _options.ItemBudgetMs);
+            services.Retained.ToArray(), services.Owned.ToArray(), diagnostics, _options.ItemBudgetMs, _options.DrawTime);
     }
 
     private ItemRuntime Runtime(string id)
