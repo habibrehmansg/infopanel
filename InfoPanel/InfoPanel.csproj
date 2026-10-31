@@ -41,9 +41,10 @@
 
   <!-- The bundled plugins: InfoPanel.Extras is built and its output copied into plugins/InfoPanel.Extras/ beside the
        engine (on build and on publish), where the engine finds it. Copied, not referenced (it is net8.0-windows), and
-       not as content, so projects that reference the engine (the tests) don't get a plugins folder. -->
+       not as content, so projects that reference the engine (the tests) don't get a plugins folder. It is built even
+       when the engine isn't (publish's no-build). -->
   <Target Name="BuildBundledPlugins">
-    <MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained;PublishDir">
+    <MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained;PublishDir;NoBuild">
       <Output TaskParameter="TargetOutputs" PropertyName="_ExtrasPath" />
     </MSBuild>
     <PropertyGroup>
@@ -57,11 +58,22 @@
     </ItemGroup>
   </Target>
 
+  <!-- Not being a reference (NuGet leaves a reference that doesn't take its output out of the restore graph), the
+       bundled plugin is restored with the engine: after the engine's own restore, in the same restore step, so its build
+       is evaluated after it, and never when the restore is left out (no-restore, no-build). The solution restores it
+       on its own; a project that only references the engine doesn't. -->
+  <Target Name="RestoreBundledPlugins" AfterTargets="Restore">
+    <MSBuild Projects="..\InfoPanel.Extras\InfoPanel.Extras.csproj" Targets="Restore" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained;PublishDir;NoBuild" />
+  </Target>
+
   <Target Name="CopyBundledPlugins" AfterTargets="CopyFilesToOutputDirectory" DependsOnTargets="BuildBundledPlugins">
     <Copy SourceFiles="@(_BundledPluginFile)" DestinationFiles="@(_BundledPluginFile->'$(OutDir)%(RelativePath)')" SkipUnchangedFiles="true" />
   </Target>
 
-  <Target Name="PublishBundledPlugins" BeforeTargets="ComputeResolvedFilesToPublishList" DependsOnTargets="BuildBundledPlugins">
+  <!-- Added after the publish list is computed: the SDK resolves conflicts in that list by file name, whatever the
+       folder, so files added before it are weighed against the engine's own (Serilog.dll, say), which can then be left
+       out of the publish root. Added after it, they only ever go under plugins/InfoPanel.Extras/. -->
+  <Target Name="PublishBundledPlugins" AfterTargets="ComputeResolvedFilesToPublishList" DependsOnTargets="BuildBundledPlugins">
     <ItemGroup>
       <ResolvedFileToPublish Include="@(_BundledPluginFile)" RelativePath="%(_BundledPluginFile.RelativePath)" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
