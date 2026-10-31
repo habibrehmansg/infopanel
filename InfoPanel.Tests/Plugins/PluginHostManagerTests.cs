@@ -35,8 +35,11 @@ public sealed class PluginHostManagerTests : IDisposable
         await Advance(TimeSpan.FromMilliseconds(1));
 
         await Eventually.Until(() => launcher.Started[0].Killed, "the host that didn't connect is killed");
-        Assert.Equal(PluginHostState.Restarting, runner.State);
+        // The host is killed before the runner records the failure, so the state is read once the transition is
+        // recorded; the clock doesn't move, so the 2 s restart delay keeps it there. The error is recorded first.
+        await Eventually.Until(() => runner.State == PluginHostState.Restarting, "the killed host is restarting");
         Assert.Contains("connecting", runner.Errors[^1]);
+        Assert.Single(launcher.Started);
     }
 
     [Fact]
