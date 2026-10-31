@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using InfoPanel.Desktop;
 using InfoPanel.Hosting;
 using InfoPanel.Preview.Video;
 using InfoPanel.Scenes;
@@ -16,7 +17,8 @@ namespace InfoPanel.Tests;
 /// The engine on a <c>TestServer</c>, with a temp data folder, a temp web root holding an <c>index.html</c>,
 /// a fixed token, port, dev origin and cross origin, seeded mock sensors and a fixed PC regional format (en-US), so
 /// frames don't depend on the machine's region. Its folder opener only records (<see cref="Folders"/>), so no test engine
-/// opens a file manager, and its browser launcher starts nothing. Its 1.x folder is its own (<see cref="V1Dir"/>, empty unless a test puts
+/// opens a file manager, its browser launcher starts nothing, and its desktop shows no windows (a test that wants them
+/// brings a platform of its own). Its 1.x folder is its own (<see cref="V1Dir"/>, empty unless a test puts
 /// 1.x data there), so no test engine reads the 1.x data of the user running the tests. It runs offline
 /// (<c>--offline</c>): its media providers connect only to this computer, so a test's web image reaches a server the
 /// test started on loopback, or nothing. Every response it gives, on the TestServer
@@ -90,6 +92,9 @@ public class EngineFactory : WebApplicationFactory<Program>
             services.AddSingleton(sp => new H264Backends(H264Backends.Enabled([new FakeH264Backend()], sp.GetRequiredService<EngineOptions>().H264),
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger("InfoPanel.Preview.Video")));
             services.AddSingleton<IFolderOpener>(Folders);
+            // No test engine opens a desktop window, on any OS (on Windows nothing else would stop a seed or commit that
+            // turns a window on): a test that wants windows registers a platform of its own, which replaces this one.
+            services.AddSingleton<IDesktopPlatform>(new NullDesktopPlatform("Test engines show no desktop windows"));
             // No test engine opens a browser: its launcher starts nothing.
             services.AddSingleton(sp => new BrowserLauncher(sp.GetRequiredService<ILogger<BrowserLauncher>>(), sp.GetRequiredService<RedirectFiles>(),
                 _ => throw new InvalidOperationException("No test engine opens a browser.")));
