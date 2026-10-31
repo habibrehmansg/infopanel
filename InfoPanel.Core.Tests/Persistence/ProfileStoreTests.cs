@@ -148,7 +148,10 @@ public class ProfileStoreTests
         var profile = new Profile("One", 400, 200);
         Directory.CreateDirectory(store.Paths.ProfilesFile); // a folder where profiles.xml goes: the list write fails
 
-        Assert.ThrowsAny<IOException>(() => store.AddProfile(profile, [new TextDisplayItem("item", profile)]));
+        // The list write's failure propagates as the OS reports it (Unix: IOException; Windows: UnauthorizedAccessException
+        // for a move onto a folder), and the items file it wrote is gone. Any other error didn't come from the list write.
+        var error = Record.Exception(() => store.AddProfile(profile, [new TextDisplayItem("item", profile)]));
+        Assert.True(error is IOException or UnauthorizedAccessException, $"Expected the list write's error, got {error?.ToString() ?? "none"}");
 
         Assert.False(File.Exists(store.Paths.ProfileItemsFile(profile.Guid)));
     }
