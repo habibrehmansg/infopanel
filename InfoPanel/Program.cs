@@ -108,6 +108,14 @@ catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 using var instanceLock = InstanceLock.TryAcquire(paths.EngineLockFile, out var lockError, out var lockHeld);
 if (instanceLock == null)
 {
+    // A second launch: the user started InfoPanel again, so the engine that holds the folder opens the editor (unless
+    // --no-browser). Still exit 3.
+    if (lockHeld && !options.NoBrowser && await SecondLaunch.OpenEditorAsync(options.RunDir ?? LocalChannel.DefaultRunDirectory(), paths.Root))
+    {
+        Console.WriteLine("InfoPanel is already running; opened the editor");
+        return 3;
+    }
+
     Console.Error.WriteLine($"InfoPanel: {lockError}");
     return lockHeld ? 3 : 1;
 }
@@ -211,14 +219,17 @@ try
     Log.Information("Regional format: {Tag:l} (decimal '{Decimal:l}', group '{Group:l}')",
         regionalFormat.Tag, regionalFormat.DecimalSeparator, regionalFormat.GroupSeparator);
 
+    // A web client served here, or one served elsewhere that the engine opens (a release build's configured web client).
     var webRoot = DataFolder.FindWebRoot(options.WebRoot);
-    if (webRoot == null)
-        Log.Warning("No web client installed (no wwwroot next to the engine and no --web-root); serving the API only");
-    else
+    if (webRoot != null)
         Log.Information("Serving the web client from {WebRoot}", webRoot);
+    else if (options.AllowOrigins.Count > 0)
+        Log.Information("No web client installed here; the web client at {Origins} is the editor", string.Join(", ", options.AllowOrigins));
+    else
+        Log.Warning("No web client installed (no wwwroot next to the engine and no --web-root); serving the API only");
 
     var port = options.Port == 0 ? EngineRuntime.FindFreePort() : options.Port;
-    var runtime = new EngineRuntime(port, options.Token, options.DevOrigins, options.AllowOrigins) { Started = started };
+    var runtime = new EngineRuntime(port, options.Token, options.DevOrigins, options.AllowOrigins) { Started = started, WebRootServed = webRoot != null };
 
     builder.Services.AddSerilog(engineLogger);
     // Loopback only: endpoints from configuration (Kestrel:Endpoints from arguments, environment or appsettings)
@@ -343,7 +354,11 @@ try
         sp.GetService<RenderServiceOptions>()));
     builder.Services.AddSingleton(new PreviewSocketOptions());
     builder.Services.AddSingleton(sp => H264Backends.ForThisComputer(options.H264, sp.GetRequiredService<ILoggerFactory>().CreateLogger("InfoPanel.Preview.Video")));
-    builder.Services.AddSingleton<BrowserLauncher>();
+    // Links the engine opens go to the browser through a private file in the run folder, never in a process's arguments.
+    var runDirectory = options.RunDir ?? LocalChannel.DefaultRunDirectory();
+    builder.Services.AddSingleton(sp => new RedirectFiles(runDirectory, LocalChannel.HashOf(paths.Root), sp.GetRequiredService<TimeProvider>(),
+        sp.GetRequiredService<ILogger<RedirectFiles>>()));
+    builder.Services.AddSingleton(sp => new BrowserLauncher(sp.GetRequiredService<ILogger<BrowserLauncher>>(), sp.GetRequiredService<RedirectFiles>()));
     builder.Services.AddSingleton<EditorOpener>();
     builder.Services.AddSingleton<IFolderOpener>(sp => new FolderOpener(sp.GetRequiredService<ILogger<FolderOpener>>()));
     builder.Services.AddHostedService<SensorService>();

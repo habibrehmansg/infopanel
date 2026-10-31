@@ -56,8 +56,12 @@ public static class LaunchRecord
             args.Add("--no-tray");
         foreach (var origin in options.DevOrigins)
             args.AddRange(["--dev-origin", origin]);
-        foreach (var origin in options.AllowOrigins)
-            args.AddRange(["--allow-origin", origin]);
+        // The origin a build carries isn't a flag: the engine a record starts takes its own build's.
+        if (!options.AllowOriginsBuiltIn)
+        {
+            foreach (var origin in options.AllowOrigins)
+                args.AddRange(["--allow-origin", origin]);
+        }
         return args;
     }
 

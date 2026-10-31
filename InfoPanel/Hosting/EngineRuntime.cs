@@ -6,6 +6,16 @@ using System.Text;
 namespace InfoPanel.Hosting;
 
 /// <summary>
+/// The link that opens the editor (<see cref="EngineRuntime.EditorLink"/>), with the session token in it: a web client's
+/// pairing link (<paramref name="WebClient"/>, opened in Chrome when installed) or the engine's sign-in link.
+/// </summary>
+public sealed record EditorLink(string Url, bool WebClient)
+{
+    /// <summary>The link with <see cref="EngineRuntime.RedactedToken"/> for the token: never print or log <see cref="Url"/> but on the console.</summary>
+    public override string ToString() => WebClient ? "a web client's pairing link" : "the sign-in link";
+}
+
+/// <summary>
 /// What the running engine is: its loopback port, session token, allowed origins and when it started. The port is
 /// chosen before the server starts (a free one when <c>--port 0</c>) so the allowed origins are known when the
 /// pipeline is built; <see cref="EngineLifetime"/> confirms it from the server once it is listening.
@@ -48,6 +58,18 @@ public sealed class EngineRuntime
     public DateTimeOffset Started { get; init; } = DateTimeOffset.UtcNow;
 
     public IReadOnlyList<string> DevOrigins { get; }
+
+    /// <summary>Whether this engine serves a web client (<c>--web-root</c>, or <c>wwwroot</c> beside it).</summary>
+    public bool WebRootServed { get; init; }
+
+    /// <summary>
+    /// What opens the editor when the user asks for it (the menu's Open Editor, a second launch): with no web client served
+    /// here and exactly one cross origin allowed, that origin's pairing link (a release build's configured web client);
+    /// otherwise the sign-in link (<see cref="AuthUrl"/>), to the web client served here.
+    /// </summary>
+    public EditorLink EditorLink => !WebRootServed && CrossOrigins.Count == 1
+        ? new EditorLink(PairingUrlFor(CrossOrigins[0]), WebClient: true)
+        : new EditorLink(AuthUrl, WebClient: false);
 
     /// <summary>
     /// Origins of web clients served from elsewhere (<c>--allow-origin</c>): allowed like the others, and the only

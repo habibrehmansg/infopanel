@@ -6,17 +6,18 @@ namespace InfoPanel.Hosting;
 
 /// <summary>
 /// Once the server listens: confirms the port from <see cref="IServerAddressesFeature"/> (absent under
-/// <c>TestServer</c>, where the configured port stands), writes <c>runtime.json</c>, logs the sign-in links and the pairing links for cross-origin clients (with the token on the console only,
-/// redacted in the file log) and
-/// opens the browser unless <c>--no-browser</c>. Deletes <c>runtime.json</c> on clean shutdown.
+/// <c>TestServer</c>, where the configured port stands), writes <c>runtime.json</c>, and logs the links that lead
+/// somewhere: the sign-in link when a web client is served here, the dev servers' and the pairing links for cross-origin
+/// clients (with the token on the console only, redacted in the file log). It opens no browser: the engine stays headless
+/// until the user asks for the editor (the menu's Open Editor, a second launch: <see cref="EditorOpener"/>). Removes a
+/// crash's redirect files at start, and deletes <c>runtime.json</c> on clean shutdown.
 /// </summary>
 public sealed class EngineLifetime(
     IHostApplicationLifetime lifetime,
     IServer server,
     EngineRuntime runtime,
-    EngineOptions options,
     DataPaths paths,
-    BrowserLauncher browser,
+    RedirectFiles redirects,
     ILogger<EngineLifetime> logger) : IHostedService
 {
     private CancellationTokenRegistration _started;
@@ -24,6 +25,7 @@ public sealed class EngineLifetime(
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        redirects.RemoveLeftovers();
         _started = lifetime.ApplicationStarted.Register(OnStarted);
         return Task.CompletedTask;
     }
@@ -62,16 +64,17 @@ public sealed class EngineLifetime(
         logger.LogInformation("InfoPanel engine listening on {Url} (data folder {DataDir})", runtime.BaseUrl, paths.Root);
         LogSignInLinks(redacted: false);
         LogSignInLinks(redacted: true);
-
-        if (!options.NoBrowser)
-            browser.Open(runtime.AuthUrl);
     }
 
-    /// <summary>The sign-in and pairing links: with the token to the console only, redacted to the file log only.</summary>
+    /// <summary>
+    /// The sign-in and pairing links: with the token to the console only, redacted to the file log only. The engine's own
+    /// sign-in link only when it serves a web client, since it leads nowhere otherwise.
+    /// </summary>
     private void LogSignInLinks(bool redacted)
     {
         using var scope = logger.BeginScope(LogTargets.Only(redacted ? LogTargets.File : LogTargets.Console));
-        logger.LogInformation("Open the editor: {AuthUrl}", runtime.AuthUrlFor(runtime.BaseUrl, redacted));
+        if (runtime.WebRootServed)
+            logger.LogInformation("Open the editor: {AuthUrl}", runtime.AuthUrlFor(runtime.BaseUrl, redacted));
         foreach (var origin in runtime.DevOrigins)
             logger.LogInformation("Open the editor (dev server): {AuthUrl}", runtime.AuthUrlFor(origin, redacted));
         foreach (var origin in runtime.CrossOrigins)

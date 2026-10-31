@@ -43,7 +43,9 @@ public sealed class LocalChannelException(string message) : IOException(message)
 /// "engineBuild","pid"}</c>, or <c>{"channel":1,"refused":"…"}</c> for another channel version, a client it doesn't know
 /// or too many connections, and the connection is closed. Then requests <c>{"id","op":"list"}</c> → <c>{"id","tools",
 /// "instructions"}</c> and <c>{"id","op":"call","tool","arguments"}</c> → <c>{"id","content","isError"}</c>, answered in
-/// order on each connection. Lines are at most <see cref="MaxLineBytes"/>; a longer one closes that connection, and an
+/// order on each connection. A second launch of the engine says hello as <c>"launch"</c> and may only ask
+/// <c>{"id","op":"open-editor"}</c> → <c>{"id","opened":true}</c> (the engine opens the editor as its menu does); an AI app's
+/// front may not ask that, nor a launch for tools. Lines are at most <see cref="MaxLineBytes"/>; a longer one closes that connection, and an
 /// answer that would be longer is sent as an error result that says so. At most
 /// <see cref="MaxConnections"/> connections at once.</item>
 /// </list>
@@ -64,6 +66,12 @@ public static class LocalChannel
 
     /// <summary>The companion the front of an AI app is (the only one wired so far).</summary>
     public const string McpClient = "mcp";
+
+    /// <summary>The companion a second launch of the engine is (<see cref="SecondLaunch"/>): it may only ask <see cref="OpenEditorOp"/>.</summary>
+    public const string LaunchClient = "launch";
+
+    /// <summary>A launch's one request: open the editor.</summary>
+    public const string OpenEditorOp = "open-editor";
 
     /// <summary><c>{LocalApplicationData}/InfoPanel/run</c>: on macOS <c>~/Library/Application Support/InfoPanel/run</c>.</summary>
     public static string DefaultRunDirectory() =>
@@ -144,36 +152,67 @@ public static class LocalChannel
     private const UnixFileMode OwnerOnlyFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
 
     /// <summary>
-    /// Creates the run folder owner-only (0700) when it isn't there, and makes an existing one owner-only. A link,
-    /// anything but a folder, or a folder another user owns (<paramref name="user"/> stands in for this one in tests) is
-    /// refused.
+    /// Creates the run folder owner-only when it isn't there, and makes an existing one owner-only. A link, anything but a
+    /// folder, or a folder another user owns (<paramref name="user"/> stands in for this one in tests) is refused.
+    /// <list type="bullet">
+    /// <item>Unix: mode 0700, checked again after it is set.</item>
+    /// <item>Windows (or <paramref name="windows"/>, the seam tests replace): created with a protected access list granting
+    /// only this user, since a new folder otherwise takes its parent's; an existing folder that lets anyone else in or
+    /// inherits its list (<see cref="WindowsPrivateFiles.IsPrivate"/>) gets that list when this user may change it, and is
+    /// refused when, read again, it still does.</item>
+    /// </list>
     /// </summary>
-    /// <exception cref="LocalChannelException">Something other than this user's folder is there.</exception>
-    internal static void CreateRunDirectory(string run, uint? user = null)
+    /// <exception cref="LocalChannelException">Something other than this user's private folder is there.</exception>
+    internal static void CreateRunDirectory(string run, uint? user = null, IWindowsSecurity? windows = null)
     {
         var info = new DirectoryInfo(run);
-        if (info.Exists || info.LinkTarget != null || File.Exists(run))
+        var exists = info.Exists || info.LinkTarget != null || File.Exists(run);
+        if (exists && (info.LinkTarget != null || !info.Exists))
+            throw new LocalChannelException($"The run folder {run} is a link or not a folder.");
+
+        if (windows != null || OperatingSystem.IsWindows())
         {
-            if (info.LinkTarget != null || !info.Exists)
-                throw new LocalChannelException($"The run folder {run} is a link or not a folder.");
-        }
-        else if (OperatingSystem.IsWindows())
-        {
-            Directory.CreateDirectory(run);
+            CreateWindowsRunDirectory(run, exists, windows ?? new WindowsPrivateFiles());
             return;
-        }
-        else
-        {
-            Directory.CreateDirectory(run, OwnerOnlyFolder);
         }
 
-        if (OperatingSystem.IsWindows())
-            return;
+        if (!exists)
+            Directory.CreateDirectory(run, OwnerOnlyFolder);
         // A folder someone else made (a shared one named by Engine:RunDir) is never taken over.
-        if (UnixIdentity.StatOf(run) is { } stat && stat.Owner != (user ?? UnixIdentity.CurrentUser))
+        if (UnixIdentity.StatOf(run) is not { } stat || (stat.Mode & UnixIdentity.TypeMask) != UnixIdentity.TypeFolder)
+            throw new LocalChannelException($"The run folder {run} is a link or not a folder.");
+        if (stat.Owner != (user ?? UnixIdentity.CurrentUser))
             throw new LocalChannelException($"The run folder {run} belongs to another user (uid {stat.Owner}).");
         if (File.GetUnixFileMode(run) != OwnerOnlyFolder)
             File.SetUnixFileMode(run, OwnerOnlyFolder);
+        if (File.GetUnixFileMode(run) != OwnerOnlyFolder)
+            throw new LocalChannelException($"The run folder {run} couldn't be made owner-only.");
+    }
+
+    private static void CreateWindowsRunDirectory(string run, bool exists, IWindowsSecurity windows)
+    {
+        var user = windows.CurrentUser;
+        if (!exists)
+            windows.CreateFolder(run, user);
+        var acl = windows.Read(run);
+        if (!WindowsPrivateFiles.IsPrivate(acl, user) && WindowsPrivateFiles.OwnerIsTrusted(acl, user))
+        {
+            try
+            {
+                windows.Protect(run, user);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Checked below: the list read again refuses the folder.
+            }
+
+            acl = windows.Read(run);
+        }
+
+        // A folder someone else owns is never taken over, and one that still lets others in, or still inherits its list,
+        // is never used.
+        if (!WindowsPrivateFiles.IsPrivate(acl, user))
+            throw new LocalChannelException($"The run folder {run} isn't this user's alone (owner {acl.Owner ?? "unknown"}), so it isn't used.");
     }
 
     /// <summary>
@@ -377,6 +416,7 @@ public sealed class LocalChannelServer : IAsyncDisposable
 {
     private readonly LocalChannelEndpoint _endpoint;
     private readonly ILocalChannelHandler _handler;
+    private readonly Func<CancellationToken, Task>? _openEditor;
     private readonly ILogger _logger;
     private readonly LocalChannelServerOptions _options;
     private readonly CancellationTokenSource _stop = new();
@@ -385,10 +425,12 @@ public sealed class LocalChannelServer : IAsyncDisposable
     private Task _accepting = Task.CompletedTask;
     private int _disposed;
 
-    private LocalChannelServer(LocalChannelEndpoint endpoint, ILocalChannelHandler handler, ILogger logger, LocalChannelServerOptions options, Socket? listener)
+    private LocalChannelServer(LocalChannelEndpoint endpoint, ILocalChannelHandler handler, Func<CancellationToken, Task>? openEditor, ILogger logger,
+        LocalChannelServerOptions options, Socket? listener)
     {
         _endpoint = endpoint;
         _handler = handler;
+        _openEditor = openEditor;
         _logger = logger;
         _options = options;
         _listener = listener;
@@ -403,7 +445,9 @@ public sealed class LocalChannelServer : IAsyncDisposable
     /// <exception cref="LocalChannelException">The run folder can't be used.</exception>
     /// <exception cref="IOException">The socket can't be bound.</exception>
     /// <exception cref="SocketException">The socket can't be bound.</exception>
-    public static LocalChannelServer Start(LocalChannelEndpoint endpoint, ILocalChannelHandler handler, ILogger logger, LocalChannelServerOptions? options = null)
+    /// <param name="openEditor">What a launch's <see cref="LocalChannel.OpenEditorOp"/> runs; null: it is refused.</param>
+    public static LocalChannelServer Start(LocalChannelEndpoint endpoint, ILocalChannelHandler handler, ILogger logger, LocalChannelServerOptions? options = null,
+        Func<CancellationToken, Task>? openEditor = null)
     {
         options ??= new LocalChannelServerOptions();
         LocalChannel.CreateRunDirectory(endpoint.RunDirectory);
@@ -428,7 +472,7 @@ public sealed class LocalChannelServer : IAsyncDisposable
             }
         }
 
-        var server = new LocalChannelServer(endpoint, handler, logger, options, listener);
+        var server = new LocalChannelServer(endpoint, handler, openEditor, logger, options, listener);
         server._accepting = listener != null ? server.AcceptSocketsAsync(listener) : server.AcceptPipesAsync();
         return server;
     }
@@ -549,7 +593,7 @@ public sealed class LocalChannelServer : IAsyncDisposable
 
             if (hello == null)
                 return;
-            if (HelloRefusal(hello) is { } refusal)
+            if (HelloRefusal(hello, out var client) is { } refusal)
             {
                 await stream.WriteAsync(LocalChannel.Line(new JsonObject { ["channel"] = LocalChannel.Version, ["refused"] = refusal }), ct).ConfigureAwait(false);
                 return;
@@ -566,7 +610,7 @@ public sealed class LocalChannelServer : IAsyncDisposable
             reader.MaxBytes = _options.MaxLineBytes;
             while (await reader.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
             {
-                var answer = LocalChannel.Line(await AnswerAsync(line, ct).ConfigureAwait(false));
+                var answer = LocalChannel.Line(await AnswerAsync(line, client, ct).ConfigureAwait(false));
                 // An answer longer than a line may be would close the companion's side, which would take the engine for
                 // gone: it gets an error result that says so instead.
                 if (answer.Length - 1 > _options.MaxLineBytes)
@@ -614,9 +658,10 @@ public sealed class LocalChannelServer : IAsyncDisposable
         };
     }
 
-    /// <summary>Why a hello is refused (another channel version, a client this engine doesn't know), or null.</summary>
-    private static string? HelloRefusal(byte[] line)
+    /// <summary>Why a hello is refused (another channel version, a client this engine doesn't know), or null and the client.</summary>
+    private static string? HelloRefusal(byte[] line, out string client)
     {
+        client = "";
         try
         {
             using var json = JsonDocument.Parse(line, LocalChannel.MessageOptions);
@@ -625,8 +670,10 @@ public sealed class LocalChannelServer : IAsyncDisposable
                 return "not a hello";
             if (version != LocalChannel.Version)
                 return $"channel {version} isn't spoken here; this engine speaks channel {LocalChannel.Version}";
-            if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.String || client.GetString() != LocalChannel.McpClient)
+            if (!root.TryGetProperty("client", out var name) || name.ValueKind != JsonValueKind.String
+                || name.GetString() is not (LocalChannel.McpClient or LocalChannel.LaunchClient))
                 return "unknown client";
+            client = name.GetString()!;
             return null;
         }
         catch (JsonException)
@@ -635,7 +682,7 @@ public sealed class LocalChannelServer : IAsyncDisposable
         }
     }
 
-    private async Task<JsonObject> AnswerAsync(byte[] line, CancellationToken ct)
+    private async Task<JsonObject> AnswerAsync(byte[] line, string client, CancellationToken ct)
     {
         JsonNode? id = null;
         string? tool = null;
@@ -648,6 +695,17 @@ public sealed class LocalChannelServer : IAsyncDisposable
             if (root.TryGetProperty("id", out var idElement))
                 id = JsonNode.Parse(idElement.GetRawText(), documentOptions: LocalChannel.MessageOptions);
             var op = root.TryGetProperty("op", out var opElement) && opElement.ValueKind == JsonValueKind.String ? opElement.GetString() : null;
+            // A launch only opens the editor; an AI app's front never does.
+            if (client == LocalChannel.LaunchClient || op == LocalChannel.OpenEditorOp)
+            {
+                if (client != LocalChannel.LaunchClient || op != LocalChannel.OpenEditorOp)
+                    return Error(id, $"op '{op}' isn't for a {client} client");
+                if (_openEditor == null)
+                    return Error(id, "this engine can't open the editor");
+                await _openEditor(ct).ConfigureAwait(false);
+                return new JsonObject { ["id"] = id, ["opened"] = true };
+            }
+
             JsonObject answer;
             switch (op)
             {
@@ -763,10 +821,11 @@ public sealed class LocalChannelClient : IAsyncDisposable
     /// <see cref="LocalChannelException"/> when the engine refuses the hello (another channel version, too many
     /// connections) with its reason, and before any hello when the channel isn't this user's: a run folder that isn't
     /// this user's alone (<see cref="LocalChannel.CheckRunDirectory"/>), or a peer of another user.
-    /// <paramref name="peerOf"/> stands in for the system's answer to who the peer is (<see cref="UnixIdentity.PeerOf"/>) in tests.
+    /// <paramref name="peerOf"/> stands in for the system's answer to who the peer is (<see cref="UnixIdentity.PeerOf"/>) in tests;
+    /// <paramref name="client"/> is the companion it says it is (an AI app's front unless said).
     /// </summary>
     public static async Task<LocalChannelClient?> TryConnectAsync(LocalChannelEndpoint endpoint, TimeSpan timeout, CancellationToken ct,
-        Func<Socket, uint?>? peerOf = null)
+        Func<Socket, uint?>? peerOf = null, string client = LocalChannel.McpClient)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
         limit.CancelAfter(timeout);
@@ -812,7 +871,7 @@ public sealed class LocalChannelClient : IAsyncDisposable
             if (socket != null && (peerOf ?? UnixIdentity.PeerOf)(socket) is var peer && peer != UnixIdentity.CurrentUser)
                 throw new LocalChannelException($"The channel {endpoint.Name} is held by another user's process (uid {peer?.ToString() ?? "unknown"}), so it isn't trusted.");
 
-            await stream.WriteAsync(LocalChannel.Line(new JsonObject { ["channel"] = LocalChannel.Version, ["client"] = LocalChannel.McpClient }), limit.Token).ConfigureAwait(false);
+            await stream.WriteAsync(LocalChannel.Line(new JsonObject { ["channel"] = LocalChannel.Version, ["client"] = client }), limit.Token).ConfigureAwait(false);
             var reader = new LineReader(stream, LocalChannel.MaxHelloBytes);
             var line = await reader.ReadLineAsync(limit.Token).ConfigureAwait(false);
             if (line == null)
@@ -899,6 +958,7 @@ public sealed class LocalChannelService(
     EngineOptions options,
     DataPaths paths,
     ILocalChannelHandler handler,
+    EditorOpener editor,
     ILogger<LocalChannelService> logger) : IHostedService
 {
     private CancellationTokenRegistration _started;
@@ -938,7 +998,8 @@ public sealed class LocalChannelService(
                 logger.LogWarning(ex, "Could not write the launch record for AI apps: {Message}", ex.Message);
             }
 
-            var server = LocalChannelServer.Start(endpoint, handler, logger);
+            // A second launch asks it to open the editor, off the channel's thread.
+            var server = LocalChannelServer.Start(endpoint, handler, logger, openEditor: ct => Task.Run(editor.Open, ct));
             lock (_lock)
             {
                 if (!_stopped)

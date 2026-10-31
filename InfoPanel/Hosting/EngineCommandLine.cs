@@ -68,14 +68,18 @@ public static class EngineCommandLine
           --v1-dir <dir>        The InfoPanel 1.x data folder the 1.x import reads, never writes
                                 (default: 1.x's own per-user InfoPanel folder)
           --web-root <dir>      The web client's built files (default: wwwroot next to the engine)
-          --no-browser          Don't open the browser
+          --no-browser          On a data folder another engine holds, don't ask it to open the
+                                editor (the engine opens a browser only when asked: the menu
+                                bar's Open Editor, or a second start)
           --no-windows          Don't show active profiles as desktop windows
           --no-tray             Don't show the menu-bar item (macOS)
           --token <token>       Session token (default: random)
           --dev-origin <url>    Extra allowed origin, e.g. http://localhost:5180 (repeatable)
           --allow-origin <url>  Exact origin of a web client served elsewhere that may call the
                                 engine cross-origin (CORS, /ws), e.g. https://client.example; http
-                                only on a loopback host (repeatable)
+                                only on a loopback host (repeatable; replaces the origin a release
+                                build carries). With no web root and one such origin, Open Editor
+                                opens its pairing link
           --fresh               Wipe the data folder first (needs --data-dir)
           --mock                Mock sensors, and simulated values for sensors no source has
           --mock-seed <n>       Seed for the mock sensors (implies --mock)

@@ -247,7 +247,7 @@ public sealed class ShellOpenEditorLogTests
         using var factory = engine.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<IShellPlatform>(shell);
-            services.AddSingleton(sp => new BrowserLauncher(sp.GetRequiredService<ILogger<BrowserLauncher>>(), command =>
+            services.AddSingleton(sp => new BrowserLauncher(sp.GetRequiredService<ILogger<BrowserLauncher>>(), sp.GetRequiredService<RedirectFiles>(), command =>
             {
                 var started = string.Join(" ", [command.FileName, .. command.ArgumentList]);
                 lock (attempts)
@@ -283,23 +283,29 @@ public sealed class ShellOpenEditorLogTests
 
 /// <summary>A browser launcher that records each link it is asked to open and opens nothing.</summary>
 public sealed class RecordingBrowserLauncher() : BrowserLauncher(
-    Microsoft.Extensions.Logging.Abstractions.NullLogger<BrowserLauncher>.Instance, _ => throw new InvalidOperationException("Nothing opens."))
+    Microsoft.Extensions.Logging.Abstractions.NullLogger<BrowserLauncher>.Instance,
+    new RedirectFiles(Path.Combine(Path.GetTempPath(), "never-written"), "0000000000000000", TimeProvider.System,
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<RedirectFiles>.Instance),
+    _ => throw new InvalidOperationException("Nothing opens."))
 {
     private readonly Lock _lock = new();
-    private readonly List<string> _opened = [];
+    private readonly List<EditorLink> _links = [];
 
-    public IReadOnlyList<string> Opened
+    public IReadOnlyList<EditorLink> Links
     {
         get
         {
             lock (_lock)
-                return [.. _opened];
+                return [.. _links];
         }
     }
 
-    public override void Open(string url)
+    /// <summary>The links' addresses, in order.</summary>
+    public IReadOnlyList<string> Opened => [.. Links.Select(l => l.Url)];
+
+    public override void Open(EditorLink link)
     {
         lock (_lock)
-            _opened.Add(url);
+            _links.Add(link);
     }
 }

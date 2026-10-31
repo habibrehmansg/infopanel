@@ -1,0 +1,14 @@
+<Project>
+
+  <!-- The web client a release build opens: `-p:InfoPanelAllowOrigin=https://…` records that origin as the assembly
+       metadata InfoPanel.AllowOrigin, which the engine takes as the default for allow-origin when no allow-origin flag
+       is given (a flag replaces it), checked as the flag is: a bad value stops start-up with exit 2. Empty by default:
+       a build from source carries no origin and behaves as before. (docs/2.0/desktop-shell.md, "Opening the editor") -->
+  <ItemGroup Condition="'$(InfoPanelAllowOrigin)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>InfoPanel.AllowOrigin</_Parameter1>
+      <_Parameter2>$(InfoPanelAllowOrigin)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

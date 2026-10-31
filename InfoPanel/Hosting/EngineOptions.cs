@@ -51,6 +51,21 @@ public sealed partial class EngineOptions
     /// </summary>
     public IReadOnlyList<string> AllowOrigins { get; init; } = [];
 
+    /// <summary>
+    /// <see cref="AllowOrigins"/> is the origin this build carries (<see cref="BuiltInAllowOrigin"/>), not flags: a launch
+    /// record leaves it out, so a later build's own origin applies.
+    /// </summary>
+    public bool AllowOriginsBuiltIn { get; init; }
+
+    /// <summary>
+    /// The web client origin this build carries: the assembly metadata <c>InfoPanel.AllowOrigin</c>, set by the MSBuild
+    /// property <c>InfoPanelAllowOrigin</c> (<c>WebClientOrigin.targets</c>) in a release build; null in a build from source.
+    /// The default for <c>--allow-origin</c> when no such flag is given.
+    /// </summary>
+    public static string? BuiltInAllowOrigin { get; } = typeof(EngineOptions).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+        .Cast<System.Reflection.AssemblyMetadataAttribute>()
+        .FirstOrDefault(a => a.Key == "InfoPanel.AllowOrigin")?.Value is { Length: > 0 } origin ? origin : null;
+
 
     /// <summary>Wipe the data folder before starting (only with an explicit <see cref="DataDir"/>).</summary>
     public bool Fresh { get; init; }
@@ -106,7 +121,13 @@ public sealed partial class EngineOptions
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     /// <summary>Reads and validates the <c>Engine</c> section. Returns null and the problems when anything is invalid.</summary>
-    public static EngineOptions? Load(IConfiguration configuration, out IReadOnlyList<string> errors)
+    public static EngineOptions? Load(IConfiguration configuration, out IReadOnlyList<string> errors) => Load(configuration, out errors, BuiltInAllowOrigin);
+
+    /// <summary>
+    /// <see cref="Load(IConfiguration, out IReadOnlyList{string})"/> with <paramref name="builtInOrigin"/> as the origin
+    /// the build carries (tests give one; the engine's is <see cref="BuiltInAllowOrigin"/>).
+    /// </summary>
+    public static EngineOptions? Load(IConfiguration configuration, out IReadOnlyList<string> errors, string? builtInOrigin)
     {
         var section = configuration.GetSection(Section);
         var problems = new List<string>();
@@ -149,12 +170,16 @@ public sealed partial class EngineOptions
         }
 
         var allowOrigins = new List<string>();
-        foreach (var origin in section.GetSection("AllowOrigins").GetChildren().Select(c => c.Value).Where(v => !string.IsNullOrWhiteSpace(v)))
+        var allowFlags = section.GetSection("AllowOrigins").GetChildren().Select(c => c.Value).Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+        // No flag: the origin the build carries, if any, checked as a flag is.
+        var allowBuiltIn = allowFlags.Count == 0 && !string.IsNullOrWhiteSpace(builtInOrigin);
+        var allowName = allowBuiltIn ? "The web client origin this build carries (InfoPanelAllowOrigin)" : "--allow-origin";
+        foreach (var origin in allowBuiltIn ? new List<string?> { builtInOrigin } : allowFlags)
         {
             if (!TryNormalizeExactOrigin(origin!, out var normalized))
-                problems.Add($"--allow-origin must be an exact http or https origin, scheme://host[:port] with no path, wildcard, percent sign or IPv6 zone, such as https://client.example (got '{origin}').");
+                problems.Add($"{allowName} must be an exact http or https origin, scheme://host[:port] with no path, wildcard, percent sign or IPv6 zone, such as https://client.example (got '{origin}').");
             else if (!IsSecureOrLoopbackOrigin(normalized))
-                problems.Add($"--allow-origin must use https unless the host is loopback (localhost, 127.0.0.0/8 or [::1]): the pairing link hands the origin the token (got '{origin}').");
+                problems.Add($"{allowName} must use https unless the host is loopback (localhost, 127.0.0.0/8 or [::1]): the pairing link hands the origin the token (got '{origin}').");
             else
                 allowOrigins.Add(normalized);
         }
@@ -242,6 +267,7 @@ public sealed partial class EngineOptions
             Token = token ?? NewToken(),
             DevOrigins = devOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             AllowOrigins = allowOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            AllowOriginsBuiltIn = allowBuiltIn,
             Fresh = fresh,
             MockSeed = seed,
             Mock = mock,

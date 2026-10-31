@@ -196,9 +196,9 @@ public sealed class LogEndpointTests
     }
 
     /// <summary>
-    /// A browser that can't be opened at start: the error names what was started, the sign-in link with the token (on
-    /// Windows .NET puts the file name, the link, in it). It reaches the console only: the log file, the kept entries
-    /// and their answer get a failure line without it.
+    /// A browser that can't be opened when the editor is asked for: what was started names only the private redirect file,
+    /// never the link, and the error reaches the console only: the log file, the kept entries and their answer get a failure
+    /// line without it, and none holds the token.
     /// </summary>
     [Fact]
     public async Task ABrowserThatCantBeOpened_KeepsTheTokenOutOfTheLogFile_TheEntries_AndTheirAnswer()
@@ -207,9 +207,9 @@ public sealed class LogEndpointTests
         var attempts = new List<string>();
         using var factory = engine.WithWebHostBuilder(builder =>
         {
-            builder.UseSetting("Engine:NoBrowser", "false");
             builder.ConfigureTestServices(services => services.AddSingleton(sp => new BrowserLauncher(
                 sp.GetRequiredService<ILogger<BrowserLauncher>>(),
+                sp.GetRequiredService<RedirectFiles>(),
                 command =>
                 {
                     // What was started, as .NET's launch error names it, in the error and the one it wraps; nothing opens.
@@ -226,14 +226,20 @@ public sealed class LogEndpointTests
         var logs = Path.Combine(engine.DataDir, "logs");
         string File() => string.Join("\n", Directory.Exists(logs) ? Directory.GetFiles(logs).Select(ReadShared) : []);
 
+        factory.Services.GetRequiredService<EditorOpener>().Open();
+
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
         while (!(recent.After(0).Any(e => e.Message.Contains("Could not open the browser")) && File().Contains("Could not open the browser"))
             && DateTime.UtcNow < deadline)
             await Task.Delay(20, Ct);
 
-        // The engine tried to open the sign-in link, the token in it, and failed.
+        // The engine tried to open the editor and failed; what it started names the redirect file, not the token.
         lock (attempts)
-            Assert.Contains(attempts, a => a.Contains($"/auth/{EngineFactory.Token}"));
+        {
+            Assert.NotEmpty(attempts);
+            Assert.All(attempts, a => Assert.DoesNotContain(EngineFactory.Token, a));
+            Assert.All(attempts, a => Assert.EndsWith(".html", a));
+        }
         // The log file says it couldn't, and holds no token.
         var file = File();
         Assert.Contains("Could not open the browser", file);

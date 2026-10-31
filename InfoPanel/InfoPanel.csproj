@@ -70,4 +70,7 @@
   <!-- The engine's build, which GET /api/session reports (engineBuild): EngineBuild.targets records it. -->
   <Import Project="EngineBuild.targets" />
 
+  <!-- The web client origin a release build carries (InfoPanelAllowOrigin; none by default): WebClientOrigin.targets. -->
+  <Import Project="WebClientOrigin.targets" />
+
 </Project>

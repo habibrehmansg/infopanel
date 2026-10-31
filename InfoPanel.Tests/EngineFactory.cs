@@ -90,8 +90,8 @@ public class EngineFactory : WebApplicationFactory<Program>
             services.AddSingleton(sp => new H264Backends(H264Backends.Enabled([new FakeH264Backend()], sp.GetRequiredService<EngineOptions>().H264),
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger("InfoPanel.Preview.Video")));
             services.AddSingleton<IFolderOpener>(Folders);
-            // Every test engine has --no-browser; one that turns it off gets a launcher that opens nothing.
-            services.AddSingleton(sp => new BrowserLauncher(sp.GetRequiredService<ILogger<BrowserLauncher>>(),
+            // No test engine opens a browser: its launcher starts nothing.
+            services.AddSingleton(sp => new BrowserLauncher(sp.GetRequiredService<ILogger<BrowserLauncher>>(), sp.GetRequiredService<RedirectFiles>(),
                 _ => throw new InvalidOperationException("No test engine opens a browser.")));
         });
     }
