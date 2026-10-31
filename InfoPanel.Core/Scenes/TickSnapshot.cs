@@ -227,11 +227,14 @@ public sealed class TickSnapshot : IDisposable
     internal static double LargestScale(int width, int height) => Math.Sqrt(MaxFramePixels / ((double)Math.Max(1, width) * Math.Max(1, height))) + 1;
 
     /// <summary>The scale actually drawn for <paramref name="scale"/>: reduced so the frame stays within <see cref="MaxFramePixels"/>.</summary>
-    public float EffectiveScale(float scale)
+    public float EffectiveScale(float scale) => EffectiveScale(Width, Height, scale);
+
+    /// <summary>The scale a frame of <paramref name="width"/> × <paramref name="height"/> is drawn at for <paramref name="scale"/> (<see cref="EffectiveScale(float)"/>).</summary>
+    internal static float EffectiveScale(int width, int height, float scale)
     {
         if (!(scale > 0) || !float.IsFinite(scale)) scale = 1;
-        var pixels = (double)Width * Height * scale * scale;
-        return pixels > MaxFramePixels ? (float)Math.Sqrt(MaxFramePixels / ((double)Width * Height)) : scale;
+        var pixels = (double)width * height * scale * scale;
+        return pixels > MaxFramePixels ? (float)Math.Sqrt(MaxFramePixels / ((double)width * height)) : scale;
     }
 
     /// <summary>
@@ -251,9 +254,12 @@ public sealed class TickSnapshot : IDisposable
         var was = SceneDrawer.WithoutText;
         var wasZoom = SceneDrawer.Zoom;
         var wasRoot = SceneDrawer.ZoomRoot;
+        var wasPanel = SceneDrawer.Panel;
+        var panel = scale > 1 ? new PanelFrame(Width, Height) : null;
         SceneDrawer.WithoutText = withoutText;
         SceneDrawer.Zoom = scale > 1 ? scale : 0;
         SceneDrawer.ZoomRoot = canvas.TotalMatrix;
+        SceneDrawer.Panel = panel;
         try
         {
             canvas.Scale(scale);
@@ -266,6 +272,8 @@ public sealed class TickSnapshot : IDisposable
             SceneDrawer.WithoutText = was;
             SceneDrawer.Zoom = wasZoom;
             SceneDrawer.ZoomRoot = wasRoot;
+            SceneDrawer.Panel = wasPanel;
+            panel?.Dispose();
             canvas.RestoreToCount(count);
         }
     }
@@ -305,10 +313,13 @@ public sealed class TickSnapshot : IDisposable
                 case SnapScene s:
                 {
                     var count = canvas.Save();
+                    var panelCount = SceneDrawer.Panel?.Save() ?? 0;
                     canvas.Concat(in s.World);
+                    SceneDrawer.Panel?.Concat(in s.World);
                     var start = _drawTime.GetTimestamp();
                     if (s.Nodes is { } nodes) SceneDrawer.Draw(canvas, nodes);
                     else Placeholders.DrawItem(canvas, s.PlaceholderBox);
+                    SceneDrawer.Panel?.RestoreToCount(panelCount);
                     canvas.RestoreToCount(count);
                     if (s.Runtime is { } rt && s.Nodes is not null)
                     {

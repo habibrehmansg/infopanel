@@ -370,6 +370,8 @@ The bit rate and which encoder the engine uses are the engine's choice. `view`'s
 
 The frame is the canvas drawn at `scale`: the point (x, y) of the canvas, in profile pixels, is at (x × `scale`, y × `scale`) in the frame, whose top-left corner is the canvas's (0, 0). Item bounds, and anything else in profile pixels, map to frame pixels the same way: multiply by `scale`.
 
+At a `scale` above 1, media drawn from a raster picture (PNG, JPEG, GIF, WebP and video frames; not SVG, and not a placeholder) shows the canvas's own pixels: the engine draws it as at scale 1, onto the canvas's pixel grid, within its box, its opacity and crossfade applied, and enlarges those pixels, so frame pixel (i, j) shows canvas pixel (⌊(i + ½) ÷ `scale`⌋, ⌊(j + ½) ÷ `scale`⌋) of it (a frame pixel whose centre is on a canvas pixel's edge shows the pixel to the right of or below that edge). At a whole `scale` each canvas pixel is `scale` × `scale` frame pixels; at a fractional one, ⌊`scale`⌋ or ⌈`scale`⌉ on each side. Its transforms place those pixels as at scale 1. A crossfade takes its lower sample's path, the one it fades from: from a raster picture, the picture it fades into (an SVG too) is drawn with it into the same canvas pixels; from an SVG, both are drawn at `scale`. Everything else is drawn at `scale`, in drawing order with it: text, shapes, strokes, paints, SVG and placeholders, and groups' clips, effects, opacity and blend. A frame at `scale` 1 or below is the canvas drawn at that scale.
+
 `scale` comes from the subscription's scale, s:
 
 1. When s isn't a positive finite number, it is 1.

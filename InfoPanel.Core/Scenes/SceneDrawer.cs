@@ -1,11 +1,14 @@
 using System;
+using System.Buffers;
+using System.Runtime.InteropServices;
 using SkiaSharp;
 
 namespace InfoPanel.Scenes;
 
 /// <summary>
 /// Draws resolved nodes with Skia (spec/docs/scene.md, "Drawing model"): painter's order, source-over, antialiased,
-/// everything through the canvas matrix, so one evaluation draws the same at every scale. Never writes to what it draws.
+/// everything through the canvas matrix, so one evaluation draws the same at every scale; above scale 1, raster media
+/// as the canvas's own pixels enlarged (<see cref="DrawEnlarged"/>). Never writes to what it draws.
 /// </summary>
 internal static class SceneDrawer
 {
@@ -36,6 +39,32 @@ internal static class SceneDrawer
     /// </summary>
     [ThreadStatic] internal static SKMatrix ZoomRoot;
 
+    /// <summary>Set with <see cref="Zoom"/>: the panel's side of the frame (<see cref="PanelFrame"/>).</summary>
+    [ThreadStatic] internal static PanelFrame? Panel;
+
+    /// <summary>
+    /// A test hook: called on the drawing thread with the size of every picture of canvas pixels raster media is drawn
+    /// into above scale 1, before it is allocated.
+    /// </summary>
+    [ThreadStatic] internal static Action<SKImageInfo>? PictureProbe;
+
+    /// <summary>
+    /// A test hook: called on the drawing thread with the size of every enlargement of canvas pixels made in memory (at a
+    /// scale between the quarter steps, or for media past the canvas), before it is allocated.
+    /// </summary>
+    [ThreadStatic] internal static Action<SKImageInfo>? EnlargementProbe;
+
+    /// <summary>
+    /// The most bytes a picture of canvas pixels, or its enlargement, may take: a frame's (16 Mpx of RGBA). An enlargement
+    /// may take a row and a column of the frame more (<see cref="Fits"/>), so a frame within <see cref="TickSnapshot.MaxFramePixels"/>
+    /// whose sides were rounded to whole pixels fits. Raster media whose picture or enlargement would need more is drawn
+    /// at the frame's scale instead.
+    /// </summary>
+    internal const long MaxPictureBytes = 64L << 20;
+
+    /// <summary>A test hook: a smaller <see cref="MaxPictureBytes"/> on this thread.</summary>
+    [ThreadStatic] internal static long? PictureBound;
+
     public static void Draw(SKCanvas canvas, RNode[] nodes)
     {
         foreach (var n in nodes) Draw(canvas, n);
@@ -56,7 +85,12 @@ internal static class SceneDrawer
     private static void DrawGroup(SKCanvas canvas, RGroup g)
     {
         var count = canvas.Save();
-        if (!g.Matrix.IsIdentity) canvas.Concat(in g.Matrix);
+        var panelCount = Panel?.Save() ?? 0;
+        if (!g.Matrix.IsIdentity)
+        {
+            canvas.Concat(in g.Matrix);
+            Panel?.Concat(in g.Matrix);
+        }
         if (g.NeedsLayer)
         {
             using var paint = new SKPaint { Color = new SKColor(255, 255, 255, Alpha(g.Opacity)), BlendMode = g.Blend };
@@ -69,6 +103,9 @@ internal static class SceneDrawer
                 var h = extent.Hint;
                 if (g.Clip is not null) h.Intersect(g.Clip.Bounds);
                 h.Inflate(2, 2);
+                // Raster media above scale 1 is drawn in whole canvas pixels, up to one past its edge however small
+                // the group's units are.
+                if (Zoom > 0 && HoldsRaster(g.Children)) h = GrowByCanvasPixel(h);
                 hint = h;
             }
             if (hint is { } bounds) canvas.SaveLayer(bounds, paint);
@@ -80,7 +117,29 @@ internal static class SceneDrawer
             canvas.ClipPath(path, SKClipOperation.Intersect, true);
         }
         foreach (var child in g.Children) Draw(canvas, child);
+        Panel?.RestoreToCount(panelCount);
         canvas.RestoreToCount(count);
+    }
+
+    /// <summary>The frame's matrix from canvas pixels to device pixels at scale <paramref name="s"/>.</summary>
+    private static SKMatrix CanvasToDevice(float s) => SKMatrix.Concat(ZoomRoot, SKMatrix.CreateScale(s, s));
+
+    private static bool HoldsRaster(RNode[] nodes)
+    {
+        foreach (var n in nodes)
+            if (n is RMedia { Sample.Image: not null } || n is RGroup g && HoldsRaster(g.Children)) return true;
+        return false;
+    }
+
+    /// <summary><paramref name="r"/> (in the canvas's current coordinates) grown by a canvas pixel on every side.</summary>
+    private static SKRect GrowByCanvasPixel(SKRect r)
+    {
+        if (Panel is null) return r;
+        var local = Panel.Matrix;
+        if (!local.TryInvert(out var fromCanvas)) return r;
+        var grown = local.MapRect(r);
+        grown.Inflate(1, 1);
+        return SKRect.Union(r, fromCanvas.MapRect(grown));
     }
 
     private static SKImageFilter? Filter(REffect[] effects)
@@ -305,11 +364,200 @@ internal static class SceneDrawer
             Placeholders.DrawMissingMedia(canvas, m.Box, m.Opacity);
             return;
         }
+        if (Zoom > 0 && m.Sample!.Image is not null && DrawEnlarged(canvas, m, Zoom)) return;
         var count = canvas.Save();
         if (m.ClipToBox) canvas.ClipRect(m.Box, SKClipOperation.Intersect, true);
         DrawSamples(canvas, m);
         canvas.RestoreToCount(count);
     }
+
+    /// <summary>
+    /// How far the enlarged picture of canvas pixels is moved, in device pixels: a frame pixel whose centre is on the edge
+    /// between two canvas pixels then shows the right or lower one. At the scales outputs ask for (multiples of 0.25),
+    /// any other centre is at least ¼ of a device pixel from an edge, so nothing else moves.
+    /// </summary>
+    private const float TieNudge = -1f / 64;
+
+    /// <summary>
+    /// How far past the canvas's edge, in canvas pixels, raster media may reach and still be drawn as within the canvas:
+    /// a float rounding (an edge mapped to 120.000008), never a visible part of a pixel.
+    /// </summary>
+    private const float CanvasSlack = 1f / 256;
+
+    /// <summary>
+    /// Raster media in a frame above scale 1 (spec/docs/api.md, "Frame size"): the media as the frame at scale 1 draws
+    /// it (its transforms, box clip, opacity and crossfade, on the canvas's pixel grid) into a picture of the canvas
+    /// pixels it covers, bounded by what the canvas can show, then those pixels enlarged by the frame's scale with
+    /// nearest sampling, in the media's place in drawing order. The canvas's clips (groups' and the canvas's own) still
+    /// apply, at the frame's scale. At a multiple of 0.25 within the canvas, Skia enlarges the picture, moved by
+    /// <see cref="TieNudge"/>; at any other scale, and for media past the canvas, <see cref="Enlarge"/> computes the
+    /// rule itself. False when the canvas's grid can't be found (a root matrix that can't be inverted) or the picture
+    /// or its enlargement would be over the bound (<see cref="MaxPictureBytes"/>, <see cref="Fits"/>): the caller then
+    /// draws the media at the frame's scale.
+    /// </summary>
+    private static bool DrawEnlarged(SKCanvas canvas, RMedia m, float s)
+    {
+        var frame = CanvasToDevice(s);
+        if (Panel is not { } panel || !ZoomRoot.TryInvert(out var fromDevice) || !frame.TryInvert(out _)) return false;
+        var local = panel.Matrix; // the media's coordinates → canvas pixels, as the frame at scale 1 has it
+        var area = m.ClipToBox ? SKRect.Intersect(m.Dest, m.Box) : m.Dest;
+        if (area.IsEmpty) return true;
+        // The frame pixels the canvas's clips let through, and the canvas pixels they show by the rule, on the canvas's
+        // grid in double precision: an ordinary clip's edge is the canvas's own edge, where the clip mapped back to
+        // canvas pixels in float lands a rounding past it.
+        var visible = fromDevice.MapRect(canvas.DeviceClipBounds);
+        var (vi0, vj0) = ((int)Math.Floor(visible.Left), (int)Math.Floor(visible.Top));
+        var (vi1, vj1) = ((int)Math.Ceiling(visible.Right), (int)Math.Ceiling(visible.Bottom));
+        if (vi1 <= vi0 || vj1 <= vj0) return true;
+        var shown = new SKRect(Shown(vi0, s), Shown(vj0, s), Shown(vi1 - 1, s) + 1, Shown(vj1 - 1, s) + 1);
+        var covered = SKRect.Intersect(local.MapRect(area), shown);
+        if (covered.IsEmpty) return true;
+        var x0 = (int)MathF.Floor(covered.Left);
+        var y0 = (int)MathF.Floor(covered.Top);
+        var x1 = (int)MathF.Ceiling(covered.Right);
+        var y1 = (int)MathF.Ceiling(covered.Bottom);
+        var within = covered.Left > -CanvasSlack && covered.Top > -CanvasSlack
+            && covered.Right < panel.Width + CanvasSlack && covered.Bottom < panel.Height + CanvasSlack;
+        if (within) (x0, y0, x1, y1) = (Math.Max(x0, 0), Math.Max(y0, 0), Math.Min(x1, panel.Width), Math.Min(y1, panel.Height));
+        if (x1 <= x0 || y1 <= y0) return true;
+        // The frame pixels showing those canvas pixels.
+        var (i0, j0) = (Math.Max(First(x0, s), vi0), Math.Max(First(y0, s), vj0));
+        var (i1, j1) = (Math.Min(First(x1, s), vi1), Math.Min(First(y1, s), vj1));
+        if (i1 <= i0 || j1 <= j0) return true;
+        var bound = PictureBound ?? MaxPictureBytes;
+        var exact = !within || s * 4 != MathF.Round(s * 4);
+
+        SKBitmap? own = null, ownEnlarged = null;
+        SKBitmap pixels;
+        SKBitmap? enlarged = null;
+        int ox = 0, oy = 0;
+        if (within)
+        {
+            // Within the canvas (all raster media but some inside an effect layer that reaches past it): the frame's one
+            // picture of the canvas, its origin the canvas's, so the media is drawn under the very matrix the panel's
+            // frame draws it under and its pixels are the panel's to the last bit (a picture moved by whole pixels
+            // rounds some samples the other way). Only the covered part is cleared, drawn and enlarged.
+            if (panel.Pixels(bound) is not { } shared) return false;
+            if (exact && (enlarged = panel.Enlargement(s, bound)) is null) return false;
+            pixels = shared;
+        }
+        else
+        {
+            // Past the canvas, inside an effect layer reaching there (a shadow can bring media from a million pixels
+            // away): a picture of the covered pixels alone, its origin at their corner, under the panel's matrix moved
+            // by whole pixels. As the panel's frame draws such media into the layer at the layer's own origin, neither
+            // origin gives its pixels to the last bit. Its enlargement is computed, as a nudge a fraction of a device
+            // pixel can vanish in float that far out.
+            var info = new SKImageInfo(x1 - x0, y1 - y0, SKColorType.Rgba8888, SKAlphaType.Premul);
+            if (info.BytesSize64 > bound || !Fits(i1 - i0, j1 - j0, panel.Sides(s), bound)) return false;
+            PictureProbe?.Invoke(info);
+            pixels = own = new SKBitmap(info);
+            var size = new SKImageInfo(i1 - i0, j1 - j0, SKColorType.Rgba8888, SKAlphaType.Premul);
+            EnlargementProbe?.Invoke(size);
+            enlarged = ownEnlarged = new SKBitmap(size);
+            (ox, oy) = (x0, y0);
+        }
+        using (own)
+        using (ownEnlarged)
+        {
+            var part = new SKRectI(x0 - ox, y0 - oy, x1 - ox, y1 - oy);
+            using (var picture = new SKCanvas(pixels))
+            {
+                picture.ClipRect(part);
+                picture.Clear(SKColors.Transparent);
+                if (own is null) picture.SetMatrix(local);
+                else
+                {
+                    picture.Translate(-ox, -oy);
+                    picture.Concat(in local);
+                }
+                if (m.ClipToBox) picture.ClipRect(m.Box, SKClipOperation.Intersect, true);
+                DrawSamples(picture, m);
+            }
+            if (enlarged is not null)
+            {
+                Enlarge(canvas, pixels, part, x0, y0, s, new SKRectI(i0, j0, i1, j1), enlarged);
+                return true;
+            }
+            using var all = pixels.PeekPixels();
+            using var view = all.ExtractSubset(part);
+            using var image = SKImage.FromPixels(view);
+            var count = canvas.Save();
+            canvas.SetMatrix(frame);
+            var nudge = TieNudge / s;
+            using (var paint = new SKPaint { IsAntialias = false })
+                canvas.DrawImage(image, new SKRect(x0 + nudge, y0 + nudge, x1 + nudge, y1 + nudge), Nearest, paint);
+            canvas.RestoreToCount(count);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Enlarges the <paramref name="part"/> of <paramref name="pixels"/> showing canvas pixels from
+    /// (<paramref name="x0"/>, <paramref name="y0"/>) into frame pixels <paramref name="shows"/> by the rule itself: frame
+    /// pixel i shows canvas pixel ⌊(i + ½) ÷ s⌋, computed in double precision, where a centre on an edge comes out
+    /// exactly on it (s is a float, so (i + ½) ÷ s is a whole number only when the centre is on an edge, and is otherwise
+    /// at least 2⁻²⁵ from one, far more than the division's rounding). The frame pixels are made in the top left of
+    /// <paramref name="into"/>, then drawn one to one. Used at a scale that isn't a multiple of 0.25 (a thumbnail's, an
+    /// AI app's preview), and for media past the canvas; at a multiple of 0.25 every centre off an edge is at least ¼ of a
+    /// frame pixel from one, so Skia's nearest sampling moved by <see cref="TieNudge"/> gives the same pixels at no extra
+    /// cost.
+    /// </summary>
+    private static void Enlarge(SKCanvas canvas, SKBitmap pixels, SKRectI part, int x0, int y0, float s, SKRectI shows, SKBitmap into)
+    {
+        var (w, h) = (shows.Width, shows.Height);
+        var columns = ArrayPool<int>.Shared.Rent(w);
+        try
+        {
+            for (var i = 0; i < w; i++) columns[i] = part.Left + Shown(shows.Left + i, s) - x0;
+            var from = MemoryMarshal.Cast<byte, uint>(pixels.GetPixelSpan());
+            var to = MemoryMarshal.Cast<byte, uint>(into.GetPixelSpan());
+            var fromStride = pixels.RowBytes / 4;
+            var toStride = into.RowBytes / 4;
+            var made = -1;
+            for (var j = 0; j < h; j++)
+            {
+                var row = to.Slice(j * toStride, w);
+                var source = part.Top + Shown(shows.Top + j, s) - y0;
+                if (source == made)
+                {
+                    to.Slice((j - 1) * toStride, w).CopyTo(row);
+                    continue;
+                }
+                var line = from.Slice(source * fromStride, pixels.Width);
+                for (var i = 0; i < w; i++) row[i] = line[columns[i]];
+                made = source;
+            }
+        }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(columns);
+        }
+        using var all = into.PeekPixels();
+        using var view = all.ExtractSubset(new SKRectI(0, 0, w, h));
+        using var image = SKImage.FromPixels(view);
+        var count = canvas.Save();
+        canvas.SetMatrix(ZoomRoot);
+        using (var paint = new SKPaint { IsAntialias = false })
+            canvas.DrawImage(image, shows.Left, shows.Top, Nearest, paint);
+        canvas.RestoreToCount(count);
+    }
+
+    /// <summary>
+    /// Whether an enlargement of <paramref name="w"/> × <paramref name="h"/> frame pixels is within <paramref name="bound"/>
+    /// bytes, with a row and a column of the <paramref name="frame"/> more (<see cref="PanelFrame.Sides"/>): a frame within
+    /// <see cref="TickSnapshot.MaxFramePixels"/> has sides rounded to whole pixels, which can take it past by up to half a
+    /// row and half a column. The allowance is the frame's, never the enlargement's own, so the ceiling is the same for
+    /// every enlargement in a frame: one a pixel wide gains nothing by being tall.
+    /// </summary>
+    internal static bool Fits(int w, int h, (int Width, int Height) frame, long bound) =>
+        (long)w * h * 4 <= bound + 4L * ((long)frame.Width + frame.Height);
+
+    /// <summary>The canvas pixel frame pixel <paramref name="i"/> shows at scale <paramref name="s"/>: ⌊(i + ½) ÷ s⌋.</summary>
+    private static int Shown(int i, float s) => (int)Math.Floor((i + 0.5) / s);
+
+    /// <summary>The first frame pixel showing canvas pixel <paramref name="c"/> or one after it: ⌈c × s − ½⌉ (exact in double).</summary>
+    internal static int First(int c, float s) => (int)Math.Ceiling(c * (double)s - 0.5);
 
     /// <summary>The media's sample, and its crossfade's next one, into its dest at its opacity, under the canvas's clip.</summary>
     private static void DrawSamples(SKCanvas canvas, RMedia m)
@@ -332,6 +580,83 @@ internal static class SceneDrawer
             over.Draw(canvas, m.Dest, sampling, paint);
         }
         canvas.RestoreToCount(count);
+    }
+}
+
+/// <summary>
+/// The panel's side of a frame drawn above scale 1 (<see cref="SceneDrawer.Panel"/>, made and disposed by
+/// <see cref="TickSnapshot.Draw(SKCanvas, float, bool)"/>): the matrix the frame at scale 1 draws each node under, and
+/// the one picture of the canvas's pixels its raster media is drawn into in turn, and the one enlargement of them.
+/// </summary>
+internal sealed class PanelFrame(int width, int height) : IDisposable
+{
+    /// <summary>
+    /// A canvas that draws nothing, onto which every matrix concatenated onto the frame's canvas after its scale (an
+    /// item's placement, a group's transform) is concatenated too, from identity. Its matrix is then the one the frame at
+    /// scale 1 draws the node under, computed as that frame's canvas computes it, to the last bit: one recovered from the
+    /// scaled matrix by cancelling the scale is a rounding apart, enough to move a nearest-sampled pixel.
+    /// </summary>
+    private readonly SKNoDrawCanvas _matrices = new(Math.Max(1, width), Math.Max(1, height));
+
+    private SKBitmap? _pixels, _enlarged;
+
+    public int Width { get; } = width;
+    public int Height { get; } = height;
+
+    public SKMatrix Matrix => _matrices.TotalMatrix;
+
+    public int Save() => _matrices.Save();
+
+    public void Concat(in SKMatrix m) => _matrices.Concat(in m);
+
+    public void RestoreToCount(int count) => _matrices.RestoreToCount(count);
+
+    /// <summary>
+    /// The canvas-size picture, made the first time raster media needs it and kept for the rest of the frame (each media
+    /// clears what it covers), so a frame allocates one however many rasters it has; null when it would be over
+    /// <paramref name="bound"/>.
+    /// </summary>
+    public SKBitmap? Pixels(long bound)
+    {
+        if (_pixels is not null) return _pixels;
+        var info = new SKImageInfo(Width, Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+        if (info.BytesSize64 > bound) return null;
+        SceneDrawer.PictureProbe?.Invoke(info);
+        return _pixels = new SKBitmap(info);
+    }
+
+    /// <summary>
+    /// The sides of the frame at scale <paramref name="s"/> capped as an output caps it
+    /// (<see cref="TickSnapshot.EffectiveScale(float)"/>): the frame pixels showing the canvas, ⌈W × s − ½⌉ × ⌈H × s − ½⌉.
+    /// What an enlargement's rounding allowance is taken from (<see cref="SceneDrawer.Fits"/>).
+    /// </summary>
+    public (int Width, int Height) Sides(float s)
+    {
+        var capped = TickSnapshot.EffectiveScale(Width, Height, s);
+        return (SceneDrawer.First(Width, capped), SceneDrawer.First(Height, capped));
+    }
+
+    /// <summary>
+    /// The frame-size bitmap raster media within the canvas is enlarged into at scale <paramref name="s"/> when that isn't
+    /// a multiple of 0.25 (the frame pixels showing the canvas, ⌈W × s − ½⌉ × ⌈H × s − ½⌉), made the first time it is
+    /// needed and kept for the rest of the frame, so a frame allocates one however many rasters it has; null when it
+    /// wouldn't fit <paramref name="bound"/> (<see cref="SceneDrawer.Fits"/>).
+    /// </summary>
+    public SKBitmap? Enlargement(float s, long bound)
+    {
+        if (_enlarged is not null) return _enlarged;
+        var (w, h) = (SceneDrawer.First(Width, s), SceneDrawer.First(Height, s));
+        if (!SceneDrawer.Fits(w, h, Sides(s), bound)) return null;
+        var info = new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Premul);
+        SceneDrawer.EnlargementProbe?.Invoke(info);
+        return _enlarged = new SKBitmap(info);
+    }
+
+    public void Dispose()
+    {
+        _matrices.Dispose();
+        _pixels?.Dispose();
+        _enlarged?.Dispose();
     }
 }
 

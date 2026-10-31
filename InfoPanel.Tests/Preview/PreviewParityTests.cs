@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using InfoPanel.Models;
 using InfoPanel.Output;
 using InfoPanel.Sensors;
@@ -113,6 +114,77 @@ public sealed class PreviewParityTests : IAsyncLifetime
 
         // The frame's bounds are the snapshot's.
         Assert.Equal(JsonSerializer.Serialize(snapshot.Bounds, SpecJson.Options), JsonSerializer.Serialize(header.ItemBounds, SpecJson.Options));
+    }
+
+    [Fact]
+    public async Task TheScale2Frame_WithARaster_IsByteIdenticalToADirectDraw()
+    {
+        // A one-pixel checkerboard at a sub-pixel place: above scale 1 raster media shows the canvas's pixels enlarged,
+        // on the socket's frame as on a direct draw.
+        using var checker = new SKBitmap(new SKImageInfo(32, 32, SKColorType.Rgba8888, SKAlphaType.Premul));
+        for (var y = 0; y < 32; y++)
+            for (var x = 0; x < 32; x++)
+                checker.SetPixel(x, y, (x + y) % 2 == 0 ? new SKColor(255, 64, 0) : new SKColor(0, 64, 255));
+        using var image = SKImage.FromBitmap(checker);
+        using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+        using var api = _factory.CreateClient();
+        api.DefaultRequestHeaders.Authorization = new("Bearer", EngineFactory.Token);
+        using var upload = await api.PostAsync("/api/blobs", new ByteArrayContent(encoded.ToArray()), Ct);
+        var blob = (await upload.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetString()!;
+        var scene = new JsonObject
+        {
+            ["format"] = "infopanel.scene/1",
+            ["nodes"] = new JsonArray(new JsonObject { ["kind"] = "media", ["x"] = 10.3, ["y"] = 6.6, ["source"] = new JsonObject { ["asset"] = blob } }),
+        };
+        var id = await TestDocs.CreateAsync(api, TestDocs.Doc("Raster", 200, 100, TestDocs.Scene("r", 20, 10, scene)), Ct);
+        await using var client = await Subscribe(id, 2);
+
+        // Tick until the media cache has decoded the picture for the loop's snapshot (canvas pixel (40, 20) is in it),
+        // moving the clock on so each tick looks the picture up again.
+        long tick = 0;
+        var seen = SKColors.Empty;
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            _clock.Advance(TimeSpan.FromMilliseconds(100));
+            Render.Tick(id);
+            using var latest = Render.LatestSnapshot(id)!;
+            using var drawn = latest.Render(1);
+            seen = drawn.GetPixel(40, 20);
+            if (seen.Green == 64)
+            {
+                tick = latest.Tick;
+                break;
+            }
+            await Task.Delay(10, Ct);
+        }
+        Assert.True(tick > 0, $"the picture never arrived: canvas pixel (40, 20) is {seen}");
+        var (header, png) = await client.ReceiveFrameAsync(Ct, h => h.Tick >= tick);
+        Assert.Equal((2.0, 400, 200), (header.Scale, header.PixelWidth, header.PixelHeight));
+
+        using var snapshot = Render.LatestSnapshot(id)!;
+        Assert.Equal(header.Tick, snapshot.Tick);
+        using var panel = new SKBitmap(new SKImageInfo(400, 200, SKColorType.Rgba8888, SKAlphaType.Premul));
+        using (var canvas = new SKCanvas(panel))
+        {
+            canvas.Clear(SKColors.Transparent);
+            snapshot.Draw(canvas, 2);
+        }
+        var expected = Unpremultiplied(panel);
+        using var decoded = SKBitmap.Decode(png.ToArray(), new SKImageInfo(400, 200, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+        var actual = decoded.GetPixelSpan().ToArray();
+        var firstDifference = expected.AsSpan().CommonPrefixLength(actual);
+        Assert.True(firstDifference == expected.Length,
+            $"pixels differ from byte {firstDifference} (pixel {firstDifference / 4 % 400}, {firstDifference / 4 / 400})");
+
+        // Canvas pixels (40, 20) and (41, 20), inside the picture, are each a 2 × 2 block of one colour on the frame.
+        foreach (var (x, y) in new[] { (40, 20), (41, 20) })
+        {
+            var block = decoded.GetPixel(2 * x, 2 * y);
+            Assert.True(block.Green == 64 && block == decoded.GetPixel(2 * x + 1, 2 * y) && block == decoded.GetPixel(2 * x, 2 * y + 1)
+                && block == decoded.GetPixel(2 * x + 1, 2 * y + 1), $"canvas pixel ({x}, {y}) isn't a 2 × 2 block of one colour");
+        }
+        Assert.NotEqual(decoded.GetPixel(80, 40), decoded.GetPixel(82, 40));
     }
 
     [Fact]

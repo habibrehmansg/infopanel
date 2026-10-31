@@ -89,6 +89,8 @@ public sealed class SceneGoldenTests
         ["video-media"] = new("scene/valid/video-media.json", 148, 116, 10, 10, null, null, Video: true),
         ["video-media-t1"] = new("scene/valid/video-media.json", 148, 116, 10, 10, null, null, Elapsed: 0.35, Video: true),
         ["video-media-t2"] = new("scene/valid/video-media.json", 148, 116, 10, 10, null, null, Elapsed: 1.25, Video: true),
+        // Above scale 1 a video frame is raster media: the canvas's pixels, enlarged.
+        ["video-media-scale2"] = new("scene/valid/video-media.json", 148, 116, 10, 10, null, null, Scale: 2, Video: true),
     };
 
     private static readonly Dictionary<string, Case> Fixtures = new()
@@ -103,6 +105,11 @@ public sealed class SceneGoldenTests
         ["fx-series"] = new("series.json", 330, 100, 0, 0, null, null, Load),
         ["fx-shapes"] = new("shapes.json", 360, 120, 0, 0, null, null),
         ["fx-dash-floor"] = new("dash-floor.json", 320, 80, 0, 0, null, null),
+        // Above scale 1 raster media shows the canvas's pixels enlarged (2 × 2 blocks; 2 and 3 wide at 2.5); SVG and
+        // the placeholder are drawn at the scale. raster-zoom: transforms, group opacity, blend, clip and effects.
+        ["fx-media-scale2"] = new("media.json", 420, 130, 0, 0, null, null, Scale: 2),
+        ["fx-media-scale2.5"] = new("media.json", 420, 130, 0, 0, null, null, Scale: 2.5f),
+        ["raster-zoom-scale3"] = new("raster-zoom.json", 240, 140, 0, 0, null, null, Scale: 3),
     };
 
     public static TheoryData<string> ExampleNames() => new(Examples.Keys.Order(StringComparer.Ordinal));

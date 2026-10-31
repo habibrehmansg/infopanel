@@ -1,0 +1,14 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {"kind": "rect", "w": 240, "h": 140, "fill": {"type": "linear", "x1": 0, "y1": 0, "x2": 240, "y2": 140, "stops": [{"at": 0, "color": "#1e293b"}, {"at": 1, "color": "#64748b"}]}},
+    {"kind": "group", "transform": [{"type": "rotate", "angle": 20, "cx": 50, "cy": 40}], "opacity": 0.8, "children": [{"kind": "media", "x": 10.3, "y": 10.6, "w": 80, "h": 53.3, "source": {"asset": "sha256:2e6bf049cc4791922aabe0704b3d6e978102348ec52e63bc29a7574281450be1"}}]},
+    {"kind": "group", "transform": [{"type": "skew", "x": 12, "y": 0}], "blend": "multiply", "children": [{"kind": "media", "x": 95.4, "y": 8.2, "w": 48, "h": 32, "source": {"asset": "sha256:2e6bf049cc4791922aabe0704b3d6e978102348ec52e63bc29a7574281450be1"}}]},
+    {"kind": "group", "clip": {"kind": "ellipse", "cx": 200, "cy": 35, "rx": 30, "ry": 24}, "children": [{"kind": "media", "x": 160.25, "y": 5.5, "w": 80, "h": 60, "fit": "cover", "source": {"asset": "sha256:2e6bf049cc4791922aabe0704b3d6e978102348ec52e63bc29a7574281450be1"}}]},
+    {"kind": "group", "effects": [{"type": "blur", "sigma": 1.5}], "children": [{"kind": "media", "x": 20.6, "y": 80.3, "w": 50, "h": 50, "source": {"asset": "sha256:ae9ce390b1c2157573406bef697fb380900709f68c1de19d4d75d69c77a71e56"}}]},
+    {"kind": "group", "effects": [{"type": "shadow", "dx": 3, "dy": 4, "sigma": 2, "color": "#000000cc"}], "children": [{"kind": "media", "x": 90.4, "y": 80.7, "w": 60, "h": 40, "sampling": "nearest", "source": {"asset": "sha256:2e6bf049cc4791922aabe0704b3d6e978102348ec52e63bc29a7574281450be1"}}]},
+    {"kind": "group", "effects": [{"type": "glow", "sigma": 3, "color": "#22d3ee"}], "children": [{"kind": "media", "x": 170.5, "y": 78.25, "w": 50, "h": 50, "opacity": 0.7, "source": {"asset": "sha256:dc12f6394ba94be0e7793081a10bedffd4c150a85d607dfc26a315dbe22c0969"}}]},
+    {"kind": "rect", "x": 60.3, "y": 50.6, "w": 50, "h": 26, "r": 6, "fill": "#0f172acc", "stroke": {"paint": "#f8fafc", "width": 1}},
+    {"kind": "text", "x": 66.2, "y": 56.4, "font": {"family": "Inter", "size": 13, "weight": 700}, "fill": "#ffffff", "text": "Zoom"}
+  ]
+}
