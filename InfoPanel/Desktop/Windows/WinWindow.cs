@@ -22,6 +22,13 @@ namespace InfoPanel.Desktop.Windows;
 /// floor. A DIB that can't be allocated is logged once and the window stays as it was. A failed update (a disconnected
 /// session) is logged once and tried again with the same pixels every half second until one succeeds, since a static
 /// panel sends no new frame; a retry message still waiting once one has succeeded is ignored.</item>
+/// <item>Drag and resize: <c>WM_NCHITTEST</c> answers an edge or corner within the resize band when resizable, else the
+/// caption when movable, else the client (<see cref="WinHitTest"/>), so Windows runs its own move or size loop and shows
+/// its own sizing cursors; the class cursor is the arrow. A press on the caption or an edge is <see cref="UserMoving"/>
+/// until the loop returns at the release, then <see cref="UserMoved"/> once, moved or not; a press on the client (a
+/// window that doesn't move) the same at its release. Each size change in the loop is <see cref="UserResized"/>, and the
+/// window's pixels follow it; <see cref="SetFrame"/> reports nothing. A double click on the caption or an edge and the
+/// right button there do nothing (no maximize, no system menu).</item>
 /// </list>
 /// </summary>
 [SupportedOSPlatform("windows")]
@@ -71,6 +78,12 @@ internal sealed unsafe class WinWindow : IDesktopWindow
     private bool _updateFailing;
     private bool _retrying;
 
+    // Drag and resize: SetFrame's own changes are never the user's; the system's move or size loop runs for a press on
+    // the caption or an edge; a press on the client (a window that doesn't move) waits for its release.
+    private bool _settingFrame;
+    private bool _inLoop;
+    private bool _pressed;
+
     public WinWindow(DesktopWindowStyle style, PointRect frame)
     {
         RegisterClass();
@@ -116,24 +129,19 @@ internal sealed unsafe class WinWindow : IDesktopWindow
     /// <summary>Always 1: the desktop's coordinates are pixels on Windows.</summary>
     public double BackingScale => 1;
 
-    /// <summary>Never set by this window: dragging comes with drag and resize.</summary>
-    public bool UserMoving => false;
+    /// <summary>From a press on the window until its release: the system's move or size loop, or a press on the client.</summary>
+    public bool UserMoving => _inLoop || _pressed;
 
     public bool Visible => _visible;
 
     public DesktopWindowStyle Style { get; private set; }
 
-    public event Action? UserMoved
-    {
-        add { }
-        remove { }
-    }
+    public event Action? UserMoved;
 
-    public event Action? UserResized
-    {
-        add { }
-        remove { }
-    }
+    public event Action? UserResized;
+
+    /// <summary>For tests: replaces the system's move and size loop (<c>DefWindowProc</c> of the press), given its wParam and lParam.</summary>
+    internal Action<nint, nint>? SystemLoop { get; set; }
 
     /// <summary>Never raised: the scale is always 1.</summary>
     public event Action? BackingScaleChanged
@@ -148,8 +156,16 @@ internal sealed unsafe class WinWindow : IDesktopWindow
             return;
 
         var (x, y, width, height) = Pixels(frame);
-        if (Win32.SetWindowPos(_hwnd, 0, x, y, width, height, Win32.SWP_NOACTIVATE | Win32.SWP_NOZORDER | Win32.SWP_NOOWNERZORDER) == 0)
-            Logger.Warning("A desktop window couldn't be placed at {Frame} ({Error})", frame, Marshal.GetLastPInvokeError());
+        _settingFrame = true;
+        try
+        {
+            if (Win32.SetWindowPos(_hwnd, 0, x, y, width, height, Win32.SWP_NOACTIVATE | Win32.SWP_NOZORDER | Win32.SWP_NOOWNERZORDER) == 0)
+                Logger.Warning("A desktop window couldn't be placed at {Frame} ({Error})", frame, Marshal.GetLastPInvokeError());
+        }
+        finally
+        {
+            _settingFrame = false;
+        }
 
         if (width == _width && height == _height)
             return;
@@ -213,9 +229,10 @@ internal sealed unsafe class WinWindow : IDesktopWindow
             return;
 
         ByHandle.TryRemove(_hwnd, out _);
-        Win32.DestroyWindow(_hwnd); // its retry timer too
+        Win32.DestroyWindow(_hwnd); // its retry timer and the mouse capture of a press too
         _hwnd = 0;
         _visible = false;
+        _pressed = false;
         FreeDib();
     }
 
@@ -387,6 +404,9 @@ internal sealed unsafe class WinWindow : IDesktopWindow
                 CbSize = (uint)sizeof(WNDCLASSEXW),
                 LpfnWndProc = &WndProc,
                 HInstance = Win32.GetModuleHandleW(null),
+                // The arrow over the window: with no class cursor, Windows keeps whatever cursor was last set (the
+                // busy one while the engine starts). The edges get the sizing cursors from the hit test.
+                HCursor = Win32.LoadCursorW(0, Win32.IDC_ARROW),
                 LpszClassName = className,
             };
             if (Win32.RegisterClassExW(&wc) == 0 && Marshal.GetLastPInvokeError() != 1410) // ERROR_CLASS_ALREADY_EXISTS
@@ -421,18 +441,134 @@ internal sealed unsafe class WinWindow : IDesktopWindow
         }
     }
 
+    /// <summary>The answer to a message that needs this window's state, or null for <see cref="Answer"/> and the default.</summary>
+    private nint? OnMessage(nint hwnd, uint msg, nint wParam, nint lParam)
+    {
+        switch (msg)
+        {
+            case Win32.WM_TIMER when (nuint)wParam == RetryTimer:
+                // KillTimer leaves a message already waiting: one that comes after the retry ended is ignored.
+                if (_retrying)
+                    Present();
+                return 0;
+            case Win32.WM_NCHITTEST:
+                return HitTest(lParam);
+            case Win32.WM_NCLBUTTONDOWN when WinHitTest.StartsLoop((int)wParam):
+                return RunSystemLoop(hwnd, wParam, lParam);
+            case Win32.WM_NCLBUTTONDBLCLK or Win32.WM_NCRBUTTONUP:
+                return 0; // no maximize, no system menu
+            case Win32.WM_LBUTTONDOWN:
+                Press();
+                return 0;
+            case Win32.WM_LBUTTONUP:
+                Release();
+                return 0;
+            case Win32.WM_CAPTURECHANGED:
+                if (_pressed)
+                {
+                    // The press lost the mouse (another window took it): it is over.
+                    _pressed = false;
+                    UserMoved?.Invoke();
+                }
+
+                return 0;
+            case Win32.WM_SIZE:
+                OnSized();
+                return 0;
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>
+    /// <c>WM_NCHITTEST</c>: the screen point in <paramref name="lParam"/> (physical pixels: the window is per-monitor
+    /// aware) against the window's rectangle, its DPI's resize band and its style (<see cref="WinHitTest"/>).
+    /// </summary>
+    private nint HitTest(nint lParam)
+    {
+        RECT r;
+        if (Win32.GetWindowRect(_hwnd, &r) == 0)
+            return WinHitTest.HTCLIENT;
+        var x = (short)(lParam & 0xFFFF);
+        var y = (short)((lParam >> 16) & 0xFFFF);
+        var dpi = Win32.GetDpiForWindow(_hwnd);
+        return WinHitTest.Hit(x - r.Left, y - r.Top, r.Right - r.Left, r.Bottom - r.Top, dpi == 0 ? 96 : (int)dpi, Style);
+    }
+
+    /// <summary>
+    /// A press on the caption or an edge: Windows' own move or size loop, which returns once the button is up again.
+    /// <see cref="UserMoving"/> holds until it returns, then <see cref="UserMoved"/> is raised once, moved or not.
+    /// </summary>
+    private nint RunSystemLoop(nint hwnd, nint wParam, nint lParam)
+    {
+        if (_inLoop || _pressed)
+            return 0;
+
+        _inLoop = true;
+        try
+        {
+            if (SystemLoop is { } loop)
+                loop(wParam, lParam);
+            else
+                Win32.DefWindowProcW(hwnd, Win32.WM_NCLBUTTONDOWN, wParam, lParam);
+        }
+        finally
+        {
+            _inLoop = false;
+        }
+
+        UserMoved?.Invoke();
+        return 0;
+    }
+
+    /// <summary>A press on the client (a window that doesn't move): held, with the mouse, until its release.</summary>
+    private void Press()
+    {
+        if (_pressed || _inLoop)
+            return;
+        _pressed = true;
+        Win32.SetCapture(_hwnd);
+    }
+
+    private void Release()
+    {
+        if (!_pressed)
+            return;
+        _pressed = false;
+        Win32.ReleaseCapture(); // its WM_CAPTURECHANGED finds no press
+        UserMoved?.Invoke();
+    }
+
+    /// <summary>
+    /// The window's size changed other than through <see cref="SetFrame"/>: its pixels follow, carried over, and during
+    /// the system's size loop each change is reported (<see cref="UserResized"/>).
+    /// </summary>
+    private void OnSized()
+    {
+        if (_settingFrame || _hwnd == 0)
+            return;
+
+        RECT r;
+        if (Win32.GetWindowRect(_hwnd, &r) == 0)
+            return;
+        var (width, height) = (r.Right - r.Left, r.Bottom - r.Top);
+        if (width == _width && height == _height || width <= 0 || height <= 0)
+            return;
+
+        (_width, _height) = (width, height);
+        if (_hasContent && EnsureDib(carry: true))
+            Present();
+        if (_inLoop)
+            UserResized?.Invoke();
+    }
+
     [UnmanagedCallersOnly]
     private static nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam)
     {
         try
         {
-            if (msg == Win32.WM_TIMER && (nuint)wParam == RetryTimer && ByHandle.TryGetValue(hwnd, out var window))
-            {
-                // KillTimer leaves a message already waiting: one that comes after the retry ended is ignored.
-                if (window._retrying)
-                    window.Present();
-                return 0;
-            }
+            if (ByHandle.TryGetValue(hwnd, out var window) && window.OnMessage(hwnd, msg, wParam, lParam) is { } own)
+                return own;
 
             if (Answer(msg, wParam, lParam) is { } answer)
                 return answer;

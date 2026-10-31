@@ -236,13 +236,21 @@ internal static unsafe partial class Win32
     public const uint PM_QS_INPUT = 0x1C07u << 16;
 
     public const uint WM_DESTROY = 0x0002;
+    public const uint WM_SIZE = 0x0005;
     public const uint WM_CLOSE = 0x0010;
     public const uint WM_ENDSESSION = 0x0016;
     public const uint WM_MOUSEACTIVATE = 0x0021;
     public const uint WM_GETMINMAXINFO = 0x0024;
     public const uint WM_DISPLAYCHANGE = 0x007E;
+    public const uint WM_NCHITTEST = 0x0084;
+    public const uint WM_NCLBUTTONDOWN = 0x00A1;
+    public const uint WM_NCLBUTTONDBLCLK = 0x00A3;
+    public const uint WM_NCRBUTTONUP = 0x00A5;
     public const uint WM_QUIT = 0x0012;
     public const uint WM_TIMER = 0x0113;
+    public const uint WM_LBUTTONDOWN = 0x0201;
+    public const uint WM_LBUTTONUP = 0x0202;
+    public const uint WM_CAPTURECHANGED = 0x0215;
     public const uint WM_POWERBROADCAST = 0x0218;
     public const uint WM_WTSSESSION_CHANGE = 0x02B1;
     public const uint WM_DPICHANGED = 0x02E0;
@@ -250,6 +258,9 @@ internal static unsafe partial class Win32
     public const uint WM_APP = 0x8000;
 
     public const int MA_NOACTIVATE = 3;
+
+    /// <summary><c>IDC_ARROW</c>, the standard arrow cursor's resource id.</summary>
+    public const nint IDC_ARROW = 32512;
 
     public const nint PBT_APMRESUMESUSPEND = 0x7;
     public const nint PBT_APMRESUMEAUTOMATIC = 0x12;
@@ -331,6 +342,15 @@ internal static unsafe partial class Win32
     public static partial nint GetWindowLongPtrW(nint hwnd, int index);
 
     [LibraryImport(User32, SetLastError = true)]
+    public static partial nint LoadCursorW(nint instance, nint name);
+
+    [LibraryImport(User32)]
+    public static partial nint SetCapture(nint hwnd);
+
+    [LibraryImport(User32)]
+    public static partial int ReleaseCapture();
+
+    [LibraryImport(User32, SetLastError = true)]
     public static partial nuint SetTimer(nint hwnd, nuint id, uint elapse, nint timerProc);
 
     [LibraryImport(User32, SetLastError = true)]
@@ -349,6 +369,9 @@ internal static unsafe partial class Win32
 
     [LibraryImport(User32)]
     public static partial nint GetWindowDpiAwarenessContext(nint hwnd);
+
+    [LibraryImport(User32)]
+    public static partial uint GetDpiForWindow(nint hwnd);
 
     [LibraryImport(User32)]
     public static partial int AreDpiAwarenessContextsEqual(nint a, nint b);
