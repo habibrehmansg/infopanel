@@ -264,7 +264,8 @@ public class EngineOptionsTests
         }
         finally
         {
-            File.Delete(link);
+            // A link to a folder is removed as a folder (Windows refuses File.Delete on one); the link goes, not home.
+            Directory.Delete(link);
             Directory.Delete(dir);
         }
     }

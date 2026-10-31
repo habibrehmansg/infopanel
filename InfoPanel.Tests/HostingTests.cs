@@ -213,9 +213,10 @@ public sealed class HostingTests : IDisposable
         }
         finally
         {
-            // Unlink before Dispose's recursive delete, whatever it does with links.
-            File.Delete(link);
-            File.Delete(nested);
+            // Unlink before Dispose's recursive delete, whatever it does with links. A link to a folder is removed as a
+            // folder (Windows refuses File.Delete on one); the link goes, never what it points to.
+            Directory.Delete(link);
+            Directory.Delete(nested);
         }
     }
 
