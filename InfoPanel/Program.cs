@@ -204,7 +204,7 @@ try
     var workspace = Workspace.Start(paths, new WorkspaceOptions
     {
         Logger = engineLogger.ForContext<Workspace>(),
-        // Media providers are configured (the http provider below); video files play when FFmpeg loaded.
+        // Media providers are configured (the http provider below, and rtsp with FFmpeg); video files play when FFmpeg loaded.
         Support = ffmpeg is null
             ? EngineSupport.Base.WithScene(EngineSupport.MediaProvider)
             : EngineSupport.Base.WithScene(EngineSupport.MediaProvider, EngineSupport.MediaVideo),
@@ -348,11 +348,40 @@ try
         };
         return http;
     });
+    // The rtsp provider (spec/docs/providers.md), only with FFmpeg: camera streams decoded as videos are, every connection
+    // checked as the http provider's are, and dropped on a change of the local network setting as its fetches are.
+    if (ffmpeg is not null && InfoPanel.Images.Video.RtspProvider.Available(ffmpeg))
+    {
+        builder.Services.AddSingleton(sp =>
+        {
+            var rtsp = new InfoPanel.Images.Video.RtspProvider(ffmpeg, sp.GetRequiredService<MediaSampleCache>(), new InfoPanel.Images.Video.RtspProviderOptions
+            {
+                Limits = workspace.Limits,
+                LocalNetwork = () => settings.Current.Settings.Media.LocalNetwork,
+                LoopbackOnly = options.Offline,
+                UserAgent = $"InfoPanel/{ReadEndpoints.EngineVersion()}",
+            });
+            var localNetwork = settings.Current.Settings.Media.LocalNetwork;
+            var changing = new Lock();
+            settings.Changed += snapshot =>
+            {
+                lock (changing)
+                {
+                    if (localNetwork == snapshot.Settings.Media.LocalNetwork) return;
+                    localNetwork = snapshot.Settings.Media.LocalNetwork;
+                }
+                rtsp.Reset();
+            };
+            return rtsp;
+        });
+    }
     builder.Services.AddSingleton(sp => new SceneRuntimeOptions
     {
         Inputs = new SensorSceneInputs(sp.GetRequiredService<ISensorReader>(), sp.GetRequiredService<ISensorHistory>()),
         Media = sp.GetRequiredService<MediaSampleCache>(),
-        Providers = new Dictionary<string, IMediaProvider> { [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>() },
+        Providers = sp.GetService<InfoPanel.Images.Video.RtspProvider>() is { } rtsp
+            ? new Dictionary<string, IMediaProvider> { [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>(), [InfoPanel.Images.Video.RtspProvider.Name] = rtsp }
+            : new Dictionary<string, IMediaProvider> { [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>() },
         Limits = workspace.Limits,
         Support = workspace.Support,
         Locale = sp.GetRequiredService<RegionalFormat>(),

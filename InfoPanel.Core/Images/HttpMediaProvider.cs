@@ -907,46 +907,21 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     private static Validators ValidatorsOf(HttpResponseMessage response) =>
         new(response.Headers.ETag?.ToString(), response.Content.Headers.LastModified);
 
-    /// <summary>
-    /// The handler's connect step: resolves the host here (<c>localhost</c> and the names under it are this computer's
-    /// addresses, never looked up), and connects to the first of its addresses the rules allow, within the connect time
-    /// limit. A host none of whose addresses is allowed is refused, naming the first.
-    /// </summary>
+    /// <summary>The handler's connect step: <see cref="AddressRules.ConnectAsync"/>, within the connect time limit.</summary>
     private async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken token)
     {
-        var host = context.DnsEndPoint.Host;
         using var timeout = new CancellationTokenSource(_options.ConnectTimeout, _options.Time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, token);
         try
         {
-            var literal = host.StartsWith('[') && host.EndsWith(']') ? host[1..^1] : host;
-            var isLiteral = IPAddress.TryParse(literal, out var ip);
-            // Offline, a name other than this computer's isn't even looked up: the lookup would reach the network.
-            if (!isLiteral && _options.LoopbackOnly && !IsThisComputer(host))
-                throw new AddressRefusedException($"{host} is outside this computer, and the engine runs offline.");
-            var addresses = isLiteral ? [ip!]
-                : IsThisComputer(host) ? [IPAddress.Loopback, IPAddress.IPv6Loopback]
-                : await _options.Resolve(host, linked.Token).ConfigureAwait(false);
-            var localNetwork = _options.LocalNetwork();
-            string? refusal = null;
-            foreach (var address in addresses)
-            {
-                var why = AddressRules.Refusal(address, localNetwork, _options.LoopbackOnly);
-                if (why is null)
-                    return await _options.Connect(new IPEndPoint(address, context.DnsEndPoint.Port), linked.Token).ConfigureAwait(false);
-                refusal ??= why;
-            }
-            throw new AddressRefusedException(refusal ?? $"{host} has no address.");
+            return await AddressRules.ConnectAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, _options.Resolve, _options.Connect,
+                _options.LocalNetwork(), _options.LoopbackOnly, linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested && !token.IsCancellationRequested)
         {
             throw new ConnectTimeoutException();
         }
     }
-
-    /// <summary><c>localhost</c> and the names under it (RFC 6761), which name this computer: 127.0.0.1 and ::1.</summary>
-    private static bool IsThisComputer(string host) =>
-        host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A TCP connection to <paramref name="endpoint"/>.</summary>
     public static async ValueTask<Stream> ConnectSocketAsync(IPEndPoint endpoint, CancellationToken token)
@@ -1221,9 +1196,6 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         public NetworkCredential? GetCredential(Uri uri, string authType) =>
             authType is "Basic" or "Digest" && uri.AbsoluteUri == address.AbsoluteUri ? credential : null;
     }
-
-    /// <summary>A connection the address rules refused; its message names the address and why.</summary>
-    private sealed class AddressRefusedException(string message) : Exception(message);
 
     private sealed class ConnectTimeoutException() : Exception("The connection timed out.");
 }

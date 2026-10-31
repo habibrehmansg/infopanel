@@ -32,6 +32,7 @@ int main(void)
     OFF(AVFormatContext, flags);
     OFF(AVFormatContext, nb_streams);
     OFF(AVFormatContext, streams);
+    OFF(AVFormatContext, interrupt_callback);
 
     OFF(AVStream, index);
     OFF(AVStream, codecpar);
@@ -39,8 +40,16 @@ int main(void)
     OFF(AVStream, start_time);
     OFF(AVStream, discard);
 
+    OFF(AVCodecContext, opaque);
+    OFF(AVCodecContext, get_format);
+    OFF(AVCodecContext, max_pixels);
+    OFF(AVCodecContext, coded_width);
+    OFF(AVCodecContext, coded_height);
+
     OFF(AVCodecParameters, codec_type);
     OFF(AVCodecParameters, codec_id);
+    OFF(AVCodecParameters, extradata);
+    OFF(AVCodecParameters, extradata_size);
     OFF(AVCodecParameters, width);
     OFF(AVCodecParameters, height);
 
@@ -63,6 +72,12 @@ int main(void)
     VAL(AVDISCARD_ALL);
     VAL(AV_PIX_FMT_BGRA);
     VAL(AV_PIX_FMT_RGBA);
+    VAL(AV_PIX_FMT_NONE);
+    VAL(AV_PIX_FMT_YUV420P);
+    VAL(AV_PIX_FMT_YUVJ420P);
+    VAL(AV_PIX_FMT_YUV422P);
+    VAL(AV_PIX_FMT_YUVJ422P);
+    VAL(AV_PIX_FMT_GRAY8);
     VAL(AV_CODEC_ID_H264);
     VAL(AV_CODEC_ID_HEVC);
     VAL(AV_CODEC_ID_VP8);

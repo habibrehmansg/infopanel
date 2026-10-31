@@ -87,6 +87,19 @@ public sealed class VideoPreviewTests : IAsyncLifetime
         Assert.Contains("media.video", await SceneCapabilities(video));
     }
 
+    private static async Task<string[]> Providers(HttpClient api) =>
+        [.. (await api.GetFromJsonAsync<JsonElement>("/api/session", Ct)).GetProperty("media").GetProperty("providers")
+            .EnumerateArray().Select(c => c.GetString()!)];
+
+    [Fact]
+    public async Task WithADecoder_TheSessionListsTheRtspProvider_AndWithoutOne_OnlyHttp()
+    {
+        using var plain = Api(_base);
+        Assert.Equal(["http"], await Providers(plain));
+        using var video = Api(Video());
+        Assert.Equal(["http", "rtsp"], await Providers(video));
+    }
+
     [Fact]
     public async Task WithoutADecoder_AVideoItem_IsKeptExactly()
     {

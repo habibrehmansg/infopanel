@@ -1,0 +1,20 @@
+{
+  "engineVersion": "2.0.0",
+  "engineBuild": "004cf52",
+  "protocol": 2,
+  "instance": "b8e14f0a6d2c4e97a3f5c0d9e1b27a46",
+  "started": "2026-10-29T09:30:00Z",
+  "features": [],
+  "platform": "macos",
+  "osVersion": "26.1",
+  "arch": "arm64",
+  "dataDir": "/Users/me/Library/Application Support/InfoPanel/v2",
+  "mock": false,
+  "locale": {"tag": "en-GB", "decimalSeparator": ".", "groupSeparator": ","},
+  "media": {"providers": ["http", "rtsp"]},
+  "formatSupport": {
+    "infopanel.archive/1": {"version": "1.0", "capabilities": [], "limits": {"archiveBytes": 536870912, "manifestBytes": 65536}},
+    "infopanel.document/1": {"version": "1.0", "capabilities": [], "limits": {"documentBytes": 16777216, "items": 2000, "ops": 1000}},
+    "infopanel.scene/1": {"version": "1.0", "capabilities": ["media.provider", "media.video"], "limits": {"sceneBytes": 1048576, "nodes": 2000, "mediaBytes": 33554432}}
+  }
+}

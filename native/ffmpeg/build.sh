@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Builds the decode-only FFmpeg the engine plays videos with: libavutil, libavcodec, libavformat and libswscale as
 # shared libraries, configured without --enable-gpl and --enable-nonfree (LICENSES.md), with only the demuxers, parsers and
-# decoders the spec's video containers and codecs need (spec/docs/smart-nodes.md, "Video files"), no protocol, no
-# device, no filter, no hardware acceleration and no program. The engine loads these by full path beside itself
+# decoders the spec's video containers and codecs need (spec/docs/smart-nodes.md, "Video files"), plus the RTSP client
+# and the TCP protocol it runs over for camera streams (spec/docs/providers.md, "rtsp"; the engine allows it no other
+# protocol, and connects it only to its own loopback relay), no other protocol, no device, no filter, no hardware
+# acceleration and no program. The engine loads these by full path beside itself
 # (InfoPanel.Core/Images/Video/FFmpeg.cs) and accepts only the major versions it pins (avutil 61, avcodec 63,
 # avformat 63, swscale 10), which FFmpeg 9.0 has.
 #
@@ -24,7 +26,8 @@ if [ "$(cat "$SRC/RELEASE" 2>/dev/null)" != "$VERSION" ]; then
   exit 2
 fi
 
-DEMUXERS="mov,matroska,avi"
+DEMUXERS="mov,matroska,avi,rtsp"
+PROTOCOLS="tcp"
 DECODERS="h264,hevc,vp8,vp9,mpeg4,mjpeg,prores,libdav1d"
 PARSERS="h264,hevc,vp8,vp9,mpeg4video,mjpeg,av1"
 BSFS="vp9_superframe_split"
@@ -40,10 +43,11 @@ PKG_CONFIG_PATH="$DAV1D/lib/pkgconfig:${PKG_CONFIG_PATH:-}" ./configure \
   --prefix="$OUT" \
   --enable-shared --disable-static --enable-pic \
   --disable-everything --disable-autodetect \
-  --disable-programs --disable-doc --disable-network --disable-debug \
+  --disable-programs --disable-doc --disable-debug \
   --disable-avdevice --disable-avfilter --disable-swresample \
   --enable-avutil --enable-avcodec --enable-avformat --enable-swscale \
   --enable-demuxer="$DEMUXERS" \
+  --enable-protocol="$PROTOCOLS" \
   --enable-decoder="$DECODERS" \
   --enable-parser="$PARSERS" \
   --enable-bsf="$BSFS" \

@@ -64,6 +64,7 @@ public sealed unsafe class FFmpeg
     internal delegate* unmanaged[Cdecl]<void**, void> avformat_close_input;
     internal delegate* unmanaged[Cdecl]<byte*, void*> av_find_input_format;
     internal delegate* unmanaged[Cdecl]<void*, void*, int> av_read_frame;
+    internal delegate* unmanaged[Cdecl]<void*, int> av_read_play;
     internal delegate* unmanaged[Cdecl]<void*, int, long, int, int> av_seek_frame;
     internal delegate* unmanaged[Cdecl]<byte*, int, int, void*, delegate* unmanaged[Cdecl]<void*, byte*, int, int>, void*, delegate* unmanaged[Cdecl]<void*, long, int, long>, void*> avio_alloc_context;
     internal delegate* unmanaged[Cdecl]<void**, void> avio_context_free;
@@ -179,6 +180,7 @@ public sealed unsafe class FFmpeg
             f.avformat_close_input = (delegate* unmanaged[Cdecl]<void**, void>)Export(avformat, "avformat_close_input");
             f.av_find_input_format = (delegate* unmanaged[Cdecl]<byte*, void*>)Export(avformat, "av_find_input_format");
             f.av_read_frame = (delegate* unmanaged[Cdecl]<void*, void*, int>)Export(avformat, "av_read_frame");
+            f.av_read_play = (delegate* unmanaged[Cdecl]<void*, int>)Export(avformat, "av_read_play");
             f.av_seek_frame = (delegate* unmanaged[Cdecl]<void*, int, long, int, int>)Export(avformat, "av_seek_frame");
             f.avio_alloc_context = (delegate* unmanaged[Cdecl]<byte*, int, int, void*, delegate* unmanaged[Cdecl]<void*, byte*, int, int>, void*, delegate* unmanaged[Cdecl]<void*, long, int, long>, void*>)Export(avformat, "avio_alloc_context");
             f.avio_context_free = (delegate* unmanaged[Cdecl]<void**, void>)Export(avformat, "avio_context_free");
@@ -228,15 +230,20 @@ internal static class FFmpegAbi
 {
     public const int AvUtilMajor = 61, AvCodecMajor = 63, AvFormatMajor = 63, SwScaleMajor = 10;
 
-    public const int FormatContextPb = 32, FormatContextFlags = 128, FormatContextNbStreams = 44, FormatContextStreams = 48;
+    public const int FormatContextPb = 32, FormatContextFlags = 128, FormatContextNbStreams = 44, FormatContextStreams = 48,
+        FormatContextInterruptCallback = 216;
     public const int StreamIndex = 8, StreamCodecPar = 16, StreamTimeBase = 32, StreamStartTime = 40, StreamDiscard = 68;
-    public const int CodecParType = 0, CodecParId = 4, CodecParWidth = 72, CodecParHeight = 76;
+    public const int CodecContextOpaque = 48, CodecContextCodedWidth = 120, CodecContextCodedHeight = 124, CodecContextGetFormat = 192,
+        CodecContextMaxPixels = 792;
+    public const int CodecParType = 0, CodecParId = 4, CodecParExtradata = 16, CodecParExtradataSize = 24, CodecParWidth = 72,
+        CodecParHeight = 76;
     public const int PacketStreamIndex = 36;
     public const int FrameData = 0, FrameLinesize = 64, FrameWidth = 104, FrameHeight = 108, FrameFormat = 116, FramePts = 136,
         FrameBestEffortTimestamp = 304;
     public const int IoContextBuffer = 8;
 
     public const int MediaTypeVideo = 0, DiscardAll = 48, PixFmtBgra = 28, PixFmtRgba = 26;
+    public const int PixFmtNone = -1, PixFmtYuv420p = 0, PixFmtYuvj420p = 12, PixFmtYuv422p = 4, PixFmtYuvj422p = 13, PixFmtGray8 = 8;
     public const int SeekSize = 0x10000, SeekFlagBackward = 1, FormatFlagCustomIo = 0x0080, DictIgnoreSuffix = 2;
     public const int ErrorEof = -541478725, ErrorExit = -1414092869; // AVERROR_EOF, AVERROR_EXIT
     public const long NoPts = long.MinValue;

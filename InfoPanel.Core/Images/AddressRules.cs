@@ -1,6 +1,9 @@
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace InfoPanel.Images;
 
@@ -23,9 +26,12 @@ public enum AddressKind
     Never,
 }
 
+/// <summary>A connection the address rules refused; its message names the address and why.</summary>
+public sealed class AddressRefusedException(string message) : Exception(message);
+
 /// <summary>
-/// The addresses a media provider may connect to (spec/docs/providers.md, "Addresses"). Pure: nothing here resolves a
-/// name or connects. An IPv6 address that carries an IPv4 one (IPv4-mapped, IPv4-compatible, NAT64 <c>64:ff9b::/96</c>,
+/// The addresses a media provider may connect to (spec/docs/providers.md, "Addresses"). Pure but for
+/// <see cref="ConnectAsync"/>, which resolves and connects through the functions it is given. An IPv6 address that carries an IPv4 one (IPv4-mapped, IPv4-compatible, NAT64 <c>64:ff9b::/96</c>,
 /// 6to4 <c>2002::/16</c>) is classified as that IPv4 address. One in the local-use translation prefix
 /// <c>64:ff9b:1::/48</c> (RFC 8215), whose layout only its translator knows, is a cloud metadata service when it carries
 /// one under any of the layouts its translator's prefix may have; else it is classified as the IPv4 address the /96
@@ -159,6 +165,39 @@ public static class AddressRules
             _ => null,
         };
     }
+
+    /// <summary>
+    /// A provider's connection to <paramref name="host"/>:<paramref name="port"/>: resolves the host here
+    /// (<c>localhost</c> and the names under it are this computer's addresses, never looked up; offline, no other name is
+    /// looked up at all), and connects to the first of its addresses the rules allow (<see cref="Refusal"/>), so the
+    /// address checked is the one connected to. A host none of whose addresses is allowed is refused, naming the first.
+    /// </summary>
+    /// <exception cref="AddressRefusedException">No address of the host may be connected to.</exception>
+    public static async ValueTask<Stream> ConnectAsync(string host, int port, Func<string, CancellationToken, Task<IPAddress[]>> resolve,
+        Func<IPEndPoint, CancellationToken, ValueTask<Stream>> connect, bool localNetwork, bool loopbackOnly, CancellationToken token)
+    {
+        var literal = host.StartsWith('[') && host.EndsWith(']') ? host[1..^1] : host;
+        var isLiteral = IPAddress.TryParse(literal, out var ip);
+        // Offline, a name other than this computer's isn't even looked up: the lookup would reach the network.
+        if (!isLiteral && loopbackOnly && !IsThisComputer(host))
+            throw new AddressRefusedException($"{host} is outside this computer, and the engine runs offline.");
+        var addresses = isLiteral ? [ip!]
+            : IsThisComputer(host) ? [IPAddress.Loopback, IPAddress.IPv6Loopback]
+            : await resolve(host, token).ConfigureAwait(false);
+        string? refusal = null;
+        foreach (var address in addresses)
+        {
+            var why = Refusal(address, localNetwork, loopbackOnly);
+            if (why is null)
+                return await connect(new IPEndPoint(address, port), token).ConfigureAwait(false);
+            refusal ??= why;
+        }
+        throw new AddressRefusedException(refusal ?? $"{host} has no address.");
+    }
+
+    /// <summary><c>localhost</c> and the names under it (RFC 6761), which name this computer: 127.0.0.1 and ::1.</summary>
+    public static bool IsThisComputer(string host) =>
+        host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase);
 
     private static string NeverWhy(IPAddress address)
     {

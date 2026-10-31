@@ -77,20 +77,25 @@ namespace InfoPanel.Images
     public sealed class MediaTick
     {
         private readonly Lock _lock = new();
-        private Dictionary<object, string?>? _shown;
+        private Dictionary<object, object?>? _shown;
 
-        /// <summary>What <paramref name="source"/> (a provider's own key for a reference) showed in this tick, when it chose.</summary>
-        internal bool TryShown(object source, out string? shown)
+        /// <summary>
+        /// What <paramref name="source"/> (a provider's own key for a reference) showed in this tick, when it chose (in the
+        /// provider's own terms, <typeparamref name="T"/>; null is a choice too).
+        /// </summary>
+        internal bool TryShown<T>(object source, out T? shown) where T : class
         {
             lock (_lock)
             {
                 shown = null;
-                return _shown is not null && _shown.TryGetValue(source, out shown);
+                if (_shown is null || !_shown.TryGetValue(source, out var value)) return false;
+                shown = value as T;
+                return true;
             }
         }
 
         /// <summary>Records what <paramref name="source"/> shows in this tick: the first choice stands.</summary>
-        internal void Show(object source, string? shown)
+        internal void Show<T>(object source, T? shown) where T : class
         {
             lock (_lock) (_shown ??= new()).TryAdd(source, shown);
         }
