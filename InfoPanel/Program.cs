@@ -364,7 +364,12 @@ try
         sp.GetRequiredService<TimeProvider>(),
         sp.GetService<RenderServiceOptions>()));
     builder.Services.AddSingleton(new PreviewSocketOptions());
-    builder.Services.AddSingleton(sp => H264Backends.ForThisComputer(options.H264, sp.GetRequiredService<ILoggerFactory>().CreateLogger("InfoPanel.Preview.Video")));
+    // The preview's H.264 encoders: the hardware one, then the user's own ffmpeg (--ffmpeg, PATH, then the folders package
+    // managers use), each probed only when a video subscription first reaches it.
+    builder.Services.AddSingleton(sp => H264Backends.ForThisComputer(options.H264, sp.GetRequiredService<ILoggerFactory>().CreateLogger("InfoPanel.Preview.Video"),
+        FfmpegDiscovery.ForThisComputer(options.Ffmpeg)));
+    // The engine's stop cancels a probe still running and waits for it to kill and collect its ffmpeg.
+    builder.Services.AddHostedService<H264Shutdown>();
     // Links the engine opens go to the browser through a private file in the run folder, never in a process's arguments.
     var runDirectory = options.RunDir ?? LocalChannel.DefaultRunDirectory();
     builder.Services.AddSingleton(sp => new RedirectFiles(runDirectory, LocalChannel.HashOf(paths.Root), sp.GetRequiredService<TimeProvider>(),

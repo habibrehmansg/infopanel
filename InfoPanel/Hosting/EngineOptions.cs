@@ -113,6 +113,12 @@ public sealed partial class EngineOptions
     /// </summary>
     public string H264 { get; init; } = "auto";
 
+    /// <summary>
+    /// The ffmpeg the software H.264 encoder runs (<c>--ffmpeg</c>), a full path to a file that exists; null means it is
+    /// looked for on <c>PATH</c>, then in <c>/opt/homebrew/bin</c> and <c>/usr/local/bin</c> (not on Windows).
+    /// </summary>
+    public string? Ffmpeg { get; init; }
+
     [GeneratedRegex("^[A-Za-z0-9_-]{1,256}$")]
     private static partial Regex TokenPattern();
 
@@ -224,6 +230,22 @@ public sealed partial class EngineOptions
         if (!Preview.Video.H264Backends.Modes.Contains(h264))
             problems.Add($"--h264 must be auto, hardware, software or off (got '{h264}').");
 
+        var ffmpeg = Value(section, "Ffmpeg");
+        string? fullFfmpeg = null;
+        if (ffmpeg != null)
+        {
+            try
+            {
+                fullFfmpeg = Path.GetFullPath(ffmpeg);
+                if (!File.Exists(fullFfmpeg))
+                    problems.Add($"--ffmpeg '{ffmpeg}' does not exist (it names the ffmpeg executable itself).");
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                problems.Add($"--ffmpeg '{ffmpeg}' is not a valid path: {ex.Message}");
+            }
+        }
+
         var webRoot = Value(section, "WebRoot");
         if (webRoot != null && !Directory.Exists(webRoot))
             problems.Add($"--web-root '{webRoot}' does not exist.");
@@ -278,6 +300,7 @@ public sealed partial class EngineOptions
             NoPlugins = noPlugins,
             BundledPlugins = bundledPlugins == null ? null : Path.GetFullPath(bundledPlugins),
             H264 = h264,
+            Ffmpeg = fullFfmpeg,
         };
     }
 

@@ -88,11 +88,20 @@ internal static class Quarantine
             return true;
         }
 
+        Abandon(teardown, backend, backends, logger);
+        return false;
+    }
+
+    /// <summary>
+    /// A teardown already waited for past <see cref="Bound"/> (a probe's, which waits for its own session): left behind,
+    /// logged and counted as quarantined, as <see cref="WatchAsync"/> does with one that doesn't end in time.
+    /// </summary>
+    public static void Abandon(Task teardown, IH264Backend backend, H264Backends backends, ILogger logger)
+    {
         Interlocked.Increment(ref _leaked);
         _ = teardown.ContinueWith(_ => Interlocked.Decrement(ref _leaked), TaskScheduler.Default);
         logger.LogError("H.264 encoder {Backend}: a session didn't tear down within {Ms} ms; left behind (quarantined)", backend.Name,
             (int)Bound.TotalMilliseconds);
         backends.RecordQuarantine(backend);
-        return false;
     }
 }

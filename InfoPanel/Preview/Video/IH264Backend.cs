@@ -97,11 +97,41 @@ internal interface IH264Backend
     H264Kind Kind { get; }
 
     /// <summary>
+    /// Whether a session takes a forced keyframe and a new expected frame rate while it runs (VideoToolbox's does).
+    /// A backend whose sessions can't (an ffmpeg process: its arguments are fixed when it starts, and its first frame is
+    /// its only keyframe) has its session replaced for them instead, which isn't a failure.
+    /// </summary>
+    bool ChangesLive => true;
+
+    /// <summary>
+    /// Whether a session whose teardown doesn't end within <see cref="Quarantine.Bound"/> gives the backend up for the
+    /// stream, instead of another session starting beside it: an ffmpeg process whose output reader hasn't ended. A
+    /// VideoToolbox session's is quarantined and the stream goes on with a new one.
+    /// </summary>
+    bool GivesUpWhenTeardownHangs => false;
+
+    /// <summary>
     /// Whether the backend works here (a tiny session), with the refusal's class: <see cref="H264Probe.Busy"/> when no
     /// session is free now (asked again after a backoff), <see cref="H264Probe.Unavailable"/> when it can't work here.
     /// Runs off the receive and render threads, and is bounded by the backend.
     /// </summary>
     H264Probe Probe();
+
+    /// <summary>
+    /// <see cref="Probe()"/> as the run's chain runs it: <paramref name="stopping"/> is the engine's stop, which ends the
+    /// probe at once (unavailable) with whatever it started ended, and <paramref name="abandoned"/> is handed the teardown
+    /// of a session the probe started and stopped waiting for at <see cref="Quarantine.Bound"/>, which fails the probe and
+    /// counts as a quarantined session. A backend whose probe starts no process and waits for nothing it started
+    /// needn't implement it.
+    /// </summary>
+    H264Probe Probe(CancellationToken stopping, Action<Task> abandoned) => Probe();
+
+    /// <summary>
+    /// The engine's stop, after its probes and streams have ended: kills every process the backend started that is still
+    /// running (a quarantined or abandoned session's included) and waits at most <paramref name="bound"/> for them to be
+    /// collected; nothing starts after it. A backend that starts no process needn't implement it.
+    /// </summary>
+    Task ReapAsync(TimeSpan bound, CancellationToken ct) => Task.CompletedTask;
 
     /// <summary>
     /// Starts a session. <paramref name="output"/> is called with exactly one outcome per accepted submission, in

@@ -29,6 +29,16 @@ dotnet run --project InfoPanel -c Release -- --web-root <folder>   # serves a bu
 
 Without `--web-root`, an engine serves the `wwwroot` folder next to it if that folder contains an `index.html`. Profiles are kept in `~/Library/Application Support/InfoPanel/v2` on macOS and `%LOCALAPPDATA%\InfoPanel\v2` on Windows as 2.0 documents (`profiles/{id}/document.json`), with the media they use stored by content hash in `blobs/`; the first start stores an example profile (on macOS, a panel of the Mac's own sensors). 1.x profiles aren't imported yet, and the engine never reads or changes a 1.x data folder. The engine listens on 127.0.0.1 only. The API and live preview need the token in the sign-in link the engine prints (or opens); the web client's files, the sign-in link and the health check are open to local requests.
 
+### The live preview as video, and ffmpeg
+
+A client can ask for the live preview as H.264 video instead of PNG images. The engine encodes it with the computer's hardware encoder where it has one (VideoToolbox on macOS), otherwise with ffmpeg, if ffmpeg is installed: the engine runs the ffmpeg it finds as a separate program and doesn't include one. Without either, the preview stays images. To use ffmpeg, install a build with libx264 (the usual packages have it):
+
+- **macOS:** `brew install ffmpeg` ([Homebrew](https://brew.sh)).
+- **Windows:** `winget install ffmpeg`, or download a build from [ffmpeg.org](https://ffmpeg.org/download.html) and add its `bin` folder to your `PATH`.
+- **Linux, Raspberry Pi OS:** `sudo apt install ffmpeg` (or your distribution's package).
+
+The engine looks for ffmpeg once, the first time a preview asks for video: at the path given with `--ffmpeg <path>` if there is one, otherwise on the `PATH` the engine was started with, then (except on Windows) in `/opt/homebrew/bin` and `/usr/local/bin`, where an app started from the Dock or Finder doesn't look. It checks that ffmpeg really encodes with a tiny test before using it, and logs which ffmpeg it found and its version. `--h264 software` uses ffmpeg even where there is a hardware encoder, and `--h264 off` turns video off.
+
 For development and tests, see [`CLAUDE.md`](CLAUDE.md). What still has to come over from 1.x is in [`PORTING.md`](PORTING.md).
 
 ## Features

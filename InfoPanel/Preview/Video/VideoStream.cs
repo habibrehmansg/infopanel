@@ -49,6 +49,11 @@ internal sealed class SkipCounter
 /// and with none left the frames are PNG with <c>encoder.failed</c>. A start the backend calls unsupported or busy
 /// isn't a failure: the next backend takes that size, or PNG with <c>encoder.size</c>; a busy one is tried again after
 /// a backoff from <see cref="BusyFirst"/> to <see cref="BusyMax"/>.</item>
+/// <item><b>Backends without live changes</b> (<see cref="IH264Backend.ChangesLive"/> false: an ffmpeg process). Once
+/// its session's keyframe is out, a keyframe request retires it and a new session's first frame answers; a new frame
+/// rate retires it and the next frame starts one at that rate. Neither is a failure. A session of a backend that
+/// <see cref="IH264Backend.GivesUpWhenTeardownHangs"/> whose retirement passes the bound gives the backend up for the
+/// stream, so no other session of it starts beside the one still tearing down.</item>
 /// </list>
 /// </summary>
 internal sealed class VideoStream : IDisposable
@@ -160,10 +165,17 @@ internal sealed class VideoStream : IDisposable
         _lastProgressAt = time.GetTimestamp();
         if (backends.NoneLeft)
             _fallback = Unavailable;
+        // The engine's stop ends it and waits for its session's teardown; a stream begun as the engine stops ends at once.
+        var tracked = backends.Track(this);
         Completion = Task.Run(RunAsync);
+        if (!tracked)
+            Dispose();
     }
 
-    /// <summary>Ends once the loop has stopped and retired its session (within <see cref="Quarantine.Bound"/> of <see cref="Dispose"/>).</summary>
+    /// <summary>
+    /// Ends once the loop has stopped and retired its session (within <see cref="Quarantine.Bound"/> of <see cref="Dispose"/>);
+    /// the engine's stop waits for it (<see cref="H264Backends.StopAsync"/>).
+    /// </summary>
     public Task Completion { get; }
 
     /// <summary>Frames queued to send plus reservations (tests).</summary>
@@ -369,6 +381,7 @@ internal sealed class VideoStream : IDisposable
                 await RetireAsync(session, "the subscription ended");
             lock (_rawLock)
                 _raw = null;
+            _backends.Untrack(this);
         }
     }
 
@@ -463,7 +476,14 @@ internal sealed class VideoStream : IDisposable
         if (_session is { } live && live.Fps != _fps && live.RefusedFps != _fps)
         {
             var fps = _fps;
-            if (live.Encoder.TrySetFrameRate(fps))
+            if (!live.Backend.ChangesLive)
+            {
+                // Its rate is fixed when it starts: the next frame starts a session at the new rate (with a keyframe),
+                // and a still panel gets a fresh frame for it, since frames in the retired session are dropped.
+                await RetireAsync(live, $"the frame rate is now {fps}");
+                _refresh();
+            }
+            else if (live.Encoder.TrySetFrameRate(fps))
             {
                 live.Fps = fps;
                 live.RefusedFps = 0;
@@ -524,6 +544,25 @@ internal sealed class VideoStream : IDisposable
             // A keyframe is owed until one is queued: for the generation (a new session, PNG frames, a failure) and for
             // the client's request. A dropped one stays owed, so no delta follows it.
             var asked = Interlocked.Read(ref _keyframeAsked);
+            if (!session.Backend.ChangesLive && Interlocked.Read(ref _keyframeAnswered) < asked)
+            {
+                bool keyed;
+                lock (session.Gate)
+                    keyed = session.KeyedGeneration == raw.Generation;
+                // Its encoder makes a keyframe only as it starts: once the session's own keyframe is out, a new session
+                // answers the request (not a failure). Before that, its first keyframe is still coming.
+                if (keyed)
+                {
+                    await RetireAsync(session, "a keyframe was asked for");
+                    session = await SessionForAsync(raw.Width, raw.Height);
+                    if (session == null || raw.Generation != Volatile.Read(ref _generation))
+                    {
+                        _skipped.Add();
+                        return;
+                    }
+                }
+            }
+
             var id = session.NextId++;
             var started = _time.GetTimestamp();
             bool force;
@@ -729,7 +768,17 @@ internal sealed class VideoStream : IDisposable
         }
 
         _logger.LogDebug("H.264 session of {Backend} ended ({Why})", session.Backend.Name, why);
-        await Quarantine.RetireAsync(session.Encoder, session.Backend, _backends, _time, _logger);
+        var ended = await Quarantine.RetireAsync(session.Encoder, session.Backend, _backends, _time, _logger);
+        if (ended || !session.Backend.GivesUpWhenTeardownHangs || _stop.IsCancellationRequested)
+            return;
+
+        // Its teardown (an ffmpeg process's output reader) hasn't ended: no other session of it starts beside that one in
+        // this stream. Nothing of it is sent after this, and a still panel gets a fresh frame for the next encoder.
+        if (_givenUp.Add(session.Backend))
+            _logger.LogWarning("H.264 encoder {Backend} given up for this stream: a session of it didn't end within {Ms} ms, and another won't start beside it",
+                session.Backend.Name, (int)Quarantine.Bound.TotalMilliseconds);
+        NewGeneration();
+        _refresh();
     }
 
     // ---- outcomes (the encoder's thread) ----

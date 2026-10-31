@@ -17,9 +17,21 @@ internal sealed class H264Backends
     /// <summary>Faulty starts at different sizes, with no good start between them, that give a backend up for the run.</summary>
     public const int FaultySizesToGiveUp = 3;
 
+    /// <summary>
+    /// How long the engine's stop waits for running probes and live streams once it has ended them (each kills and
+    /// collects its processes; a stream retires its session within <see cref="Quarantine.Bound"/>).
+    /// </summary>
+    public static readonly TimeSpan StopBound = Quarantine.Bound + TimeSpan.FromSeconds(1);
+
+    /// <summary>How long the engine's stop then waits for the processes still running (killed then) to be collected (<see cref="IH264Backend.ReapAsync"/>).</summary>
+    public static readonly TimeSpan ReapBound = TimeSpan.FromSeconds(1);
+
     private readonly ILogger _logger;
     private readonly Lock _lock = new();
     private readonly Dictionary<IH264Backend, Record> _records = [];
+    private readonly HashSet<VideoStream> _streams = [];
+    private readonly CancellationTokenSource _stopping = new();
+    private bool _stopped;
 
     private sealed class Record
     {
@@ -44,12 +56,18 @@ internal sealed class H264Backends
     /// <summary>The <c>--h264</c> values: every backend, hardware only, software only, or none.</summary>
     public static readonly string[] Modes = ["auto", "hardware", "software", "off"];
 
-    /// <summary>This OS's backends, best first, as <c>--h264</c> enables them.</summary>
-    public static H264Backends ForThisComputer(string mode, ILogger logger)
+    /// <summary>
+    /// This OS's backends, best first, as <c>--h264</c> enables them: its hardware encoder (VideoToolbox on macOS; none
+    /// yet elsewhere), then the software one, ffmpeg found by <paramref name="software"/> (the engine always passes it;
+    /// null leaves the software encoder out).
+    /// </summary>
+    public static H264Backends ForThisComputer(string mode, ILogger logger, FfmpegDiscovery? software = null)
     {
         var all = new List<IH264Backend>();
         if (OperatingSystem.IsMacOS())
             all.Add(new VideoToolboxH264(logger));
+        if (software != null)
+            all.Add(new FfmpegH264(software, logger));
         return new H264Backends(Enabled(all, mode), logger);
     }
 
@@ -73,7 +91,77 @@ internal sealed class H264Backends
             var record = _records[backend];
             if (record.Probe is { IsCompletedSuccessfully: true, Result: H264Probe.Busy })
                 record.Probe = null;
+            // Once the engine stops, nothing new is probed.
+            if (_stopped && record.Probe == null)
+                return Task.FromResult(H264Probe.Unavailable);
             return record.Probe ??= Task.Run(() => RunProbe(backend));
+        }
+    }
+
+    /// <summary>
+    /// A stream of this run, which the engine's stop ends and waits for (<see cref="StopAsync"/>); false once the engine
+    /// is stopping, when the stream ends at once. Its loop calls <see cref="Untrack"/> as it ends.
+    /// </summary>
+    internal bool Track(VideoStream stream)
+    {
+        lock (_lock)
+        {
+            if (_stopped)
+                return false;
+            _streams.Add(stream);
+            return true;
+        }
+    }
+
+    internal void Untrack(VideoStream stream)
+    {
+        lock (_lock)
+            _streams.Remove(stream);
+    }
+
+    /// <summary>
+    /// The engine's stop: cancels the probes still running (each kills and collects what it started), ends every live
+    /// stream (each retires its session: its process killed and collected), and waits for them all at most
+    /// <see cref="StopBound"/>; then each backend kills what it started that still runs (a quarantined or abandoned
+    /// session's) and waits at most <see cref="ReapBound"/> for it to be collected. No probe, stream or process starts
+    /// after it. Idempotent.
+    /// </summary>
+    public async Task StopAsync(CancellationToken ct = default)
+    {
+        await EndAsync(ct);
+        try
+        {
+            await Task.WhenAll(Chain.Select(b => b.ReapAsync(ReapBound, ct)));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task EndAsync(CancellationToken ct)
+    {
+        Task[] running;
+        VideoStream[] streams;
+        lock (_lock)
+        {
+            _stopped = true;
+            running = [.. _records.Values.Select(r => r.Probe).OfType<Task>().Where(p => !p.IsCompleted)];
+            streams = [.. _streams];
+        }
+
+        _stopping.Cancel();
+        foreach (var stream in streams)
+            stream.Dispose();
+        try
+        {
+            await Task.WhenAll([.. running, .. streams.Select(s => s.Completion)]).WaitAsync(StopBound, ct);
+        }
+        catch (TimeoutException)
+        {
+            _logger.LogWarning("An H.264 encoder probe or stream didn't end within {Ms} ms of the engine's stop", (int)StopBound.TotalMilliseconds);
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -82,7 +170,8 @@ internal sealed class H264Backends
         H264Probe found;
         try
         {
-            found = backend.Probe();
+            // A session the probe gave up waiting for counts as quarantined, as a stream's does.
+            found = backend.Probe(_stopping.Token, teardown => Quarantine.Abandon(teardown, backend, this, _logger));
         }
         catch (Exception ex)
         {
@@ -193,4 +282,16 @@ internal sealed class H264Backends
     }
 
     public static string Word(H264Kind kind) => kind == H264Kind.Hardware ? "hardware" : "software";
+}
+
+/// <summary>
+/// The engine's stop for the run's H.264 encoders: a probe still running (an ffmpeg child) is cancelled and every live
+/// stream ended, and the stop waits, within <see cref="H264Backends.StopBound"/>, until they have killed and collected
+/// what they started. A socket's own close may come later than the engine's exit, so the stop doesn't rely on it.
+/// </summary>
+internal sealed class H264Shutdown(H264Backends backends) : IHostedService
+{
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task StopAsync(CancellationToken cancellationToken) => backends.StopAsync(cancellationToken);
 }
