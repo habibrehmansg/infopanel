@@ -464,7 +464,7 @@
       "properties": { "asset": { "$ref": "urn:infopanel:common:1#/$defs/blobId" } }
     },
     "providerSource": {
-      "description": "Media from a provider configured on the engine (capability media.provider), which alone decides what it fetches. `ref` is passed to the provider (for `http`, a web address: docs/providers.md). The session lists the providers an engine has.",
+      "description": "Media from a provider configured on the engine (capability media.provider), which alone decides what it fetches. `ref` is passed to the provider (for `http`, a web address; for `rtsp`, a camera's stream address: docs/providers.md). The session lists the providers an engine has.",
       "type": "object",
       "required": ["provider", "ref"],
       "additionalProperties": false,

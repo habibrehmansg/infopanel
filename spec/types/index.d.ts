@@ -54,7 +54,7 @@ export interface Session {
 /** The media the engine can show beyond stored assets (docs/api.md#session): `providers`, the media providers configured on it by name (docs/providers.md), each once. A scene's provider source names one of them; `media.provider` in the scene format's capabilities says only that providers exist. It changes only when the engine restarts. */
 export interface SessionMedia {
   /**
-   * Provider names, as a provider source's `provider` is written (`http`: web images). A client ignores a name it doesn't know.
+   * Provider names, as a provider source's `provider` is written (`http`: web images; `rtsp`: camera streams, listed only by an engine that can decode video). A client ignores a name it doesn't know.
    * Unique items.
    */
   providers: string[];
@@ -2585,7 +2585,7 @@ export interface AssetSource {
   asset: BlobId;
 }
 
-/** Media from a provider configured on the engine (capability media.provider), which alone decides what it fetches. `ref` is passed to the provider (for `http`, a web address: docs/providers.md). The session lists the providers an engine has. */
+/** Media from a provider configured on the engine (capability media.provider), which alone decides what it fetches. `ref` is passed to the provider (for `http`, a web address; for `rtsp`, a camera's stream address: docs/providers.md). The session lists the providers an engine has. */
 export interface ProviderSource {
   /** Pattern: `^[a-z][a-z0-9-]{0,31}$`. */
   provider: string;
