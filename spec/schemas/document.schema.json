@@ -96,8 +96,8 @@
         "name": { "type": "string", "maxLength": 256 },
         "width": { "description": "The display's width in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },
         "height": { "description": "The display's height in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },
-        "x": { "description": "The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).", "type": "integer", "minimum": -1000000, "maximum": 1000000 },
-        "y": { "description": "The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).", "type": "integer", "minimum": -1000000, "maximum": 1000000 }
+        "x": { "description": "The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display; pixels on Windows).", "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "y": { "description": "The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display; pixels on Windows).", "type": "integer", "minimum": -1000000, "maximum": 1000000 }
       }
     },
     "guide": {

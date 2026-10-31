@@ -1104,12 +1104,12 @@ export interface DisplayInfo {
    */
   height: number;
   /**
-   * The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).
+   * The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display; pixels on Windows).
    * Range: -1000000–1000000.
    */
   x: number;
   /**
-   * The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).
+   * The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display; pixels on Windows).
    * Range: -1000000–1000000.
    */
   y: number;
@@ -1119,7 +1119,7 @@ export interface DisplayInfo {
    */
   label: string;
   /**
-   * The display's pixels per unit of the desktop's own coordinates (2 on a Retina display on macOS).
+   * The display's pixels per unit of the desktop's own coordinates (2 on a Retina display on macOS; 1 on Windows, whose desktop coordinates are pixels).
    * Range: > 0.
    */
   scale: number;
@@ -1743,12 +1743,12 @@ export interface DisplayMatch {
    */
   height: number;
   /**
-   * The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).
+   * The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display; pixels on Windows).
    * Range: -1000000–1000000.
    */
   x?: number;
   /**
-   * The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).
+   * The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display; pixels on Windows).
    * Range: -1000000–1000000.
    */
   y?: number;

@@ -1217,10 +1217,10 @@
         "name": { "description": "The name the engine matches the display by, at most 256 characters (a longer one is cut).", "type": "string", "maxLength": 256 },
         "width": { "description": "The display's width in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },
         "height": { "description": "The display's height in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },
-        "x": { "description": "The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).", "type": "integer", "minimum": -1000000, "maximum": 1000000 },
-        "y": { "description": "The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display).", "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "x": { "description": "The display's left edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display; pixels on Windows).", "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "y": { "description": "The display's top edge in the desktop's own coordinates (points on macOS, not pixels on a scaled display; pixels on Windows).", "type": "integer", "minimum": -1000000, "maximum": 1000000 },
         "label": { "description": "The display's name for people, at most 256 characters (a longer one is cut): the same as `name` where the system has one name for it, else the name the system shows people.", "type": "string", "maxLength": 256 },
-        "scale": { "description": "The display's pixels per unit of the desktop's own coordinates (2 on a Retina display on macOS).", "type": "number", "exclusiveMinimum": 0 },
+        "scale": { "description": "The display's pixels per unit of the desktop's own coordinates (2 on a Retina display on macOS; 1 on Windows, whose desktop coordinates are pixels).", "type": "number", "exclusiveMinimum": 0 },
         "primary": { "description": "Whether it is the primary display (the main one, where a window without `display` goes). Only the first display listed is.", "type": "boolean" }
       }
     },
