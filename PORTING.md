@@ -103,7 +103,7 @@ The 1.x import already reads guides from the raw XML and reports `RefreshInterva
 |---|---|---|
 | WebServerTask (HTTP API, `/{id}/image`) | engine host, later | `InfoPanel/Services/WebServerTask.cs` |
 | Global hotkeys | native companion, later | `InfoPanel/Services/GlobalHotkeyService.cs`, `InfoPanel/Models/HotkeyBinding.cs` |
-| Tray icon | native companion, later | `InfoPanel/Views/Windows/MainWindow.xaml`, `InfoPanel/Views/Windows/MainWindow.xaml.cs` |
+| Tray icon | the menu-bar item in the engine process (docs/2.0/desktop-shell.md): macOS done (status line, Open Editor, Quit with the unsaved-changes alert); Windows and Linux later | `InfoPanel/Views/Windows/MainWindow.xaml`, `InfoPanel/Views/Windows/MainWindow.xaml.cs` |
 | Autostart (Task Scheduler) | native companion, later | `InfoPanel/Models/ConfigModel.cs` |
 | UpdateChecker and toasts | later | `InfoPanel/Services/UpdateChecker.cs` |
 | Sentry | later | `InfoPanel/App.xaml.cs` |

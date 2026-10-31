@@ -281,7 +281,7 @@ public class EngineStartupTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", v1 ?? data + "-v1", "--port", port.ToString(), "--token", EngineFactory.Token, "--no-browser", "--no-windows", "--mock" })
+        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", v1 ?? data + "-v1", "--port", port.ToString(), "--token", EngineFactory.Token, "--no-browser", "--no-windows", "--no-tray", "--mock" })
             start.ArgumentList.Add(arg);
         return start;
     }

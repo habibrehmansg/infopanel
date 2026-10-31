@@ -717,7 +717,7 @@ public sealed partial class CrashKillTests
                 UseShellExecute = false,
             };
             // Its own 1.x folder, never created: a test engine never reads the 1.x data of the user running the tests.
-            foreach (var arg in new[] { "--port", port.ToString(), "--data-dir", data, "--v1-dir", data + "-v1", "--token", Token, "--no-browser", "--no-windows", "--mock-seed", "42" })
+            foreach (var arg in new[] { "--port", port.ToString(), "--data-dir", data, "--v1-dir", data + "-v1", "--token", Token, "--no-browser", "--no-windows", "--no-tray", "--mock-seed", "42" })
                 start.ArgumentList.Add(arg);
 
             var engine = new Engine(Process.Start(start)!, port);

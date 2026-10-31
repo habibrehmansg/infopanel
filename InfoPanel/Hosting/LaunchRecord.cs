@@ -26,7 +26,7 @@ public static class LaunchRecord
     /// <summary>The flags a record carries: those that take a value, the repeatable ones, and the switches.</summary>
     private static readonly HashSet<string> ValueFlags = new(StringComparer.Ordinal) { "--port", "--web-root", "--mcp-text", "--mock-seed", "--v1-dir" };
     private static readonly HashSet<string> RepeatedFlags = new(StringComparer.Ordinal) { "--allow-origin", "--dev-origin" };
-    private static readonly HashSet<string> Switches = new(StringComparer.Ordinal) { "--mock", "--no-windows" };
+    private static readonly HashSet<string> Switches = new(StringComparer.Ordinal) { "--mock", "--no-windows", "--no-tray" };
 
     /// <summary>Every flag a record may hold.</summary>
     public static IReadOnlySet<string> Allowed { get; } = new HashSet<string>([.. ValueFlags, .. RepeatedFlags, .. Switches], StringComparer.Ordinal);
@@ -52,6 +52,8 @@ public static class LaunchRecord
             args.Add("--mock");
         if (options.NoWindows)
             args.Add("--no-windows");
+        if (options.NoTray)
+            args.Add("--no-tray");
         foreach (var origin in options.DevOrigins)
             args.AddRange(["--dev-origin", origin]);
         foreach (var origin in options.AllowOrigins)

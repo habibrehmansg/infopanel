@@ -82,6 +82,15 @@ internal static unsafe class ObjC
     public static readonly delegate* unmanaged<IntPtr, IntPtr, nuint> SendUIntRet = (delegate* unmanaged<IntPtr, IntPtr, nuint>)MsgSend;
     public static readonly delegate* unmanaged<IntPtr, IntPtr, nint> SendIntRet = (delegate* unmanaged<IntPtr, IntPtr, nint>)MsgSend;
     public static readonly delegate* unmanaged<IntPtr, IntPtr, NSRect, IntPtr> SendIdRect = (delegate* unmanaged<IntPtr, IntPtr, NSRect, IntPtr>)MsgSend;
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, double, IntPtr> SendIdDouble = (delegate* unmanaged<IntPtr, IntPtr, double, IntPtr>)MsgSend;
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr, nuint, IntPtr> SendIdPtrUInt = (delegate* unmanaged<IntPtr, IntPtr, IntPtr, nuint, IntPtr>)MsgSend;
+
+    /// <summary><c>-[NSMenuItem initWithTitle:action:keyEquivalent:]</c>: an object, a selector, an object.</summary>
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr, IntPtr> SendIdIdSelId =
+        (delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr, IntPtr>)MsgSend;
+    /// <summary><c>-[NSObject performSelector:withObject:afterDelay:]</c>: a selector, an object, a delay in seconds.</summary>
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, double, void> SendVoidSelIdDouble =
+        (delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, double, void>)MsgSend;
     public static readonly delegate* unmanaged<IntPtr, IntPtr, NSRect, nuint, nuint, byte, IntPtr> SendInitWindow =
         (delegate* unmanaged<IntPtr, IntPtr, NSRect, nuint, nuint, byte, IntPtr>)MsgSend;
 
@@ -208,6 +217,20 @@ internal static unsafe class ObjC
 
         RegisterClassPair(cls);
         return cls;
+    }
+
+    /// <summary>An autoreleased <c>NSString</c> holding <paramref name="value"/>.</summary>
+    public static IntPtr NSString(string value)
+    {
+        var utf8 = Marshal.StringToCoTaskMemUTF8(value);
+        try
+        {
+            return SendId(Class("NSString"), Sel("stringWithUTF8String:"), utf8);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(utf8);
+        }
     }
 
     /// <summary>A UTF-8 C string from an <c>NSString</c> (null when <paramref name="nsString"/> is nil).</summary>

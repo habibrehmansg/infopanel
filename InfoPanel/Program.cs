@@ -344,6 +344,7 @@ try
     builder.Services.AddSingleton(new PreviewSocketOptions());
     builder.Services.AddSingleton(sp => H264Backends.ForThisComputer(options.H264, sp.GetRequiredService<ILoggerFactory>().CreateLogger("InfoPanel.Preview.Video")));
     builder.Services.AddSingleton<BrowserLauncher>();
+    builder.Services.AddSingleton<EditorOpener>();
     builder.Services.AddSingleton<IFolderOpener>(sp => new FolderOpener(sp.GetRequiredService<ILogger<FolderOpener>>()));
     builder.Services.AddHostedService<SensorService>();
     builder.Services.AddHostedService<EngineLifetime>();
@@ -354,9 +355,11 @@ try
     builder.Services.AddSingleton<LocalChannelService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<LocalChannelService>());
 
-    // Desktop windows: on macOS the main thread runs AppKit and the host runs on a worker (DesktopHost).
+    // Desktop windows and the menu-bar item: on macOS the main thread runs AppKit and the host runs on a worker (DesktopHost).
     var desktop = DesktopHost.Create(options);
     builder.Services.AddSingleton(desktop.Platform);
+    builder.Services.AddSingleton(desktop.Shell);
+    builder.Services.AddHostedService<InfoPanel.Shell.ShellService>();
     builder.Services.AddSingleton<DisplayWindowManager>();
     builder.Services.AddSingleton<DisplayLister>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<DisplayWindowManager>());

@@ -6,11 +6,11 @@ namespace InfoPanel.Hosting;
 /// Opens a URL in the user's default browser (<c>open</c> on macOS, shell execute on Windows, <c>xdg-open</c> on Linux).
 /// The process start is the seam tests replace, so no test opens a browser.
 /// </summary>
-public sealed class BrowserLauncher(ILogger<BrowserLauncher> logger, Func<ProcessStartInfo, Process?> start)
+public class BrowserLauncher(ILogger<BrowserLauncher> logger, Func<ProcessStartInfo, Process?> start)
 {
     public BrowserLauncher(ILogger<BrowserLauncher> logger) : this(logger, Process.Start) { }
 
-    public void Open(string url)
+    public virtual void Open(string url)
     {
         try
         {

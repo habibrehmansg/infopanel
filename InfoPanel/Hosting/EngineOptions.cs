@@ -35,6 +35,9 @@ public sealed partial class EngineOptions
     /// <summary>Don't show active profiles as desktop windows (<c>--no-windows</c>).</summary>
     public bool NoWindows { get; init; }
 
+    /// <summary>Don't show the menu-bar item (<c>--no-tray</c>; macOS has one so far): tests and their engines.</summary>
+    public bool NoTray { get; init; }
+
     /// <summary>The session token (URL-safe characters only); generated when not given.</summary>
     public string Token { get; init; } = "";
 
@@ -127,6 +130,7 @@ public sealed partial class EngineOptions
         var mock = Flag(section, "Mock", "--mock", problems) || seed != null;
         var noBrowser = Flag(section, "NoBrowser", "--no-browser", problems);
         var noWindows = Flag(section, "NoWindows", "--no-windows", problems);
+        var noTray = Flag(section, "NoTray", "--no-tray", problems);
         var fresh = Flag(section, "Fresh", "--fresh", problems);
         var offline = Flag(section, "Offline", "--offline", problems);
         var noPlugins = Flag(section, "NoPlugins", "--no-plugins", problems);
@@ -234,6 +238,7 @@ public sealed partial class EngineOptions
             WebRoot = webRoot == null ? null : Path.GetFullPath(webRoot),
             NoBrowser = noBrowser,
             NoWindows = noWindows,
+            NoTray = noTray,
             Token = token ?? NewToken(),
             DevOrigins = devOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             AllowOrigins = allowOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),

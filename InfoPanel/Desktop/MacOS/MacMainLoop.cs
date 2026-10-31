@@ -96,11 +96,25 @@ internal sealed unsafe class MacMainLoop
     }
 
     /// <summary>
+    /// The system asked the app to quit and was told to wait (<c>NSTerminateLater</c>, the menu-bar item's app delegate):
+    /// once the host has stopped, the loop answers yes instead of stopping, and AppKit ends the process.
+    /// </summary>
+    public static volatile bool TerminateLater;
+
+    /// <summary>
     /// <c>-[NSApplication stop:]</c> takes effect after the next event, so an application-defined event is posted
-    /// to wake the loop.
+    /// to wake the loop. When the system is waiting for a quit (<see cref="TerminateLater"/>), the log is written out and
+    /// the quit is allowed instead: AppKit exits the process (with 0) once it is told.
     /// </summary>
     private void Stop()
     {
+        if (TerminateLater)
+        {
+            Log.CloseAndFlush();
+            ObjC.SendVoidBool(_app, ObjC.Sel("replyToApplicationShouldTerminate:"), 1);
+            return;
+        }
+
         ObjC.SendVoidId(_app, ObjC.Sel("stop:"), IntPtr.Zero);
         var wake = ObjC.SendOtherEvent(ObjC.Class("NSEvent"),
             ObjC.Sel("otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:"),

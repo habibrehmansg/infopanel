@@ -50,7 +50,7 @@ public sealed class RegionalLaunchTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in new[] { "--port", port.ToString(), "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"), "--token", Token, "--no-browser", "--no-windows", "--mock" })
+        foreach (var arg in new[] { "--port", port.ToString(), "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"), "--token", Token, "--no-browser", "--no-windows", "--no-tray", "--mock" })
             start.ArgumentList.Add(arg);
         foreach (var name in LocaleVariables) start.Environment.Remove(name);
         foreach (var (name, value) in locale) start.Environment[name] = value;

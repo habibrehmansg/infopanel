@@ -44,7 +44,7 @@ public sealed class MacDesktopWindowTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in new[] { "--port", port.ToString(), "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"), "--token", "wt", "--no-browser", "--mock-seed", "42" })
+        foreach (var arg in new[] { "--port", port.ToString(), "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"), "--token", "wt", "--no-browser", "--no-tray", "--mock-seed", "42" })
             start.ArgumentList.Add(arg);
 
         using var process = Process.Start(start)!;

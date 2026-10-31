@@ -33,7 +33,7 @@ public sealed class HarnessFolder : IDisposable
     public string LaunchRecordPath => LaunchRecord.PathFor(Endpoint);
 
     /// <summary>The flags every harness engine has: no browser, no windows, mock sensors, its own 1.x folder.</summary>
-    public string[] QuietFlags => ["--no-windows", "--mock-seed", "42", "--v1-dir", V1];
+    public string[] QuietFlags => ["--no-windows", "--no-tray", "--mock-seed", "42", "--v1-dir", V1];
 
     /// <summary>Writes a launch record as a start by hand with <see cref="QuietFlags"/> would, so a started engine is quiet too.</summary>
     public void RecordQuietStart()

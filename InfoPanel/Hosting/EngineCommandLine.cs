@@ -34,6 +34,7 @@ public static class EngineCommandLine
     {
         ["--no-browser"] = "NoBrowser",
         ["--no-windows"] = "NoWindows",
+        ["--no-tray"] = "NoTray",
         ["--fresh"] = "Fresh",
         ["--mock"] = "Mock",
         ["--offline"] = "Offline",
@@ -69,6 +70,7 @@ public static class EngineCommandLine
           --web-root <dir>      The web client's built files (default: wwwroot next to the engine)
           --no-browser          Don't open the browser
           --no-windows          Don't show active profiles as desktop windows
+          --no-tray             Don't show the menu-bar item (macOS)
           --token <token>       Session token (default: random)
           --dev-origin <url>    Extra allowed origin, e.g. http://localhost:5180 (repeatable)
           --allow-origin <url>  Exact origin of a web client served elsewhere that may call the
