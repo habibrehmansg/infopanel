@@ -1,8 +1,8 @@
 namespace InfoPanel.Desktop;
 
 /// <summary>
-/// The platform where desktop windows can't be shown (Windows and Linux for now, <c>--no-windows</c>, an entry point
-/// off the main thread on macOS). <see cref="DisplayWindowManager"/> never creates windows on it and logs
+/// The platform where desktop windows can't be shown (Linux for now, <c>--no-windows</c>, an entry point off the main
+/// thread on macOS, every test engine that doesn't bring a platform of its own). <see cref="DisplayWindowManager"/> never creates windows on it and logs
 /// <see cref="UnsupportedMessage"/> once when a profile would have been shown.
 /// </summary>
 public sealed class NullDesktopPlatform(string? unsupportedMessage) : IDesktopPlatform

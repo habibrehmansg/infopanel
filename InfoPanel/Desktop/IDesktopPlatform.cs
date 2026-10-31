@@ -2,7 +2,8 @@ namespace InfoPanel.Desktop;
 
 /// <summary>
 /// A rectangle in desktop points: the platform's global coordinate space with the origin at the primary display's
-/// top-left and y growing down (on macOS, AppKit's y-up space flipped about the primary display).
+/// top-left and y growing down (on macOS, AppKit's y-up space flipped about the primary display; on Windows, physical
+/// pixels of the virtual screen, so a point is a pixel there).
 /// </summary>
 public readonly record struct PointRect(double X, double Y, double Width, double Height)
 {
@@ -21,9 +22,10 @@ public readonly record struct PointRect(double X, double Y, double Width, double
 
 /// <summary>
 /// A display: its <paramref name="Name"/>, which a profile's <c>window.display</c> matches (macOS:
-/// <c>NSScreen.localizedName</c>), its <paramref name="Frame"/> in desktop points, its <paramref name="Scale"/> (backing
-/// pixels per point), and its <paramref name="Label"/>, the name the system shows people, where that isn't
-/// <paramref name="Name"/> (null: the same).
+/// <c>NSScreen.localizedName</c>; Windows: the GDI device name, <c>\\.\DISPLAY2</c>), its <paramref name="Frame"/> in
+/// desktop points, its <paramref name="Scale"/> (backing pixels per point: 1 on Windows, whose desktop points are
+/// pixels), and its <paramref name="Label"/>, the name the system shows people, where that isn't <paramref name="Name"/>
+/// (null: the same; on Windows the monitor's friendly name).
 /// </summary>
 public sealed record DisplayInfo(string Name, PointRect Frame, double Scale, string? Label = null)
 {
@@ -49,7 +51,8 @@ public sealed record DesktopFrame(byte[] Pixels, int Width, int Height, int RowB
 
 /// <summary>
 /// The operating system's windows, for <see cref="DisplayWindowManager"/>. Everything but <see cref="Post"/> must be
-/// called on the platform's UI thread (the process main thread on macOS), and every event is raised there.
+/// called on the platform's UI thread (the process main thread on macOS, the engine's own desktop thread on Windows), and
+/// every event is raised there.
 /// </summary>
 public interface IDesktopPlatform
 {

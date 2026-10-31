@@ -102,6 +102,47 @@ public sealed class DisplayEndpointTests
     }
 
     /// <summary>
+    /// Windows' displays as the Windows desktop gives them: the GDI device name as <c>name</c>, the monitor's friendly name
+    /// as <c>label</c>, scale 1 and physical pixels for <c>x</c>/<c>y</c> (a monitor at 150 % shows nothing of it), so the
+    /// entry is 1.4.x's target monitor field for field, and it places a window on that display, in its pixels.
+    /// </summary>
+    [Fact]
+    public async Task WindowsDisplays_AreListedByDeviceName_WithTheirFriendlyNames_InPixels()
+    {
+        using var engine = new EngineFactory();
+        var primary = new DisplayInfo(@"\\.\DISPLAY1", new PointRect(0, 0, 2560, 1440), 1);
+        var second = new DisplayInfo(@"\\.\DISPLAY2", new PointRect(2560, -360, 3840, 2160), 1, "DELL U2723QE");
+        using var platform = new FakeDesktopPlatform(primary, second);
+        using var factory = WithPlatform(engine, platform);
+        using var api = Client(factory);
+
+        var displays = (await ListOk(api)).GetProperty("displays").EnumerateArray().ToList();
+
+        Assert.Equal([(@"\\.\DISPLAY1", 2560, 1440, 0, 0), (@"\\.\DISPLAY2", 3840, 2160, 2560, -360)], displays.Select(MatchOf));
+        Assert.Equal([@"\\.\DISPLAY1", "DELL U2723QE"], displays.Select(d => d.GetProperty("label").GetString()));
+        Assert.Equal([1.0, 1.0], displays.Select(d => d.GetProperty("scale").GetDouble()));
+        Assert.Equal([true, false], displays.Select(d => d.GetProperty("primary").GetBoolean()));
+
+        // The second entry, as listed, puts a strict window 100, 50 pixels into that display.
+        var document = TestDocs.Doc("On the second display", 400, 300, TestDocs.Scene("a", 10, 10, TestDocs.Rect("#00ff00", 40, 20)));
+        var (name, width, height, x, y) = MatchOf(displays[1]);
+        document["profile"]!["window"] = new JsonObject
+        {
+            ["enabled"] = true,
+            ["strict"] = true,
+            ["x"] = 100,
+            ["y"] = 50,
+            ["display"] = new JsonObject { ["name"] = name, ["width"] = width, ["height"] = height, ["x"] = x, ["y"] = y },
+        };
+        var id = await TestDocs.CreateAsync(api, document, Ct);
+        await platform.IdleAsync();
+        var manager = factory.Services.GetRequiredService<DisplayWindowManager>();
+        var window = await platform.InvokeAsync(() => manager.WindowOf(id) as FakeWindow) ?? throw new Xunit.Sdk.XunitException("No window");
+        Assert.Equal(new PointRect(2660, -310, 400, 300), await platform.InvokeAsync(() => window.Frame));
+        Assert.True(await platform.InvokeAsync(() => window.Visible));
+    }
+
+    /// <summary>
     /// A name over 256 characters is answered cut, and that entry still places a window on its display: beside a primary
     /// of the same size, where a name compared uncut would match nothing and fall to the primary, or, strict, hide it.
     /// </summary>
