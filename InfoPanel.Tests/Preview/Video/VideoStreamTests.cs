@@ -282,7 +282,8 @@ public class VideoStreamTests
         var lost = h.Hardware.Last;
         Assert.Equal(1, lost.InFlight);
 
-        // No further input: the watchdog alone finds it.
+        // No further input: the watchdog alone finds it. The clock moves once, so only once the deadline is armed.
+        await Eventually(() => h.Time.HasTimerDueAt(VideoStream.StallTimeout), "the watchdog's deadline is armed");
         h.Time.Advance(VideoStream.StallTimeout);
         await Eventually(() => lost.Aborted && h.Refreshes > 0, "the stall is found at one second, a fresh frame asked for");
 
@@ -307,6 +308,8 @@ public class VideoStreamTests
         h.Frame();
         await Eventually(() => h.Hardware.Sessions.Count == 1 && h.Hardware.Last.Submitted.Count == 1, "submitted");
         var wedged = h.Hardware.Last;
+        // The clock moves once, so only once the loop has armed its deadline: a move before that arms it a second late.
+        await Eventually(() => h.Time.HasTimerDueAt(VideoStream.StallTimeout), "the watchdog's deadline is armed");
         h.Time.Advance(VideoStream.StallTimeout);
         await Eventually(() => wedged.Aborted, "aborted");
 
@@ -417,6 +420,9 @@ public class VideoStreamTests
         await Eventually(() => h.Hardware.Sessions.Count == 1 && h.Hardware.Last.Submitted.Count == 1, "submitted");
 
         h.Frame(80, 48);
+        // The clock stays still until the loop has taken the new size: moved earlier, the held frame stalls first, and the
+        // failure drops the new size's frame.
+        await Eventually(() => h.Hardware.Sessions[0].Aborted, "the new size retires the old session");
         await Eventually(() => h.Hardware.Sessions.Count == 2, "the new size's session starts within the bound", h.Time);
         Assert.True(h.Hardware.Sessions[0].Aborted);
         Assert.Equal(1, h.Backends.Quarantines(h.Hardware));
