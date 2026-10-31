@@ -249,7 +249,11 @@ public sealed class TickSnapshot : IDisposable
         if (IsReleased) throw new ObjectDisposedException(nameof(TickSnapshot));
         var count = canvas.Save();
         var was = SceneDrawer.WithoutText;
+        var wasZoom = SceneDrawer.Zoom;
+        var wasRoot = SceneDrawer.ZoomRoot;
         SceneDrawer.WithoutText = withoutText;
+        SceneDrawer.Zoom = scale > 1 ? scale : 0;
+        SceneDrawer.ZoomRoot = canvas.TotalMatrix;
         try
         {
             canvas.Scale(scale);
@@ -260,6 +264,8 @@ public sealed class TickSnapshot : IDisposable
         finally
         {
             SceneDrawer.WithoutText = was;
+            SceneDrawer.Zoom = wasZoom;
+            SceneDrawer.ZoomRoot = wasRoot;
             canvas.RestoreToCount(count);
         }
     }

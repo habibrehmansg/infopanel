@@ -24,6 +24,18 @@ internal static class SceneDrawer
     /// </summary>
     [ThreadStatic] internal static bool WithoutText;
 
+    /// <summary>
+    /// Set on the drawing thread while <see cref="TickSnapshot.Draw(SKCanvas, float, bool)"/> draws a frame: the frame's
+    /// scale when it is above 1, else 0.
+    /// </summary>
+    [ThreadStatic] internal static float Zoom;
+
+    /// <summary>
+    /// Set with <see cref="Zoom"/>: the canvas matrix the frame was drawn under before its scale (identity for every
+    /// engine output), so the drawer can find the canvas's own pixel grid.
+    /// </summary>
+    [ThreadStatic] internal static SKMatrix ZoomRoot;
+
     public static void Draw(SKCanvas canvas, RNode[] nodes)
     {
         foreach (var n in nodes) Draw(canvas, n);
@@ -295,6 +307,14 @@ internal static class SceneDrawer
         }
         var count = canvas.Save();
         if (m.ClipToBox) canvas.ClipRect(m.Box, SKClipOperation.Intersect, true);
+        DrawSamples(canvas, m);
+        canvas.RestoreToCount(count);
+    }
+
+    /// <summary>The media's sample, and its crossfade's next one, into its dest at its opacity, under the canvas's clip.</summary>
+    private static void DrawSamples(SKCanvas canvas, RMedia m)
+    {
+        var count = canvas.Save();
         var sampling = m.Nearest ? Nearest : Linear;
         var layered = m.Opacity < 1 && m.Over is not null;
         var opacity = m.Opacity;
