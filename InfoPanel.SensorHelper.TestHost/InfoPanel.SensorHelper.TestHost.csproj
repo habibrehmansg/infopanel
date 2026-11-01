@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The tests' stand-in for the sensor helper: the helper's own lifetime (HelperProcess) and serve loop, compiled from
+       the same sources the helper compiles, over a fake tree that can hang or fail, so InfoPanel.Core.Tests can prove
+       the helper's process ends on every platform (the real helper runs on Windows only). Never shipped. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>InfoPanel.SensorHelper.TestHost</AssemblyName>
+    <RootNamespace>InfoPanel.SensorHelper.TestHost</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\InfoPanel.Core\SensorHelper\*.cs" Exclude="..\InfoPanel.Core\SensorHelper\SensorHelperClient.cs" LinkBase="Protocol" />
+  </ItemGroup>
+
+</Project>

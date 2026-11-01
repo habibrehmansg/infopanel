@@ -40,6 +40,11 @@ The following packages are licensed under the MIT License:
 - **Copyright**: © Microsoft Corporation
 - **Project**: https://github.com/dotnet/runtime
 
+### Mono.Posix.NETStandard (the sensor helper, through LibreHardwareMonitorLib)
+- **License**: MIT License (the package names Mono's license, https://go.microsoft.com/fwlink/?linkid=869050, which covers Mono's class libraries under MIT)
+- **Copyright**: © Microsoft Corporation
+- **Project**: https://github.com/mono/mono
+
 ### NAudio.Wasapi
 - **License**: MIT License
 - **Copyright**: © Mark Heath & Contributors
@@ -70,12 +75,27 @@ The following packages are licensed under the MIT License:
 - **Copyright**: © Microsoft Corporation
 - **Project**: https://github.com/dotnet/runtime
 
-### System.IO.Ports
+### System.CodeDom (the sensor helper, through System.Management)
 - **License**: MIT License
 - **Copyright**: © Microsoft Corporation
 - **Project**: https://github.com/dotnet/runtime
 
-### System.Management
+### System.IO.Ports (also the sensor helper's, through LibreHardwareMonitorLib)
+- **License**: MIT License
+- **Copyright**: © Microsoft Corporation
+- **Project**: https://github.com/dotnet/runtime
+
+### System.Management (also the sensor helper's, through LibreHardwareMonitorLib)
+- **License**: MIT License
+- **Copyright**: © Microsoft Corporation
+- **Project**: https://github.com/dotnet/runtime
+
+### System.Threading.AccessControl (the sensor helper, through LibreHardwareMonitorLib)
+- **License**: MIT License
+- **Copyright**: © Microsoft Corporation
+- **Project**: https://github.com/dotnet/runtime
+
+### runtime.native.System.IO.Ports and its per-platform packages (the sensor helper, through System.IO.Ports)
 - **License**: MIT License
 - **Copyright**: © Microsoft Corporation
 - **Project**: https://github.com/dotnet/runtime
@@ -99,7 +119,7 @@ The following packages are licensed under the MIT License:
 
 The following packages are licensed under the Apache License 2.0:
 
-### HidSharp
+### HidSharp (also the sensor helper's, through LibreHardwareMonitorLib)
 - **License**: Apache License 2.0
 - **Copyright**: © 2012 James F. Bellinger
 - **Project**: https://www.zer7.com/software/hidsharp
@@ -108,6 +128,30 @@ The following packages are licensed under the Apache License 2.0:
 - **License**: Apache License 2.0
 - **Copyright**: © Serilog Contributors
 - **Project**: https://serilog.net/
+
+## Mozilla Public License 2.0
+
+The sensor helper (`InfoPanel.SensorHelper`, Windows) hosts these packages, unmodified, as published on nuget.org; their source is at the projects below:
+
+### LibreHardwareMonitorLib
+- **License**: MPL-2.0
+- **Copyright**: © LibreHardwareMonitor
+- **Project**: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
+
+### BlackSharp.Core (through LibreHardwareMonitorLib)
+- **License**: MPL-2.0
+- **Copyright**: © Florian K.
+- **Project**: https://github.com/Blacktempel/BlackSharp
+
+### DiskInfoToolkit (through LibreHardwareMonitorLib)
+- **License**: MPL-2.0
+- **Copyright**: © Florian K.
+- **Project**: https://github.com/Blacktempel/DiskInfoToolkit
+
+### RAMSPDToolkit-NDD (through LibreHardwareMonitorLib)
+- **License**: MPL-2.0
+- **Copyright**: © Florian K.
+- **Project**: https://github.com/Blacktempel/RAMSPDToolkit
 
 ## BSD 3-Clause License
 

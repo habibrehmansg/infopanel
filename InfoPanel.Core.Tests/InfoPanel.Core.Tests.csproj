@@ -25,6 +25,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Core\InfoPanel.Core.csproj" />
+    <!-- The sensor helper's stand-in, run as a child process by HelperChildProcessTests. It compiles Core's helper sources
+         itself, so it is referenced under an alias no file uses: only its build output is wanted. -->
+    <ProjectReference Include="..\InfoPanel.SensorHelper.TestHost\InfoPanel.SensorHelper.TestHost.csproj" Aliases="testhost" />
   </ItemGroup>
 
 </Project>

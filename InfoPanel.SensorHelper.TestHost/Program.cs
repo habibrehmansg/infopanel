@@ -1,0 +1,125 @@
+using System.Globalization;
+using Microsoft.Win32.SafeHandles;
+using InfoPanel.SensorHelper;
+
+namespace InfoPanel.SensorHelper.TestHost;
+
+/// <summary>
+/// <c>InfoPanel.SensorHelper.TestHost &lt;behaviour&gt; [--cleanup-ms &lt;n&gt;] [--engine-client &lt;pid&gt;] &lt;the
+/// helper's command line&gt;</c>: the helper's lifetime (<see cref="HelperProcess"/>) over a fake tree, for
+/// <c>HelperChildProcessTests</c>. The engine named on the helper's command line is a stand-in the test can end, while
+/// the test itself connects: <c>--engine-client</c> names the test's process, whose connection then counts as the
+/// engine's (the pipe's client still told by the platform, on Windows; elsewhere whoever connects is served). The behaviour
+/// is <c>serve</c> (a small tree), <c>hang-update</c> (reading never returns), <c>hang-dispose</c> (closing never
+/// returns), <c>fail-open</c> (opening throws) or <c>hold-console</c> (the first read leaves a thread holding
+/// <see cref="Console.Out"/>'s lock for good, as a thread stuck mid-write would). It says what the tree does on its
+/// output, one word a line, on a stream of its own (so a held <see cref="Console.Out"/> doesn't silence it):
+/// <c>tree-created</c>, <c>update-entered</c>, <c>console-held</c>, <c>dispose-entered</c>, <c>disposed</c>.
+/// </summary>
+internal static class Program
+{
+    private static Task<int> Main(string[] args)
+    {
+        if (args.Length < 1 || args[0] is not ("serve" or "hang-update" or "hang-dispose" or "fail-open" or "hold-console"))
+        {
+            Console.Error.WriteLine("Usage: InfoPanel.SensorHelper.TestHost <serve|hang-update|hang-dispose|fail-open|hold-console> [--cleanup-ms <n>] [--engine-client <pid>] <helper arguments>");
+            return Task.FromResult(2);
+        }
+
+        var behaviour = args[0];
+        var rest = args[1..];
+        var defaults = new HelperProcessOptions();
+        var cleanupBound = defaults.CleanupBound;
+        int? engineClient = null;
+        while (rest.Length >= 2 && rest[0] is "--cleanup-ms" or "--engine-client")
+        {
+            var value = int.Parse(rest[1], CultureInfo.InvariantCulture);
+            if (rest[0] == "--cleanup-ms")
+                cleanupBound = TimeSpan.FromMilliseconds(value);
+            else
+                engineClient = value;
+            rest = rest[2..];
+        }
+
+        var clientProcessId = defaults.ClientProcessId;
+        if (engineClient is { } test && clientProcessId is { } real && HelperCommandLine.Parse(rest) is { } line)
+            clientProcessId = pipe => real(pipe) == test ? line.Parent : null;
+
+        var options = new HelperProcessOptions { CleanupBound = cleanupBound, ClientProcessId = clientProcessId };
+        return HelperProcess.RunAsync(rest, () => new TestTree(behaviour), "2.0.0-testhost", options);
+    }
+
+    // Standard output without the console's streams: on Unix every write through them takes Console.Out's lock.
+    private static readonly StreamWriter Output = new(OperatingSystem.IsWindows()
+        ? Console.OpenStandardOutput()
+        : new FileStream(new SafeFileHandle(1, ownsHandle: false), FileAccess.Write, 1)) { AutoFlush = true };
+
+    private static void Say(string word)
+    {
+        lock (Output)
+            Output.WriteLine(word);
+    }
+
+    /// <summary>Leaves a thread holding <see cref="Console.Out"/>'s lock (its writer is synchronized on itself) until the process ends.</summary>
+    private static void HoldConsole()
+    {
+        using var held = new ManualResetEventSlim();
+        var holder = new Thread(() =>
+        {
+            lock (Console.Out)
+            {
+                held.Set();
+                Thread.Sleep(Timeout.Infinite);
+            }
+        }) { IsBackground = true };
+        holder.Start();
+        held.Wait();
+    }
+
+    private sealed class TestTree : ISensorTree
+    {
+        private readonly string _behaviour;
+        private bool _consoleHeld;
+
+        public TestTree(string behaviour)
+        {
+            _behaviour = behaviour;
+            Say("tree-created");
+        }
+
+        public bool Elevated => false;
+
+        public string Driver => "unknown";
+
+        public void Configure(bool storage, int storageInterval)
+        {
+            if (_behaviour == "fail-open")
+                throw new TimeoutException("A device timed out while the computer opened.");
+        }
+
+        public TreeSnapshot Update()
+        {
+            Say("update-entered");
+            if (_behaviour == "hang-update")
+                Thread.Sleep(Timeout.Infinite);
+            if (_behaviour == "hold-console" && !_consoleHeld)
+            {
+                HoldConsole();
+                _consoleHeld = true;
+                Say("console-held");
+            }
+
+            return new TreeSnapshot(
+                [new TreeHardware("/amdcpu/0", "CPU", "Cpu", 2, null)],
+                [new TreeSensor("/amdcpu/0/load/0", "CPU Total", "Load", 0, "/amdcpu/0", 12.5f, 0f, 100f)]);
+        }
+
+        public void Dispose()
+        {
+            Say("dispose-entered");
+            if (_behaviour == "hang-dispose")
+                Thread.Sleep(Timeout.Infinite);
+            Say("disposed");
+        }
+    }
+}

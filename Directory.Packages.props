@@ -34,6 +34,21 @@
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
   </ItemGroup>
 
+  <!-- InfoPanel.SensorHelper only: LibreHardwareMonitorLib and its dependencies, pinned to the versions 1.4.x ships (its
+       net8.0 graph, which the helper's net8.0-windows restores exactly), so the sensor identifiers match 1.x profiles. Bumped
+       only after an identifier diff on a real PC. The engine and InfoPanel.Core reference none of them. -->
+  <ItemGroup>
+    <PackageVersion Include="LibreHardwareMonitorLib" Version="0.9.6" />
+    <PackageVersion Include="BlackSharp.Core" Version="1.0.7" />
+    <PackageVersion Include="DiskInfoToolkit" Version="1.1.2" />
+    <PackageVersion Include="HidSharp" Version="2.6.4" />
+    <PackageVersion Include="Mono.Posix.NETStandard" Version="1.0.0" />
+    <PackageVersion Include="RAMSPDToolkit-NDD" Version="1.4.2" />
+    <PackageVersion Include="System.IO.Ports" Version="10.0.6" />
+    <PackageVersion Include="System.Management" Version="10.0.6" />
+    <PackageVersion Include="System.Threading.AccessControl" Version="10.0.6" />
+  </ItemGroup>
+
   <!-- Test projects -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.14" />

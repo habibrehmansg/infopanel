@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The sensor helper: a process of its own that hosts LibreHardwareMonitorLib and answers the engine over a named pipe
+       (InfoPanel.Core/SensorHelper/HelperProtocol.cs). net8.0-windows as 1.4.x, so LibreHardwareMonitorLib restores the
+       same graph and runs the same assembly 1.4.x runs; it rolls forward to the engine's runtime. Builds on macOS with
+       EnableWindowsTargeting; it runs on Windows only, and its build output carries LibreHardwareMonitorLib only when
+       built or published for a Windows runtime (dotnet publish -r win-x64), since the package ships its assemblies per
+       runtime. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RollForward>Major</RollForward>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>InfoPanel.SensorHelper</AssemblyName>
+    <RootNamespace>InfoPanel.SensorHelper</RootNamespace>
+    <Version>2.0.0-dev</Version>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- LibreHardwareMonitorLib and each of its dependencies, at the versions 1.4.x ships (Directory.Packages.props). -->
+  <ItemGroup>
+    <PackageReference Include="LibreHardwareMonitorLib" />
+    <PackageReference Include="BlackSharp.Core" />
+    <PackageReference Include="DiskInfoToolkit" />
+    <PackageReference Include="HidSharp" />
+    <PackageReference Include="Mono.Posix.NETStandard" />
+    <PackageReference Include="RAMSPDToolkit-NDD" />
+    <PackageReference Include="System.IO.Ports" />
+    <PackageReference Include="System.Management" />
+    <PackageReference Include="System.Threading.AccessControl" />
+  </ItemGroup>
+
+  <!-- The protocol, the serve loop and the lifetime, compiled from InfoPanel.Core's own sources (where the engine's
+       client and the tests use them), so both sides run the same code and the helper references no engine assembly. -->
+  <ItemGroup>
+    <Compile Include="..\InfoPanel.Core\SensorHelper\*.cs" Exclude="..\InfoPanel.Core\SensorHelper\SensorHelperClient.cs" LinkBase="Protocol" />
+  </ItemGroup>
+
+</Project>

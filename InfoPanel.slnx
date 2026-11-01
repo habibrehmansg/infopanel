@@ -9,6 +9,8 @@
   <Project Path="InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj" />
   <Project Path="InfoPanel.Plugins.TestFixture/InfoPanel.Plugins.TestFixture.csproj" />
   <Project Path="InfoPanel.Plugins/InfoPanel.Plugins.csproj" />
+  <Project Path="InfoPanel.SensorHelper.TestHost/InfoPanel.SensorHelper.TestHost.csproj" />
+  <Project Path="InfoPanel.SensorHelper/InfoPanel.SensorHelper.csproj" />
   <Project Path="InfoPanel.Tests/InfoPanel.Tests.csproj" />
   <Project Path="InfoPanel/InfoPanel.csproj" />
 </Solution>
