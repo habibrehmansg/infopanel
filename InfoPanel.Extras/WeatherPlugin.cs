@@ -215,7 +215,10 @@ namespace InfoPanel.Extras
                     if (result.Weather is { Length: > 0 })
                     {
                         _weather.Value = result.Weather[0].Main;
-                        _weatherDesc.Value = result.Weather[0].Description;
+                        var description = result.Weather[0].Description;
+                        _weatherDesc.Value = string.IsNullOrEmpty(description)
+                            ? description
+                            : char.ToUpperInvariant(description[0]) + description[1..];
                         _weatherIcon.Value = result.Weather[0].IconId;
                         _weatherIconUrl.Value = $"https://openweathermap.org/img/wn/{result.Weather[0].IconId}@2x.png";
                     }
