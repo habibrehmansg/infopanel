@@ -29,6 +29,9 @@ public static class EngineCommandLine
         ["--bundled-plugins"] = "BundledPlugins",
         ["--h264"] = "H264",
         ["--ffmpeg"] = "Ffmpeg",
+        ["--record-sensors"] = "RecordSensors",
+        ["--record-seconds"] = "RecordSeconds",
+        ["--replay-sensors"] = "ReplaySensors",
     };
 
     private static readonly Dictionary<string, string> Flags = new(StringComparer.Ordinal)
@@ -41,6 +44,7 @@ public static class EngineCommandLine
         ["--offline"] = "Offline",
         ["--mcp"] = "Mcp",
         ["--no-plugins"] = "NoPlugins",
+        ["--scrub"] = "Scrub",
     };
 
     private const string DevOrigin = "--dev-origin";
@@ -98,6 +102,16 @@ public static class EngineCommandLine
                                 hardware, then software), hardware, software or off (images only)
           --ffmpeg <path>       The ffmpeg the software H.264 encoder runs (default: found on PATH,
                                 then in /opt/homebrew/bin and /usr/local/bin)
+          --record-sensors <dir>
+                                Record what the platform's sensor sources read into <dir>, a
+                                folder with no recording in it yet (Windows: HWiNFO), for
+                                --record-seconds (default 60, 1 to 3600); the engine runs on
+          --scrub               With --record-sensors: keep only the fields read, the user's
+                                names blank, and replace PC names, serial numbers, IP and
+                                MAC addresses and the user's name with PC1, SERIAL1, IP1 …
+          --replay-sensors <dir>
+                                Replay a recording, looping, in place of the platform's sensors
+                                (any OS; for development and tests; not with --mock)
           --help                Show this help
         """;
 

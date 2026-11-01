@@ -16,6 +16,7 @@ using InfoPanel.Security;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.HwInfo;
 using InfoPanel.Sensors.MacOS;
+using InfoPanel.Sensors.Replay;
 using InfoPanel.Settings;
 using InfoPanel.Spec;
 using Microsoft.AspNetCore.HostFiltering;
@@ -286,7 +287,12 @@ try
     builder.Services.AddSingleton(TimeProvider.System);
     // Mock mode: the mock sensors and simulated unknown keys (tests, demos). Otherwise the platform's real sensors (the
     // macOS source; on Windows HWiNFO through its shared memory) and unknown keys read as unavailable.
-    if (options.Mock)
+    if (options.ReplaySensors is { } recording)
+    {
+        // A recording of a PC's sensors, replayed in a loop under its sources' ids and keys (dev and test; the session says mock).
+        builder.Services.AddSingleton<ISensorSource>(sp => SensorReplay.CreateHwInfo(recording, sp.GetRequiredService<TimeProvider>()));
+    }
+    else if (options.Mock)
     {
         builder.Services.AddSingleton(sp => new MockSensorSource(options.MockSeed, sp.GetRequiredService<TimeProvider>()));
         builder.Services.AddSingleton<ISensorSource>(sp => sp.GetRequiredService<MockSensorSource>());
@@ -297,7 +303,15 @@ try
     }
     else if (OperatingSystem.IsWindows())
     {
-        builder.Services.AddSingleton<ISensorSource>(sp => HwInfoSource.CreateWindows(sp.GetRequiredService<TimeProvider>()));
+        builder.Services.AddSingleton<ISensorSource>(sp =>
+        {
+            var time = sp.GetRequiredService<TimeProvider>();
+            // --record-sensors: what HWiNFO's source copies, for --record-seconds, into a recording --replay-sensors plays.
+            var recorder = options.RecordSensors is { } folder
+                ? new HwInfoRecorder(folder, SensorRecording.MaxRounds, options.Scrub, HwInfoSource.Interval, time.GetUtcNow(), TimeSpan.FromSeconds(options.RecordSeconds), time)
+                : null;
+            return HwInfoSource.CreateWindows(time, recorder);
+        });
     }
     // Plugin sensors, after the built-in sources; their hosts start once the engine listens.
     builder.Services.AddPlugins(options, paths, settings);

@@ -39,8 +39,8 @@ public static partial class ReadEndpoints
             OsVersion = OsVersion(),
             Arch = Arch(),
             DataDir = paths.Root,
-            // Mock mode (--mock, --mock-seed): simulated sensors, for the run.
-            Mock = options.Mock,
+            // Mock mode (--mock, --mock-seed) or a replayed recording (--replay-sensors): not this computer's sensors, for the run.
+            Mock = options.SensorsNotReal,
             // The PC's regional format, read once at start-up (the format a profile without a locale draws with).
             Locale = new SessionLocale
             {

@@ -119,6 +119,27 @@ public sealed partial class EngineOptions
     /// </summary>
     public string? Ffmpeg { get; init; }
 
+    /// <summary>
+    /// Record what the platform's sensor sources read into this folder (<c>--record-sensors</c>, Windows: HWiNFO's
+    /// copies), a full path; null records nothing. The folder may exist but must hold no recording.
+    /// </summary>
+    public string? RecordSensors { get; init; }
+
+    /// <summary>How long <see cref="RecordSensors"/> records (<c>--record-seconds</c>, 1–3600, default 60).</summary>
+    public int RecordSeconds { get; init; } = 60;
+
+    /// <summary>Scrub PC names and drive serial numbers from what is recorded (<c>--scrub</c>).</summary>
+    public bool Scrub { get; init; }
+
+    /// <summary>
+    /// Replay this recording, looping, in place of the platform's sensors (<c>--replay-sensors</c>), a full path; not with
+    /// <see cref="Mock"/>. The session says <c>mock</c> while it does.
+    /// </summary>
+    public string? ReplaySensors { get; init; }
+
+    /// <summary>The run's sensors aren't this computer's: mock mode or a replayed recording (the session's <c>mock</c>).</summary>
+    public bool SensorsNotReal => Mock || ReplaySensors != null;
+
     [GeneratedRegex("^[A-Za-z0-9_-]{1,256}$")]
     private static partial Regex TokenPattern();
 
@@ -269,6 +290,45 @@ public sealed partial class EngineOptions
             }
         }
 
+        var replaySensors = FullPath(section, "ReplaySensors", "--replay-sensors", problems);
+        if (replaySensors != null)
+        {
+            if (mock)
+                problems.Add("--replay-sensors replays recorded sensors in place of the platform's: it can't be used with --mock or --mock-seed.");
+            else if (InfoPanel.Sensors.Replay.SensorRecording.Check(replaySensors) is { } replayProblem)
+                problems.Add("--replay-sensors " + replayProblem);
+        }
+
+        var recordSensors = FullPath(section, "RecordSensors", "--record-sensors", problems);
+        var recordSeconds = 60;
+        if (Value(section, "RecordSeconds") is { } secondsText
+            && (!int.TryParse(secondsText, NumberStyles.None, CultureInfo.InvariantCulture, out recordSeconds) || recordSeconds is < 1 or > 3600))
+        {
+            problems.Add($"--record-seconds must be a number from 1 to 3600 (got '{secondsText}').");
+        }
+
+        var scrub = Flag(section, "Scrub", "--scrub", problems);
+        if (recordSensors == null)
+        {
+            if (Value(section, "RecordSeconds") != null)
+                problems.Add("--record-seconds needs --record-sensors.");
+            if (scrub)
+                problems.Add("--scrub needs --record-sensors.");
+        }
+        else if (!OperatingSystem.IsWindows())
+        {
+            problems.Add("--record-sensors records the platform's sensor sources, which only Windows has to record so far.");
+        }
+        else if (mock || replaySensors != null)
+        {
+            problems.Add("--record-sensors records the platform's sensors: it can't be used with --mock, --mock-seed or --replay-sensors.");
+        }
+        else if (Directory.Exists(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.HwInfoFolder))
+            && Directory.EnumerateFileSystemEntries(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.HwInfoFolder)).Any())
+        {
+            problems.Add($"--record-sensors '{recordSensors}' already holds a recording: give a new folder.");
+        }
+
         var bundledPlugins = Value(section, "BundledPlugins");
         if (bundledPlugins != null && !Directory.Exists(bundledPlugins))
             problems.Add($"--bundled-plugins '{bundledPlugins}' does not exist.");
@@ -301,7 +361,27 @@ public sealed partial class EngineOptions
             BundledPlugins = bundledPlugins == null ? null : Path.GetFullPath(bundledPlugins),
             H264 = h264,
             Ffmpeg = fullFfmpeg,
+            RecordSensors = recordSensors,
+            RecordSeconds = recordSeconds,
+            Scrub = scrub,
+            ReplaySensors = replaySensors,
         };
+    }
+
+    /// <summary>The full path of a folder option, or null when it isn't given or isn't a valid path (a problem then).</summary>
+    private static string? FullPath(IConfigurationSection section, string key, string flag, List<string> problems)
+    {
+        if (Value(section, key) is not { } value)
+            return null;
+        try
+        {
+            return Path.GetFullPath(value);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            problems.Add($"{flag} '{value}' is not a valid path: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary><c>scheme://host[:port]</c> of an absolute http(s) URL with no path, query or fragment.</summary>

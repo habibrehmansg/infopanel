@@ -1,0 +1,10 @@
+{
+  "format": "infopanel.sensor-recording/1",
+  "started": "2026-11-01T06:16:32.6705931+00:00",
+  "intervalMs": 500,
+  "scrubbed": true,
+  "sources": [
+    "hwinfo"
+  ],
+  "rounds": 3
+}
