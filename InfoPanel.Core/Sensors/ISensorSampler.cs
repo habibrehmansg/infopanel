@@ -5,9 +5,11 @@ namespace InfoPanel.Sensors;
 
 /// <summary>
 /// One sensor a sampler found: its id in the source's key space (<c>cpu/load</c> under a plugin prefix,
-/// <c>-1:4026532608:0:16777216</c> for HWiNFO; <see cref="SensorKeySpace"/>), group, name and unit.
+/// <c>-1:4026532608:0:16777216</c> for HWiNFO; <see cref="SensorKeySpace"/>), group, name and unit, and the kind of
+/// value it reads: <see cref="SensorKind.Number"/> (<see cref="SensorSample.Set(double)"/>) by default, or
+/// <see cref="SensorKind.Text"/> (<see cref="SensorSample.SetText"/>). A polled source reads no tables.
 /// </summary>
-public sealed record SensorDefinition(string Id, string Group, string Name, string Unit);
+public sealed record SensorDefinition(string Id, string Group, string Name, string Unit, SensorKind Kind = SensorKind.Number);
 
 /// <summary>The outcome of reading one sensor once.</summary>
 public enum SampleOutcome : byte
@@ -15,7 +17,7 @@ public enum SampleOutcome : byte
     /// <summary>Not read this round (a rate sensor's first sample has no delta yet); the previous state stands.</summary>
     Skipped,
 
-    /// <summary><see cref="SensorSample.Value"/> holds a fresh, finite value.</summary>
+    /// <summary><see cref="SensorSample.Value"/> holds a fresh, finite value, or <see cref="SensorSample.Text"/> a text.</summary>
     Ok,
 
     /// <summary>The read failed or the sensor is absent.</summary>
@@ -31,6 +33,9 @@ public struct SensorSample
     public double Value;
     public SampleOutcome Outcome;
 
+    /// <summary>A text sensor's reading, set with <see cref="SetText"/>; null for a number.</summary>
+    public string? Text;
+
     /// <summary>The source's own minimum, maximum and average, set with <see cref="HasStatistics"/>.</summary>
     public double Min;
     public double Max;
@@ -45,6 +50,7 @@ public struct SensorSample
     public void Set(double value)
     {
         HasStatistics = false;
+        Text = null;
         if (double.IsFinite(value))
         {
             Value = value;
@@ -68,10 +74,21 @@ public struct SensorSample
             HasStatistics = true;
         }
     }
+
+    /// <summary>
+    /// A text sensor's reading. Null fails the read. Hand back the same string while the text is unchanged: the source
+    /// keeps the one it was given.
+    /// </summary>
+    public void SetText(string? text)
+    {
+        HasStatistics = false;
+        Text = text;
+        Outcome = text is null ? SampleOutcome.Failed : SampleOutcome.Ok;
+    }
 }
 
 /// <summary>
-/// Reads a fixed set of numeric sensors for <see cref="PolledSensorSource"/>. Called from one thread at a time:
+/// Reads a set of number and text sensors for <see cref="PolledSensorSource"/>. Called from one thread at a time:
 /// <see cref="Discover"/> once, then <see cref="Sample"/> once per poll, then <see cref="IDisposable.Dispose"/>.
 /// </summary>
 public interface ISensorSampler : IDisposable

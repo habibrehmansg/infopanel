@@ -686,6 +686,362 @@ public class PolledSensorSourceTests
         await source.StopAsync(Ct);
     }
 
+    /// <summary>
+    /// A sampler of number and text sensors whose catalogue the test changes: <see cref="Catalogue"/> is what the next
+    /// <see cref="Discover"/> returns, <see cref="Values"/> what each round reads by id (a double or a string, as the
+    /// sensor's kind, or an outcome; null fails; absent ids fail), and <see cref="Change"/> bumps the version.
+    /// </summary>
+    private sealed class TextSampler : ISensorSampler
+    {
+        public List<(string Id, SensorKind Kind)> Catalogue = [];
+        public readonly Dictionary<string, object?> Values = [];
+        public long Version;
+        private List<(string Id, SensorKind Kind)> _handedOut = [];
+
+        public IReadOnlyList<SensorDefinition> Discover()
+        {
+            _handedOut = [.. Catalogue];
+            return _handedOut.Select(c => new SensorDefinition(c.Id, "Group", "Name " + c.Id, "unit " + c.Id, c.Kind)).ToList();
+        }
+
+        public void Sample(Span<SensorSample> samples, TimeSpan elapsed)
+        {
+            for (var i = 0; i < samples.Length; i++)
+            {
+                if (!Values.TryGetValue(_handedOut[i].Id, out var v))
+                    samples[i].Outcome = SampleOutcome.Failed;
+                else if (v is double d)
+                    samples[i].Set(d);
+                else if (v is SampleOutcome outcome)
+                    samples[i].Outcome = outcome;
+                else
+                    samples[i].SetText((string?)v);
+            }
+        }
+
+        public long CatalogueVersion => Version;
+
+        public void Change(params (string Id, SensorKind Kind)[] catalogue)
+        {
+            Catalogue = [.. catalogue];
+            Version++;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class CollectingSink(List<Serilog.Events.LogEvent> events) : Serilog.Core.ILogEventSink
+    {
+        public void Emit(Serilog.Events.LogEvent logEvent)
+        {
+            lock (events)
+                events.Add(logEvent);
+        }
+    }
+
+    private static (PolledSensorSource Source, TextSampler Sampler, TimerTimeProvider Time) CreateText(Serilog.ILogger? log, params (string Id, SensorKind Kind)[] catalogue)
+    {
+        var time = new TimerTimeProvider(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero));
+        var sampler = new TextSampler { Catalogue = [.. catalogue] };
+        return (new PolledSensorSource("test.text", () => sampler, Options, time, log: log), sampler, time);
+    }
+
+    [Fact]
+    public void ATextSensor_ReadsItsText_TypedText_WithNoStatistics()
+    {
+        var (source, sampler, time) = CreateText(null, ("ip", SensorKind.Text), ("load", SensorKind.Number));
+        sampler.Values["ip"] = "203.0.113.7";
+        sampler.Values["load"] = 12.5;
+        source.Open();
+        var ip = source.KeyOf("ip");
+
+        var state = source.ReadState(ip);
+        Assert.Equal((SensorStatus.Live, SensorKind.Text), (state.Status, state.Type));
+        Assert.Equal("203.0.113.7", state.Reading.ValueText);
+        Assert.Equal(SensorKind.Text, SensorState.TypeOf(state.Reading));
+        Assert.Equal(["unit ip", "unit load"], source.GetSensors().Select(s => s.Unit));
+
+        // A second text: still no statistics (min, max, avg and now stay zero), and the reading is the sampler's string.
+        var next = "198.51.100." + 9;
+        sampler.Values["ip"] = next;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.True(source.TryRead(ip, out var reading));
+        Assert.Same(next, reading.ValueText);
+        Assert.Equal((0, 0, 0, 0), (reading.ValueNow, reading.ValueMin, reading.ValueMax, reading.ValueAvg));
+
+        // The number beside it reads as before.
+        var load = source.ReadState(source.KeyOf("load"));
+        Assert.Equal((SensorStatus.Live, SensorKind.Number, 12.5, (string?)null), (load.Status, load.Type, load.Reading.ValueNow, load.Reading.ValueText));
+    }
+
+    [Fact]
+    public void ATextSensor_WithoutAReading_IsStillTypedText()
+    {
+        var (source, sampler, time) = CreateText(null, ("never", SensorKind.Text), ("null", SensorKind.Text), ("denied", SensorKind.Text));
+        sampler.Values["null"] = null;
+        sampler.Values["denied"] = "x";
+        source.Open();
+
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Text), Of(source.ReadState(source.KeyOf("never"))));
+        // Null is a failed read, not an empty text.
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Text), Of(source.ReadState(source.KeyOf("null"))));
+        Assert.False(source.TryRead(source.KeyOf("null"), out _));
+
+        // Refused by the system: no reading, still text.
+        sampler.Values["denied"] = SampleOutcome.PermissionDenied;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.Equal((SensorStatus.PermissionDenied, SensorKind.Text), Of(source.ReadState(source.KeyOf("denied"))));
+        Assert.False(source.TryRead(source.KeyOf("denied"), out _));
+
+        // A key the source doesn't list is a number, as before.
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Number), Of(source.ReadState(source.KeyOf("not-listed"))));
+
+        static (SensorStatus, SensorKind) Of(SensorState s) => (s.Status, s.Type);
+    }
+
+    [Fact]
+    public void AStaleTextSensor_KeepsItsLastText_ThenIsUnavailable()
+    {
+        var (source, sampler, time) = CreateText(null, ("t", SensorKind.Text));
+        sampler.Values["t"] = "first";
+        source.Open();
+        var key = source.KeyOf("t");
+
+        sampler.Values["t"] = null;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        var state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Stale, SensorKind.Text, "first"), (state.Status, state.Type, state.Reading.ValueText));
+
+        // Polls stop: stale with the last text up to 30 s, then unavailable, still typed text.
+        time.Advance(TimeSpan.FromSeconds(29));
+        Assert.Equal("first", source.ReadState(key).Reading.ValueText);
+        time.Advance(TimeSpan.FromSeconds(1));
+        state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Text, (string?)null), (state.Status, state.Type, state.Reading.ValueText));
+
+        // A text again brings it back live.
+        sampler.Values["t"] = "second";
+        source.Poll();
+        state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Live, "second"), (state.Status, state.Reading.ValueText));
+    }
+
+    [Fact]
+    public void ALongText_IsCutAt4096Characters_WithOneWarningPerKey()
+    {
+        var events = new List<Serilog.Events.LogEvent>();
+        var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(events)).CreateLogger();
+        var (source, sampler, time) = CreateText(log, ("long", SensorKind.Text), ("edge", SensorKind.Text), ("other", SensorKind.Text));
+        sampler.Values["long"] = new string('a', 4096) + "bcd";
+        sampler.Values["edge"] = new string('e', 4096);
+        sampler.Values["other"] = new string('o', 5000);
+        source.Open();
+        for (var i = 0; i < 3; i++)
+        {
+            time.Advance(TimeSpan.FromSeconds(1));
+            source.Poll();
+        }
+
+        Assert.True(source.TryRead(source.KeyOf("long"), out var reading));
+        Assert.Equal(new string('a', 4096), reading.ValueText);
+        Assert.True(source.TryRead(source.KeyOf("edge"), out reading));
+        Assert.Equal(4096, reading.ValueText!.Length);
+        Assert.True(source.TryRead(source.KeyOf("other"), out reading));
+        Assert.Equal(4096, reading.ValueText!.Length);
+
+        // Four rounds of two long texts: one warning for each, none for the one exactly at the bound.
+        var warnings = events.Where(e => e.Level == Serilog.Events.LogEventLevel.Warning).Select(e => e.RenderMessage()).ToList();
+        Assert.Equal(2, warnings.Count);
+        Assert.Contains(warnings, w => w.Contains("plugin:/test.text/long", StringComparison.Ordinal) && w.Contains("4096", StringComparison.Ordinal));
+        Assert.Contains(warnings, w => w.Contains("plugin:/test.text/other", StringComparison.Ordinal));
+    }
+
+    private sealed class WarningCounter : Serilog.Core.ILogEventSink
+    {
+        public int Count;
+
+        // Counts and keeps nothing: an event holds its key.
+        public void Emit(Serilog.Events.LogEvent logEvent)
+        {
+            if (logEvent.Level == Serilog.Events.LogEventLevel.Warning)
+                Interlocked.Increment(ref Count);
+        }
+    }
+
+    [Fact]
+    public void KeyChurn_KeepsNoWarningStateForPrunedKeys_AndAReturningKeyWarnsOnceMore()
+    {
+        var warnings = new WarningCounter();
+        var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(warnings).CreateLogger();
+        var (source, sampler, time) = CreateText(log);
+        var longText = new string('a', 5000);
+        source.Open();
+
+        // Each round a fresh key comes with a long text (cut, one warning), then goes and expires.
+        const int Rounds = 50;
+        var keys = new List<WeakReference>(Rounds);
+        for (var r = 0; r < Rounds; r++)
+        {
+            var id = "k" + r;
+            sampler.Values.Clear();
+            sampler.Values[id] = longText;
+            sampler.Change((id, SensorKind.Text));
+            time.Advance(TimeSpan.FromSeconds(31));
+            source.Poll();
+            time.Advance(TimeSpan.FromSeconds(1));
+            source.Poll();
+            Assert.Equal(PolledSensorSource.MaxTextChars, source.ReadState(source.KeyOf(id)).Reading.ValueText!.Length);
+            keys.Add(TrackKey(source, source.KeyOf(id)));
+        }
+
+        sampler.Values.Clear();
+        sampler.Change();
+        time.Advance(TimeSpan.FromSeconds(31));
+        source.Poll();
+        Assert.Empty(source.GetSensors());
+        Assert.Equal(Rounds, warnings.Count);
+
+        // Nothing of a pruned key is kept: the source holds no state for it.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.DoesNotContain(keys, k => k.IsAlive);
+
+        // A key that returns after its slot was pruned warns once more.
+        sampler.Values["k0"] = longText;
+        sampler.Change(("k0", SensorKind.Text));
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.Equal(PolledSensorSource.MaxTextChars, source.ReadState(source.KeyOf("k0")).Reading.ValueText!.Length);
+        Assert.Equal(Rounds + 1, warnings.Count);
+    }
+
+    /// <summary>A weak reference to the id string of the listed key equal to <paramref name="key"/> (the source's own).</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference TrackKey(PolledSensorSource source, SensorKey key) =>
+        new(source.GetSensors().Single(s => s.Key == key).Key.Id);
+
+    [Fact]
+    public void ACutText_NeverEndsInHalfASurrogatePair()
+    {
+        var (source, sampler, _) = CreateText(null, ("emoji", SensorKind.Text));
+        sampler.Values["emoji"] = new string('a', 4095) + "\U0001F600" + "z";
+        source.Open();
+
+        Assert.True(source.TryRead(source.KeyOf("emoji"), out var reading));
+        Assert.Equal(new string('a', 4095), reading.ValueText);
+    }
+
+    [Fact]
+    public void ATextSensor_IsCarriedThroughRediscovery_LikeANumber()
+    {
+        var (source, sampler, time) = CreateText(null, ("ip", SensorKind.Text), ("speed", SensorKind.Number));
+        sampler.Values["ip"] = "10.0.0.2";
+        sampler.Values["speed"] = 100.0;
+        source.Open();
+
+        // A new interface comes; ip stays (its text read this round is kept), speed goes.
+        sampler.Change(("ip", SensorKind.Text), ("name", SensorKind.Text));
+        sampler.Values.Remove("speed");
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        var ip = source.ReadState(source.KeyOf("ip"));
+        Assert.Equal((SensorStatus.Live, SensorKind.Text, "10.0.0.2"), (ip.Status, ip.Type, ip.Reading.ValueText));
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Text), (source.ReadState(source.KeyOf("name")).Status, source.ReadState(source.KeyOf("name")).Type));
+
+        // The interface goes: its text is stale (last text kept) until it is unavailable, then unlisted.
+        sampler.Change(("name", SensorKind.Text));
+        sampler.Values["name"] = "en0";
+        sampler.Values.Remove("ip");
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        ip = source.ReadState(source.KeyOf("ip"));
+        Assert.Equal((SensorStatus.Stale, SensorKind.Text, "10.0.0.2"), (ip.Status, ip.Type, ip.Reading.ValueText));
+        Assert.Equal("en0", source.ReadState(source.KeyOf("name")).Reading.ValueText);
+
+        // Back before it is unavailable: carried again, and live with its new text.
+        sampler.Change(("ip", SensorKind.Text), ("name", SensorKind.Text));
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.Equal((SensorStatus.Stale, "10.0.0.2"), (source.GetStatus(source.KeyOf("ip")), source.ReadState(source.KeyOf("ip")).Reading.ValueText));
+        sampler.Values["ip"] = "10.0.0.3";
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        ip = source.ReadState(source.KeyOf("ip"));
+        Assert.Equal((SensorStatus.Live, SensorKind.Text, "10.0.0.3"), (ip.Status, ip.Type, ip.Reading.ValueText));
+    }
+
+    [Fact]
+    public void AKeyWhoseKindChanges_AtARediscovery_StartsAfresh()
+    {
+        var (source, sampler, time) = CreateText(null, ("x", SensorKind.Number));
+        sampler.Values["x"] = 5.0;
+        source.Open();
+
+        sampler.Change(("x", SensorKind.Text));
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+
+        // The number isn't read as text: no reading until the first text.
+        var state = source.ReadState(source.KeyOf("x"));
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Text), (state.Status, state.Type));
+        sampler.Values["x"] = "five";
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        state = source.ReadState(source.KeyOf("x"));
+        Assert.Equal((SensorStatus.Live, SensorKind.Text, "five"), (state.Status, state.Type, state.Reading.ValueText));
+    }
+
+    [Fact]
+    public void ASampleOfTheWrongKind_IsAFailedRead()
+    {
+        var (source, sampler, _) = CreateText(null, ("t", SensorKind.Text), ("n", SensorKind.Number));
+        sampler.Values["t"] = 1.0;
+        sampler.Values["n"] = "one";
+        source.Open();
+
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Text), (source.GetStatus(source.KeyOf("t")), source.ReadState(source.KeyOf("t")).Type));
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Number), (source.GetStatus(source.KeyOf("n")), source.ReadState(source.KeyOf("n")).Type));
+    }
+
+    [Fact]
+    public void ATableDefinition_IsSkipped_WithAWarning()
+    {
+        var events = new List<Serilog.Events.LogEvent>();
+        var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(events)).CreateLogger();
+        var (source, sampler, _) = CreateText(log, ("table", SensorKind.Table), ("n", SensorKind.Number));
+        sampler.Values["n"] = 3.0;
+        source.Open();
+
+        Assert.Equal(["plugin:/test.text/n"], source.GetSensors().Select(s => s.Key.ToString()));
+        Assert.Equal(3, source.ReadState(source.KeyOf("n")).Reading.ValueNow);
+        Assert.Single(events, e => e.Level == Serilog.Events.LogEventLevel.Warning);
+    }
+
+    [Fact]
+    public void ReadingAText_AllocatesNothing()
+    {
+        var (source, sampler, _) = CreateText(null, ("t", SensorKind.Text));
+        sampler.Values["t"] = "steady";
+        source.Open();
+        var key = source.KeyOf("t");
+        // A live text, so the measure is of a read that returns one (an unavailable read allocates nothing either).
+        var state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Live, SensorKind.Text, "steady"), (state.Status, state.Type, state.Reading.ValueText));
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 100; i++)
+            source.ReadState(key);
+        Assert.Equal(before, GC.GetAllocatedBytesForCurrentThread());
+    }
+
     private static async Task WaitFor(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);

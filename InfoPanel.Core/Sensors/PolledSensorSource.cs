@@ -24,7 +24,9 @@ public sealed class PolledSensorSourceOptions
 /// <summary>
 /// An <see cref="ISensorSource"/> over an <see cref="ISensorSampler"/>: <see cref="StartAsync"/> discovers the sensors
 /// (off the caller's thread) and polls them every <see cref="PolledSensorSourceOptions.Interval"/> (the source's own)
-/// on the thread pool, keeping now/min/max/avg per sensor, or the source's own statistics when a sample carries them.
+/// on the thread pool, keeping now/min/max/avg per number sensor, or the source's own statistics when a sample carries
+/// them, and the last good text per text sensor (no statistics; cut at <see cref="MaxTextChars"/> characters, with one
+/// warning per key while it is listed: a key that returns after it was unlisted may warn again).
 /// Keys are the source's <see cref="SensorKeySpace"/>'s (<c>plugin:{KeyPrefix}{definition id}</c> by default); the
 /// source handles every key in it (unknown ones are unavailable). A sampler whose catalogue changes
 /// (<see cref="ISensorSampler.CatalogueVersion"/>) is discovered again after the round that changed it: keys that stay
@@ -44,6 +46,12 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
 {
     private struct Slot
     {
+        // The kind its definition gave; a key whose kind changes at a rediscovery starts afresh.
+        public SensorKind Kind;
+        // A text sensor's last good text, read as it is (a read allocates nothing).
+        public string? Text;
+        // Whether its text was cut and warned of; it goes with the slot, so a key that returns after it expired warns again.
+        public bool CutWarned;
         public double Now;
         // What a read answers: the source's statistics when the latest sample carried them, else the base's own.
         public double Min;
@@ -88,7 +96,8 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
     /// <param name="id">The source id (<c>infopanel.macos</c>); keys are under <c>/{id}/</c>.</param>
     /// <param name="createSampler">Creates the sampler on <see cref="StartAsync"/>.</param>
     /// <param name="keySpace">How the keys look; <see cref="SensorKeySpace.Plugin"/> of <paramref name="id"/> by default.</param>
-    public PolledSensorSource(string id, Func<ISensorSampler> createSampler, PolledSensorSourceOptions? options = null, TimeProvider? time = null, SensorKeySpace? keySpace = null)
+    /// <param name="log">Where its warnings go; the global logger by default.</param>
+    public PolledSensorSource(string id, Func<ISensorSampler> createSampler, PolledSensorSourceOptions? options = null, TimeProvider? time = null, SensorKeySpace? keySpace = null, ILogger? log = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(id);
         Id = id;
@@ -97,7 +106,7 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
         _createSampler = createSampler;
         _options = options ?? new PolledSensorSourceOptions();
         _time = time ?? TimeProvider.System;
-        _log = Log.ForContext<PolledSensorSource>();
+        _log = (log ?? Log.Logger).ForContext<PolledSensorSource>();
     }
 
     public string Id { get; }
@@ -107,6 +116,9 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
     public SensorKeySpace KeySpace { get; }
 
     public PolledSensorSourceOptions Options => _options;
+
+    /// <summary>A text is cut to this many characters (4 KiB, as a plugin's).</summary>
+    public const int MaxTextChars = 4096;
 
     /// <summary>Polls taken since start. For tests and diagnostics.</summary>
     public long Polls { get; private set; }
@@ -127,7 +139,7 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
 
     public SensorStatus GetStatus(SensorKey key) => ReadState(key).Status;
 
-    /// <summary>Every sensor a sampler reads is a number, so a refused one is too.</summary>
+    /// <summary>A listed sensor is typed by its definition, with or without a reading; an unlisted key is a number.</summary>
     public SensorState ReadState(SensorKey key)
     {
         lock (_lock)
@@ -137,9 +149,11 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
 
             ref var slot = ref _slots[i];
             var status = StatusOf(in slot, _time.GetTimestamp());
-            return status is SensorStatus.Live or SensorStatus.Stale
-                ? new SensorState(status, SensorKind.Number, new SensorReading(slot.Min, slot.Max, slot.Avg, slot.Now, _units[i]))
-                : SensorState.Without(status);
+            if (status is not (SensorStatus.Live or SensorStatus.Stale))
+                return SensorState.Without(status, slot.Kind);
+            return slot.Kind == SensorKind.Text
+                ? new SensorState(status, SensorKind.Text, new SensorReading(slot.Text!))
+                : new SensorState(status, SensorKind.Number, new SensorReading(slot.Min, slot.Max, slot.Avg, slot.Now, _units[i]));
         }
     }
 
@@ -293,9 +307,10 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
 
     /// <summary>
     /// Makes <paramref name="definitions"/> the catalogue. With <paramref name="carry"/> (the same sampler's catalogue
-    /// changed), a key that was listed keeps its slot (now, min, max, avg, count, last good), and a listed key the
-    /// catalogue no longer has stays listed after the catalogue's sensors, failed (stale), until it is unavailable
-    /// (<see cref="PruneGone"/>); a new key starts with no reading. Without it (a new sampler), every key starts so.
+    /// changed), a key that was listed with the same kind keeps its slot (now or text, min, max, avg, count, last good),
+    /// and a listed key the catalogue no longer has stays listed after the catalogue's sensors, failed (stale), until it
+    /// is unavailable (<see cref="PruneGone"/>); a new key, or one whose kind changed, starts with no reading. Without it
+    /// (a new sampler), every key starts so.
     /// </summary>
     private void Rebuild(IReadOnlyList<SensorDefinition> definitions, long now, bool carry)
     {
@@ -323,11 +338,18 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
                 continue;
             }
 
+            if (d.Kind is not (SensorKind.Number or SensorKind.Text))
+            {
+                map[i] = -1;
+                _log.Warning("Sensor source {Source} skipped the sensor {Key}: a polled source reads numbers and text, not {Kind}", Id, key, d.Kind);
+                continue;
+            }
+
             if (index.TryAdd(key, infos.Count))
             {
                 map[i] = infos.Count;
                 infos.Add(new SensorInfo(key, Id, d.Group, d.Name, d.Unit));
-                slots.Add(oldIndex.TryGetValue(key, out var old) ? oldSlots[old] : default);
+                slots.Add(oldIndex.TryGetValue(key, out var old) && oldSlots[old].Kind == d.Kind ? oldSlots[old] : new Slot { Kind = d.Kind });
             }
             else
             {
@@ -454,7 +476,13 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
                 var sample = _buffer[i];
                 switch (sample.Outcome)
                 {
-                    case SampleOutcome.Ok when double.IsFinite(sample.Value):
+                    case SampleOutcome.Ok when slot.Kind == SensorKind.Text && sample.Text is { } text:
+                        slot.Count++;
+                        slot.Text = Cut(text, ref slot, s);
+                        slot.LastGood = sampled;
+                        slot.Latest = SampleOutcome.Ok;
+                        break;
+                    case SampleOutcome.Ok when slot.Kind == SensorKind.Number && sample.Text is null && double.IsFinite(sample.Value):
                         slot.Count++;
                         slot.Now = sample.Value;
                         if (slot.Count == 1)
@@ -504,6 +532,24 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
             Rediscover(sampler, version, sampled);
 
         Polls++;
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> cut at <see cref="MaxTextChars"/> (never inside a surrogate pair), warning once for
+    /// <paramref name="slot"/> (the slot at <paramref name="index"/>) while it lasts; the sampler's own string when it fits.
+    /// </summary>
+    private string Cut(string text, ref Slot slot, int index)
+    {
+        if (text.Length <= MaxTextChars)
+            return text;
+
+        if (!slot.CutWarned)
+        {
+            slot.CutWarned = true;
+            _log.Warning("Sensor source {Source}: the text of {Key} is longer than {Max} characters; the rest is cut", Id, _sensors[index].Key, MaxTextChars);
+        }
+
+        return text[..(char.IsHighSurrogate(text[MaxTextChars - 1]) ? MaxTextChars - 1 : MaxTextChars)];
     }
 
     private void Rediscover(ISensorSampler sampler, long version, long now)
