@@ -3,7 +3,10 @@ using System.Collections.Generic;
 
 namespace InfoPanel.Sensors;
 
-/// <summary>One sensor a sampler found: its id under the source's key prefix (<c>cpu/load</c>), group, name and unit.</summary>
+/// <summary>
+/// One sensor a sampler found: its id in the source's key space (<c>cpu/load</c> under a plugin prefix,
+/// <c>-1:4026532608:0:16777216</c> for HWiNFO; <see cref="SensorKeySpace"/>), group, name and unit.
+/// </summary>
 public sealed record SensorDefinition(string Id, string Group, string Name, string Unit);
 
 /// <summary>The outcome of reading one sensor once.</summary>
@@ -28,8 +31,20 @@ public struct SensorSample
     public double Value;
     public SampleOutcome Outcome;
 
+    /// <summary>The source's own minimum, maximum and average, set with <see cref="HasStatistics"/>.</summary>
+    public double Min;
+    public double Max;
+    public double Avg;
+
+    /// <summary>
+    /// <see cref="Min"/>, <see cref="Max"/> and <see cref="Avg"/> are the source's own statistics (HWiNFO's session
+    /// values), read instead of the ones <see cref="PolledSensorSource"/> keeps.
+    /// </summary>
+    public bool HasStatistics;
+
     public void Set(double value)
     {
+        HasStatistics = false;
         if (double.IsFinite(value))
         {
             Value = value;
@@ -38,6 +53,19 @@ public struct SensorSample
         else
         {
             Outcome = SampleOutcome.Failed;
+        }
+    }
+
+    /// <summary>A value with the source's own statistics; a non-finite statistic leaves the source's ones unused.</summary>
+    public void Set(double value, double min, double max, double avg)
+    {
+        Set(value);
+        if (Outcome == SampleOutcome.Ok && double.IsFinite(min) && double.IsFinite(max) && double.IsFinite(avg))
+        {
+            Min = min;
+            Max = max;
+            Avg = avg;
+            HasStatistics = true;
         }
     }
 }
@@ -57,4 +85,11 @@ public interface ISensorSampler : IDisposable
     /// call (zero on the first), for rates.
     /// </summary>
     void Sample(Span<SensorSample> samples, TimeSpan elapsed);
+
+    /// <summary>
+    /// The catalogue's version, for a sampler whose sensors change at run time (0, never changing, by default). A
+    /// <see cref="Sample"/> round still fills the catalogue <see cref="Discover"/> last returned; when the version
+    /// differs after it, <see cref="PolledSensorSource"/> calls <see cref="Discover"/> again, which returns the new one.
+    /// </summary>
+    long CatalogueVersion => 0;
 }

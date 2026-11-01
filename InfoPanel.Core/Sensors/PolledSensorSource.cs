@@ -23,9 +23,13 @@ public sealed class PolledSensorSourceOptions
 
 /// <summary>
 /// An <see cref="ISensorSource"/> over an <see cref="ISensorSampler"/>: <see cref="StartAsync"/> discovers the sensors
-/// (off the caller's thread) and polls them every <see cref="PolledSensorSourceOptions.Interval"/> on the thread pool,
-/// keeping now/min/max/avg per sensor. Keys are <c>plugin:{KeyPrefix}{definition id}</c>; the source handles every
-/// key under its prefix (unknown ones are unavailable). Status per key (<see cref="ISensorStatusSource"/>):
+/// (off the caller's thread) and polls them every <see cref="PolledSensorSourceOptions.Interval"/> (the source's own)
+/// on the thread pool, keeping now/min/max/avg per sensor, or the source's own statistics when a sample carries them.
+/// Keys are the source's <see cref="SensorKeySpace"/>'s (<c>plugin:{KeyPrefix}{definition id}</c> by default); the
+/// source handles every key in it (unknown ones are unavailable). A sampler whose catalogue changes
+/// (<see cref="ISensorSampler.CatalogueVersion"/>) is discovered again after the round that changed it: keys that stay
+/// keep their state, keys that go are stale until they are unavailable, then unlisted. Status per key
+/// (<see cref="ISensorStatusSource"/>):
 /// <list type="bullet">
 /// <item><see cref="SensorStatus.PermissionDenied"/> while the latest read was refused;</item>
 /// <item><see cref="SensorStatus.Unavailable"/> with no good sample yet, or the last one older than
@@ -41,9 +45,14 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
     private struct Slot
     {
         public double Now;
+        // What a read answers: the source's statistics when the latest sample carried them, else the base's own.
         public double Min;
         public double Max;
         public double Avg;
+        // The base's own, over every good value, whether or not a sample carried the source's.
+        public double OwnMin;
+        public double OwnMax;
+        public double OwnAvg;
         public long Count;
         public long LastGood;
         public SampleOutcome Latest;
@@ -69,16 +78,22 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
     // Orders Dispose against a start publishing its loop: either the start sees the flag, or Dispose sees the loop.
     private readonly Lock _disposeLock = new();
     private bool _failedOnce;
+    private bool _rediscoveryFailedOnce;
+    private long _catalogueVersion;
+    // The last _gone sensors listed are gone from the sampler's catalogue, kept (failed) until they are unavailable.
+    private int _gone;
     private CancellationTokenSource? _loopCts;
     private Task? _loop;
 
     /// <param name="id">The source id (<c>infopanel.macos</c>); keys are under <c>/{id}/</c>.</param>
     /// <param name="createSampler">Creates the sampler on <see cref="StartAsync"/>.</param>
-    public PolledSensorSource(string id, Func<ISensorSampler> createSampler, PolledSensorSourceOptions? options = null, TimeProvider? time = null)
+    /// <param name="keySpace">How the keys look; <see cref="SensorKeySpace.Plugin"/> of <paramref name="id"/> by default.</param>
+    public PolledSensorSource(string id, Func<ISensorSampler> createSampler, PolledSensorSourceOptions? options = null, TimeProvider? time = null, SensorKeySpace? keySpace = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(id);
         Id = id;
         KeyPrefix = "/" + id + "/";
+        KeySpace = keySpace ?? SensorKeySpace.Plugin(id);
         _createSampler = createSampler;
         _options = options ?? new PolledSensorSourceOptions();
         _time = time ?? TimeProvider.System;
@@ -89,15 +104,16 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
 
     public string KeyPrefix { get; }
 
+    public SensorKeySpace KeySpace { get; }
+
     public PolledSensorSourceOptions Options => _options;
 
     /// <summary>Polls taken since start. For tests and diagnostics.</summary>
     public long Polls { get; private set; }
 
-    public SensorKey KeyOf(string definitionId) => SensorKey.Plugin(KeyPrefix + definitionId);
+    public SensorKey KeyOf(string definitionId) => KeySpace.KeyOf(definitionId);
 
-    public bool Handles(SensorKey key) =>
-        key.Type == SensorType.Plugin && key.Id.StartsWith(KeyPrefix, StringComparison.Ordinal);
+    public bool Handles(SensorKey key) => KeySpace.Handles(key);
 
     /// <summary>The discovered sensors (empty before <see cref="StartAsync"/>).</summary>
     public IReadOnlyList<SensorInfo> GetSensors() => Volatile.Read(ref _sensors);
@@ -260,6 +276,7 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
         {
             _sampler = _createSampler();
             definitions = _sampler.Discover();
+            _catalogueVersion = _sampler.CatalogueVersion;
         }
         catch (Exception ex)
         {
@@ -268,18 +285,49 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
             definitions = [];
         }
 
+        // A fresh sampler starts with empty state: slots are carried only when the same sampler rediscovers.
+        Rebuild(definitions, _time.GetTimestamp(), carry: false);
+        _polled = false;
+        Poll();
+    }
+
+    /// <summary>
+    /// Makes <paramref name="definitions"/> the catalogue. With <paramref name="carry"/> (the same sampler's catalogue
+    /// changed), a key that was listed keeps its slot (now, min, max, avg, count, last good), and a listed key the
+    /// catalogue no longer has stays listed after the catalogue's sensors, failed (stale), until it is unavailable
+    /// (<see cref="PruneGone"/>); a new key starts with no reading. Without it (a new sampler), every key starts so.
+    /// </summary>
+    private void Rebuild(IReadOnlyList<SensorDefinition> definitions, long now, bool carry)
+    {
+        var oldIndex = carry ? _index : [];
+        var oldSlots = carry ? _slots : [];
+        var oldSensors = carry ? Volatile.Read(ref _sensors) : [];
+
         // One slot per distinct key; map[i] is definition i's slot (-1 for a duplicate, whose samples are ignored).
         var index = new Dictionary<SensorKey, int>(definitions.Count);
         var infos = new List<SensorInfo>(definitions.Count);
+        var slots = new List<Slot>(definitions.Count);
         var map = new int[definitions.Count];
         for (var i = 0; i < definitions.Count; i++)
         {
             var d = definitions[i];
-            var key = KeyOf(d.Id);
+            SensorKey key;
+            try
+            {
+                key = KeySpace.KeyOf(d.Id);
+            }
+            catch (ArgumentException)
+            {
+                map[i] = -1;
+                _log.Warning("Sensor source {Source} skipped a sensor with the malformed id {Id}", Id, d.Id);
+                continue;
+            }
+
             if (index.TryAdd(key, infos.Count))
             {
                 map[i] = infos.Count;
                 infos.Add(new SensorInfo(key, Id, d.Group, d.Name, d.Unit));
+                slots.Add(oldIndex.TryGetValue(key, out var old) ? oldSlots[old] : default);
             }
             else
             {
@@ -288,25 +336,89 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
             }
         }
 
+        var gone = 0;
+        for (var i = 0; i < oldSensors.Length; i++)
+        {
+            var key = oldSensors[i].Key;
+            if (index.ContainsKey(key))
+                continue;
+            var slot = oldSlots[oldIndex[key]];
+            if (slot.Count == 0 || _time.GetElapsedTime(slot.LastGood, now) > _options.UnavailableAfter)
+                continue;
+
+            // Gone from the catalogue: its reads fail from now on.
+            slot.Latest = SampleOutcome.Failed;
+            index[key] = infos.Count;
+            infos.Add(oldSensors[i]);
+            slots.Add(slot);
+            gone++;
+        }
+
         lock (_lock)
         {
             _index = index;
             _units = infos.Select(i => i.Unit).ToArray();
-            _slots = new Slot[infos.Count];
+            _slots = slots.ToArray();
             _buffer = new SensorSample[definitions.Count];
             _slotOf = map;
+            _gone = gone;
         }
 
         Volatile.Write(ref _sensors, infos.ToArray());
-        _polled = false;
-        Poll();
     }
 
-    /// <summary>Takes one sample of every sensor. The poll loop calls this every interval; tests call it directly.</summary>
+    /// <summary>Unlists the sensors gone from the catalogue once they are unavailable.</summary>
+    private void PruneGone(long now)
+    {
+        var sensors = Volatile.Read(ref _sensors);
+        var first = sensors.Length - _gone;
+        var expired = false;
+        for (var i = first; i < sensors.Length && !expired; i++)
+        {
+            ref var slot = ref _slots[i];
+            expired = _time.GetElapsedTime(slot.LastGood, now) > _options.UnavailableAfter;
+        }
+
+        if (!expired)
+            return;
+
+        var keep = new List<int>(sensors.Length);
+        for (var i = 0; i < sensors.Length; i++)
+        {
+            if (i < first || _time.GetElapsedTime(_slots[i].LastGood, now) <= _options.UnavailableAfter)
+                keep.Add(i);
+        }
+
+        var index = new Dictionary<SensorKey, int>(keep.Count);
+        var infos = new SensorInfo[keep.Count];
+        var slots = new Slot[keep.Count];
+        for (var j = 0; j < keep.Count; j++)
+        {
+            infos[j] = sensors[keep[j]];
+            slots[j] = _slots[keep[j]];
+            index[infos[j].Key] = j;
+        }
+
+        lock (_lock)
+        {
+            _index = index;
+            _units = infos.Select(i => i.Unit).ToArray();
+            _slots = slots;
+            _gone = keep.Count - first;
+        }
+
+        Volatile.Write(ref _sensors, infos);
+    }
+
+    /// <summary>
+    /// Takes one sample of every sensor, then, when the sampler's catalogue changed, discovers it again. A sampler with
+    /// no sensors is still called, so one whose sensors appear later is found. The poll loop calls this every interval;
+    /// tests call it directly.
+    /// </summary>
     internal void Poll()
     {
         var sampler = _sampler;
-        if (sampler == null || _buffer.Length == 0)
+        if (sampler == null)
             return;
 
         var now = _time.GetTimestamp();
@@ -347,14 +459,18 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
                         slot.Now = sample.Value;
                         if (slot.Count == 1)
                         {
-                            slot.Min = slot.Max = slot.Avg = sample.Value;
+                            slot.OwnMin = slot.OwnMax = slot.OwnAvg = sample.Value;
                         }
                         else
                         {
-                            slot.Min = Math.Min(slot.Min, sample.Value);
-                            slot.Max = Math.Max(slot.Max, sample.Value);
-                            slot.Avg += (sample.Value - slot.Avg) / slot.Count;
+                            slot.OwnMin = Math.Min(slot.OwnMin, sample.Value);
+                            slot.OwnMax = Math.Max(slot.OwnMax, sample.Value);
+                            slot.OwnAvg += (sample.Value - slot.OwnAvg) / slot.Count;
                         }
+
+                        (slot.Min, slot.Max, slot.Avg) = sample.HasStatistics
+                            ? (sample.Min, sample.Max, sample.Avg)
+                            : (slot.OwnMin, slot.OwnMax, slot.OwnAvg);
 
                         slot.LastGood = sampled;
                         slot.Latest = SampleOutcome.Ok;
@@ -370,7 +486,45 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
             }
         }
 
+        long version;
+        try
+        {
+            version = sampler.CatalogueVersion;
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Sensor source {Source}: reading the catalogue's version failed", Id);
+            version = _catalogueVersion;
+        }
+
+        // Expired keys go first, so a rediscovery never carries one (and a rediscovery that fails doesn't keep them).
+        if (_gone > 0)
+            PruneGone(sampled);
+        if (version != _catalogueVersion)
+            Rediscover(sampler, version, sampled);
+
         Polls++;
+    }
+
+    private void Rediscover(ISensorSampler sampler, long version, long now)
+    {
+        IReadOnlyList<SensorDefinition> definitions;
+        try
+        {
+            definitions = sampler.Discover();
+        }
+        catch (Exception ex)
+        {
+            // The catalogue stands; the next round tries again.
+            if (!_rediscoveryFailedOnce)
+                _log.Warning(ex, "Sensor source {Source}: discovering its changed sensors failed", Id);
+            _rediscoveryFailedOnce = true;
+            return;
+        }
+
+        _rediscoveryFailedOnce = false;
+        _catalogueVersion = version;
+        Rebuild(definitions, now, carry: true);
     }
 
     private async Task RunAsync(PeriodicTimer timer, CancellationToken ct)
