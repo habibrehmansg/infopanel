@@ -151,6 +151,30 @@ public class PluginSensorSourceTests
         Assert.False(source.Handles(SensorKey.Plugin($"/{id}/clock/second")));
     }
 
+    [Theory]
+    [InlineData("drive-info-plugin")]
+    [InlineData("DRIVE-INFO-PLUGIN")]
+    public void The_retired_Drive_Info_id_is_refused_naming_the_Drives_source_and_the_packages_other_plugins_load(string id)
+    {
+        // An old copy of the bundled Extras under another folder name: the engine reads the drives itself now.
+        const string old = "InfoPanel.ExtrasOld";
+        var source = new PluginSensorSource();
+
+        var refused = source.Load(old,
+            [new PluginMetadataDto { Id = id, Name = "Drive Info" }, new PluginMetadataDto { Id = "weather-plugin", Name = "Weather" }],
+            new Dictionary<string, List<ContainerDto>>
+            {
+                [id] = [Container("c", "C:", eph: false, Sensor("free_space", "Free Space", 1000, "MB"))],
+                ["weather-plugin"] = [Container("city", "City", eph: false, Sensor("temp", "Temperature", 21, "°C"))],
+            });
+        source.SetState(old, PluginHostState.Running);
+
+        var refusal = Assert.Single(refused);
+        Assert.Equal((id, "its sensors are built into the engine now (the Drives source)"), (refusal.PluginId, refusal.Reason));
+        Assert.Equal(["plugin:/weather-plugin/city/temp"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
+        Assert.False(source.Handles(SensorKey.Plugin($"/{id}/c/free_space")));
+    }
+
     [Fact]
     public void A_plugin_id_over_64_characters_is_refused()
     {

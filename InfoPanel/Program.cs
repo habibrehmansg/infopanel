@@ -319,7 +319,7 @@ try
         // HWiNFO's gadget values (the readings ticked "Report value in Gadget"), read from the user's registry.
         builder.Services.AddSingleton<ISensorSource>(sp => HwInfoGadgetSource.CreateWindows(sp.GetRequiredService<TimeProvider>()));
     }
-    // The engine's own sources on every OS (the clock), outside mock mode and a replay.
+    // The engine's own sources on every OS (the clock, the drives), outside mock mode and a replay.
     builder.Services.AddBuiltInSources(options);
     // Plugin sensors, after the built-in sources; their hosts start once the engine listens.
     builder.Services.AddPlugins(options, paths, settings);

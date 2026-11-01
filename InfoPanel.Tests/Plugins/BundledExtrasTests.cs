@@ -10,7 +10,7 @@ using Xunit;
 namespace InfoPanel.Tests.Plugins;
 
 // Opt-in (INFOPANEL_PLUGIN_TESTS=1): the bundled Extras on this machine. Its Network Info plugin looks up the public IP
-// on the network, so the suite doesn't run it by default. Clock and Drive Info list their sensors within 10 s; the
+// on the network, so the suite doesn't run it by default. Network Info and Weather list their sensors within 10 s; the
 // Windows-only plugins are skipped elsewhere; the host's memory goes to the test output.
 public sealed class BundledExtrasTests : IDisposable
 {
@@ -19,10 +19,10 @@ public sealed class BundledExtrasTests : IDisposable
     public void Dispose() => PluginFixtures.DeleteQuietly(_root);
 
     // Not opt-in: the built Extras' plugin classes, read from its metadata (no plugin is created). The engine reads
-    // HWiNFO's gadget values (infopanel.hwinfo-gadget) and the clock (infopanel.clock) itself, so the HWiNFO Registry and
-    // Clock plugins aren't bundled any more.
+    // HWiNFO's gadget values (infopanel.hwinfo-gadget), the clock (infopanel.clock) and the drives (infopanel.drives)
+    // itself, so the HWiNFO Registry, Clock and Drive Info plugins aren't bundled any more.
     [Fact]
-    public void The_bundled_Extras_hold_five_plugins_and_not_the_HWiNFO_Registry_or_Clock_ones()
+    public void The_bundled_Extras_hold_four_plugins_and_not_the_HWiNFO_Registry_Clock_or_Drive_Info_ones()
     {
         var dll = PluginFixtures.DllOf(PluginFixtures.BuiltFolder("InfoPanel.Extras"));
         using (var pe = new PEReader(File.OpenRead(dll)))
@@ -39,16 +39,17 @@ public sealed class BundledExtrasTests : IDisposable
                     plugins.Add(metadata.GetString(type.Name));
             }
 
-            Assert.Equal(["DriveInfoPlugin", "NetworkInfoPlugin", "SystemInfoPlugin", "VolumePlugin", "WeatherPlugin"], plugins.Order(StringComparer.Ordinal));
+            Assert.Equal(["NetworkInfoPlugin", "SystemInfoPlugin", "VolumePlugin", "WeatherPlugin"], plugins.Order(StringComparer.Ordinal));
         }
 
         var bytes = File.ReadAllBytes(dll);
         Assert.Equal(-1, bytes.AsSpan().IndexOf(Encoding.Unicode.GetBytes("hwinfo-registry-plugin")));
         Assert.Equal(-1, bytes.AsSpan().IndexOf(Encoding.Unicode.GetBytes("clock-plugin")));
+        Assert.Equal(-1, bytes.AsSpan().IndexOf(Encoding.Unicode.GetBytes("drive-info-plugin")));
     }
 
     [Fact]
-    public async Task The_bundled_Extras_start_and_Drive_Info_and_Weather_list_sensors_within_10_seconds_and_no_Clock()
+    public async Task The_bundled_Extras_start_and_Network_Info_and_Weather_list_sensors_within_10_seconds_and_no_Clock_or_Drive_Info()
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("INFOPANEL_PLUGIN_TESTS") == "1", "Set INFOPANEL_PLUGIN_TESTS=1 to run the bundled Extras.");
         var bundled = Path.Combine(_root, "bundled");
@@ -64,10 +65,10 @@ public sealed class BundledExtrasTests : IDisposable
         var source = engine.Services.GetRequiredService<PluginSensorSource>();
 
         var clock = Stopwatch.StartNew();
-        while (!(source.GetSensors().Any(s => s.Key.Id.StartsWith("/drive-info-plugin/", StringComparison.Ordinal))
+        while (!(source.GetSensors().Any(s => s.Key.Id.StartsWith("/network-info-plugin/", StringComparison.Ordinal))
                  && source.GetSensors().Any(s => s.Key.Id.StartsWith("/weather-plugin/", StringComparison.Ordinal))))
         {
-            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), $"Drive Info and Weather didn't list sensors within 10 s; listed: {source.GetSensors().Count}");
+            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), $"Network Info and Weather didn't list sensors within 10 s; listed: {source.GetSensors().Count}");
             await Task.Delay(100, TestContext.Current.CancellationToken);
         }
 
@@ -75,7 +76,8 @@ public sealed class BundledExtrasTests : IDisposable
         using var host = Process.GetProcessById(runner.ProcessId!.Value);
         TestContext.Current.TestOutputHelper?.WriteLine(
             $"Extras host {host.Id}: {source.GetSensors().Count} sensors after {clock.Elapsed.TotalSeconds:0.0} s; working set {host.WorkingSet64 / 1024 / 1024} MiB");
-        // The clock is the engine's own source now: no plugin lists it.
+        // The clock and the drives are the engine's own sources now: no plugin lists them.
         Assert.DoesNotContain(source.GetSensors(), s => s.Key.Id.StartsWith("/clock-plugin/", StringComparison.Ordinal));
+        Assert.DoesNotContain(source.GetSensors(), s => s.Key.Id.StartsWith("/drive-info-plugin/", StringComparison.Ordinal));
     }
 }

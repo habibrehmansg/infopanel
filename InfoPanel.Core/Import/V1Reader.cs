@@ -259,10 +259,11 @@ public static class V1Reader
 
     /// <summary>
     /// Every item bound to an entry of a plugin whose sensors the engine reads itself now (<see cref="RetiredPlugins"/>:
-    /// the 1.x Clock plugin), inside groups too, is bound to the engine source's key for that entry, in the model, so its
-    /// props and <c>meta.sensor</c> carry the new binding; each is reported (<c>import.sensor.translated</c>). Only the
-    /// binding the item reads is looked at (its <c>SensorType</c>'s; a table's plugin key). A key of such a plugin with no
-    /// entry in the table stays as stored, and reads unavailable (<c>import.sensor</c>).
+    /// the 1.x Clock and Drive Info plugins), inside groups too, is bound to the engine source's key for that entry, in the
+    /// model, so its props and <c>meta.sensor</c> carry the new binding; each is reported
+    /// (<c>import.sensor.translated</c>). Only the binding the item reads is looked at (its <c>SensorType</c>'s; a table's
+    /// plugin key). A key of such a plugin with no entry in the table stays as stored, and reads unavailable
+    /// (<c>import.sensor</c>).
     /// </summary>
     private static void TranslateRetired(IEnumerable<DisplayItem> items, ImportDiagnostics diagnostics,
         Func<DisplayItem, string> pathOf, Func<DisplayItem, int?> lineOf, string file)

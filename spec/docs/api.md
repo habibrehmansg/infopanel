@@ -137,7 +137,7 @@ The engine listens on the loopback interface only, and answers a request whose `
 - `reason`, when there is something to say: `code`, for programs, and `message`, the same in English for people. A code is the source's own, open: a client words the codes it knows (with set-up help, say) and shows `message` for one it doesn't;
 - `sensors`, how many sensors it lists now.
 
-A source's state comes from what it last read: a client asks again to see it change (the state has no socket message). A source that has nothing more to say about itself is `running` while the engine runs it: the mock source, the macOS source and the clock (`infopanel.clock`, the engine's own on every operating system, not in mock mode or a replay). The plugins' source (`plugins`) is `running` while the engine hosts plugins, however many it found, and `off` · `disabled` when it was started without them. The Windows sources' reasons:
+A source's state comes from what it last read: a client asks again to see it change (the state has no socket message). A source that has nothing more to say about itself is `running` while the engine runs it: the mock source, the macOS source, and the engine's own on every operating system, not in mock mode or a replay: the clock (`infopanel.clock`) and the drives (`infopanel.drives`). The plugins' source (`plugins`) is `running` while the engine hosts plugins, however many it found, and `off` · `disabled` when it was started without them. The Windows sources' reasons:
 
 | Source | `state` · `reason.code` | When |
 |---|---|---|

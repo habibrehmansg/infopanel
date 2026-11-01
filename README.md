@@ -94,7 +94,6 @@ InfoPanel features a robust plugin system that extends its capabilities:
 ### Built-in Plugins
 - **System Info Plugin**: CPU usage, memory usage, process statistics, and system uptime
 - **Network Info Plugin**: Network interfaces, IP addresses, and connection statistics
-- **Drive Info Plugin**: Storage device information and usage statistics
 - **Volume Plugin**: Audio volume control and monitoring
 - **Weather Plugin**: Current weather conditions and forecasts
 

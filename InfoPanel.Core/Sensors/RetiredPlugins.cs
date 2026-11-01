@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using InfoPanel.Enums;
 using InfoPanel.Sensors.Clock;
+using InfoPanel.Sensors.Drives;
 
 namespace InfoPanel.Sensors;
 
@@ -21,10 +22,14 @@ public static class RetiredPlugins
     private static readonly Dictionary<string, string> Sources = new(StringComparer.OrdinalIgnoreCase)
     {
         ["clock-plugin"] = ClockSensorSource.Name,
+        ["drive-info-plugin"] = DriveSource.Name,
     };
 
-    // A retired plugin's key id (1.x's PluginSensorId) → what it is bound to on import.
+    // A retired plugin's key id (1.x's PluginSensorId) → what it is bound to on import, for the plugins whose keys are
+    // fixed (the clock's); a drive's keys follow a rule (DriveKey).
     private static readonly Dictionary<string, Translation> Keys = Build();
+
+    private const string DriveInfoPrefix = "/drive-info-plugin/";
 
     private static Dictionary<string, Translation> Build()
     {
@@ -38,7 +43,10 @@ public static class RetiredPlugins
     /// <summary>The name of the source that reads the retired plugin <paramref name="pluginId"/>'s sensors now (any case), or null.</summary>
     public static string? SourceOf(string pluginId) => Sources.TryGetValue(pluginId, out var source) ? source : null;
 
-    /// <summary>Every key a 1.x import binds, and what it binds it to.</summary>
+    /// <summary>
+    /// Every fixed key a 1.x import binds (the Clock plugin's), and what it binds it to. The Drive Info plugin's keys,
+    /// one set per drive, follow a rule instead (<see cref="Translate"/>).
+    /// </summary>
     public static IEnumerable<KeyValuePair<SensorKey, Translation>> All
     {
         get
@@ -48,7 +56,40 @@ public static class RetiredPlugins
         }
     }
 
-    /// <summary>What a 1.x import binds <paramref name="key"/> to: the native entry for a retired plugin's key, else null (any other key, and an entry no source has).</summary>
-    public static Translation? Translate(SensorKey key) =>
-        key.Type == SensorType.Plugin && Keys.TryGetValue(key.Id, out var translation) ? translation : null;
+    /// <summary>
+    /// What a 1.x import binds <paramref name="key"/> to: the native entry for a retired plugin's key, else null (any
+    /// other key, and an entry no source has). The Clock plugin's eight keys go to the clock's; the Drive Info plugin's
+    /// <c>/drive-info-plugin/{drive}/{entry}</c>, for any drive id the plugin could make (<see cref="DriveSource.IsDriveId"/>)
+    /// and each of its entries, to the drives source's <c>plugin:/infopanel.drives/{drive}/{entry}</c>, whether or not
+    /// this computer has the drive.
+    /// </summary>
+    public static Translation? Translate(SensorKey key)
+    {
+        if (key.Type != SensorType.Plugin)
+            return null;
+        return Keys.TryGetValue(key.Id, out var translation) ? translation : DriveKey(key.Id);
+    }
+
+    private static Translation? DriveKey(string id)
+    {
+        if (!id.StartsWith(DriveInfoPrefix, StringComparison.Ordinal))
+            return null;
+        var rest = id[DriveInfoPrefix.Length..];
+        var slash = rest.IndexOf('/');
+        if (slash < 0)
+            return null;
+        var drive = rest[..slash];
+        var entry = rest[(slash + 1)..];
+        if (!DriveSource.IsDriveId(drive) || DriveSource.EntryName(entry) is not { } name)
+            return null;
+        return new Translation(DriveSource.KeyOf(drive, entry), "Drive Info", DriveSource.Name, $"{name} of {Shown(drive)}");
+    }
+
+    /// <summary>A drive id as a person knows the drive: a letter as Windows writes it (<c>c</c> → <c>C:</c>), the root as <c>/</c>.</summary>
+    private static string Shown(string drive) => drive switch
+    {
+        "" => "/",
+        [var letter and >= 'a' and <= 'z'] => $"{char.ToUpperInvariant(letter)}:",
+        _ => drive,
+    };
 }
