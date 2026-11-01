@@ -354,7 +354,7 @@ public sealed class SceneZoomTests
             {
                 canvas.Clear(SKColors.Transparent);
                 canvas.Translate(12, 8);
-                snapshot.Draw(canvas, 2);
+                snapshot.Draw(canvas, 2, withoutText: false, moved.ColorType);
             }
             var differ = 0;
             for (var y = 0; y < frame.Height; y++)
@@ -669,6 +669,47 @@ public sealed class SceneZoomTests
             Assert.All(pictures, info => Assert.Equal((120, 120), (info.Width, info.Height)));
             AgainstThePanel(frame, panel, scale, (x, y) => panel.GetPixel(x, y) == white.GetPixel(x, y));
         }
+    }
+
+    /// <summary>The frame at <paramref name="scale"/> drawn into pixels of <paramref name="type"/>.</summary>
+    private static SKBitmap FrameIn(JsonElement doc, Assets assets, float scale, SKColorType type)
+    {
+        var options = Options(assets, out var media);
+        using (media)
+        using (var snapshot = SceneRuntime.RenderOnce(doc, SceneKit.Now, options))
+        {
+            var s = snapshot.EffectiveScale(scale);
+            var bitmap = new SKBitmap(new SKImageInfo((int)Math.Round(snapshot.Width * s), (int)Math.Round(snapshot.Height * s), type, SKAlphaType.Premul));
+            using var canvas = new SKCanvas(bitmap);
+            canvas.Clear(SKColors.Transparent);
+            snapshot.Draw(canvas, s, withoutText: false, type);
+            canvas.Flush();
+            return bitmap;
+        }
+    }
+
+    [Theory]
+    [InlineData(SKColorType.Rgba8888, 2f)]
+    [InlineData(SKColorType.Rgba8888, 2.25f)]
+    [InlineData(SKColorType.Rgba8888, 3.3f)]
+    [InlineData(SKColorType.Bgra8888, 2f)]
+    [InlineData(SKColorType.Bgra8888, 2.25f)]
+    [InlineData(SKColorType.Bgra8888, 3.3f)]
+    public void A_frame_in_either_byte_order_shows_the_panels_pixels_in_that_order(SKColorType type, float scale)
+    {
+        // Skia samples the same draw a little differently into RGBA and into BGRA pixels (one is the platform's own
+        // order, which has paths of its own): this checker, shrunk by 0.3 with nearest sampling, has a sample on a
+        // pixel's edge in every third row and column, and 360 of its pixels come out the other colour in the other
+        // order. The panel's frame at scale 1 in either order is what a frame above 1 in that order shows.
+        var assets = new Assets();
+        using var checker = Checker(40, 30);
+        var c = assets.Add(checker);
+        var nodes = "{'kind': 'group', 'transform': [{'type': 'translate', 'x': 0, 'y': 20}, {'type': 'scale', 'x': 0.3, 'y': 0.3}], "
+            + $"'children': [{{'kind': 'media', 'x': 200, 'w': 200, 'h': 150, 'sampling': 'nearest', 'source': {{'asset': '{c}'}}}}]}}";
+        using var panel = FrameIn(Doc(nodes, w: 120, h: 120), assets, 1, type);
+        using var white = FrameIn(Doc(nodes, "#ffffffff", 120, 120), assets, 1, type);
+        using var frame = FrameIn(Doc(nodes, w: 120, h: 120), assets, scale, type);
+        AgainstThePanel(frame, panel, scale, (x, y) => panel.GetPixel(x, y) == white.GetPixel(x, y));
     }
 
     [Fact]

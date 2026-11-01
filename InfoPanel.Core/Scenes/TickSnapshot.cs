@@ -239,7 +239,8 @@ public sealed class TickSnapshot : IDisposable
 
     /// <summary>
     /// Draws the frame: the background over the canvas (0, 0)–(width, height) × <paramref name="scale"/>, then every
-    /// visible item, clipped to the canvas. Only the canvas matrix changes with the scale.
+    /// visible item, clipped to the canvas. Only the canvas matrix changes with the scale. The canvas's pixels are
+    /// Rgba8888, as every output's are (<see cref="Draw(SKCanvas, float, bool, SKColorType)"/> for others).
     /// </summary>
     public void Draw(SKCanvas canvas, float scale) => Draw(canvas, scale, withoutText: false);
 
@@ -247,15 +248,25 @@ public sealed class TickSnapshot : IDisposable
     /// <see cref="Draw(SKCanvas, float)"/>, or with <paramref name="withoutText"/> the same frame with its text nodes left
     /// out: what lies under the text, for the preview checks. Not an output.
     /// </summary>
-    public void Draw(SKCanvas canvas, float scale, bool withoutText)
+    public void Draw(SKCanvas canvas, float scale, bool withoutText) => Draw(canvas, scale, withoutText, SKColorType.Rgba8888);
+
+    /// <summary>
+    /// <see cref="Draw(SKCanvas, float, bool)"/> into a canvas whose pixels are <paramref name="colorType"/>, Rgba8888 (every
+    /// output's) or Bgra8888. Above scale 1 raster media is drawn as at scale 1 into a picture of that colour type, because
+    /// Skia samples the same draw a little differently into RGBA and BGRA pixels (a sample on a pixel's edge can go either
+    /// way): a frame then shows the pixels the frame at scale 1 in the same colour type has.
+    /// </summary>
+    public void Draw(SKCanvas canvas, float scale, bool withoutText, SKColorType colorType)
     {
         if (IsReleased) throw new ObjectDisposedException(nameof(TickSnapshot));
+        if (colorType is not (SKColorType.Rgba8888 or SKColorType.Bgra8888))
+            throw new ArgumentOutOfRangeException(nameof(colorType), colorType, "Rgba8888 or Bgra8888");
         var count = canvas.Save();
         var was = SceneDrawer.WithoutText;
         var wasZoom = SceneDrawer.Zoom;
         var wasRoot = SceneDrawer.ZoomRoot;
         var wasPanel = SceneDrawer.Panel;
-        var panel = scale > 1 ? new PanelFrame(Width, Height) : null;
+        var panel = scale > 1 ? new PanelFrame(Width, Height, colorType) : null;
         SceneDrawer.WithoutText = withoutText;
         SceneDrawer.Zoom = scale > 1 ? scale : 0;
         SceneDrawer.ZoomRoot = canvas.TotalMatrix;
@@ -287,7 +298,7 @@ public sealed class TickSnapshot : IDisposable
         var bitmap = new SKBitmap(new SKImageInfo(w, h, SKImageInfo.PlatformColorType, SKAlphaType.Premul));
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Transparent);
-        Draw(canvas, s);
+        Draw(canvas, s, withoutText: false, bitmap.ColorType);
         canvas.Flush();
         return bitmap;
     }

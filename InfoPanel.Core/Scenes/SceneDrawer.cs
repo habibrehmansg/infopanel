@@ -448,11 +448,11 @@ internal static class SceneDrawer
             // by whole pixels. As the panel's frame draws such media into the layer at the layer's own origin, neither
             // origin gives its pixels to the last bit. Its enlargement is computed, as a nudge a fraction of a device
             // pixel can vanish in float that far out.
-            var info = new SKImageInfo(x1 - x0, y1 - y0, SKColorType.Rgba8888, SKAlphaType.Premul);
+            var info = new SKImageInfo(x1 - x0, y1 - y0, panel.ColorType, SKAlphaType.Premul);
             if (info.BytesSize64 > bound || !Fits(i1 - i0, j1 - j0, panel.Sides(s), bound)) return false;
             PictureProbe?.Invoke(info);
             pixels = own = new SKBitmap(info);
-            var size = new SKImageInfo(i1 - i0, j1 - j0, SKColorType.Rgba8888, SKAlphaType.Premul);
+            var size = new SKImageInfo(i1 - i0, j1 - j0, panel.ColorType, SKAlphaType.Premul);
             EnlargementProbe?.Invoke(size);
             enlarged = ownEnlarged = new SKBitmap(size);
             (ox, oy) = (x0, y0);
@@ -585,10 +585,11 @@ internal static class SceneDrawer
 
 /// <summary>
 /// The panel's side of a frame drawn above scale 1 (<see cref="SceneDrawer.Panel"/>, made and disposed by
-/// <see cref="TickSnapshot.Draw(SKCanvas, float, bool)"/>): the matrix the frame at scale 1 draws each node under, and
-/// the one picture of the canvas's pixels its raster media is drawn into in turn, and the one enlargement of them.
+/// <see cref="TickSnapshot.Draw(SKCanvas, float, bool, SKColorType)"/>): the matrix the frame at scale 1 draws each node
+/// under, and the one picture of the canvas's pixels its raster media is drawn into in turn, and the one enlargement of
+/// them, both in the frame's colour type.
 /// </summary>
-internal sealed class PanelFrame(int width, int height) : IDisposable
+internal sealed class PanelFrame(int width, int height, SKColorType colorType) : IDisposable
 {
     /// <summary>
     /// A canvas that draws nothing, onto which every matrix concatenated onto the frame's canvas after its scale (an
@@ -602,6 +603,12 @@ internal sealed class PanelFrame(int width, int height) : IDisposable
 
     public int Width { get; } = width;
     public int Height { get; } = height;
+
+    /// <summary>
+    /// The frame's colour type, which the pictures take: Skia samples the same draw a little differently into RGBA and
+    /// BGRA pixels, so only a picture in the frame's colour type has the pixels the frame at scale 1 has.
+    /// </summary>
+    public SKColorType ColorType { get; } = colorType;
 
     public SKMatrix Matrix => _matrices.TotalMatrix;
 
@@ -619,7 +626,7 @@ internal sealed class PanelFrame(int width, int height) : IDisposable
     public SKBitmap? Pixels(long bound)
     {
         if (_pixels is not null) return _pixels;
-        var info = new SKImageInfo(Width, Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+        var info = new SKImageInfo(Width, Height, ColorType, SKAlphaType.Premul);
         if (info.BytesSize64 > bound) return null;
         SceneDrawer.PictureProbe?.Invoke(info);
         return _pixels = new SKBitmap(info);
@@ -647,7 +654,7 @@ internal sealed class PanelFrame(int width, int height) : IDisposable
         if (_enlarged is not null) return _enlarged;
         var (w, h) = (SceneDrawer.First(Width, s), SceneDrawer.First(Height, s));
         if (!SceneDrawer.Fits(w, h, Sides(s), bound)) return null;
-        var info = new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Premul);
+        var info = new SKImageInfo(w, h, ColorType, SKAlphaType.Premul);
         SceneDrawer.EnlargementProbe?.Invoke(info);
         return _enlarged = new SKBitmap(info);
     }
