@@ -1,5 +1,6 @@
 using InfoPanel.Persistence;
 using InfoPanel.Sensors.HwInfo;
+using InfoPanel.Sensors.HwInfo.Gadget;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -148,7 +149,12 @@ public sealed class HwInfoReplay : IHwInfoMemoryOpener, HwInfoSampler.IObserver
     }
 }
 
-/// <summary>The sources a recording replays (<c>--replay-sensors</c>), under their ids and keys.</summary>
+/// <summary>
+/// The sources a recording replays (<c>--replay-sensors</c>), under their ids and keys: the sources of the Windows PC
+/// it was recorded on, in its order, HWiNFO's from the recording and HWiNFO Gadget's with no key (a recording doesn't
+/// hold the gadget key, so it reads as on a PC where gadget reporting isn't set up). No HWiNFO process runs in a
+/// replay, so where HWiNFO's shared memory isn't recorded it isn't running.
+/// </summary>
 public static class SensorReplay
 {
     /// <summary>The HWiNFO source over the recording's rounds, one a poll, looping.</summary>
@@ -156,5 +162,13 @@ public static class SensorReplay
     {
         var replay = HwInfoReplay.Load(folder);
         return HwInfoSource.Create(replay, time, observer: replay);
+    }
+
+    /// <summary>The HWiNFO Gadget source over a registry with no gadget key.</summary>
+    public static PolledSensorSource CreateGadget(TimeProvider? time = null) => HwInfoGadgetSource.Create(new NoGadgetKey(), time);
+
+    private sealed class NoGadgetKey : IGadgetRegistry
+    {
+        public GadgetSnapshot? Read(GadgetHive hive) => null;
     }
 }

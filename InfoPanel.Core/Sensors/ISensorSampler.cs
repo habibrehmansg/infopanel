@@ -109,4 +109,10 @@ public interface ISensorSampler : IDisposable
     /// differs after it, <see cref="PolledSensorSource"/> calls <see cref="Discover"/> again, which returns the new one.
     /// </summary>
     long CatalogueVersion => 0;
+
+    /// <summary>
+    /// The source's state as the latest round (or <see cref="Discover"/>) saw it, read on the poll thread after each:
+    /// null (by default) while it reads, which <see cref="PolledSensorSource"/> reports as running.
+    /// </summary>
+    SourceState? State => null;
 }

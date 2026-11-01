@@ -105,6 +105,8 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "GET", "/api/session", 200);
         await Send(session, "GET", "/api/fonts", 200);
         await Send(session, "GET", "/api/sensors", 200);
+        // The sources' states, every token's (an integration token's read here).
+        await Send(reader, "GET", "/api/sensors/sources", 200);
         await Send(session, "GET", "/api/sensors/values?history=5", 200);
         await Send(session, "GET", "/api/sensors/values?history=many", 400);
         // A query parameter is a whole number from -2^31 to 2^31 - 1 (then clamped); one past it is answered 400.

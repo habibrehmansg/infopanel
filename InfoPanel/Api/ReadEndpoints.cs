@@ -68,6 +68,18 @@ public static partial class ReadEndpoints
                 })
                 .ToList())).RequireScope(ApiScope.Read);
 
+        // Every source the engine runs, in the hub's order, listed with no sensors too: its state now and why.
+        api.MapGet("/sensors/sources", (SensorHub hub) => ApiResults.Json(
+            hub.SourceStates()
+                .Select(s => new SensorSourceBody
+                {
+                    Id = s.Id,
+                    State = s.State.Kind,
+                    Reason = s.State.Reason is { } reason ? new SensorSourceReason { Code = reason.Code, Message = reason.Message } : null,
+                    Sensors = s.Sensors,
+                })
+                .ToList())).RequireScope(ApiScope.Read);
+
         api.MapGet("/sensors/values", (int? history, SensorHub hub, SensorHistory sensorHistory) =>
         {
             var count = Math.Clamp(history ?? 0, 0, SensorHistory.MaxSamples);

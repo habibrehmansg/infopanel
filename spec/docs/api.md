@@ -11,6 +11,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `GET /api/session` | | `session` |
 | `GET /api/fonts` | | An array of font family names ([below](#fonts-and-sensors)) |
 | `GET /api/sensors` | | An array of `sensorEntry` ([below](#fonts-and-sensors)) |
+| `GET /api/sensors/sources` | | An array of `sensorSource` ([below](#sensor-sources)) |
 | `GET /api/sensors/values` | | An array of `sensorValue`; 400 for a `history` that isn't a whole number from −2,147,483,648 to 2,147,483,647 |
 | `GET /api/settings` | | `engineSettings` ([below](#settings)) |
 | `PATCH /api/settings` | `settingsChange` | `engineSettings`; 409 `settingsStatusProblem`; 422 `invalidProblem` ([below](#changing-settings)) |
@@ -126,6 +127,30 @@ The engine listens on the loopback interface only, and answers a request whose `
 `GET /api/sensors` answers every sensor the engine's sources offer, as an array of `sensorEntry`: its `key`, which a binding names ([bindings](bindings.md#bindings)); its `source`, `group`, `name` and `unit`, for people; and its `status` now: `live`, `stale` (the last value kept), `unavailable`, `denied` (the operating system refused the engine access to it), `simulated` or `missing` (the key isn't well formed). These are a scene input's spellings where the meaning is the same; [bindings](bindings.md#status) maps each to the status an input bound to the sensor reads. A client treats a status it doesn't know as no reading.
 
 `GET /api/sensors/values?history={n}` answers a `sensorValue` for every listed sensor that has a reading now, in list order: its `key`, `now`, `min`, `max` and `avg` (a value that isn't a finite number is 0), `unit`, `text` for a text or table sensor, and `status`, `live` or `stale`. `history` is a whole number, clamped to 0–4,096 (0 when absent): with 1 or more, each number sensor also has its last `history` samples at most, oldest first, one every `graphRate` milliseconds ([settings](#settings), one a second by default; [bindings](bindings.md#history)). A `history` that isn't a whole number from −2,147,483,648 to 2,147,483,647 is answered 400 `problem`.
+
+## Sensor sources
+
+`GET /api/sensors/sources` answers every sensor source the engine runs, as an array of `sensorSource`, in the order the engine asks them for a key (the order `GET /api/sensors` lists their sensors in), each listed even when it offers no sensors, so a client can say why a source has none:
+
+- `id`, the `source` its sensors carry;
+- `state` now: `starting` (it hasn't finished finding its sensors), `running` (reading them), `limited` (reading, but fewer sensors than it could), `unavailable` (it can't read now) or `off` (turned off, or not set up). A client treats a state it doesn't know as `unavailable`;
+- `reason`, when there is something to say: `code`, for programs, and `message`, the same in English for people. A code is the source's own, open: a client words the codes it knows (with set-up help, say) and shows `message` for one it doesn't;
+- `sensors`, how many sensors it lists now.
+
+A source's state comes from what it last read: a client asks again to see it change (the state has no socket message). A source that has nothing more to say about itself is `running` while the engine runs it: the mock source and the macOS source. The plugins' source (`plugins`) is `running` while the engine hosts plugins, however many it found, and `off` · `disabled` when it was started without them. The Windows sources' reasons:
+
+| Source | `state` · `reason.code` | When |
+|---|---|---|
+| `hwinfo` (HWiNFO's shared memory) | `unavailable` · `notRunning` | No shared memory, and HWiNFO isn't running in the engine's session |
+| | `unavailable` · `sharedMemoryOff` | No shared memory (or it says it ended) while HWiNFO runs in the engine's session: its Shared Memory Support is off |
+| | `unavailable` · `stopped` | The shared memory is there, but HWiNFO stopped updating it (it hangs, or the free version's shared memory ended after 12 hours) |
+| `infopanel.hwinfo-gadget` (HWiNFO's gadget values) | `off` · `notSetUp` | No gadget readings yet in this run: HWiNFO isn't reporting to gadgets, or no reading is ticked for them |
+| | `unavailable` · `notRunning` | Gadget readings stopped (or never updated) and HWiNFO isn't running in the engine's session |
+| | `unavailable` · `stopped` | Gadget readings stopped while HWiNFO runs in the engine's session: its reporting to gadgets was turned off, or nothing is ticked any more |
+
+Either Windows source is `unavailable` with no reason while it can't read what it reads from: HWiNFO's shared memory, or the registry key that holds the gadget values (it can't be opened or read, or it holds more values than the engine reads). Once it reads again, its state follows the table.
+
+An engine that replays a recording (the session's `mock`) runs the sources of the computer it was recorded on, reading the recording; a source the recording doesn't hold reads as on a computer where it isn't set up.
 
 ## Settings
 

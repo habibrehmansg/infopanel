@@ -69,7 +69,7 @@ public sealed class HwInfoGadgetSampler : ISensorSampler
     public static readonly TimeSpan WithdrawAfter = TimeSpan.FromSeconds(30);
 
     /// <summary>Whether HWiNFO runs is asked at most this often, and only while the key isn't changing.</summary>
-    public static readonly TimeSpan ProcessCheckEvery = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan ProcessCheckEvery = HwInfoProcessCheck.Every;
 
     private static readonly int KeyPrefixLength = SensorKey.Plugin(HwInfoGadgetSource.KeyPrefix + "x").ToString().Length - 1;
 
@@ -86,7 +86,6 @@ public sealed class HwInfoGadgetSampler : ISensorSampler
     private readonly IGadgetRegistry _registry;
     private readonly TimeProvider _time;
     private readonly ILogger _log;
-    private readonly Func<bool>? _hwinfoRunning;
 
     private SensorDefinition[] _definitions = [];
     private string[] _handedOut = [];
@@ -108,10 +107,8 @@ public sealed class HwInfoGadgetSampler : ISensorSampler
     private GadgetHive? _hive;
     private bool _everFresh;
     private long _lastFresh;
-    private bool _runningKnown;
-    private bool _running;
-    private long _runningAt;
-    private bool _runningFailed;
+    private readonly HwInfoProcessCheck _process;
+    private SourceState _state = SourceState.OffBecause(HwInfoGadgetSource.NotSetUp);
 
     // What has been logged, so each is logged once while it stands.
     private HashSet<string> _skipped = [];
@@ -132,7 +129,7 @@ public sealed class HwInfoGadgetSampler : ISensorSampler
         _registry = registry;
         _time = time ?? TimeProvider.System;
         _log = (log ?? Log.Logger).ForContext<HwInfoGadgetSampler>();
-        _hwinfoRunning = hwinfoRunning;
+        _process = new HwInfoProcessCheck(hwinfoRunning, _time, _log, "HWiNFO Gadget");
     }
 
     /// <summary>What the key showed at the latest round that read it (<see cref="GadgetObservation.KeyMissing"/> before any).</summary>
@@ -142,6 +139,17 @@ public sealed class HwInfoGadgetSampler : ISensorSampler
     public bool HadReadings => _hadReadings;
 
     public long CatalogueVersion => _version;
+
+    /// <summary>
+    /// The source's state after the latest round that read the key: running while it reads; with no readings yet this
+    /// run and no key or none in it, <see cref="SourceStateKind.Off"/> · <see cref="HwInfoGadgetSource.NotSetUp"/>;
+    /// otherwise (after readings, or a key that never updated) <see cref="HwInfoGadgetSource.Stopped"/> while HWiNFO
+    /// runs, else <see cref="HwInfoGadgetSource.NotRunning"/> (HWiNFO's process asked at most every
+    /// <see cref="ProcessCheckEvery"/>, only then). A round whose read fails, or that refuses a key with more than
+    /// <see cref="MaxValues"/> values, is <see cref="SourceState.Unavailable"/> with no reason, from the start or after
+    /// readings; it leaves <see cref="Observation"/> as it was, and the next round that reads the key decides again.
+    /// </summary>
+    public SourceState? State => _state;
 
     public IReadOnlyList<SensorDefinition> Discover()
     {
@@ -234,10 +242,24 @@ public sealed class HwInfoGadgetSampler : ISensorSampler
                 Publish([]);
         }
 
-        // A round that failed observed nothing.
+        // A round that failed, or a key refused for its size, observed nothing: the observation stands, the source is
+        // unavailable until a round reads the key again.
         if (observation is { } observed)
+        {
             Observe(observed);
+            _state = StateOf(observed, now);
+        }
+        else
+            _state = SourceState.Unavailable;
     }
+
+    /// <summary>The plan's table: the observation, whether this run had readings, and (only when it matters) whether HWiNFO runs.</summary>
+    private SourceState StateOf(GadgetObservation observation, long now) => observation switch
+    {
+        GadgetObservation.Reading => SourceState.Running,
+        GadgetObservation.KeyMissing or GadgetObservation.NoReadings when !_hadReadings => SourceState.OffBecause(HwInfoGadgetSource.NotSetUp),
+        _ => SourceState.UnavailableBecause(IsHwInfoRunning(now) ? HwInfoGadgetSource.Stopped : HwInfoGadgetSource.NotRunning),
+    };
 
     /// <summary>
     /// Notes a change of the key's last-write time, per hive. A hive seen for the first time, or chosen again after the
@@ -283,30 +305,7 @@ public sealed class HwInfoGadgetSampler : ISensorSampler
     }
 
     /// <summary>Whether HWiNFO runs, asked at most every <see cref="ProcessCheckEvery"/>; a check that throws counts as not.</summary>
-    private bool IsHwInfoRunning(long now)
-    {
-        if (_hwinfoRunning == null)
-            return false;
-        if (_runningKnown && _time.GetElapsedTime(_runningAt, now) < ProcessCheckEvery)
-            return _running;
-
-        try
-        {
-            _running = _hwinfoRunning();
-            _runningFailed = false;
-        }
-        catch (Exception ex)
-        {
-            if (!_runningFailed)
-                _log.Warning(ex, "HWiNFO Gadget: checking whether HWiNFO runs failed: {Message}", ex.Message);
-            _runningFailed = true;
-            _running = false;
-        }
-
-        _runningKnown = true;
-        _runningAt = now;
-        return _running;
-    }
+    private bool IsHwInfoRunning(long now) => _process.IsRunning(now);
 
     private void Publish(IReadOnlyList<Reading> readings)
     {

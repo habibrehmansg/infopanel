@@ -62,6 +62,21 @@
         }
       }
     },
+    "/api/sensors/sources": {
+      "get": {
+        "operationId": "listSensorSources",
+        "summary": "Every sensor source the engine runs, in the order it asks them, with its state now and why.",
+        "description": "docs/api.md#sensor-sources.",
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {
+            "description": "The sources, each listed even when it offers no sensors.",
+            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "urn:infopanel:api:1#/$defs/sensorSource"}}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"}
+        }
+      }
+    },
     "/api/sensors/values": {
       "get": {
         "operationId": "readSensorValues",

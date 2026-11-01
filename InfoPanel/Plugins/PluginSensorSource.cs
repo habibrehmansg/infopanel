@@ -32,11 +32,15 @@ public enum PluginHostState
 /// are fixed, so it is always registered). A key under a plugin id a package provided this run is this source's
 /// (unavailable when there is no such entry); any other key is left to the hub. Statuses follow the package's host:
 /// live while it runs, stale while it restarts, unavailable once it is off or failed. What a host sends is bounded
-/// (<see cref="PluginLimits"/>).
+/// (<see cref="PluginLimits"/>). Its state (<see cref="ISensorSourceState"/>) is running while the engine hosts plugins,
+/// off with <see cref="Disabled"/> when it doesn't (<c>--no-plugins</c>).
 /// </summary>
-public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource
+public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISensorSourceState
 {
     public const string SourceId = "plugins";
+
+    /// <summary>The engine hosts no plugins (<c>--no-plugins</c>): the source is off.</summary>
+    public static readonly SourceReason Disabled = new("disabled", "Plugins are turned off for this engine");
 
     /// <summary>The prefix of the engine's own sources' ids, which a plugin id may not take.</summary>
     public const string ReservedPrefix = "infopanel.";
@@ -51,13 +55,18 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource
     private IReadOnlyList<SensorInfo> _list = [];
     private int _order;
 
-    public PluginSensorSource(PluginLimits? limits = null, ILogger<PluginSensorSource>? logger = null)
+    /// <param name="enabled">Whether the engine hosts plugins (<see cref="PluginOptions.Enabled"/>): off when it doesn't.</param>
+    public PluginSensorSource(PluginLimits? limits = null, ILogger<PluginSensorSource>? logger = null, bool enabled = true)
     {
+        State = enabled ? SourceState.Running : SourceState.OffBecause(Disabled);
         _limits = limits ?? PluginLimits.Default;
         _logger = (ILogger?)logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
     }
 
     public string Id => SourceId;
+
+    /// <summary>Running while the engine hosts plugins (however many it found), off with <see cref="Disabled"/> when it doesn't.</summary>
+    public SourceState State { get; }
 
     private sealed class Package(string folder, int order)
     {

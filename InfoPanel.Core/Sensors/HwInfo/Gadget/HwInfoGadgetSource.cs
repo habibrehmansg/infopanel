@@ -1,8 +1,6 @@
 using Serilog;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
 using System.Runtime.Versioning;
 
 namespace InfoPanel.Sensors.HwInfo.Gadget;
@@ -21,6 +19,15 @@ public static class HwInfoGadgetSource
 
     public static readonly TimeSpan Interval = TimeSpan.FromSeconds(1);
 
+    /// <summary>No gadget readings this run: HWiNFO isn't reporting to gadgets, or no reading is ticked for them (the source is off).</summary>
+    public static readonly SourceReason NotSetUp = new("notSetUp", "HWiNFO isn't reporting any reading to gadgets");
+
+    /// <summary>Gadget readings stopped, and HWiNFO doesn't run in this session.</summary>
+    public static readonly SourceReason NotRunning = new("notRunning", "HWiNFO isn't running");
+
+    /// <summary>Gadget readings stopped while HWiNFO runs: its reporting to gadgets was turned off, or nothing is ticked any more.</summary>
+    public static readonly SourceReason Stopped = new("stopped", "HWiNFO stopped reporting to gadgets: check Enable reporting to Gadget");
+
     /// <summary>The key of a reading by its id (<c>CPU/Temp</c> → <c>plugin:/infopanel.hwinfo-gadget/CPU/Temp</c>).</summary>
     public static SensorKey KeyOf(string id) => SensorKey.Plugin(KeyPrefix + id);
 
@@ -36,50 +43,15 @@ public static class HwInfoGadgetSource
     [SupportedOSPlatform("windows")]
     public static PolledSensorSource CreateWindows(TimeProvider? time = null) => Create(WinGadgetRegistry.Reader(), time, hwinfoRunning: IsHwInfoRunning);
 
-    /// <summary>Whether a <c>HWiNFO64</c> process runs in this process's session, never in session 0.</summary>
-    public static bool IsHwInfoRunning() => HwInfoRunningIn(CurrentSession(), HwInfoSessions)();
+    /// <summary>Whether a <c>HWiNFO64</c> process runs in this process's session, never in session 0 (<see cref="HwInfoProcess.IsRunning"/>).</summary>
+    public static bool IsHwInfoRunning() => HwInfoProcess.IsRunning();
 
-    /// <summary>The process check over <paramref name="hwinfoSessions"/>, the sessions <c>HWiNFO64</c> processes run in (a test's).</summary>
-    /// <remarks>
-    /// Only a HWiNFO in <paramref name="session"/> counts: another user's, in another session, writes their own hive,
-    /// and would otherwise keep this user's abandoned values live. In session 0 none does: every user's services
-    /// share it, so a HWiNFO there may be another user's, and freshness is the key's last-write time alone (a
-    /// user's engine runs in their own session). Matching the process's owner isn't attempted: a normal user may not
-    /// read the token of HWiNFO, which runs elevated.
-    /// </remarks>
-    public static Func<bool> HwInfoRunningIn(int session, Func<IReadOnlyList<int>> hwinfoSessions) =>
-        session == 0 ? () => false : () => hwinfoSessions().Contains(session);
+    /// <summary>The process check over <paramref name="hwinfoSessions"/> (<see cref="HwInfoProcess.RunningIn"/>).</summary>
+    public static Func<bool> HwInfoRunningIn(int session, Func<IReadOnlyList<int>> hwinfoSessions) => HwInfoProcess.RunningIn(session, hwinfoSessions);
 
-    /// <summary>
-    /// The session of each <c>HWiNFO64</c> process: names and sessions are listed to the normal user, elevated ones and
-    /// other users' too. One that exits meanwhile is left out.
-    /// </summary>
-    public static IReadOnlyList<int> HwInfoSessions()
-    {
-        var processes = Process.GetProcessesByName("HWiNFO64");
-        var sessions = new List<int>(processes.Length);
-        foreach (var process in processes)
-        {
-            using (process)
-            {
-                try
-                {
-                    sessions.Add(process.SessionId);
-                }
-                catch (InvalidOperationException)
-                {
-                    // Exited.
-                }
-            }
-        }
+    /// <summary>The session of each <c>HWiNFO64</c> process (<see cref="HwInfoProcess.Sessions"/>).</summary>
+    public static IReadOnlyList<int> HwInfoSessions() => HwInfoProcess.Sessions();
 
-        return sessions;
-    }
-
-    /// <summary>This process's session.</summary>
-    public static int CurrentSession()
-    {
-        using var self = Process.GetCurrentProcess();
-        return self.SessionId;
-    }
+    /// <summary>This process's session (<see cref="HwInfoProcess.CurrentSession"/>).</summary>
+    public static int CurrentSession() => HwInfoProcess.CurrentSession();
 }

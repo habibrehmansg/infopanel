@@ -42,7 +42,7 @@ public sealed class PolledSensorSourceOptions
 /// </list>
 /// Reads take a short lock and allocate nothing.
 /// </summary>
-public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDisposable
+public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISensorSourceState, IDisposable
 {
     private struct Slot
     {
@@ -92,6 +92,8 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
     private int _gone;
     private CancellationTokenSource? _loopCts;
     private Task? _loop;
+    private volatile SourceState _state = SourceState.Starting;
+    private bool _stateFailedOnce;
 
     /// <param name="id">The source id (<c>infopanel.macos</c>); keys are under <c>/{id}/</c>.</param>
     /// <param name="createSampler">Creates the sampler on <see cref="StartAsync"/>.</param>
@@ -122,6 +124,14 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
 
     /// <summary>Polls taken since start. For tests and diagnostics.</summary>
     public long Polls { get; private set; }
+
+    /// <summary>
+    /// The source's state (<see cref="ISensorSourceState"/>): <see cref="SourceState.Starting"/> until its first
+    /// discovery is done, then what its sampler said after it and after each round (<see cref="ISensorSampler.State"/>),
+    /// <see cref="SourceState.Running"/> when it says nothing, <see cref="SourceState.Unavailable"/> when discovery failed.
+    /// A sampler that fails to say keeps the last state.
+    /// </summary>
+    public SourceState State => _state;
 
     public SensorKey KeyOf(string definitionId) => KeySpace.KeyOf(definitionId);
 
@@ -297,12 +307,31 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
             _log.Warning(ex, "Sensor source {Source} found no sensors: discovery failed", Id);
             CloseSampler();
             definitions = [];
+            _state = SourceState.Unavailable;
         }
 
         // A fresh sampler starts with empty state: slots are carried only when the same sampler rediscovers.
         Rebuild(definitions, _time.GetTimestamp(), carry: false);
+        if (_sampler is { } sampler)
+            ReadState(sampler);
         _polled = false;
         Poll();
+    }
+
+    /// <summary>What the sampler says of the source now, kept for <see cref="State"/>; one that fails to say keeps the last.</summary>
+    private void ReadState(ISensorSampler sampler)
+    {
+        try
+        {
+            _state = sampler.State ?? SourceState.Running;
+            _stateFailedOnce = false;
+        }
+        catch (Exception ex)
+        {
+            if (!_stateFailedOnce)
+                _log.Warning(ex, "Sensor source {Source}: reading its state failed", Id);
+            _stateFailedOnce = true;
+        }
     }
 
     /// <summary>
@@ -531,6 +560,7 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, IDi
         if (version != _catalogueVersion)
             Rediscover(sampler, version, sampled);
 
+        ReadState(sampler);
         Polls++;
     }
 

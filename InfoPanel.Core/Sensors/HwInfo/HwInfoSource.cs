@@ -18,6 +18,15 @@ public static class HwInfoSource
 
     public static PolledSensorSourceOptions DefaultOptions => new() { Interval = Interval };
 
+    /// <summary>HWiNFO doesn't run (or ran and ended): its shared memory isn't there.</summary>
+    public static readonly SourceReason NotRunning = new("notRunning", "HWiNFO isn't running");
+
+    /// <summary>HWiNFO runs, but its shared memory isn't there: Shared Memory Support is off.</summary>
+    public static readonly SourceReason SharedMemoryOff = new("sharedMemoryOff", "HWiNFO's shared memory is off");
+
+    /// <summary>HWiNFO's shared memory is there, but its poll time stopped: HWiNFO hangs, or the free version's 12 hours ended.</summary>
+    public static readonly SourceReason Stopped = new("stopped", "HWiNFO stopped updating: turn Shared Memory Support on again");
+
     /// <summary>A source over <paramref name="opener"/>'s mappings (a recording's, a test's).</summary>
     public static PolledSensorSource Create(
         IHwInfoMemoryOpener opener,
@@ -25,11 +34,12 @@ public static class HwInfoSource
         PolledSensorSourceOptions? options = null,
         HwInfoSampler.IObserver? observer = null,
         string localName = HwInfoSampler.LocalName,
-        string remotePrefix = HwInfoSampler.RemotePrefix) =>
-        new(SourceId, () => new HwInfoSampler(opener, time, observer, localName, remotePrefix), options ?? DefaultOptions, time, SensorKeySpace.Of(SensorType.HwInfo));
+        string remotePrefix = HwInfoSampler.RemotePrefix,
+        Func<bool>? hwinfoRunning = null) =>
+        new(SourceId, () => new HwInfoSampler(opener, time, observer, localName, remotePrefix, hwinfoRunning: hwinfoRunning), options ?? DefaultOptions, time, SensorKeySpace.Of(SensorType.HwInfo));
 
-    /// <summary>The source over this PC's HWiNFO.</summary>
+    /// <summary>The source over this PC's HWiNFO, with its process check (<see cref="HwInfoProcess.IsRunning"/>).</summary>
     [SupportedOSPlatform("windows")]
     public static PolledSensorSource CreateWindows(TimeProvider? time = null, HwInfoSampler.IObserver? observer = null) =>
-        Create(new WindowsHwInfoMemoryOpener(), time, null, observer);
+        Create(new WindowsHwInfoMemoryOpener(), time, null, observer, hwinfoRunning: HwInfoProcess.IsRunning);
 }

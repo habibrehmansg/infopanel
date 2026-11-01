@@ -57,6 +57,13 @@ public sealed class SensorHub : ISensorStatusReader
 
     public bool SimulateUnknown => _options.SimulateUnknown;
 
+    /// <summary>
+    /// Every source's state, in source order, with how many sensors it lists: what an <see cref="ISensorSourceState"/>
+    /// says, else <see cref="SourceState.Running"/>.
+    /// </summary>
+    public IReadOnlyList<SourceStateEntry> SourceStates() =>
+        _sources.Select(s => new SourceStateEntry(s.Id, s is ISensorSourceState stated ? stated.State : SourceState.Running, s.GetSensors().Count)).ToList();
+
     /// <summary>Every source's sensors, in source order. Simulated keys are not listed.</summary>
     public IReadOnlyList<SensorInfo> GetSensors() => _sources.SelectMany(s => s.GetSensors()).ToList();
 

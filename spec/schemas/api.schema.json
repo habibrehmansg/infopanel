@@ -37,7 +37,7 @@
         },
         "arch": { "description": "The processor architecture the engine runs as: the engine's own, so an engine emulated on another architecture reports the one it was built for. A client treats an architecture it doesn't know as `other`.", "enum": ["x64", "arm64", "x86", "arm", "other"] },
         "dataDir": { "description": "The folder the engine keeps its data in: an absolute path on the engine's machine.", "type": "string", "minLength": 1 },
-        "mock": { "description": "Whether the engine runs in mock mode, started to simulate its sensors (docs/api.md#session): its readings come from simulated sources, not the computer's, so a client can say they aren't real. It changes only when the engine restarts.", "type": "boolean" },
+        "mock": { "description": "Whether the engine's sensors aren't the computer's (docs/api.md#session): it runs in mock mode, started to simulate them, or replays a recording of a computer's sensors, so a client can say its readings aren't real. It changes only when the engine restarts.", "type": "boolean" },
         "locale": { "$ref": "#/$defs/sessionLocale" },
         "media": { "$ref": "#/$defs/sessionMedia" },
         "formatSupport": { "$ref": "#/$defs/formatSupport" }
@@ -985,6 +985,35 @@
           "maxItems": 4096
         },
         "status": { "description": "`live`, or `stale` for the last value of a sensor that has stopped updating. A client treats a status it doesn't know as no reading.", "enum": ["live", "stale"] }
+      }
+    },
+    "sensorSource": {
+      "description": "One sensor source in GET /api/sensors/sources, an array of these: every source the engine runs, in the order it asks them for a key (the order of GET /api/sensors), listed even when it offers no sensors, with its state now and why (docs/api.md#sensor-sources).",
+      "type": "object",
+      "required": ["id", "state", "sensors"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "description": "The source's id: the `source` its sensors carry (sensorEntry).", "type": "string", "minLength": 1 },
+        "state": {
+          "description": "`starting` (finding its sensors), `running` (reading them), `limited` (reading, but fewer sensors than it could), `unavailable` (it can't read now) or `off` (turned off, or not set up). A client treats a state it doesn't know as `unavailable`.",
+          "enum": ["starting", "running", "limited", "unavailable", "off"]
+        },
+        "reason": { "$ref": "#/$defs/sensorSourceReason" },
+        "sensors": { "description": "How many sensors the source lists now (its entries in GET /api/sensors).", "type": "integer", "minimum": 0 }
+      }
+    },
+    "sensorSourceReason": {
+      "description": "Why a source is in its state (docs/api.md#sensor-sources); absent when there is nothing to say.",
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "The reason for programs, an open code the source names: HWiNFO's `notRunning`, `sharedMemoryOff` and `stopped`; HWiNFO Gadget's `notSetUp`, `notRunning` and `stopped`; the plugins source's `disabled` (docs/api.md#sensor-sources). A client shows `message` for a code it doesn't know.",
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]{0,63}$"
+        },
+        "message": { "description": "The reason in English, for people.", "type": "string", "minLength": 1, "maxLength": 256 }
       }
     },
 

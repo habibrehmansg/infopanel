@@ -291,8 +291,10 @@ try
     // read as unavailable.
     if (options.ReplaySensors is { } recording)
     {
-        // A recording of a PC's sensors, replayed in a loop under its sources' ids and keys (dev and test; the session says mock).
+        // A recording of a PC's sensors, replayed in a loop under its sources' ids and keys (dev and test; the session says mock):
+        // the Windows PC's sources in its order, HWiNFO's from the recording, its gadget values with no key (not recorded).
         builder.Services.AddSingleton<ISensorSource>(sp => SensorReplay.CreateHwInfo(recording, sp.GetRequiredService<TimeProvider>()));
+        builder.Services.AddSingleton<ISensorSource>(sp => SensorReplay.CreateGadget(sp.GetRequiredService<TimeProvider>()));
     }
     else if (options.Mock)
     {

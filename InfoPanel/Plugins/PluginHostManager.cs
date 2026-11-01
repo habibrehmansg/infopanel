@@ -143,13 +143,15 @@ public static class PluginServiceCollectionExtensions
 {
     /// <summary>
     /// The plugins: the <c>plugins</c> sensor source (registered after the sources already added, so the built-in ones
-    /// come first), the hosts' manager, and the service that starts them once the engine listens.
+    /// come first; off under <c>--no-plugins</c>), the hosts' manager, and the service that starts them once the engine listens.
     /// </summary>
     public static IServiceCollection AddPlugins(this IServiceCollection services, EngineOptions options, DataPaths paths, SettingsStore settings)
     {
         // The 1.x folder start-up checked the data folder against: what a host is given to write in is checked against it too.
         var v1Root = options.V1Dir ?? V1Folder.DefaultRoot();
-        services.AddSingleton<PluginSensorSource>();
+        services.AddSingleton(sp => new PluginSensorSource(
+            logger: sp.GetService<ILogger<PluginSensorSource>>(),
+            enabled: sp.GetRequiredService<PluginOptions>().Enabled));
         services.AddSingleton<ISensorSource>(sp => sp.GetRequiredService<PluginSensorSource>());
         services.AddSingleton<IPluginProcessLauncher, PluginProcessLauncher>();
         services.AddSingleton(new PluginOptions

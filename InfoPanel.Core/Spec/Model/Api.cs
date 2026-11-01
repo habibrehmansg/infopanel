@@ -554,6 +554,27 @@ public sealed record SensorValue
     public required InfoPanel.Sensors.SensorStatus Status { get; init; }
 }
 
+/// <summary>
+/// A sensor source the engine runs (<c>GET /api/sensors/sources</c>), listed even with no sensors: its state now,
+/// <see cref="Reason"/> when it has something to say, and how many sensors it lists.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/sensorSource")]
+public sealed record SensorSourceBody
+{
+    public required string Id { get; init; }
+    public required InfoPanel.Sensors.SourceStateKind State { get; init; }
+    public SensorSourceReason? Reason { get; init; }
+    public required int Sensors { get; init; }
+}
+
+/// <summary>Why a source is in its state: an open code and the same in English.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/sensorSourceReason")]
+public sealed record SensorSourceReason
+{
+    public required string Code { get; init; }
+    public required string Message { get; init; }
+}
+
 // The engine settings (GET and PATCH /api/settings).
 
 /// <summary>

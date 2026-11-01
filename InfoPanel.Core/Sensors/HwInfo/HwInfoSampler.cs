@@ -23,6 +23,22 @@ namespace InfoPanel.Sensors.HwInfo;
 /// </summary>
 public sealed class HwInfoSampler : ISensorSampler
 {
+    /// <summary>Why a mapping didn't read in a round.</summary>
+    private enum Lapse : byte
+    {
+        /// <summary>It read.</summary>
+        None,
+
+        /// <summary>It isn't there, or says it ended (<c>DEAD</c>).</summary>
+        Gone,
+
+        /// <summary>It is there, its poll time stopped.</summary>
+        Frozen,
+
+        /// <summary>It couldn't be opened or read, or its image was refused.</summary>
+        Unreadable,
+    }
+
     public const string LocalName = @"Global\HWiNFO_SENS_SM2";
     public const string RemotePrefix = @"Global\HWiNFO_SENS_SM2_REMOTE_";
     public const int ReprobeRounds = 5;
@@ -60,6 +76,8 @@ public sealed class HwInfoSampler : ISensorSampler
         public long PollTimeChangedAt;
         public bool Fresh;
         public string? Trouble;
+        // Why it didn't read this round, for the source's state (the local one's).
+        public Lapse Lapse;
 
         public string Label => Remote < 0 ? "local" : "remote " + Remote.ToString(CultureInfo.InvariantCulture);
     }
@@ -78,11 +96,17 @@ public sealed class HwInfoSampler : ISensorSampler
     private long _rounds;
     private (Connection? Connection, int Element)[] _locators = [];
     private List<(int Remote, string Id)> _handedOut = [];
+    private readonly HwInfoProcessCheck _process;
+    private SourceState? _state;
 
     /// <param name="localName">The local mapping's name; <see cref="LocalName"/> but in tests.</param>
     /// <param name="remotePrefix">The remote mappings' names before their index; <see cref="RemotePrefix"/> but in tests.</param>
     /// <param name="log">Where it logs; Serilog's global logger but in tests.</param>
-    public HwInfoSampler(IHwInfoMemoryOpener opener, TimeProvider? time = null, IObserver? observer = null, string localName = LocalName, string remotePrefix = RemotePrefix, ILogger? log = null)
+    /// <param name="hwinfoRunning">
+    /// Whether HWiNFO runs (<see cref="HwInfoProcess.IsRunning"/> on Windows), asked only for the state while the local
+    /// mapping isn't there; without it, HWiNFO counts as not running.
+    /// </param>
+    public HwInfoSampler(IHwInfoMemoryOpener opener, TimeProvider? time = null, IObserver? observer = null, string localName = LocalName, string remotePrefix = RemotePrefix, ILogger? log = null, Func<bool>? hwinfoRunning = null)
     {
         _log = (log ?? Log.Logger).ForContext<HwInfoSampler>();
         _local = new Connection(-1, localName);
@@ -90,9 +114,18 @@ public sealed class HwInfoSampler : ISensorSampler
         _opener = opener;
         _time = time ?? TimeProvider.System;
         _observer = observer;
+        _process = new HwInfoProcessCheck(hwinfoRunning, _time, _log, "HWiNFO's shared memory");
     }
 
     public long CatalogueVersion => _version;
+
+    /// <summary>
+    /// The local mapping's state after the latest round: running while it reads; gone (or <c>DEAD</c>),
+    /// <see cref="HwInfoSource.SharedMemoryOff"/> while HWiNFO runs, else <see cref="HwInfoSource.NotRunning"/> (HWiNFO's
+    /// process asked at most every <see cref="HwInfoProcessCheck.Every"/>, only then); a poll time that stopped,
+    /// <see cref="HwInfoSource.Stopped"/>; one that can't be read, unavailable with no reason. Remotes don't change it.
+    /// </summary>
+    public SourceState? State => _state;
 
     /// <summary>A buffer's new length when it must hold <paramref name="needed"/> bytes: doubled, but never past what a round copies at most.</summary>
     internal static int Grown(int length, int needed) => Math.Max(needed, (int)Math.Min(length * 2L, HwInfoLayout.MaxImageBytes));
@@ -186,6 +219,13 @@ public sealed class HwInfoSampler : ISensorSampler
     {
         var now = _time.GetTimestamp();
         var changed = Update(_local, now);
+        _state = _local.Lapse switch
+        {
+            Lapse.None => null,
+            Lapse.Gone => SourceState.UnavailableBecause(_process.IsRunning(now) ? HwInfoSource.SharedMemoryOff : HwInfoSource.NotRunning),
+            Lapse.Frozen => SourceState.UnavailableBecause(HwInfoSource.Stopped),
+            _ => SourceState.Unavailable,
+        };
         var probed = _local.Memory != null && _rounds % ReprobeRounds == 0 ? Probe(now, ref changed) : null;
 
         List<int>? gone = null;
@@ -286,7 +326,10 @@ public sealed class HwInfoSampler : ISensorSampler
         // Gone, the mapping's lifetime ended; refused, it may still be the same one: its readings are withdrawn but its
         // poll time kept, so a frozen image opened again later is still frozen.
         if (connection.Memory == null && !TryOpen(connection, out var refused))
+        {
+            connection.Lapse = refused ? Lapse.Unreadable : Lapse.Gone;
             return refused ? Withdraw(connection) : Drop(connection, null);
+        }
 
         try
         {
@@ -313,9 +356,11 @@ public sealed class HwInfoSampler : ISensorSampler
                     if (head.Length >= 4 && HwInfoLayout.ReadHeader(head, memory.Length, out _, out _) == HwInfoImageState.Dead)
                         Copied(connection.Remote, head[..4]);
                     Close(connection);
+                    connection.Lapse = Lapse.Gone;
                     return Drop(connection, "its signature is DEAD");
                 case HwInfoImageState.Refused:
                     Close(connection);
+                    connection.Lapse = Lapse.Unreadable;
                     Trouble(connection, "its image was refused: " + problem);
                     return false;
             }
@@ -335,6 +380,7 @@ public sealed class HwInfoSampler : ISensorSampler
                 // and withdraw its readings (the source unlists them once unavailable). Its frozen time stays, so the
                 // same image opened again isn't fresh; the catalogue is read again once the poll time moves.
                 Close(connection);
+                connection.Lapse = Lapse.Frozen;
                 Trouble(connection, $"its poll time hasn't moved for over {frozenAfter.TotalSeconds:0.#} s");
                 return Withdraw(connection);
             }
@@ -345,11 +391,13 @@ public sealed class HwInfoSampler : ISensorSampler
                 _log.Information("HWiNFO's shared memory ({Connection}) reads again", connection.Label);
             connection.Trouble = null;
             connection.Fresh = true;
+            connection.Lapse = Lapse.None;
             return changed;
         }
         catch (Exception ex)
         {
             Close(connection);
+            connection.Lapse = Lapse.Unreadable;
             Trouble(connection, $"reading it failed: {ex.GetType().Name}: {ex.Message}");
             return false;
         }

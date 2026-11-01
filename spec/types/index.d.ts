@@ -44,7 +44,7 @@ export interface Session {
    * Length: ≥ 1.
    */
   dataDir: string;
-  /** Whether the engine runs in mock mode, started to simulate its sensors (docs/api.md#session): its readings come from simulated sources, not the computer's, so a client can say they aren't real. It changes only when the engine restarts. */
+  /** Whether the engine's sensors aren't the computer's (docs/api.md#session): it runs in mock mode, started to simulate them, or replays a recording of a computer's sensors, so a client can say its readings aren't real. It changes only when the engine restarts. */
   mock: boolean;
   locale: SessionLocale;
   media: SessionMedia;
@@ -898,6 +898,37 @@ export interface SensorValue {
   history?: number[];
   /** `live`, or `stale` for the last value of a sensor that has stopped updating. A client treats a status it doesn't know as no reading. */
   status: "live" | "stale";
+}
+
+/** One sensor source in GET /api/sensors/sources, an array of these: every source the engine runs, in the order it asks them for a key (the order of GET /api/sensors), listed even when it offers no sensors, with its state now and why (docs/api.md#sensor-sources). */
+export interface SensorSource {
+  /**
+   * The source's id: the `source` its sensors carry (sensorEntry).
+   * Length: ≥ 1.
+   */
+  id: string;
+  /** `starting` (finding its sensors), `running` (reading them), `limited` (reading, but fewer sensors than it could), `unavailable` (it can't read now) or `off` (turned off, or not set up). A client treats a state it doesn't know as `unavailable`. */
+  state: "starting" | "running" | "limited" | "unavailable" | "off";
+  reason?: SensorSourceReason;
+  /**
+   * How many sensors the source lists now (its entries in GET /api/sensors).
+   * Range: ≥ 0.
+   */
+  sensors: number;
+}
+
+/** Why a source is in its state (docs/api.md#sensor-sources); absent when there is nothing to say. */
+export interface SensorSourceReason {
+  /**
+   * The reason for programs, an open code the source names: HWiNFO's `notRunning`, `sharedMemoryOff` and `stopped`; HWiNFO Gadget's `notSetUp`, `notRunning` and `stopped`; the plugins source's `disabled` (docs/api.md#sensor-sources). A client shows `message` for a code it doesn't know.
+   * Pattern: `^[a-z][A-Za-z0-9]{0,63}$`.
+   */
+  code: string;
+  /**
+   * The reason in English, for people.
+   * Length: 1–256.
+   */
+  message: string;
 }
 
 /** GET /api/settings, and the answer to PATCH /api/settings: the engine settings in effect, each the value set or its default, with how many changes this run made to the stored settings and whether the engine could read them (docs/api.md#settings). `status` tells the two shapes apart: `ok` without a `problem` (engineSettingsOk), or the settings the engine couldn't read with the `problem` (engineSettingsProblem). Read tolerantly: a later engine may add settings, and a client ignores members it doesn't know. A client treats a status it doesn't know as settings it can't change, and shows the `problem` when one comes. */
@@ -3653,6 +3684,22 @@ export interface ApiOperations {
     responses: {
       /** The sensors. */
       200: SensorEntry[];
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+    };
+  };
+  /**
+   * listSensorSources: Every sensor source the engine runs, in the order it asks them, with its state now and why.
+   *
+   * docs/api.md#sensor-sources.
+   */
+  "GET /api/sensors/sources": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The sources, each listed even when it offers no sensors. */
+      200: SensorSource[];
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
     };
