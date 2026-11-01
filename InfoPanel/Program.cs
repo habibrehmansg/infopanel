@@ -15,6 +15,7 @@ using InfoPanel.Scenes;
 using InfoPanel.Security;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.HwInfo;
+using InfoPanel.Sensors.HwInfo.Gadget;
 using InfoPanel.Sensors.MacOS;
 using InfoPanel.Sensors.Replay;
 using InfoPanel.Settings;
@@ -286,7 +287,8 @@ try
     builder.Services.AddSingleton(_ => workspace);
     builder.Services.AddSingleton(TimeProvider.System);
     // Mock mode: the mock sensors and simulated unknown keys (tests, demos). Otherwise the platform's real sensors (the
-    // macOS source; on Windows HWiNFO through its shared memory) and unknown keys read as unavailable.
+    // macOS source; on Windows HWiNFO through its shared memory, then its gadget values in the registry) and unknown keys
+    // read as unavailable.
     if (options.ReplaySensors is { } recording)
     {
         // A recording of a PC's sensors, replayed in a loop under its sources' ids and keys (dev and test; the session says mock).
@@ -312,6 +314,8 @@ try
                 : null;
             return HwInfoSource.CreateWindows(time, recorder);
         });
+        // HWiNFO's gadget values (the readings ticked "Report value in Gadget"), read from the user's registry.
+        builder.Services.AddSingleton<ISensorSource>(sp => HwInfoGadgetSource.CreateWindows(sp.GetRequiredService<TimeProvider>()));
     }
     // Plugin sensors, after the built-in sources; their hosts start once the engine listens.
     builder.Services.AddPlugins(options, paths, settings);
