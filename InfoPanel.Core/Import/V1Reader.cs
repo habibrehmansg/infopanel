@@ -11,6 +11,7 @@ using InfoPanel.Editing;
 using InfoPanel.Models;
 using InfoPanel.Persistence;
 using InfoPanel.Sensors;
+using InfoPanel.Sensors.HwInfo;
 using InfoPanel.Spec;
 using SkiaSharp;
 
@@ -214,6 +215,11 @@ public static class V1Reader
         string PathOf(DisplayItem item) => report?.PathOf(item) is { } p ? "/items" + p : "/items";
         int? LineOf(DisplayItem item) => report?.LineOf(item);
 
+        // A file is often made on another PC: its HWiNFO bindings this PC lacks are bound by name before the items
+        // become their JSON. A folder's profiles were made on this PC and are read as stored.
+        if (source == ArchiveSource)
+            MatchByName(items, HwInfoNames.Of(context.Sensors.GetSensors()), diagnostics, PathOf, LineOf, itemsInput.File);
+
         var nodes = items.Select(item => ItemJson.ToNode(item, context.Sensors, refreshIntervals)).ToList();
         foreach (var item in ItemTree.Walk(items))
         {
@@ -245,6 +251,37 @@ public static class V1Reader
             Assets = assets,
             Diagnostics = diagnostics.ToList(),
         };
+    }
+
+    /// <summary>
+    /// 1.x's smart import of a <c>.infopanel</c> file: every item bound to a HWiNFO reading that this PC's HWiNFO doesn't
+    /// list, inside groups too, is bound to the reading <see cref="HwInfoNames.Match"/> finds by its sensor name (on its
+    /// remote; a sensor with its sensor id first), in the model, so its props and <c>meta.sensor</c> carry the new
+    /// binding; each is reported (<c>import.sensor.matched</c>). Libre, plugin and table bindings are left alone, as 1.x
+    /// left them. The readings HWiNFO's source lists now, stale ones included, are matched; once it lists none, nothing is.
+    /// </summary>
+    private static void MatchByName(IEnumerable<DisplayItem> items, HwInfoNames hwInfo, ImportDiagnostics diagnostics,
+        Func<DisplayItem, string> pathOf, Func<DisplayItem, int?> lineOf, string file)
+    {
+        foreach (var item in ItemTree.Walk(items))
+        {
+            if (item is not ISensorItem sensorItem)
+                continue;
+            IHwInfoSensorItem binding = sensorItem;
+            if (binding.SensorType != Enums.SensorType.HwInfo)
+                continue;
+
+            var key = SensorKey.HwInfo(binding.HwInfoRemoteIndex, binding.Id, binding.Instance, binding.EntryId);
+            if (hwInfo.Has(key) || hwInfo.Match(binding.HwInfoRemoteIndex, binding.Id, binding.SensorName) is not { } reading)
+                continue;
+
+            binding.Id = reading.SensorId;
+            binding.Instance = reading.Instance;
+            binding.EntryId = reading.ReadingId;
+            diagnostics.Add(ImportDiagnostics.Info, "import.sensor.matched", pathOf(item),
+                $"'{item.Name}' was bound to {key}, which this PC doesn't have; bound by name to {reading.Key}, '{reading.Name}' in '{reading.Sensor}'.",
+                file, lineOf(item));
+        }
     }
 
     /// <summary>Reads the items, reporting why there are none when they can't be read.</summary>
