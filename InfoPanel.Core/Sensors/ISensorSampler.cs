@@ -25,6 +25,12 @@ public enum SampleOutcome : byte
 
     /// <summary>The operating system refused access.</summary>
     PermissionDenied,
+
+    /// <summary>
+    /// The sensor has no reading now (an interface's speed that turned unknown): unlike <see cref="Failed"/>, the last
+    /// reading isn't kept stale; it and its statistics are dropped in the same round, and the next good sample starts afresh.
+    /// </summary>
+    Unavailable,
 }
 
 /// <summary>One sensor's reading from one <see cref="ISensorSampler.Sample"/> round.</summary>
@@ -84,6 +90,14 @@ public struct SensorSample
         HasStatistics = false;
         Text = text;
         Outcome = text is null ? SampleOutcome.Failed : SampleOutcome.Ok;
+    }
+
+    /// <summary>The sensor has no reading now (<see cref="SampleOutcome.Unavailable"/>).</summary>
+    public void SetUnavailable()
+    {
+        HasStatistics = false;
+        Text = null;
+        Outcome = SampleOutcome.Unavailable;
     }
 }
 

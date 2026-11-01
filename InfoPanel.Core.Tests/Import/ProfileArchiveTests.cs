@@ -563,6 +563,21 @@ public sealed class ProfileArchiveTests : IDisposable
         Assert.Equal(old, contents.Document.GetProperty("items")[0].GetProperty("bindings").GetProperty("v").GetProperty("key").GetString());
     }
 
+    /// <summary>The same for the 1.x Network Info plugin's keys: a 2.0 document keeps one, which reads unavailable.</summary>
+    [Fact]
+    public void ADocumentBoundToARetiredNetworkInfoKey_KeepsIt()
+    {
+        const string old = "plugin:/network-info-plugin/public-ip/ipv4";
+        var document = Document();
+        var item = document["items"]![0]!.AsObject();
+        item["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = old, ["stat"] = "now" } };
+        item["scene"]!["inputs"] = new JsonObject { ["v"] = new JsonObject { ["type"] = "text" } };
+
+        var contents = Open(WithDocument(document, ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template)), NewWorkspace("target"));
+
+        Assert.Equal(old, contents.Document.GetProperty("items")[0].GetProperty("bindings").GetProperty("v").GetProperty("key").GetString());
+    }
+
     [Fact]
     public void NoDocument_IsArchiveDocument()
     {

@@ -8,17 +8,32 @@ public class SensorHistoryTests
 {
     private static readonly SensorKey Key = SensorKey.Plugin("/test/counter");
     private static readonly SensorKey TextKey = SensorKey.Plugin("/test/text");
+    private static readonly SensorKey Turning = SensorKey.Plugin("/test/turning");
 
-    /// <summary>Each read of <see cref="Key"/> returns the next integer from 0; <see cref="TextKey"/> is text.</summary>
+    /// <summary>
+    /// Each read of <see cref="Key"/> returns the next integer from 0; <see cref="TextKey"/> is text (its reads counted
+    /// in <see cref="TextReads"/>); <see cref="Turning"/> is a number until <see cref="TurnText"/>.
+    /// </summary>
     private sealed class CountingReader : ISensorReader
     {
         public int Reads;
+        public int TextReads;
+        public int TurningReads;
+        public bool TurnText;
 
         public bool TryRead(SensorKey key, out SensorReading reading)
         {
             if (key == TextKey)
             {
+                TextReads++;
                 reading = new SensorReading("text");
+                return true;
+            }
+
+            if (key == Turning)
+            {
+                TurningReads++;
+                reading = TurnText ? new SensorReading("text") : new SensorReading(1, 1, 1, 1, "");
                 return true;
             }
 
@@ -282,5 +297,33 @@ public class SensorHistoryTests
 
         Assert.Empty(history.GetSamples(TextKey));
         Assert.Empty(history.GetSamples(missing));
+    }
+
+    /// <summary>
+    /// The history's own sampling is no consumer's read (a read of the public address puts it in use): a text key is
+    /// never tracked, so the background never reads it, and one whose reading turns text is dropped at that sample.
+    /// </summary>
+    [Fact]
+    public void TextKeys_AreNeverTracked_SoTheBackgroundNeverReadsThem()
+    {
+        var reader = new CountingReader();
+        var history = new SensorHistory(reader, NewTime());
+
+        Assert.Empty(history.GetSamples(TextKey));
+        Assert.Equal(1, reader.TextReads);
+        Assert.DoesNotContain(TextKey, history.TrackedKeys);
+        for (var i = 0; i < 10; i++)
+            history.SampleNow();
+        Assert.Equal(1, reader.TextReads);
+
+        history.GetSamples(Turning);
+        history.SampleNow();
+        Assert.Contains(Turning, history.TrackedKeys);
+        reader.TurnText = true;
+        history.SampleNow();
+        Assert.DoesNotContain(Turning, history.TrackedKeys);
+        var reads = reader.TurningReads;
+        history.SampleNow();
+        Assert.Equal(reads, reader.TurningReads);
     }
 }

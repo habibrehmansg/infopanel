@@ -175,6 +175,30 @@ public class PluginSensorSourceTests
         Assert.False(source.Handles(SensorKey.Plugin($"/{id}/c/free_space")));
     }
 
+    [Theory]
+    [InlineData("network-info-plugin")]
+    [InlineData("Network-Info-Plugin")]
+    public void The_retired_Network_Info_id_is_refused_naming_the_Network_source_and_the_packages_other_plugins_load(string id)
+    {
+        // An old copy of the bundled Extras under another folder name: the engine reads the network itself now.
+        const string old = "InfoPanel.ExtrasOld";
+        var source = new PluginSensorSource();
+
+        var refused = source.Load(old,
+            [new PluginMetadataDto { Id = id, Name = "Network Info" }, new PluginMetadataDto { Id = "weather-plugin", Name = "Weather" }],
+            new Dictionary<string, List<ContainerDto>>
+            {
+                [id] = [Container("public-ip", "Public IP", eph: false, Sensor("ipv4", "IPv4", 0, ""))],
+                ["weather-plugin"] = [Container("city", "City", eph: false, Sensor("temp", "Temperature", 21, "°C"))],
+            });
+        source.SetState(old, PluginHostState.Running);
+
+        var refusal = Assert.Single(refused);
+        Assert.Equal((id, "its sensors are built into the engine now (the Network source)"), (refusal.PluginId, refusal.Reason));
+        Assert.Equal(["plugin:/weather-plugin/city/temp"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
+        Assert.False(source.Handles(SensorKey.Plugin($"/{id}/public-ip/ipv4")));
+    }
+
     [Fact]
     public void A_plugin_id_over_64_characters_is_refused()
     {

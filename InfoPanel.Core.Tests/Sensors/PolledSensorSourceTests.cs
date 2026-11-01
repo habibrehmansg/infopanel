@@ -194,6 +194,100 @@ public class PolledSensorSourceTests
     }
 
     [Fact]
+    public void Unavailable_DropsTheReadingAtOnce_FailedOrSkippedRoundsAfterKeepItUnavailable_AndAGoodReadStartsAfresh()
+    {
+        var (source, sampler, time) = Create("a", "b");
+        sampler.Set(0, 10);
+        sampler.Set(1, 1);
+        source.Open();
+        sampler.Set(0, 20);
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        var key = source.KeyOf("a");
+        Assert.True(source.TryRead(key, out var reading));
+        Assert.Equal((20, 10, 20, 15), (reading.ValueNow, reading.ValueMin, reading.ValueMax, reading.ValueAvg));
+
+        // Unavailable: no reading from this round, not the last value gone stale; the other sensor reads on.
+        sampler.Set(0, SampleOutcome.Unavailable);
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.Equal(SensorStatus.Unavailable, source.GetStatus(key));
+        Assert.False(source.TryRead(key, out _));
+        var state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Number, false), (state.Status, state.Type, state.HasReading));
+        Assert.Equal(SensorStatus.Unavailable, new SensorHub([source]).GetStatus(key));
+        Assert.Equal(SensorStatus.Live, source.GetStatus(source.KeyOf("b")));
+
+        // A failed or skipped round after it never brings the old value back.
+        foreach (var outcome in new[] { SampleOutcome.Failed, SampleOutcome.Skipped, SampleOutcome.Unavailable })
+        {
+            sampler.Set(0, outcome);
+            time.Advance(TimeSpan.FromSeconds(1));
+            source.Poll();
+            Assert.Equal(SensorStatus.Unavailable, source.GetStatus(key));
+            Assert.False(source.TryRead(key, out _));
+        }
+
+        // A good read is live at once, its statistics from it alone.
+        sampler.Set(0, 5);
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.Equal(SensorStatus.Live, source.GetStatus(key));
+        Assert.True(source.TryRead(key, out reading));
+        Assert.Equal((5, 5, 5, 5), (reading.ValueNow, reading.ValueMin, reading.ValueMax, reading.ValueAvg));
+        sampler.Set(0, 7);
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.True(source.TryRead(key, out reading));
+        Assert.Equal((7, 5, 7, 6), (reading.ValueNow, reading.ValueMin, reading.ValueMax, reading.ValueAvg));
+    }
+
+    [Fact]
+    public void Unavailable_DropsTheSourcesOwnStatisticsToo()
+    {
+        var (source, sampler, time) = Create("a");
+        sampler.Next[0].Set(50, 1, 99, 40);
+        source.Open();
+        var key = source.KeyOf("a");
+        Assert.True(source.TryRead(key, out var reading));
+        Assert.Equal((50, 1, 99, 40), (reading.ValueNow, reading.ValueMin, reading.ValueMax, reading.ValueAvg));
+
+        sampler.Next[0].SetUnavailable();
+        Assert.Equal((SampleOutcome.Unavailable, false, (string?)null), (sampler.Next[0].Outcome, sampler.Next[0].HasStatistics, sampler.Next[0].Text));
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.False(source.TryRead(key, out _));
+
+        sampler.Set(0, 3);
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.True(source.TryRead(key, out reading));
+        Assert.Equal((3, 3, 3, 3), (reading.ValueNow, reading.ValueMin, reading.ValueMax, reading.ValueAvg));
+    }
+
+    [Fact]
+    public void Unavailable_ARead_WhileTheNextRoundSamples_SeesTheCommittedState_NeverHalfARound()
+    {
+        var (source, sampler, time) = Create("a");
+        sampler.Set(0, 10);
+        source.Open();
+        var key = source.KeyOf("a");
+
+        // The round that says unavailable, held inside its sampling: the last committed reading still reads, live.
+        sampler.Set(0, SampleOutcome.Unavailable);
+        sampler.HoldSample = new ManualResetEventSlim();
+        time.Advance(TimeSpan.FromSeconds(1));
+        var poll = Task.Run(source.Poll, Ct);
+        Assert.True(sampler.InSample.Wait(TimeSpan.FromSeconds(10), Ct));
+        Assert.True(source.TryRead(key, out var reading));
+        Assert.Equal(10, reading.ValueNow);
+        sampler.HoldSample.Set();
+        poll.Wait(Ct);
+        Assert.False(source.TryRead(key, out _));
+        Assert.Equal(SensorStatus.Unavailable, source.GetStatus(key));
+    }
+
+    [Fact]
     public void SamplerThatThrows_FailsTheRound_AndTheNextRoundRecovers()
     {
         var (source, sampler, time) = Create("a");
@@ -746,6 +840,62 @@ public class PolledSensorSourceTests
         var time = new TimerTimeProvider(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero));
         var sampler = new TextSampler { Catalogue = [.. catalogue] };
         return (new PolledSensorSource("test.text", () => sampler, Options, time, log: log), sampler, time);
+    }
+
+    [Fact]
+    public void Unavailable_ATextSensor_DropsItsTextAtOnce_StillTypedText_AndReadsAgainFromTheNextText()
+    {
+        var (source, sampler, time) = CreateText(null, ("t", SensorKind.Text));
+        sampler.Values["t"] = "first";
+        source.Open();
+        var key = source.KeyOf("t");
+
+        sampler.Values["t"] = SampleOutcome.Unavailable;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        var state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Text, false), (state.Status, state.Type, state.HasReading));
+
+        sampler.Values["t"] = SampleOutcome.Failed;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.False(source.ReadState(key).HasReading);
+
+        sampler.Values["t"] = "second";
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Live, SensorKind.Text, "second"), (state.Status, state.Type, state.Reading.ValueText));
+    }
+
+    [Fact]
+    public void Unavailable_ThenGoneFromTheCatalogue_IsUnlistedAtOnce_NeverStaleWithTheOldValue()
+    {
+        var (source, sampler, time) = CreateText(null, ("speed", SensorKind.Number), ("name", SensorKind.Number));
+        sampler.Values["speed"] = 1000d;
+        sampler.Values["name"] = 1d;
+        source.Open();
+        var speed = source.KeyOf("speed");
+        var name = source.KeyOf("name");
+
+        sampler.Values["speed"] = SampleOutcome.Unavailable;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.False(source.TryRead(speed, out _));
+
+        // Both leave the catalogue: the one with a reading is kept stale until it is unavailable; the other goes at once.
+        sampler.Change();
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.Equal([name], source.GetSensors().Select(s => s.Key));
+        Assert.Equal(SensorStatus.Stale, source.GetStatus(name));
+        for (var i = 0; i < 5; i++)
+        {
+            time.Advance(TimeSpan.FromSeconds(1));
+            source.Poll();
+            Assert.False(source.TryRead(speed, out _));
+            Assert.Equal(SensorStatus.Unavailable, source.GetStatus(speed));
+        }
     }
 
     [Fact]

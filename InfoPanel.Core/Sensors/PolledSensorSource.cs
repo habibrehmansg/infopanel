@@ -34,8 +34,9 @@ public sealed class PolledSensorSourceOptions
 /// (<see cref="ISensorStatusSource"/>):
 /// <list type="bullet">
 /// <item><see cref="SensorStatus.PermissionDenied"/> while the latest read was refused;</item>
-/// <item><see cref="SensorStatus.Unavailable"/> with no good sample yet, or the last one older than
-/// <see cref="PolledSensorSourceOptions.UnavailableAfter"/>;</item>
+/// <item><see cref="SensorStatus.Unavailable"/> with no good sample yet, none since a sample said the sensor has no
+/// reading now (<see cref="SampleOutcome.Unavailable"/>, which drops the last reading and its statistics in the round
+/// that commits it), or the last good one older than <see cref="PolledSensorSourceOptions.UnavailableAfter"/>;</item>
 /// <item><see cref="SensorStatus.Stale"/> when the latest read failed or the last good sample is older than
 /// <see cref="PolledSensorSourceOptions.StaleAfter"/> (the last value is still read);</item>
 /// <item><see cref="SensorStatus.Live"/> otherwise.</item>
@@ -538,6 +539,14 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                         break;
                     case SampleOutcome.PermissionDenied:
                         slot.Latest = SampleOutcome.PermissionDenied;
+                        break;
+                    case SampleOutcome.Unavailable:
+                        // No reading now: the last one goes with this round's other samples, under the same lock.
+                        slot.Count = 0;
+                        slot.Text = null;
+                        slot.Now = slot.Min = slot.Max = slot.Avg = 0;
+                        slot.OwnMin = slot.OwnMax = slot.OwnAvg = 0;
+                        slot.Latest = SampleOutcome.Unavailable;
                         break;
                 }
             }

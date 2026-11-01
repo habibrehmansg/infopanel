@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using InfoPanel.Enums;
 using InfoPanel.Sensors.Clock;
 using InfoPanel.Sensors.Drives;
+using InfoPanel.Sensors.Network;
 
 namespace InfoPanel.Sensors;
 
@@ -23,13 +24,15 @@ public static class RetiredPlugins
     {
         ["clock-plugin"] = ClockSensorSource.Name,
         ["drive-info-plugin"] = DriveSource.Name,
+        ["network-info-plugin"] = NetworkSource.Name,
     };
 
     // A retired plugin's key id (1.x's PluginSensorId) → what it is bound to on import, for the plugins whose keys are
-    // fixed (the clock's); a drive's keys follow a rule (DriveKey).
+    // fixed (the clock's); a drive's and the network's keys follow a rule (DriveKey, NetworkKey).
     private static readonly Dictionary<string, Translation> Keys = Build();
 
     private const string DriveInfoPrefix = "/drive-info-plugin/";
+    private const string NetworkInfoPrefix = "/network-info-plugin/";
 
     private static Dictionary<string, Translation> Build()
     {
@@ -45,7 +48,7 @@ public static class RetiredPlugins
 
     /// <summary>
     /// Every fixed key a 1.x import binds (the Clock plugin's), and what it binds it to. The Drive Info plugin's keys,
-    /// one set per drive, follow a rule instead (<see cref="Translate"/>).
+    /// one set per drive, and the Network Info plugin's follow a rule instead (<see cref="Translate"/>).
     /// </summary>
     public static IEnumerable<KeyValuePair<SensorKey, Translation>> All
     {
@@ -61,13 +64,48 @@ public static class RetiredPlugins
     /// other key, and an entry no source has). The Clock plugin's eight keys go to the clock's; the Drive Info plugin's
     /// <c>/drive-info-plugin/{drive}/{entry}</c>, for any drive id the plugin could make (<see cref="DriveSource.IsDriveId"/>)
     /// and each of its entries, to the drives source's <c>plugin:/infopanel.drives/{drive}/{entry}</c>, whether or not
-    /// this computer has the drive.
+    /// this computer has the drive. The Network Info plugin's public addresses,
+    /// <c>/network-info-plugin/public-ip/{ipv4|ipv6}</c>, go to the network source's <c>plugin:/infopanel.network/public/{ipv4|ipv6}</c>;
+    /// an interface's <c>/network-info-plugin/{interface}/{entry}</c>, for each of its entries
+    /// (<see cref="NetworkSource.EntryName"/>), to <c>plugin:/infopanel.network/{id}/{entry}</c>, where the id is the
+    /// SDK's id of the stored one (<see cref="NetworkSource.ContainerOf"/>), whether or not this computer has the
+    /// interface; an interface whose id makes none, or makes the public addresses', isn't bound.
     /// </summary>
     public static Translation? Translate(SensorKey key)
     {
         if (key.Type != SensorType.Plugin)
             return null;
-        return Keys.TryGetValue(key.Id, out var translation) ? translation : DriveKey(key.Id);
+        return Keys.TryGetValue(key.Id, out var translation) ? translation : DriveKey(key.Id) ?? NetworkKey(key.Id);
+    }
+
+    private static Translation? NetworkKey(string id)
+    {
+        if (!id.StartsWith(NetworkInfoPrefix, StringComparison.Ordinal))
+            return null;
+        var rest = id[NetworkInfoPrefix.Length..];
+        var slash = rest.IndexOf('/');
+        if (slash <= 0)
+            return null;
+        var stored = rest[..slash];
+        var entry = rest[(slash + 1)..];
+        // The public addresses: the container "Public IP" (public-ip), its texts IPv4 and IPv6.
+        if (stored == "public-ip")
+        {
+            foreach (var (publicId, publicName) in NetworkSource.PublicEntries)
+            {
+                if (entry == publicId)
+                    return new Translation(NetworkSource.PublicKeyOf(publicId), "Network Info", NetworkSource.Name, $"{publicName} of {NetworkSource.PublicGroup}");
+            }
+
+            return null;
+        }
+
+        var container = NetworkSource.ContainerOf(stored);
+        if (container.Length == 0 || container == NetworkSource.PublicContainer || NetworkSource.EntryName(entry) is not { } name)
+            return null;
+        // Addresses by position: the first is 1 as a person counts them.
+        var shown = entry.StartsWith("ipv", StringComparison.Ordinal) ? $"{name} {int.Parse(entry[5..], System.Globalization.CultureInfo.InvariantCulture) + 1}" : name;
+        return new Translation(NetworkSource.KeyOf(container, entry), "Network Info", NetworkSource.Name, $"{shown} of {stored}");
     }
 
     private static Translation? DriveKey(string id)

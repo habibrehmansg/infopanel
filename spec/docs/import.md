@@ -109,12 +109,14 @@ A `.infopanel` file is often made on another PC, whose HWiNFO numbers its sensor
 
 ### Plugins the engine reads itself
 
-Some 1.x plugins' sensors are read by the engine's own sources now, under keys of their own: the Clock plugin's (`clock-plugin`) by the clock source (`infopanel.clock`), the Drive Info plugin's (`drive-info-plugin`) by the drives source (`infopanel.drives`). The engine never answers such a plugin's keys. Reading a 1.x profile, from a `.infopanel` file or the 1.x folder alike, the engine binds each item whose binding is one of such a plugin's entries (any kind, inside groups too) to the source's key for that entry, once:
+Some 1.x plugins' sensors are read by the engine's own sources now, under keys of their own: the Clock plugin's (`clock-plugin`) by the clock source (`infopanel.clock`), the Drive Info plugin's (`drive-info-plugin`) by the drives source (`infopanel.drives`), the Network Info plugin's (`network-info-plugin`) by the network source (`infopanel.network`). The engine never answers such a plugin's keys. Reading a 1.x profile, from a `.infopanel` file or the 1.x folder alike, the engine binds each item whose binding is one of such a plugin's entries (any kind, inside groups too) to the source's key for that entry, once:
 
 | 1.x key | Bound to |
 |---|---|
 | `plugin:/clock-plugin/clock/{entry}`, for `day`, `month`, `year`, `12-hour`, `24-hour`, `minute`, `second`, `pm` | `plugin:/infopanel.clock/{entry}` |
 | `plugin:/drive-info-plugin/{drive}/{entry}`, for any `{drive}` of `a`–`z`, `0`–`9` and `-` (the plugin's id of the drive's name: `c` for `C:`), and `name`, `type`, `volume_label`, `format`, `total_size`, `free_space`, `available_space`, `used_space` | `plugin:/infopanel.drives/{drive}/{entry}`, whether or not this computer has the drive |
+| `plugin:/network-info-plugin/public-ip/{entry}`, for `ipv4`, `ipv6` (the public address) | `plugin:/infopanel.network/public/{entry}` |
+| `plugin:/network-info-plugin/{interface}/{entry}`, for any `{interface}` (the system's interface id, as the plugin kept it: `en0`, or a Windows adapter's GUID in braces) whose id by the plugin SDK's rule (letters and digits, lower case: `{2E8F…-…}` → `2e8f…`) is neither empty nor `public`, and `id`, `name`, `description`, `status`, `speed`, `ipv4-{i}`, `ipv6-{i}` for `{i}` from `0` to `15` | `plugin:/infopanel.network/{id}/{entry}`, whether or not this computer has the interface |
 
 The item's `pluginSensorId` and its `meta.sensor` are then the new binding, and an `import.sensor.translated` diagnostic says what it was bound to and what it is bound to now. Only the binding the item reads is looked at (the one its `sensorType` names; a table's plugin key). A key of such a plugin that isn't in the table stays bound as stored and reads unavailable (`import.sensor`), and so does such a key in a 2.0 document, which is never rewritten.
 

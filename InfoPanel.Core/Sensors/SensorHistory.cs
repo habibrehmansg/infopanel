@@ -11,9 +11,15 @@ namespace InfoPanel.Sensors;
 /// Samples the sensors someone asked for. <see cref="GetSamples"/> registers interest in a key (seeding it from the
 /// source's backfill when there is one); <see cref="SampleNow"/>, called every <see cref="Interval"/> (the engine's
 /// graph rate, which may change while it runs; the samples already taken are kept) by <see cref="RunAsync"/>, appends each tracked key's current value (at most <see cref="MaxSamples"/>, oldest
-/// dropped first; buffers grow on demand) and drops keys nobody asked for in <see cref="IdleTimeout"/>. Text and
-/// table readings, and keys with no reading, add no sample. A key with no reading when first asked for is not
-/// tracked, and at most <see cref="MaxSeries"/> keys are (the least recently requested is evicted).
+/// dropped first; buffers grow on demand) and drops keys nobody asked for in <see cref="IdleTimeout"/>. Keys with no
+/// reading add no sample. A key with no reading when first asked for is not tracked, and at most
+/// <see cref="MaxSeries"/> keys are (the least recently requested is evicted).
+/// <para>
+/// Only numbers have a history: a key whose reading is a text or a table is never tracked, and a tracked key whose
+/// reading turns one is dropped at that sample. So the history's own sampling never reads a text sensor in the
+/// background: a read of one can mean someone looks at it (the public address is looked up only while its reading is
+/// read), and only a consumer's request (<see cref="GetSamples"/>, asked by a shown profile or a client) reads it.
+/// </para>
 /// </summary>
 public sealed class SensorHistory : ISensorHistory
 {
@@ -159,9 +165,9 @@ public sealed class SensorHistory : ISensorHistory
             }
         }
 
-        // A key with no reading (unknown to every source, or past the hub's simulation cap) isn't tracked.
-        // Read outside the lock: the reader takes its own locks.
-        if (!_reader.TryRead(key, out _))
+        // A key with no reading (unknown to every source, or past the hub's simulation cap), or a text or table one, isn't
+        // tracked. Read outside the lock: the reader takes its own locks.
+        if (!_reader.TryRead(key, out var first) || !IsNumber(first))
             return [];
 
         lock (_lock)
@@ -207,21 +213,31 @@ public sealed class SensorHistory : ISensorHistory
 
         // Read outside the lock: the reader takes its own locks.
         var values = new List<(Series Series, double Value)>(tracked.Length);
+        List<(SensorKey Key, Series Series)>? turned = null;
         foreach (var (key, series) in tracked)
         {
-            if (_reader.TryRead(key, out var reading) && reading.ValueTable == null && reading.ValueText == null
-                && double.IsFinite(reading.ValueNow))
-            {
+            if (!_reader.TryRead(key, out var reading))
+                continue;
+            if (!IsNumber(reading))
+                (turned ??= []).Add((key, series));
+            else if (double.IsFinite(reading.ValueNow))
                 values.Add((series, reading.ValueNow));
-            }
         }
 
         lock (_lock)
         {
             foreach (var (series, value) in values)
                 series.Add(value);
+            // A key whose reading turned a text or a table is dropped (the series read, not one made since).
+            foreach (var (key, series) in turned ?? [])
+            {
+                if (_series.TryGetValue(key, out var current) && current == series)
+                    _series.Remove(key);
+            }
         }
     }
+
+    private static bool IsNumber(in SensorReading reading) => reading.ValueTable == null && reading.ValueText == null;
 
     /// <summary>Calls <see cref="SampleNow"/> every <see cref="Interval"/> until cancelled.</summary>
     public async Task RunAsync(CancellationToken ct)
