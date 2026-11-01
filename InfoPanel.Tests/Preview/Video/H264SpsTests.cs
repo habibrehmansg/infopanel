@@ -245,6 +245,44 @@ public partial class H264SpsTests
     }
 
     [Fact]
+    public void PictureSize_OfTheHardwareEncodersSps_Is1600x960()
+    {
+        Assert.Equal((1600, 960), H264Sps.PictureSize(Convert.FromHexString(AnnexBTests.AmdSps)));
+    }
+
+    public static TheoryData<string, int, int> CroppedSps => new()
+    {
+        // Coded 336 × 208, cropped by 7 chroma samples right and bottom (two luma rows or columns each).
+        { Convert.ToHexString(MadeUpH264.Sps(0, 21, 13, crop: (0, 7, 0, 7))), 322, 194 },
+        // Fields allowed (Main): 7 map units of two macroblocks each, 224 rows; a crop unit of 4 rows.
+        { Convert.ToHexString(MadeUpH264.Sps(0, 21, 7, frameMbsOnly: false, crop: (0, 7, 0, 2), profile: 77)), 322, 216 },
+        // A crop on every side.
+        { Convert.ToHexString(MadeUpH264.Sps(3, 21, 13, crop: (1, 2, 3, 4))), 336 - 6, 208 - 14 },
+        // 4:4:4, whose crop unit is one sample: 321 × 241.
+        { Convert.ToHexString(Split(Convert.FromBase64String(Cropped444Avcc)).Sps), 321, 241 },
+    };
+
+    [Theory]
+    [MemberData(nameof(CroppedSps))]
+    public void PictureSize_IsTheCroppedPicture(string spsHex, int width, int height)
+    {
+        Assert.Equal((width, height), H264Sps.PictureSize(Convert.FromHexString(spsHex)));
+    }
+
+    [Fact]
+    public void PictureSize_OfAnSpsThatEndsEarly_OrIsntOne_IsNone()
+    {
+        var sps = Convert.FromHexString(AnnexBTests.AmdSps);
+        Assert.Null(H264Sps.PictureSize(sps[..12]));
+        Assert.Null(H264Sps.PictureSize(sps[..^1]));
+        Assert.Null(H264Sps.PictureSize([]));
+        Assert.Null(H264Sps.PictureSize(Convert.FromHexString(AnnexBTests.AmdPps)));
+
+        // Cropped to nothing.
+        Assert.Null(H264Sps.PictureSize(MadeUpH264.Sps(0, 1, 1, crop: (4, 4, 0, 0))));
+    }
+
+    [Fact]
     public void Escape_PutsBackWhatUnescapeTakesOut()
     {
         var x264 = Convert.FromHexString(X264Sps);

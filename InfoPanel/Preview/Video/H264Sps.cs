@@ -8,7 +8,8 @@ namespace InfoPanel.Preview.Video;
 /// <c>max_num_ref_frames</c>, and copies every other field bit for bit (H.264 7.3.2.1.1 and E.1.1). The caller guarantees
 /// a stream that never reorders: its output order is its decode order (no B-frames; the native session sets
 /// <c>AllowFrameReordering</c> false, and <see cref="RewriteForStream"/> refuses any profile but Baseline). <see cref="RewriteAvcc"/> doesn't check that: it writes <c>max_num_reorder_frames</c> 0 whatever the
-/// SPS said, an existing restriction's included. Pure: no I/O, never throws on bad input.
+/// SPS said, an existing restriction's included. <see cref="PictureSize"/> reads the picture an SPS describes. Pure: no
+/// I/O, never throws on bad input.
 /// </summary>
 internal static class H264Sps
 {
@@ -133,6 +134,37 @@ internal static class H264Sps
         catch (InvalidOperationException)
         {
             return "the avcC record has a PPS that ends early";
+        }
+    }
+
+    /// <summary>
+    /// The picture an SPS NAL unit (header byte first, emulation prevention bytes in) describes: its coded size less its
+    /// frame cropping (H.264 7.4.2.1.1, equations 7-19 to 7-22). Null when it isn't an SPS this parser reads to its
+    /// trailing bits (one that ends early among them), or when the cropping leaves nothing. Never throws.
+    /// </summary>
+    public static (int Width, int Height)? PictureSize(ReadOnlySpan<byte> nal)
+    {
+        try
+        {
+            if (nal.Length < 4 || (nal[0] & 0x1f) != 7)
+                return null;
+            var layout = Parse(Unescape(nal));
+            if (layout.Problem != null)
+                return null;
+
+            // ChromaArrayType 0 (monochrome, or separate colour planes) crops in samples; otherwise in chroma samples.
+            var chroma = layout.SeparateColourPlane ? 0u : layout.ChromaFormat;
+            var (subWidth, subHeight) = chroma switch { 1 => (2L, 2L), 2 => (2L, 1L), _ => (1L, 1L) };
+            var fieldFactor = layout.FrameMbsOnly ? 1L : 2L;
+            var cropX = subWidth;
+            var cropY = subHeight * fieldFactor;
+            var width = (layout.WidthInMbsMinus1 + 1L) * 16 - cropX * ((long)layout.CropLeft + layout.CropRight);
+            var height = fieldFactor * (layout.HeightInMapUnitsMinus1 + 1L) * 16 - cropY * ((long)layout.CropTop + layout.CropBottom);
+            return width is > 0 and <= int.MaxValue && height is > 0 and <= int.MaxValue ? ((int)width, (int)height) : null;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 
@@ -414,6 +446,17 @@ internal static class H264Sps
     internal sealed class Layout
     {
         public string? Problem;
+
+        // 1 (4:2:0) when the profile doesn't say.
+        public uint ChromaFormat = 1;
+        public bool SeparateColourPlane;
+        public uint WidthInMbsMinus1;
+        public uint HeightInMapUnitsMinus1;
+        public bool FrameMbsOnly;
+        public uint CropLeft;
+        public uint CropRight;
+        public uint CropTop;
+        public uint CropBottom;
         public uint MaxNumRefFrames;
         public int VuiFlagBit;
         public bool VuiPresent;
@@ -454,8 +497,9 @@ internal static class H264Sps
             var chromaFormat = r.Ue();
             if (chromaFormat > 3)
                 return Fail(layout, $"chroma_format_idc {chromaFormat}");
+            layout.ChromaFormat = chromaFormat;
             if (chromaFormat == 3)
-                r.Skip(1); // separate_colour_plane_flag
+                layout.SeparateColourPlane = r.Flag();
             r.Ue(); // bit_depth_luma_minus8
             r.Ue(); // bit_depth_chroma_minus8
             r.Skip(1); // qpprime_y_zero_transform_bypass_flag
@@ -500,15 +544,18 @@ internal static class H264Sps
         if (layout.MaxNumRefFrames > 16)
             return Fail(layout, $"max_num_ref_frames {layout.MaxNumRefFrames}");
         r.Skip(1); // gaps_in_frame_num_value_allowed_flag
-        r.Ue(); // pic_width_in_mbs_minus1
-        r.Ue(); // pic_height_in_map_units_minus1
-        if (!r.Flag()) // frame_mbs_only_flag
+        layout.WidthInMbsMinus1 = r.Ue();
+        layout.HeightInMapUnitsMinus1 = r.Ue();
+        layout.FrameMbsOnly = r.Flag();
+        if (!layout.FrameMbsOnly)
             r.Skip(1); // mb_adaptive_frame_field_flag
         r.Skip(1); // direct_8x8_inference_flag
         if (r.Flag()) // frame_cropping_flag
         {
-            for (var i = 0; i < 4; i++)
-                r.Ue();
+            layout.CropLeft = r.Ue();
+            layout.CropRight = r.Ue();
+            layout.CropTop = r.Ue();
+            layout.CropBottom = r.Ue();
         }
 
         layout.VuiFlagBit = r.Position;
@@ -612,8 +659,8 @@ internal static class H264Sps
         return true;
     }
 
-    /// <summary>Reads bits, most significant first; throws past the end (<see cref="RewriteSps"/> catches it).</summary>
-    private ref struct BitReader(byte[] data)
+    /// <summary>Reads bits, most significant first; throws <see cref="InvalidOperationException"/> past the end (its callers catch it).</summary>
+    internal ref struct BitReader(byte[] data)
     {
         private readonly byte[] _data = data;
 
