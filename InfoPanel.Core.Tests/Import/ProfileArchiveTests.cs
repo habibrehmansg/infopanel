@@ -530,6 +530,24 @@ public sealed class ProfileArchiveTests : IDisposable
         Assert.False(Directory.Exists(target.Blobs.Paths.BlobsDirectory) && Directory.EnumerateFiles(target.Blobs.Paths.BlobsDirectory).Any());
     }
 
+    /// <summary>
+    /// Only the 1.x import binds a retired plugin's keys (the 1.x Clock plugin's) to the engine's own source: a 2.0
+    /// document keeps the key it names, which reads unavailable.
+    /// </summary>
+    [Fact]
+    public void ADocumentBoundToARetiredPluginsKey_KeepsIt()
+    {
+        const string old = "plugin:/clock-plugin/clock/second";
+        var document = Document();
+        var item = document["items"]![0]!.AsObject();
+        item["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = old, ["stat"] = "now" } };
+        item["scene"]!["inputs"] = new JsonObject { ["v"] = new JsonObject { ["type"] = "number" } };
+
+        var contents = Open(WithDocument(document, ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template)), NewWorkspace("target"));
+
+        Assert.Equal(old, contents.Document.GetProperty("items")[0].GetProperty("bindings").GetProperty("v").GetProperty("key").GetString());
+    }
+
     [Fact]
     public void NoDocument_IsArchiveDocument()
     {

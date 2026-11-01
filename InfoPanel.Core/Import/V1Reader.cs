@@ -215,6 +215,10 @@ public static class V1Reader
         string PathOf(DisplayItem item) => report?.PathOf(item) is { } p ? "/items" + p : "/items";
         int? LineOf(DisplayItem item) => report?.LineOf(item);
 
+        // Bindings to a plugin whose sensors the engine reads itself now go to the engine's source, from a file and from
+        // the folder alike, before the items become their JSON.
+        TranslateRetired(items, diagnostics, PathOf, LineOf, itemsInput.File);
+
         // A file is often made on another PC: its HWiNFO bindings this PC lacks are bound by name before the items
         // become their JSON. A folder's profiles were made on this PC and are read as stored.
         if (source == ArchiveSource)
@@ -251,6 +255,28 @@ public static class V1Reader
             Assets = assets,
             Diagnostics = diagnostics.ToList(),
         };
+    }
+
+    /// <summary>
+    /// Every item bound to an entry of a plugin whose sensors the engine reads itself now (<see cref="RetiredPlugins"/>:
+    /// the 1.x Clock plugin), inside groups too, is bound to the engine source's key for that entry, in the model, so its
+    /// props and <c>meta.sensor</c> carry the new binding; each is reported (<c>import.sensor.translated</c>). Only the
+    /// binding the item reads is looked at (its <c>SensorType</c>'s; a table's plugin key). A key of such a plugin with no
+    /// entry in the table stays as stored, and reads unavailable (<c>import.sensor</c>).
+    /// </summary>
+    private static void TranslateRetired(IEnumerable<DisplayItem> items, ImportDiagnostics diagnostics,
+        Func<DisplayItem, string> pathOf, Func<DisplayItem, int?> lineOf, string file)
+    {
+        foreach (var item in ItemTree.Walk(items))
+        {
+            if (item is not IPluginSensorItem plugin || SensorKeys.Of(item) is not { } key || RetiredPlugins.Translate(key) is not { } to)
+                continue;
+
+            plugin.PluginSensorId = to.Key.Id;
+            diagnostics.Add(ImportDiagnostics.Info, "import.sensor.translated", pathOf(item),
+                $"'{item.Name}' was bound to {key}, the 1.x {to.Plugin} plugin's; bound to {to.Key}, '{to.Name}' in '{to.Source}', which the engine reads itself.",
+                file, lineOf(item));
+        }
     }
 
     /// <summary>

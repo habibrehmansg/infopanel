@@ -159,7 +159,9 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
     /// <summary>
     /// Replaces the package's catalogue with what its host loaded: each plugin's containers and entries with their first
     /// values. A plugin id that is empty, holds <c>/</c>, is longer than <see cref="PluginLimits.IdChars"/>, starts with
-    /// <see cref="ReservedPrefix"/>, or that another package (or this one, twice) already provides is refused and
+    /// <see cref="ReservedPrefix"/>, is a retired plugin's whose sensors the engine reads itself now
+    /// (<see cref="RetiredPlugins"/>: an old copy of a bundled package, whose keys must not come back half live), or that
+    /// another package (or this one, twice) already provides is refused and
     /// returned, and so is a plugin whose catalogue has a container or entry id longer than
     /// <see cref="PluginLimits.IdPartChars"/> or would make a key longer than <see cref="PluginLimits.KeyChars"/> (checked
     /// before any key is made, so a host can't make the engine hold more than it sent); entries past
@@ -341,6 +343,7 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
         : id.Contains('/') ? "its id contains '/'"
         : id.Length > _limits.IdChars ? $"its id is longer than {_limits.IdChars} characters"
         : id.StartsWith(ReservedPrefix, StringComparison.OrdinalIgnoreCase) ? $"its id starts with '{ReservedPrefix}', which the engine's own sources use"
+        : RetiredPlugins.SourceOf(id) is { } source ? $"its sensors are built into the engine now (the {source} source)"
         : null;
 
     /// <summary>The plugin id a key names: the first segment of <c>/{plugin id}/…</c>.</summary>

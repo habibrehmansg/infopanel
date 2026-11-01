@@ -126,6 +126,31 @@ public class PluginSensorSourceTests
         Assert.Empty(source.GetSensors());
     }
 
+    [Theory]
+    [InlineData("clock-plugin")]
+    [InlineData("Clock-Plugin")]
+    public void A_retired_plugin_id_is_refused_naming_the_engines_source_and_the_packages_other_plugins_load(string id)
+    {
+        // An old copy of the bundled Extras under another folder name: the engine reads the clock itself now.
+        const string old = "InfoPanel.ExtrasOld";
+        var source = new PluginSensorSource();
+
+        var refused = source.Load(old,
+            [new PluginMetadataDto { Id = id, Name = "Clock" }, new PluginMetadataDto { Id = "weather-plugin", Name = "Weather" }],
+            new Dictionary<string, List<ContainerDto>>
+            {
+                [id] = [Container("clock", "Clock", eph: false, Sensor("second", "Second", 7, ""))],
+                ["weather-plugin"] = [Container("city", "City", eph: false, Sensor("temp", "Temperature", 21, "°C"))],
+            });
+        source.SetState(old, PluginHostState.Running);
+
+        var refusal = Assert.Single(refused);
+        Assert.Equal((id, "its sensors are built into the engine now (the Clock source)"), (refusal.PluginId, refusal.Reason));
+        Assert.Equal(["plugin:/weather-plugin/city/temp"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
+        Assert.Equal(SensorStatus.Live, source.GetStatus(SensorKey.Plugin("/weather-plugin/city/temp")));
+        Assert.False(source.Handles(SensorKey.Plugin($"/{id}/clock/second")));
+    }
+
     [Fact]
     public void A_plugin_id_over_64_characters_is_refused()
     {
