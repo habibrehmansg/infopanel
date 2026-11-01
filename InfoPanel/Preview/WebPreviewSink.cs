@@ -20,7 +20,7 @@ internal sealed record OutgoingFrame(byte[] Prefix, ReadOnlyMemory<byte> Payload
 /// encoding and queues every encoded frame, in order.</item>
 /// </list>
 /// The socket's send loop reads only the current subscription's sink (both queues as one selection, the older tick first,
-/// never a tick older than the last sent: <see cref="TryTakeFrame"/>), and <see cref="Retire"/> ends both when the subscription ends, so a late
+/// never a tick older than the last sent, never a delta after a PNG frame: <see cref="TryTakeFrame"/>), and <see cref="Retire"/> ends both when the subscription ends, so a late
 /// frame of an earlier subscription can never displace the current one's. <c>skipped</c> counts every frame drawn for
 /// the subscription and not sent since the last one sent.
 /// </summary>
@@ -80,16 +80,23 @@ internal sealed class WebPreviewSink : IFrameSink
     /// <summary>Tests: called by <see cref="TryTakeFrame"/> between its reads of the two queues.</summary>
     internal Action? BetweenReads;
 
-    // Send loop only: the candidates taken from each queue and not sent yet, and the tick of the last frame sent.
+    // Send loop only: the candidates taken from each queue and not sent yet, the tick of the last frame sent and whether it
+    // was video, and whether a keyframe is owed since a PNG frame (asked for once).
     private EncodedFrame? _heldVideo;
     private (FrameHeader Header, ReadOnlyMemory<byte> Png)? _heldPng;
     private long _lastTick = long.MinValue;
+    private bool _lastVideo;
+    private bool _keyframeOwed;
+    private bool _keyframeAsked;
 
     /// <summary>
     /// The next frame to send, if any (send loop only), with <c>skipped</c> filled in: of the next video frame and the
     /// PNG slot's frame, the older tick first. One selection over both queues: each candidate is held until it is sent, the
     /// video queue is read first (a PNG frame older than a queued video frame was put in the slot before that frame was
-    /// offered, so the slot's read after it sees it), and a frame older than the last one sent is never sent.
+    /// offered, so the slot's read after it sees it), and a frame older than the last one sent is never sent. Video and PNG
+    /// frames never interleave without a keyframe: after a video frame no PNG frame of its tick goes (at equal ticks the
+    /// video goes first: that keyframe carries the PNG frame's pixels), and after a PNG frame no video goes until a keyframe
+    /// (a delta is dropped and a keyframe asked for).
     /// </summary>
     public bool TryTakeFrame(out OutgoingFrame frame)
     {
@@ -109,13 +116,15 @@ internal sealed class WebPreviewSink : IFrameSink
             if (_heldPng is { } heldPng && (_heldVideo == null || heldPng.Header.Tick < _heldVideo.Header.Tick))
             {
                 _heldPng = null;
-                if (heldPng.Header.Tick < _lastTick)
+                if (heldPng.Header.Tick < _lastTick || (_lastVideo && heldPng.Header.Tick == _lastTick))
                 {
                     _skipped.Add();
                     continue;
                 }
 
                 _lastTick = heldPng.Header.Tick;
+                _lastVideo = false;
+                _keyframeOwed = true;
                 frame = Outgoing(heldPng.Header, heldPng.Png);
                 return true;
             }
@@ -132,7 +141,24 @@ internal sealed class WebPreviewSink : IFrameSink
                     continue;
                 }
 
+                if (_keyframeOwed && heldVideo.Header.Keyframe != true)
+                {
+                    // Not expected either (the stream's PNG frames start a new generation): a delta after a PNG frame
+                    // refers to nothing the client has.
+                    _skipped.Add();
+                    if (!_keyframeAsked)
+                    {
+                        _keyframeAsked = true;
+                        _video!.RequestKeyframe();
+                    }
+
+                    continue;
+                }
+
                 _lastTick = heldVideo.Header.Tick;
+                _lastVideo = true;
+                if (heldVideo.Header.Keyframe == true)
+                    _keyframeOwed = _keyframeAsked = false;
                 frame = Outgoing(heldVideo.Header, heldVideo.Payload);
                 return true;
             }
@@ -160,9 +186,10 @@ internal sealed class WebPreviewSink : IFrameSink
 
         var request = Request;
         string? fallback = null;
+        var offer = false;
         if (Encoding == H264)
         {
-            fallback = _video == null ? VideoStream.Unavailable : _video.Route(frame.PixelWidth, frame.PixelHeight);
+            fallback = _video == null ? VideoStream.Unavailable : _video.Route(frame.PixelWidth, frame.PixelHeight, out offer);
             if (fallback == null)
             {
                 _video!.Offer(frame, request.IncludeBounds);
@@ -172,6 +199,10 @@ internal sealed class WebPreviewSink : IFrameSink
 
         var png = frame.GetPng();
         QueuePng(FrameHeaders.From(frame, request.IncludeBounds) with { EncodeMs = frame.PngMs, Fallback = fallback }, png);
+        // While a video encoder is chosen, started or retired: the PNG frame goes out, and its pixels to the encoder, so
+        // video starts from the newest picture the client has seen.
+        if (offer)
+            _video!.Offer(frame, request.IncludeBounds);
     }
 
     /// <summary>Puts a PNG frame in the one-frame PNG slot (the newest wins). Render thread; tests.</summary>

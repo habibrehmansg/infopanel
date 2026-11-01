@@ -54,6 +54,18 @@ internal sealed class SkipCounter
 /// rate retires it and the next frame starts one at that rate. Neither is a failure. A session of a backend that
 /// <see cref="IH264Backend.GivesUpWhenTeardownHangs"/> whose retirement passes the bound gives the backend up for the
 /// stream, so no other session of it starts beside the one still tearing down.</item>
+/// <item><b>Waiting episodes.</b> A frame headed to video that finds no usable session (the loop awaits a selection, a
+/// start or a retirement, or the session's first keyframe isn't built yet) opens an episode, as does every retirement
+/// before it waits (but leaving video for PNG and the end of the stream), and a frame that goes back to video while a
+/// retirement is pending or runs (leaving video's, or one whose episode a PNG frame ended); an episode ends only at the
+/// cutover or when the stream settles on PNG for another reason; failures, retirements and new sessions in between
+/// don't restart its clock. After <see cref="PendingGrace"/> its frames are PNG with <c>encoder.failed</c>, in a new
+/// generation, and their pixels are offered too (<see cref="Route(int, int, out bool)"/>), so the session being started
+/// is never retired for them; a timer asks for a fresh frame then, for a panel that doesn't change. A returned session
+/// gets a <i>candidate</i>, the newest frame, forced; while it is in the encoder (at most <see cref="CandidateWait"/>,
+/// doubling per stale candidate to <see cref="StallTimeout"/>) frames are only offered. The cutover comes with the
+/// candidate's built keyframe, unless a PNG frame routed after the candidate's went out: then it is never sent. A
+/// delta first in its generation fails the session and is never sent.</item>
 /// </list>
 /// </summary>
 internal sealed class VideoStream : IDisposable
@@ -76,7 +88,27 @@ internal sealed class VideoStream : IDisposable
     public static readonly TimeSpan BusyFirst = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan BusyMax = TimeSpan.FromSeconds(30);
 
-    private sealed record RawFrame(byte[] Pixels, int Width, int Height, FrameHeader Header, int Generation);
+    /// <summary>How long a waiting episode lasts before its frames are PNG.</summary>
+    public static readonly TimeSpan PendingGrace = TimeSpan.FromSeconds(1);
+
+    /// <summary>How long a candidate's keyframe is waited for after the grace before a PNG frame goes out; doubles per stale candidate in an episode, to <see cref="StallTimeout"/>.</summary>
+    public static readonly TimeSpan CandidateWait = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>A frame for the encoder; <paramref name="Seq"/> is the routing it was offered after (<see cref="Route(int, int, out bool)"/>).</summary>
+    private sealed record RawFrame(byte[] Pixels, int Width, int Height, FrameHeader Header, int Generation, long Seq);
+
+    /// <summary>A waiting episode (under <see cref="_episodeLock"/>): its clock starts once.</summary>
+    private sealed class Episode(long start)
+    {
+        public readonly long Start = start;
+        public bool PngBegun;
+        public long LastPngSeq = long.MinValue;
+        public TimeSpan CandidateWait = VideoStream.CandidateWait;
+        public Candidate? Candidate;
+    }
+
+    /// <summary>The frame whose built keyframe can cut an episode over: submitted forced, at <paramref name="SubmittedAt"/>.</summary>
+    private sealed record Candidate(Session Session, long FrameId, long Seq, long SubmittedAt);
 
     private sealed record Pending(long Id, FrameHeader Header, OutputSlots<EncodedFrame>.Reservation Reservation, int Generation, long Submitted,
         long KeyframeAsked, bool Forced);
@@ -93,8 +125,14 @@ internal sealed class VideoStream : IDisposable
         public readonly SortedDictionary<long, Pending> Pending = [];
         public long NextId;
 
-        /// <summary>The generation a keyframe of this session was queued in (under <see cref="Gate"/>): until then every frame is forced to be one.</summary>
+        /// <summary>
+        /// The newest generation a keyframe of this session was built in (under <see cref="Gate"/>): until then every frame
+        /// of a generation is forced to be one, and a delta of it is a failure.
+        /// </summary>
         public int KeyedGeneration = -1;
+
+        /// <summary>The generation of its last submission (the loop).</summary>
+        public int LastGeneration = -1;
         public bool Dead;
         public string? Failure;
         public bool FailureGivesUp;
@@ -123,8 +161,22 @@ internal sealed class VideoStream : IDisposable
     private long _retryAt;
     private ImmutableHashSet<(int, int)> _pngSizes = [];
 
+    // A retirement runs (set before leaving video's flag is taken): a frame that goes back to video opens the episode.
+    private volatile bool _retiring;
+
     // Render thread only.
     private bool _routedVideo;
+    private long _routeSeq;
+
+    // The waiting episode, shared by the render thread, the loop, the encoder's outcomes and the timer.
+    private readonly Lock _episodeLock = new();
+    private Episode? _episode;
+    private ITimer? _timer;
+    private int _episodeDue;
+
+    // Whether the newest routed frame went to video (unseen yet), and whether a fresh frame was asked for since.
+    private volatile bool _lastRouteVideo;
+    private volatile bool _refreshAsked;
 
     // Set by the render thread as frames leave video, taken by the loop (which retires the session).
     private int _leftVideo;
@@ -187,13 +239,28 @@ internal sealed class VideoStream : IDisposable
     /// <summary>Frames in the current session's encoder (tests).</summary>
     internal int InFlight => _session?.Encoder.InFlight ?? 0;
 
+    /// <summary>Whether a waiting episode is open (tests).</summary>
+    internal bool Waiting
+    {
+        get
+        {
+            lock (_episodeLock)
+                return _episode != null;
+        }
+    }
+
     /// <summary>
     /// Render thread: null when this frame goes to the encoder (<see cref="Offer"/>), else why it is a PNG frame:
     /// <see cref="Size"/> (larger than the video size, or no backend takes its size), <see cref="Unavailable"/> or
-    /// <see cref="Failed"/>. Leaving video starts a new generation, so no queued video follows the PNG frame.
+    /// <see cref="Failed"/>. Leaving video starts a new generation, so no queued video follows the PNG frame. In a
+    /// waiting episode past its grace a frame is PNG with <see cref="Failed"/> and <paramref name="offer"/> true: its
+    /// pixels go to the encoder too (<see cref="Offer"/>, after the PNG frame is queued).
     /// </summary>
-    public string? Route(int width, int height)
+    public string? Route(int width, int height, out bool offer)
     {
+        offer = false;
+        var seq = ++_routeSeq;
+        _refreshAsked = false;
         var fallback = width > MaxSide || height > MaxSide || (long)width * height > MaxPixels
             ? Size
             : _fallback
@@ -203,9 +270,25 @@ internal sealed class VideoStream : IDisposable
         if (fallback == null)
         {
             _routedVideo = true;
+            // Back to video while a retirement is pending or runs (leaving video's, or one whose episode a PNG frame
+            // ended): frames wait for the next session from here, not from the end of the retirement.
+            if (Volatile.Read(ref _leftVideo) != 0 || _retiring)
+                OpenEpisode();
+            if (EpisodePng(seq))
+            {
+                _lastRouteVideo = false;
+                offer = true;
+                return Failed;
+            }
+
+            _lastRouteVideo = true;
             return null;
         }
 
+        // PNG for another reason: the stream settles on it, and an episode ends.
+        _lastRouteVideo = false;
+        lock (_episodeLock)
+            CloseEpisode();
         if (_routedVideo)
         {
             // Leaving video: no queued video follows the PNG frame, and the session is retired (PNG frames hold no
@@ -218,6 +301,132 @@ internal sealed class VideoStream : IDisposable
 
         return fallback;
     }
+
+    /// <summary>
+    /// Whether an episode answers PNG for the frame routed <paramref name="seq"/>th: past its grace, unless a candidate is
+    /// in the encoder within its wait (then the frame is offered only, to follow the keyframe). The episode's first PNG
+    /// frame, and one that finds the candidate stale, start a new generation: nothing older follows the PNG frame, and the
+    /// frame's offered pixels are the next candidate. The session being started or warmed isn't touched.
+    /// </summary>
+    private bool EpisodePng(long seq)
+    {
+        lock (_episodeLock)
+        {
+            if (_episode is not { } episode)
+                return false;
+            var now = _time.GetTimestamp();
+            if (now < episode.Start + Ticks(PendingGrace))
+                return false;
+
+            var newGeneration = !episode.PngBegun;
+            if (episode.Candidate is { } candidate)
+            {
+                if (now < candidate.SubmittedAt + Ticks(episode.CandidateWait))
+                    return false;
+                // Stale: its generation is dropped, and the next one waits longer.
+                episode.Candidate = null;
+                episode.CandidateWait = TimeSpan.FromTicks(Math.Min(episode.CandidateWait.Ticks * 2, StallTimeout.Ticks));
+                newGeneration = true;
+            }
+
+            episode.PngBegun = true;
+            episode.LastPngSeq = Math.Max(episode.LastPngSeq, seq);
+            if (newGeneration)
+                NewGeneration();
+            return true;
+        }
+    }
+
+    /// <summary>Whether a PNG frame routed after the frame routed <paramref name="seq"/>th went out in the episode (under the lock).</summary>
+    private static bool Overtaken(Episode episode, long seq) => episode.LastPngSeq > seq;
+
+    /// <summary>
+    /// A frame headed to video found no usable session (the loop), or went back to video while a retirement is pending or
+    /// runs (the render thread). A no-op while one is open: its clock starts once.
+    /// </summary>
+    private void OpenEpisode()
+    {
+        lock (_episodeLock)
+        {
+            if (_episode != null || Volatile.Read(ref _disposed) != 0)
+                return;
+            var now = _time.GetTimestamp();
+            _episode = new Episode(now);
+            ArmTimer(now + Ticks(PendingGrace));
+        }
+    }
+
+    /// <summary>Ends the episode and its timer (under the lock): the cutover, PNG for another reason, the end of the stream.</summary>
+    private void CloseEpisode()
+    {
+        _episode = null;
+        _timer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+    }
+
+    /// <summary>Arms the episode's one timer for <paramref name="at"/> (under the lock): re-armed, never stacked.</summary>
+    private void ArmTimer(long at)
+    {
+        var due = _time.GetElapsedTime(_time.GetTimestamp(), at);
+        _timer ??= _time.CreateTimer(_ => OnEpisodeTimer(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _timer.Change(due < TimeSpan.Zero ? TimeSpan.Zero : due, Timeout.InfiniteTimeSpan);
+    }
+
+    /// <summary>
+    /// The episode's deadline, independent of the loop (which may sit in a probe, a start or a retirement): at the grace,
+    /// and at a candidate's wait, it asks for a fresh frame, which <see cref="Route(int, int, out bool)"/> answers as PNG,
+    /// unless the newest frame was seen or one was asked for already. A candidate in the encoder for
+    /// <see cref="StallTimeout"/> is the watchdog's: the loop decides after it (<see cref="StepAsync"/>).
+    /// </summary>
+    private void OnEpisodeTimer()
+    {
+        bool refresh;
+        lock (_episodeLock)
+        {
+            if (_episode is not { } episode || Volatile.Read(ref _disposed) != 0)
+                return;
+            var now = _time.GetTimestamp();
+            var graceAt = episode.Start + Ticks(PendingGrace);
+            if (now < graceAt)
+            {
+                ArmTimer(graceAt);
+                return;
+            }
+
+            if (episode.Candidate is { } candidate)
+            {
+                var staleAt = candidate.SubmittedAt + Ticks(episode.CandidateWait);
+                if (now < staleAt)
+                {
+                    ArmTimer(staleAt);
+                    return;
+                }
+
+                if (now - candidate.SubmittedAt >= Ticks(StallTimeout))
+                {
+                    Volatile.Write(ref _episodeDue, 1);
+                    Kick();
+                    return;
+                }
+            }
+
+            refresh = NeedsFrame;
+        }
+
+        if (refresh)
+            Refresh();
+    }
+
+    /// <summary>The newest routed frame went to video, so the client hasn't seen it, and no fresh frame was asked for since.</summary>
+    private bool NeedsFrame => _lastRouteVideo && !_refreshAsked;
+
+    /// <summary>Asks the render thread for a fresh frame.</summary>
+    private void Refresh()
+    {
+        _refreshAsked = true;
+        _refresh();
+    }
+
+    private long Ticks(TimeSpan span) => (long)(span.TotalSeconds * _time.TimestampFrequency);
 
     /// <summary>Render thread, inside <c>OnFrame</c>: copies the frame's pixels into the raw slot (the newest wins).</summary>
     public void Offer(RenderedFrame frame, bool includeBounds)
@@ -242,12 +451,12 @@ internal sealed class VideoStream : IDisposable
             }
         }
 
-        Offer(new RawFrame(pixels, width, height, FrameHeaders.From(frame, includeBounds), Volatile.Read(ref _generation)));
+        Offer(new RawFrame(pixels, width, height, FrameHeaders.From(frame, includeBounds), Volatile.Read(ref _generation), _routeSeq));
     }
 
     /// <summary>Tests: offers packed RGBA pixels as a frame with <paramref name="header"/>.</summary>
     internal void Offer(byte[] pixels, FrameHeader header) =>
-        Offer(new RawFrame(pixels, header.PixelWidth, header.PixelHeight, header, Volatile.Read(ref _generation)));
+        Offer(new RawFrame(pixels, header.PixelWidth, header.PixelHeight, header, Volatile.Read(ref _generation), _routeSeq));
 
     private void Offer(RawFrame raw)
     {
@@ -272,7 +481,7 @@ internal sealed class VideoStream : IDisposable
     {
         Interlocked.Increment(ref _keyframeAsked);
         Kick();
-        _refresh();
+        Refresh();
     }
 
     /// <summary>The subscription's frame rate changed (<c>view</c>'s <c>maxFps</c>): the live session is asked for it.</summary>
@@ -296,12 +505,29 @@ internal sealed class VideoStream : IDisposable
         return false;
     }
 
+    /// <summary>Tests: queues an encoded frame in the current generation as it is, past the encoder and every rule; false when the queue is full.</summary>
+    internal bool QueueEncoded(FrameHeader header, ReadOnlyMemory<byte> payload)
+    {
+        if (_slots.TryReserve() is not { } reservation)
+            return false;
+        reservation.Commit(new EncodedFrame(header, payload, Volatile.Read(ref _generation)));
+        reservation.Dispose();
+        return true;
+    }
+
     /// <summary>Stops the loop; returns at once. The session is retired within <see cref="Quarantine.Bound"/> (<see cref="Completion"/>).</summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
         _stop.Cancel();
+        lock (_episodeLock)
+        {
+            CloseEpisode();
+            _timer?.Dispose();
+            _timer = null;
+        }
+
         NewGeneration();
     }
 
@@ -372,8 +598,10 @@ internal sealed class VideoStream : IDisposable
         {
             _logger.LogError(ex, "The H.264 stream failed; its frames are PNG until the subscription ends");
             _fallback = Failed;
+            lock (_episodeLock)
+                CloseEpisode();
             NewGeneration();
-            _refresh();
+            Refresh();
         }
         finally
         {
@@ -422,8 +650,15 @@ internal sealed class VideoStream : IDisposable
 
     private async Task StepAsync()
     {
-        if (Interlocked.Exchange(ref _leftVideo, 0) != 0 && _session is { } left)
-            await RetireAsync(left, "the frames are PNG now");
+        // The one retirement without an episode, with the end of the stream: its frames are PNG already. A frame that goes
+        // back to video during it opens one (Route), so the retirement is marked before the flag is taken.
+        if (Volatile.Read(ref _leftVideo) != 0)
+        {
+            _retiring = _session != null;
+            Interlocked.Exchange(ref _leftVideo, 0);
+            if (_session is { } left)
+                await RetireAsync(left, "the frames are PNG now");
+        }
 
         var now = _time.GetTimestamp();
         if (_session is { } session)
@@ -471,7 +706,18 @@ internal sealed class VideoStream : IDisposable
         }
 
         if (ask)
-            _refresh();
+            Refresh();
+
+        // The episode's timer found a candidate in the encoder as long as the watchdog allows: after the watchdog has had
+        // its say (a failure asks for a fresh frame itself), a fresh frame if the client still hasn't seen the newest.
+        if (Interlocked.Exchange(ref _episodeDue, 0) != 0)
+        {
+            bool due;
+            lock (_episodeLock)
+                due = _episode != null && NeedsFrame;
+            if (due)
+                Refresh();
+        }
 
         if (_session is { } live && live.Fps != _fps && live.RefusedFps != _fps)
         {
@@ -479,9 +725,11 @@ internal sealed class VideoStream : IDisposable
             if (!live.Backend.ChangesLive)
             {
                 // Its rate is fixed when it starts: the next frame starts a session at the new rate (with a keyframe),
-                // and a still panel gets a fresh frame for it, since frames in the retired session are dropped.
+                // and a still panel gets a fresh frame for it, since frames in the retired session are dropped. Frames
+                // wait for that session from here, through the retirement.
+                OpenEpisode();
                 await RetireAsync(live, $"the frame rate is now {fps}");
-                _refresh();
+                Refresh();
             }
             else if (live.Encoder.TrySetFrameRate(fps))
             {
@@ -538,33 +786,65 @@ internal sealed class VideoStream : IDisposable
             if (session == null || raw.Generation != Volatile.Read(ref _generation))
             {
                 _skipped.Add();
+                if (session != null)
+                    AskForCandidate();
                 return;
             }
 
             // A keyframe is owed until one is queued: for the generation (a new session, PNG frames, a failure) and for
             // the client's request. A dropped one stays owed, so no delta follows it.
             var asked = Interlocked.Read(ref _keyframeAsked);
-            if (!session.Backend.ChangesLive && Interlocked.Read(ref _keyframeAnswered) < asked)
+            if (!session.Backend.ChangesLive)
             {
-                bool keyed;
+                bool restart;
                 lock (session.Gate)
-                    keyed = session.KeyedGeneration == raw.Generation;
-                // Its encoder makes a keyframe only as it starts: once the session's own keyframe is out, a new session
-                // answers the request (not a failure). Before that, its first keyframe is still coming.
-                if (keyed)
                 {
+                    // Its encoder makes a keyframe only as it starts: once the session's own keyframe is out, a new session
+                    // answers the request (not a failure). Before that, its first keyframe is still coming. A new generation
+                    // in a session that has had frames (an episode's PNG frames) needs one too.
+                    restart = (Interlocked.Read(ref _keyframeAnswered) < asked && session.KeyedGeneration == raw.Generation)
+                        || (session.NextId > 0 && session.LastGeneration != raw.Generation);
+                }
+
+                if (restart)
+                {
+                    OpenEpisode();
                     await RetireAsync(session, "a keyframe was asked for");
                     session = await SessionForAsync(raw.Width, raw.Height);
                     if (session == null || raw.Generation != Volatile.Read(ref _generation))
                     {
                         _skipped.Add();
+                        if (session != null)
+                            AskForCandidate();
                         return;
                     }
                 }
             }
 
-            var id = session.NextId++;
+            var id = session.NextId;
             var started = _time.GetTimestamp();
+
+            // In an episode without a candidate in the encoder, this frame is the next one, unless a PNG frame routed after
+            // it went out already: then the newer frame offered with that PNG frame is.
+            Candidate? candidate = null;
+            lock (_episodeLock)
+            {
+                if (_episode is { Candidate: null } episode)
+                {
+                    if (raw.Generation != Volatile.Read(ref _generation) || Overtaken(episode, raw.Seq))
+                    {
+                        _skipped.Add();
+                        return;
+                    }
+
+                    episode.Candidate = candidate = new Candidate(session, id, raw.Seq, started);
+                    if (started >= episode.Start + Ticks(PendingGrace))
+                        ArmTimer(started + Ticks(episode.CandidateWait));
+                }
+            }
+
+            session.NextId++;
+            session.LastGeneration = raw.Generation;
             bool force;
             lock (session.Gate)
             {
@@ -586,6 +866,14 @@ internal sealed class VideoStream : IDisposable
                 problem = ex.Message;
             }
 
+            if (result != H264Submit.Accepted && candidate != null)
+            {
+                ForgetCandidate(session, id);
+                // A skipped one (a buffer the encoder couldn't lock) leaves the session healthy: the next frame is the
+                // next candidate, and a still panel gets one.
+                if (result == H264Submit.Skipped)
+                    AskForCandidate();
+            }
             if (result == H264Submit.Accepted)
             {
                 reservation = null; // Owned by its pending entry now.
@@ -609,7 +897,42 @@ internal sealed class VideoStream : IDisposable
         }
     }
 
-    /// <summary>The session for frames of this size: the current one, else the first backend that starts one; null when none does.</summary>
+    /// <summary>
+    /// A session came, but the frame that waited for it is of an older generation (the episode's PNG frames began): when
+    /// the raw slot holds no newer frame for the candidate, a fresh one is asked for, so a still panel gets one.
+    /// </summary>
+    private void AskForCandidate()
+    {
+        lock (_episodeLock)
+        {
+            if (_episode is not { Candidate: null })
+                return;
+        }
+
+        lock (_rawLock)
+        {
+            if (_raw != null)
+                return;
+        }
+
+        if (!_refreshAsked)
+            Refresh();
+    }
+
+    /// <summary>The candidate's frame won't give its keyframe (dropped, refused, failed, retired): the next frame submitted is the next candidate.</summary>
+    private void ForgetCandidate(Session session, long frameId)
+    {
+        lock (_episodeLock)
+        {
+            if (_episode is { Candidate: { } candidate } episode && candidate.Session == session && candidate.FrameId == frameId)
+                episode.Candidate = null;
+        }
+    }
+
+    /// <summary>
+    /// The session for frames of this size: the current one, else the first backend that starts one; null when none does.
+    /// Anything else than the current session opens a waiting episode (or goes on with the open one).
+    /// </summary>
     private async Task<Session?> SessionForAsync(int width, int height)
     {
         var now = _time.GetTimestamp();
@@ -619,7 +942,12 @@ internal sealed class VideoStream : IDisposable
             var better = _busy.Any(b => b.Value.Until <= now && _backends.Chain.Take(current.Index).Contains(b.Key));
             if (current.Width == width && current.Height == height && !better)
                 return current;
+            OpenEpisode();
             await RetireAsync(current, better ? "a better encoder may be free" : $"the frame is now {width}x{height}");
+        }
+        else
+        {
+            OpenEpisode();
         }
 
         var sawUnsupported = false;
@@ -696,15 +1024,17 @@ internal sealed class VideoStream : IDisposable
             return session;
         }
 
-        // None: PNG frames, saying why.
+        // None: PNG frames, saying why; the stream settles on them, so an episode ends.
         if (sawBusy)
             Interlocked.Exchange(ref _retryAt, _busy.Values.Where(b => b.Until > now).Min(b => b.Until));
         else if (sawUnsupported)
             Volatile.Write(ref _pngSizes, _pngSizes.Add((width, height)));
         else
             _fallback = _backends.NoneLeft ? Unavailable : Failed;
+        lock (_episodeLock)
+            CloseEpisode();
         NewGeneration();
-        _refresh();
+        Refresh();
         return null;
     }
 
@@ -731,6 +1061,9 @@ internal sealed class VideoStream : IDisposable
     {
         var backend = session.Backend;
         _logger.LogWarning("H.264 encoder {Backend} failed in a stream ({Why}); a new session follows", backend.Name, why);
+        // Frames wait for the next session from here: the episode's grace runs through the retirement, and its timer
+        // asks for a fresh frame at the grace (a fresh frame is asked for again below, after the new generation).
+        OpenEpisode();
         await RetireAsync(session, "it failed");
         NewGeneration();
 
@@ -744,14 +1077,33 @@ internal sealed class VideoStream : IDisposable
             _logger.LogWarning("H.264 encoder {Backend} given up for this stream ({Count} failures in {Seconds} s{Why})", backend.Name, times.Count,
                 FailureWindow.TotalSeconds, givesUp ? ", one that can't be retried" : "");
 
-        _refresh();
+        Refresh();
     }
 
     /// <summary>Ends the session without draining it: every pending frame's slot back, the teardown waited for at most the bound.</summary>
     private async Task RetireAsync(Session session, string why)
     {
+        _retiring = true;
+        try
+        {
+            await EndAsync(session, why);
+        }
+        finally
+        {
+            _retiring = false;
+        }
+    }
+
+    /// <summary>The retirement itself, marked running by <see cref="RetireAsync"/>.</summary>
+    private async Task EndAsync(Session session, string why)
+    {
         if (_session == session)
             _session = null;
+        lock (_episodeLock)
+        {
+            if (_episode is { Candidate: { } candidate } episode && candidate.Session == session)
+                episode.Candidate = null;
+        }
 
         List<Pending> pending;
         lock (session.Gate)
@@ -778,7 +1130,7 @@ internal sealed class VideoStream : IDisposable
             _logger.LogWarning("H.264 encoder {Backend} given up for this stream: a session of it didn't end within {Ms} ms, and another won't start beside it",
                 session.Backend.Name, (int)Quarantine.Bound.TotalMilliseconds);
         NewGeneration();
-        _refresh();
+        Refresh();
     }
 
     // ---- outcomes (the encoder's thread) ----
@@ -802,6 +1154,10 @@ internal sealed class VideoStream : IDisposable
                 session.Failure ??= $"frame {outcome.FrameId} came before frame {session.Pending.Keys.First()}";
             if (outcome.Kind == H264OutcomeKind.Failed)
                 session.Failure ??= outcome.Problem ?? "it failed a frame";
+            // A delta before any keyframe of its generation refers to nothing the client has: never sent, whatever the
+            // encoder was asked to force.
+            if (outcome.Kind == H264OutcomeKind.Encoded && !outcome.Keyframe && session.KeyedGeneration < pending.Generation)
+                session.Failure ??= "a delta came before any keyframe of its generation";
             broken = session.Failure != null;
         }
 
@@ -813,22 +1169,32 @@ internal sealed class VideoStream : IDisposable
                 {
                     // Nothing of a session after its failure is sent: a later frame may refer to the one it lost.
                     _skipped.Add();
+                    ForgetCandidate(session, outcome.FrameId);
                     // A dropped keyframe stays owed (the next frame is forced again); a still panel needs a fresh frame for it.
                     if (!broken && outcome.Kind == H264OutcomeKind.Dropped && pending.Forced)
-                        _refresh();
+                        Refresh();
                     return;
                 }
 
                 BeforeCommit?.Invoke(outcome.FrameId);
                 var frame = Build(session, pending, outcome);
-                pending.Reservation.Commit(frame);
                 if (outcome.Keyframe)
                 {
                     lock (session.Gate)
                         session.KeyedGeneration = Math.Max(session.KeyedGeneration, pending.Generation);
-                    InterlockedMax(ref _keyframeAnswered, pending.KeyframeAsked);
                 }
 
+                if (!Commit(session, pending, frame))
+                {
+                    // Overtaken by a PNG frame: never sent, and nothing of its generation after it; the episode goes on.
+                    _skipped.Add();
+                    NewGeneration();
+                    Refresh();
+                    return;
+                }
+
+                if (outcome.Keyframe)
+                    InterlockedMax(ref _keyframeAnswered, pending.KeyframeAsked);
                 _wake();
             }
         }
@@ -847,6 +1213,30 @@ internal sealed class VideoStream : IDisposable
         {
             Kick();
         }
+    }
+
+    /// <summary>
+    /// Queues a built frame. The candidate's keyframe is the cutover, under the lock <see cref="Route(int, int, out bool)"/>
+    /// takes: unless a PNG frame routed after the candidate's went out (false: not queued), it is queued and the episode
+    /// ends, so frames go to video from the next one, and what follows it in its generation is queued behind it.
+    /// </summary>
+    private bool Commit(Session session, Pending pending, EncodedFrame frame)
+    {
+        lock (_episodeLock)
+        {
+            if (_episode is { Candidate: { } candidate } episode && candidate.Session == session && candidate.FrameId == pending.Id)
+            {
+                episode.Candidate = null;
+                if (Overtaken(episode, candidate.Seq))
+                    return false;
+                CloseEpisode();
+                pending.Reservation.Commit(frame);
+                return true;
+            }
+        }
+
+        pending.Reservation.Commit(frame);
+        return true;
     }
 
     private EncodedFrame Build(Session session, Pending pending, H264Outcome outcome)

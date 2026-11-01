@@ -263,7 +263,7 @@ public class VideoToolboxTests
         var sent = new List<EncodedFrame>();
         for (var tick = 1; tick <= colours.Length; tick++)
         {
-            Assert.Null(stream.Route(w, h));
+            Assert.Null(stream.Route(w, h, out _));
             stream.Offer(Solid(w, h, colours[tick - 1]), Header(tick, w, h));
             var watch = Stopwatch.StartNew();
             while (sent.Count < tick && watch.Elapsed < TimeSpan.FromSeconds(5))

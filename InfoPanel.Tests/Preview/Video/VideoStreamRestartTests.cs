@@ -76,11 +76,12 @@ public class VideoStreamRestartTests
         public VideoStream Stream { get; }
         public int Refreshes => Volatile.Read(ref _refreshes);
 
+        /// <summary>The next frame, as the sink feeds it: routed, then offered, or a PNG frame, offered too when the stream asks (a waiting episode's).</summary>
         public string? Frame()
         {
             var tick = ++_tick;
-            var fallback = Stream.Route(W, H);
-            if (fallback != null)
+            var fallback = Stream.Route(W, H, out var offer);
+            if (fallback != null && !offer)
                 return fallback;
             var pixels = new byte[W * H * 4];
             Array.Fill(pixels, (byte)tick);
@@ -89,7 +90,7 @@ public class VideoStreamRestartTests
                 ProfileId = "3dd19c0e-675a-4591-b096-83417853861f", Rev = 1, Tick = tick, FrameId = tick, Encoding = "png", Scale = 1,
                 PixelWidth = W, PixelHeight = H, ProfileWidth = W, ProfileHeight = H, ItemBounds = [], EncodeMs = 0, Skipped = 0,
             });
-            return null;
+            return fallback;
         }
 
         public List<EncodedFrame> Take()

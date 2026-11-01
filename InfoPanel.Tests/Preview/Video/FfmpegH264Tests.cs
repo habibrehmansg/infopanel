@@ -301,7 +301,7 @@ public class FfmpegH264Tests
         var sent = new List<EncodedFrame>();
         for (var tick = 1; tick <= colours.Length; tick++)
         {
-            Assert.Null(stream.Route(w, h));
+            Assert.Null(stream.Route(w, h, out _));
             stream.Offer(Solid(w, h, colours[tick - 1]), Header(tick, w, h));
             sent.Add(await Next(stream));
         }
@@ -570,7 +570,7 @@ public class FfmpegH264Tests
             stream.RequestKeyframe();
             stream.Offer(Solid(w, h, (1, 2, 3)), Header(2, w, h));
             Assert.True(await Until(() => backends.Quarantines(backend) == 1), "the teardown is given up on at the bound");
-            Assert.True(await Until(() => stream.Route(w, h) == VideoStream.Failed), "the stream's frames are PNG");
+            Assert.True(await Until(() => stream.Route(w, h, out _) == VideoStream.Failed), "the stream's frames are PNG");
             await Task.Delay(200, Ct);
             Assert.Equal(1, backend.Starts);
             Assert.False(IsRunning(backend.ProcessIds[0]), "the process was killed even so");
@@ -601,7 +601,7 @@ public class FfmpegH264Tests
             const int w = 64, h = 64;
             using var stream = new VideoStream(backends, 30, () => { }, () => { }, new SkipCounter(), NullLogger.Instance, TimeProvider.System);
             stream.Offer(Solid(w, h, (1, 2, 3)), Header(1, w, h));
-            Assert.True(await Until(() => stream.Route(w, h) == VideoStream.Unavailable), "the stream's frames are PNG");
+            Assert.True(await Until(() => stream.Route(w, h, out _) == VideoStream.Unavailable), "the stream's frames are PNG");
             Assert.Equal(0, backend.Starts);
         }
         finally

@@ -19,6 +19,9 @@ internal sealed class FakeH264Backend(string name = "Fake", H264Kind kind = H264
 
     public bool Available { get; set; } = true;
 
+    /// <summary>Whether its sessions take a forced keyframe and a new frame rate live (false: as an ffmpeg process).</summary>
+    public bool ChangesLive { get; set; } = true;
+
     /// <summary>What each probe answers (null: <see cref="Available"/>'s answer).</summary>
     public Func<H264Probe>? ProbeAnswer { get; set; }
 
@@ -109,6 +112,9 @@ internal sealed class FakeH264Session(H264Config config, Action<H264Outcome> out
     /// <summary>The next outcome names a frame it was never given.</summary>
     public bool Unknown;
 
+    /// <summary>Its first output is a delta, forced or not.</summary>
+    public bool FirstDelta { get; set; }
+
     /// <summary>The teardown never ends.</summary>
     public bool Wedged { get; set; }
 
@@ -156,7 +162,7 @@ internal sealed class FakeH264Session(H264Config config, Action<H264Outcome> out
         lock (_lock)
         {
             _submitted.Add((frameId, forceKeyframe));
-            key = forceKeyframe || _first;
+            key = (forceKeyframe || _first) && !(_first && FirstDelta);
             _first = false;
             Interlocked.Increment(ref _inFlight);
             _held.Add((frameId, key, pixels[..Math.Min(4, pixels.Length)]));
