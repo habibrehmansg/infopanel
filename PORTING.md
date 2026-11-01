@@ -8,7 +8,7 @@ The 2.0 targets are the seams in `InfoPanel.Core` (`ISensorSource`, `IImageSourc
 
 | 1.4.x component | 2.0 target | Source (`git show 1.4.x:<path>`) |
 |---|---|---|
-| HWHash (HWiNFO shared memory) | `ISensorSource` | `InfoPanel/HWHash/HWHash.cs` |
+| HWHash (HWiNFO shared memory) | done: the `hwinfo` source (`InfoPanel.Core/Sensors/HwInfo/`), local and remotes under 1.x's keys, HWiNFO's own statistics; the connection picker and type groups later | `InfoPanel/HWHash/HWHash.cs` |
 | LibreMonitor | `ISensorSource` | `InfoPanel/Monitors/LibreMonitor.cs` |
 | PluginMonitor + proxies | done for sensors: the `plugins` source and the hosts' manager (`InfoPanel/Plugins/`, docs/2.0/plugins.md); `IImageSource` for `plugin-image://` later | `InfoPanel/Monitors/PluginMonitor.cs`, `InfoPanel/Monitors/PluginHostConnection.cs`, `InfoPanel/Monitors/PluginProcessManager.cs`, `InfoPanel/Monitors/PluginProxies/*.cs` |
 | SensorReader (static reads, missing reading → null) | `ISensorReader` / sensor hub (M4); stale, unavailable and denied are distinct statuses (done, `SensorStatus`); Windows sources build on `PolledSensorSource` | `InfoPanel/Models/SensorReader.cs` |

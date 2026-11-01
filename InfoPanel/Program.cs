@@ -14,6 +14,7 @@ using InfoPanel.Preview.Video;
 using InfoPanel.Scenes;
 using InfoPanel.Security;
 using InfoPanel.Sensors;
+using InfoPanel.Sensors.HwInfo;
 using InfoPanel.Sensors.MacOS;
 using InfoPanel.Settings;
 using InfoPanel.Spec;
@@ -283,8 +284,8 @@ try
     // Made by a factory so the container disposes it (and every open document) after the services that use it.
     builder.Services.AddSingleton(_ => workspace);
     builder.Services.AddSingleton(TimeProvider.System);
-    // Mock mode: the mock sensors and simulated unknown keys (tests, demos). Otherwise the platform's real sensors (only
-    // macOS has a source so far) and unknown keys read as unavailable.
+    // Mock mode: the mock sensors and simulated unknown keys (tests, demos). Otherwise the platform's real sensors (the
+    // macOS source; on Windows HWiNFO through its shared memory) and unknown keys read as unavailable.
     if (options.Mock)
     {
         builder.Services.AddSingleton(sp => new MockSensorSource(options.MockSeed, sp.GetRequiredService<TimeProvider>()));
@@ -293,6 +294,10 @@ try
     else if (OperatingSystem.IsMacOS())
     {
         builder.Services.AddSingleton<ISensorSource>(sp => MacSensorSource.Create(sp.GetRequiredService<TimeProvider>()));
+    }
+    else if (OperatingSystem.IsWindows())
+    {
+        builder.Services.AddSingleton<ISensorSource>(sp => HwInfoSource.CreateWindows(sp.GetRequiredService<TimeProvider>()));
     }
     // Plugin sensors, after the built-in sources; their hosts start once the engine listens.
     builder.Services.AddPlugins(options, paths, settings);
