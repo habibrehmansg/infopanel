@@ -10,7 +10,7 @@ var pluginFolder = Path.Combine(currentDirectory, "..\\..\\..\\..\\..\\InfoPanel
 var pluginPath = Path.Combine(currentDirectory, pluginFolder, "InfoPanel.Extras.dll");
 var plugins = PluginLoader.InitializePlugin(pluginPath);
 
-var targetPlugin = "hwinfo-registry-plugin";
+var targetPlugin = "system-info-plugin";
 
 var pluginInfo = PluginLoader.GetPluginInfo(pluginFolder);
 var pluginDescriptor = new PluginDescriptor(pluginPath, pluginInfo);

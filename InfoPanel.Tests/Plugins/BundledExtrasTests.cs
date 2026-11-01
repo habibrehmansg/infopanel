@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
+using System.Text;
 using InfoPanel.Plugins;
 using InfoPanel.Sensors;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +17,33 @@ public sealed class BundledExtrasTests : IDisposable
     private readonly string _root = PluginFixtures.NewTempRoot("ip-extras-");
 
     public void Dispose() => PluginFixtures.DeleteQuietly(_root);
+
+    // Not opt-in: the built Extras' plugin classes, read from its metadata (no plugin is created). The engine reads
+    // HWiNFO's gadget values itself (infopanel.hwinfo-gadget), so the HWiNFO Registry plugin isn't bundled any more.
+    [Fact]
+    public void The_bundled_Extras_hold_six_plugins_and_not_the_HWiNFO_Registry_one()
+    {
+        var dll = PluginFixtures.DllOf(PluginFixtures.BuiltFolder("InfoPanel.Extras"));
+        using (var pe = new PEReader(File.OpenRead(dll)))
+        {
+            var metadata = pe.GetMetadataReader();
+            var plugins = new List<string>();
+            foreach (var handle in metadata.TypeDefinitions)
+            {
+                var type = metadata.GetTypeDefinition(handle);
+                if (type.BaseType.Kind != HandleKind.TypeReference)
+                    continue;
+                var baseType = metadata.GetTypeReference((TypeReferenceHandle)type.BaseType);
+                if (metadata.GetString(baseType.Namespace) == "InfoPanel.Plugins" && metadata.GetString(baseType.Name) == "BasePlugin")
+                    plugins.Add(metadata.GetString(type.Name));
+            }
+
+            Assert.Equal(["ClockPlugin", "DriveInfoPlugin", "NetworkInfoPlugin", "SystemInfoPlugin", "VolumePlugin", "WeatherPlugin"], plugins.Order(StringComparer.Ordinal));
+        }
+
+        var bytes = File.ReadAllBytes(dll);
+        Assert.Equal(-1, bytes.AsSpan().IndexOf(Encoding.Unicode.GetBytes("hwinfo-registry-plugin")));
+    }
 
     [Fact]
     public async Task The_bundled_Extras_start_and_Clock_and_Drive_Info_list_sensors_within_10_seconds()
