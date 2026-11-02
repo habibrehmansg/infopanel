@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Win32.SafeHandles;
 using InfoPanel.SensorHelper;
@@ -14,7 +15,8 @@ namespace InfoPanel.SensorHelper.TestHost;
 /// returns), <c>fail-open</c> (opening throws) or <c>hold-console</c> (the first read leaves a thread holding
 /// <see cref="Console.Out"/>'s lock for good, as a thread stuck mid-write would). It says what the tree does on its
 /// output, one word a line, on a stream of its own (so a held <see cref="Console.Out"/> doesn't silence it):
-/// <c>tree-created</c>, <c>update-entered</c>, <c>console-held</c>, <c>dispose-entered</c>, <c>disposed</c>.
+/// <c>tree-created</c>, <c>update-entered</c>, <c>console-held</c>, <c>dispose-entered</c>, <c>disposed</c>; and, as it
+/// exits after a close was entered, <c>exit-after-dispose-ms &lt;n&gt;</c>, the time since on its own clock.
 /// </summary>
 internal static class Program
 {
@@ -45,9 +47,24 @@ internal static class Program
         if (engineClient is { } test && clientProcessId is { } real && HelperCommandLine.Parse(rest) is { } line)
             clientProcessId = pipe => real(pipe) == test ? line.Parent : null;
 
-        var options = new HelperProcessOptions { CleanupBound = cleanupBound, ClientProcessId = clientProcessId };
+        var options = new HelperProcessOptions
+        {
+            CleanupBound = cleanupBound,
+            ClientProcessId = clientProcessId,
+            Exit = code =>
+            {
+                // How long the close had, on this process's clock: the test checks the cut there, since the end it sees
+                // also holds this process's teardown and its own notice of it, which a loaded machine delays.
+                if (Interlocked.Read(ref _disposeEntered) is var entered and not 0)
+                    Say($"exit-after-dispose-ms {Stopwatch.GetElapsedTime(entered).TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)}");
+                HelperProcess.HardExit(code);
+            },
+        };
         return HelperProcess.RunAsync(rest, () => new TestTree(behaviour), "2.0.0-testhost", options);
     }
+
+    /// <summary>When the tree's close was entered (<see cref="Stopwatch.GetTimestamp"/>), or 0.</summary>
+    private static long _disposeEntered;
 
     // Standard output without the console's streams: on Unix every write through them takes Console.Out's lock.
     private static readonly StreamWriter Output = new(OperatingSystem.IsWindows()
@@ -116,6 +133,7 @@ internal static class Program
 
         public void Dispose()
         {
+            Interlocked.Exchange(ref _disposeEntered, Stopwatch.GetTimestamp());
             Say("dispose-entered");
             if (_behaviour == "hang-dispose")
                 Thread.Sleep(Timeout.Infinite);

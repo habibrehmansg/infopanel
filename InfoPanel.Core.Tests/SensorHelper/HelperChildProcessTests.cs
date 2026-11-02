@@ -22,6 +22,12 @@ public sealed class HelperChildProcessTests
     /// <summary>How long a child may take past its bound before the test calls it hung (a loaded machine is slow to schedule).</summary>
     private static readonly TimeSpan Slack = TimeSpan.FromSeconds(1.5);
 
+    /// <summary>
+    /// How long past a child's own exit this process may take to see it, where the test times the child on its own clock:
+    /// a sanity limit (the time under test is the child's).
+    /// </summary>
+    private static readonly TimeSpan ExitNotice = TimeSpan.FromSeconds(30);
+
     private static string HostPath => Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "InfoPanel.SensorHelper.TestHost.exe" : "InfoPanel.SensorHelper.TestHost");
 
     /// <summary>The stand-in helper as a child process, its output read line by line; killed at the end if it still runs.</summary>
@@ -246,11 +252,22 @@ public sealed class HelperChildProcessTests
         var since = Stopwatch.StartNew();
         await client.DisposeAsync();
 
-        var (code, after) = await child.ExitsAsync(since, HelperProcess.CleanupBound + Slack);
+        // The cut is bounded above on the child's own clock, from the close's start to its exit: the end seen here also
+        // holds the child's teardown and this process's notice of it, which a loaded machine delays by seconds (.NET
+        // handles a child's end only while no program launch of this process holds its start lock, and launches can
+        // stall). Seen from here, the end only has to come, within a sanity limit. The bound below is this process's
+        // own: its clock starts before the pipe closes, so it can't read a cut as early; the child's can, as its clock
+        // starts inside the close, which its thread may enter late, after the bound's wait began. A late notice can hide
+        // an early cut from that bound: that the cut never comes before the bound is shown on the helper's own clock
+        // (ACloseThatHangs_IsNeverCutBeforeTheBound_OnTheHelpersClock).
+        var (code, after) = await child.ExitsAsync(since, HelperProcess.CleanupBound + ExitNotice);
+        var cut = TimeSpan.FromMilliseconds(int.Parse(Assert.Single(child.Seen, l => l.StartsWith("exit-after-dispose-ms ", StringComparison.Ordinal))["exit-after-dispose-ms ".Length..], System.Globalization.CultureInfo.InvariantCulture));
         Log("pipe closed, the tree's close hung", after);
+        Log("the close cut, on the child's clock", cut);
         Assert.Equal(0, code);
         Assert.Contains("dispose-entered", child.Seen);
         Assert.DoesNotContain("disposed", child.Seen);
+        Assert.True(cut <= HelperProcess.CleanupBound + Slack, $"cut {cut.TotalMilliseconds:0} ms into the close: past the bound");
         Assert.True(after >= HelperProcess.CleanupBound - TimeSpan.FromMilliseconds(100), $"ended {after.TotalMilliseconds:0} ms on: before the bound, so the close wasn't given its time");
         End(engine);
     }
