@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using InfoPanel.Images;
 using InfoPanel.Images.Video;
 using InfoPanel.Output;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -131,23 +132,36 @@ public sealed class VideoPreviewTests : IAsyncLifetime
         while (!render.IsRendering(id) && DateTime.UtcNow < deadline)
             await Task.Delay(5, Ct);
 
-        // 0.35 s in: tick until the decoder, on its own thread, has frame 3 for the loop's snapshot.
+        // 0.35 s in, on a clock that stays there: the loop's first tick (elapsed 0) delivered a frame, so the next one
+        // at 0.35 s is due, and once it delivers, no tick after it is until the clock moves (RenderLoop: a sink is due a
+        // frame interval after its last frame). So the decoder, on its own thread, is waited for first, through the
+        // media cache the loop's runtime asks (the same video, time, playback and box: the same decode session), and
+        // then that one tick has to show frame 3.
         render.Tick(id);
         _clock.Advance(TimeSpan.FromSeconds(0.35));
-        long tick = 0;
-        while (DateTime.UtcNow < deadline)
+        var media = factory.Services.GetRequiredService<MediaSampleCache>();
+        var decoded3 = false;
+        while (!decoded3 && DateTime.UtcNow < deadline)
         {
-            render.Tick(id);
-            using var latest = render.LatestSnapshot(id)!;
-            using var drawn = latest.Render(1);
-            if (VideoColour(drawn.GetPixel(42, 34)) == 3)
+            var lookup = media.GetVideo(blob, 0.35, MediaPlayback.Loop, 64, 48);
+            if (lookup.Sample is { } sample)
             {
-                tick = latest.Tick;
-                break;
+                using (var bitmap = SKBitmap.FromImage(sample.Image!))
+                    decoded3 = VideoColour(bitmap.GetPixel(bitmap.Width / 2, bitmap.Height / 2)) == 3;
+                sample.Release();
             }
-            await Task.Delay(10, Ct);
+            if (!decoded3)
+                await Task.Delay(10, Ct);
         }
-        Assert.True(tick > 0, "the video's frame never arrived");
+        Assert.True(decoded3, "the video's frame never arrived");
+        Assert.Equal(1, render.Tick(id));
+        long tick;
+        using (var latest = render.LatestSnapshot(id)!)
+        using (var drawn = latest.Render(1))
+        {
+            Assert.Equal(3, VideoColour(drawn.GetPixel(42, 34)));
+            tick = latest.Tick;
+        }
 
         // The socket's frame for that tick against a direct draw of the same snapshot.
         var frame = await client.ReceiveFrameAsync(Ct, h => h.Tick >= tick);
