@@ -398,14 +398,36 @@ public class FfmpegDiscoveryTests
         var backend = new FfmpegH264(FfmpegDiscovery.At(standIn), NullLogger.Instance);
         var backends = new H264Backends([backend], NullLogger.Instance);
 
-        // The stream's loop asks; the answer comes from a background task, never the asking thread.
-        var thread = Environment.CurrentManagedThreadId;
-        var watch = Stopwatch.StartNew();
-        var probe = backends.ProbeAsync(backend);
-        Assert.True(watch.Elapsed < TimeSpan.FromMilliseconds(500), "asking returns at once");
-        Assert.False(probe.IsCompleted);
-        Assert.Equal(H264Probe.Unavailable, await probe.WaitAsync(TimeSpan.FromSeconds(10), Ct));
-        Assert.NotEqual(thread, backend.ProbeThread);
+        // The stream's loop asks; the answer comes from a background task, never the asking thread. The asker is a thread
+        // of its own, alive until the answer is in: a thread-pool thread that asks and then awaits is free to run the
+        // probe's queued task itself, so the asker could share the probe's thread (inferred from the recorded failure, whose
+        // two thread ids were equal; not reproduced), and an ended thread's id may be given to a new one. Whether the answer was already in is read on the asker, before it publishes:
+        // read later, a delayed test continuation would see the probe's own bound pass.
+        var asked = new TaskCompletionSource<(int Thread, Task<H264Probe> Probe, TimeSpan Took, bool Completed)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var answered = new ManualResetEventSlim();
+        var asker = new Thread(() =>
+        {
+            var watch = Stopwatch.StartNew();
+            var task = backends.ProbeAsync(backend);
+            var completed = task.IsCompleted;
+            asked.SetResult((Environment.CurrentManagedThreadId, task, watch.Elapsed, completed));
+            answered.Wait();
+        }) { IsBackground = true, Name = "asker" };
+        asker.Start();
+        Task<H264Probe> probe;
+        try
+        {
+            (var thread, probe, var took, var completed) = await asked.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+            Assert.True(took < TimeSpan.FromMilliseconds(500), "asking returns at once");
+            Assert.False(completed);
+            Assert.Equal(H264Probe.Unavailable, await probe.WaitAsync(TimeSpan.FromSeconds(10), Ct));
+            Assert.NotEqual(thread, backend.ProbeThread);
+        }
+        finally
+        {
+            answered.Set();
+            asker.Join();
+        }
         Assert.Same(probe, backends.ProbeAsync(backend));
         Assert.True(backends.NoneLeft);
         Assert.Single(await File.ReadAllLinesAsync(count, Ct));
