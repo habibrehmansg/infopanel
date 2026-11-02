@@ -30,7 +30,9 @@ public sealed class PolledSensorSourceOptions
 /// Keys are the source's <see cref="SensorKeySpace"/>'s (<c>plugin:{KeyPrefix}{definition id}</c> by default); the
 /// source handles every key in it (unknown ones are unavailable). A sampler whose catalogue changes
 /// (<see cref="ISensorSampler.CatalogueVersion"/>) is discovered again after the round that changed it: keys that stay
-/// keep their state, keys that go are stale until they are unavailable, then unlisted. Status per key
+/// keep their state, keys that go are stale until they are unavailable, then unlisted, except keys the sampler withdrew on
+/// purpose (<see cref="ISensorSampler.TakeWithdrawn"/>), which are unlisted at once; the sampler is told the ids of the
+/// keys unlisted (<see cref="ISensorSampler.Unlisted"/>). Status per key
 /// (<see cref="ISensorStatusSource"/>):
 /// <list type="bullet">
 /// <item><see cref="SensorStatus.PermissionDenied"/> while the latest read was refused;</item>
@@ -65,6 +67,8 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
         public long Count;
         public long LastGood;
         public SampleOutcome Latest;
+        // The sampler's id of the key, told to the sampler when the key is unlisted.
+        public string? Id;
     }
 
     private readonly Func<ISensorSampler> _createSampler;
@@ -340,10 +344,12 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
     /// changed), a key that was listed with the same kind keeps its slot (now or text, min, max, avg, count, last good),
     /// and a listed key the catalogue no longer has stays listed after the catalogue's sensors, failed (stale), until it
     /// is unavailable (<see cref="PruneGone"/>); a new key, or one whose kind changed, starts with no reading. Without it
-    /// (a new sampler), every key starts so.
+    /// (a new sampler), every key starts so. Returns the ids of the listed keys it unlisted (with <paramref name="carry"/>).
     /// </summary>
-    private void Rebuild(IReadOnlyList<SensorDefinition> definitions, long now, bool carry)
+    private List<string> Rebuild(IReadOnlyList<SensorDefinition> definitions, long now, bool carry, IReadOnlySet<SensorKey>? withdrawn = null)
     {
+        withdrawn ??= new HashSet<SensorKey>();
+        var unlisted = new List<string>();
         var oldIndex = carry ? _index : [];
         var oldSlots = carry ? _slots : [];
         var oldSensors = carry ? Volatile.Read(ref _sensors) : [];
@@ -379,7 +385,9 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
             {
                 map[i] = infos.Count;
                 infos.Add(new SensorInfo(key, Id, d.Group, d.Name, d.Unit));
-                slots.Add(oldIndex.TryGetValue(key, out var old) && oldSlots[old].Kind == d.Kind ? oldSlots[old] : new Slot { Kind = d.Kind });
+                var slot = oldIndex.TryGetValue(key, out var old) && oldSlots[old].Kind == d.Kind && !withdrawn.Contains(key) ? oldSlots[old] : new Slot { Kind = d.Kind };
+                slot.Id = d.Id;
+                slots.Add(slot);
             }
             else
             {
@@ -395,8 +403,12 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
             if (index.ContainsKey(key))
                 continue;
             var slot = oldSlots[oldIndex[key]];
-            if (slot.Count == 0 || _time.GetElapsedTime(slot.LastGood, now) > _options.UnavailableAfter)
+            if (withdrawn.Contains(key) || slot.Count == 0 || _time.GetElapsedTime(slot.LastGood, now) > _options.UnavailableAfter)
+            {
+                if (slot.Id is { } id)
+                    unlisted.Add(id);
                 continue;
+            }
 
             // Gone from the catalogue: its reads fail from now on.
             slot.Latest = SampleOutcome.Failed;
@@ -417,11 +429,13 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
         }
 
         Volatile.Write(ref _sensors, infos.ToArray());
+        return unlisted;
     }
 
-    /// <summary>Unlists the sensors gone from the catalogue once they are unavailable.</summary>
-    private void PruneGone(long now)
+    /// <summary>Unlists the sensors gone from the catalogue once they are unavailable; returns the ids it unlisted.</summary>
+    private List<string> PruneGone(long now)
     {
+        var unlisted = new List<string>();
         var sensors = Volatile.Read(ref _sensors);
         var first = sensors.Length - _gone;
         var expired = false;
@@ -432,13 +446,15 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
         }
 
         if (!expired)
-            return;
+            return unlisted;
 
         var keep = new List<int>(sensors.Length);
         for (var i = 0; i < sensors.Length; i++)
         {
             if (i < first || _time.GetElapsedTime(_slots[i].LastGood, now) <= _options.UnavailableAfter)
                 keep.Add(i);
+            else if (_slots[i].Id is { } id)
+                unlisted.Add(id);
         }
 
         var index = new Dictionary<SensorKey, int>(keep.Count);
@@ -460,6 +476,22 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
         }
 
         Volatile.Write(ref _sensors, infos);
+        return unlisted;
+    }
+
+    /// <summary>Tells <paramref name="sampler"/> the ids of the sensors no longer listed.</summary>
+    private void TellUnlisted(ISensorSampler sampler, List<string> ids)
+    {
+        if (ids.Count == 0)
+            return;
+        try
+        {
+            sampler.Unlisted(ids);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Sensor source {Source}: telling it the sensors no longer listed failed", Id);
+        }
     }
 
     /// <summary>
@@ -565,7 +597,7 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
 
         // Expired keys go first, so a rediscovery never carries one (and a rediscovery that fails doesn't keep them).
         if (_gone > 0)
-            PruneGone(sampled);
+            TellUnlisted(sampler, PruneGone(sampled));
         if (version != _catalogueVersion)
             Rediscover(sampler, version, sampled);
 
@@ -609,7 +641,36 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
 
         _rediscoveryFailedOnce = false;
         _catalogueVersion = version;
-        Rebuild(definitions, now, carry: true);
+        TellUnlisted(sampler, Rebuild(definitions, now, carry: true, WithdrawnOf(sampler)));
+    }
+
+    /// <summary>The keys of the sensors <paramref name="sampler"/> withdrew on purpose (ids it can't key are ignored).</summary>
+    private HashSet<SensorKey> WithdrawnOf(ISensorSampler sampler)
+    {
+        var keys = new HashSet<SensorKey>();
+        IReadOnlyCollection<string> ids;
+        try
+        {
+            ids = sampler.TakeWithdrawn();
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Sensor source {Source}: reading the sensors it withdrew failed", Id);
+            return keys;
+        }
+
+        foreach (var id in ids)
+        {
+            try
+            {
+                keys.Add(KeySpace.KeyOf(id));
+            }
+            catch (ArgumentException)
+            {
+            }
+        }
+
+        return keys;
     }
 
     private async Task RunAsync(PeriodicTimer timer, CancellationToken ct)

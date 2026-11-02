@@ -79,6 +79,36 @@
     </ItemGroup>
   </Target>
 
+  <!-- The sensor helper (InfoPanel.SensorHelper, which hosts LibreHardwareMonitorLib for the Libre source): a publish for
+       a Windows runtime (dotnet publish -r win-x64) publishes it for that runtime, framework-dependent as the engine is
+       by default, and puts it beside the engine, where the engine starts it (InfoPanel.SensorHelper.exe, with its own
+       deps and runtimeconfig files). Only then: LibreHardwareMonitorLib's assemblies exist only for Windows runtimes, so
+       a build, or a publish for any other runtime, carries no helper (the Libre source then says helperFailed). Restored
+       with the engine for that runtime, as the bundled plugin is, and published into the engine's intermediate folder
+       first; added to the publish list after it is computed, as the bundled plugin's files are. -->
+  <PropertyGroup>
+    <_PublishesSensorHelper Condition="$(RuntimeIdentifier.StartsWith('win-'))">true</_PublishesSensorHelper>
+  </PropertyGroup>
+
+  <Target Name="RestoreSensorHelper" AfterTargets="Restore" Condition="'$(_PublishesSensorHelper)' == 'true'">
+    <MSBuild Projects="..\InfoPanel.SensorHelper\InfoPanel.SensorHelper.csproj" Targets="Restore"
+             Properties="RuntimeIdentifier=$(RuntimeIdentifier)" RemoveProperties="TargetFramework;SelfContained;PublishDir;NoBuild" />
+  </Target>
+
+  <Target Name="PublishSensorHelper" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(_PublishesSensorHelper)' == 'true'">
+    <!-- In the target: the intermediate folder is only known once the SDK's targets are evaluated. -->
+    <PropertyGroup>
+      <_SensorHelperPublishDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'sensor-helper'))</_SensorHelperPublishDir>
+    </PropertyGroup>
+    <MSBuild Projects="..\InfoPanel.SensorHelper\InfoPanel.SensorHelper.csproj" Targets="Publish"
+             Properties="RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=false;Configuration=$(Configuration);PublishDir=$(_SensorHelperPublishDir)"
+             RemoveProperties="TargetFramework;NoBuild" />
+    <ItemGroup>
+      <_SensorHelperFile Include="$(_SensorHelperPublishDir)**\*" Exclude="$(_SensorHelperPublishDir)**\*.pdb" />
+      <ResolvedFileToPublish Include="@(_SensorHelperFile)" RelativePath="%(_SensorHelperFile.RecursiveDir)%(_SensorHelperFile.Filename)%(_SensorHelperFile.Extension)" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
   <!-- The engine's build, which GET /api/session reports (engineBuild): EngineBuild.targets records it. -->
   <Import Project="EngineBuild.targets" />
 

@@ -26,6 +26,12 @@ internal static class HwInfoFixture
     }
 }
 
+/// <summary>The PC's Libre answers recorded without its driver (<c>InfoPanel.Core.Tests/Fixtures/libre</c>), a recording <c>--replay-sensors</c> plays.</summary>
+internal static class LibreFixture
+{
+    public static string Folder { get; } = Path.Combine(Path.GetDirectoryName(HwInfoFixture.Folder)!, "libre");
+}
+
 /// <summary>
 /// Recording and replaying sensors from the command line: <c>--replay-sensors</c> plays a recording in place of the
 /// platform's sources (the session says mock), refused with <c>--mock</c>; <c>--record-sensors</c> and its options.

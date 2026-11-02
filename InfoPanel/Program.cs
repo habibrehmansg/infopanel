@@ -16,6 +16,7 @@ using InfoPanel.Security;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.HwInfo;
 using InfoPanel.Sensors.HwInfo.Gadget;
+using InfoPanel.Sensors.Libre;
 using InfoPanel.Sensors.MacOS;
 using InfoPanel.Sensors.Replay;
 using InfoPanel.Settings;
@@ -295,6 +296,14 @@ try
         // the Windows PC's sources in its order, HWiNFO's from the recording, its gadget values with no key (not recorded).
         builder.Services.AddSingleton<ISensorSource>(sp => SensorReplay.CreateHwInfo(recording, sp.GetRequiredService<TimeProvider>()));
         builder.Services.AddSingleton<ISensorSource>(sp => SensorReplay.CreateGadget(sp.GetRequiredService<TimeProvider>()));
+        // Libre's sensor helper as recorded, its settings applied as on the PC, when the recording holds it.
+        if (SensorRecording.HoldsLibre(recording))
+            builder.Services.AddSingleton<ISensorSource>(sp =>
+            {
+                var libre = SensorReplay.CreateLibre(recording, () => settings.Current.Settings.Libre, sp.GetRequiredService<TimeProvider>());
+                settings.Changed += _ => libre.SettingsChanged();
+                return libre;
+            });
     }
     else if (options.Mock)
     {
@@ -318,6 +327,19 @@ try
         });
         // HWiNFO's gadget values (the readings ticked "Report value in Gadget"), read from the user's registry.
         builder.Services.AddSingleton<ISensorSource>(sp => HwInfoGadgetSource.CreateWindows(sp.GetRequiredService<TimeProvider>()));
+        // LibreHardwareMonitor's sensors, after HWiNFO's (1.4.x's start order): the sensor helper beside the engine, started
+        // by the source and run by sources.libre.* as they change; --record-sensors records its answers too.
+        builder.Services.AddSingleton<ISensorSource>(sp =>
+        {
+            var time = sp.GetRequiredService<TimeProvider>();
+            var recorder = options.RecordSensors is { } folder
+                ? new LibreRecorder(folder, SensorRecording.MaxRounds, options.Scrub, LibreSource.Interval, time.GetUtcNow(), TimeSpan.FromSeconds(options.RecordSeconds), time)
+                : null;
+            var libre = LibreSource.CreateWindows(() => settings.Current.Settings.Libre, time, recorder);
+            // A change is heard at once: Off stops the helper even while a request to it hangs.
+            settings.Changed += _ => libre.SettingsChanged();
+            return libre;
+        });
     }
     // The engine's own sources on every OS (the clock, the drives, the network), outside mock mode and a replay.
     builder.Services.AddBuiltInSources(options);

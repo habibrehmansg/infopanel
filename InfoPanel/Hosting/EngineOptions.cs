@@ -324,7 +324,9 @@ public sealed partial class EngineOptions
             problems.Add("--record-sensors records the platform's sensors: it can't be used with --mock, --mock-seed or --replay-sensors.");
         }
         else if (Directory.Exists(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.HwInfoFolder))
-            && Directory.EnumerateFileSystemEntries(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.HwInfoFolder)).Any())
+            && Directory.EnumerateFileSystemEntries(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.HwInfoFolder)).Any()
+            || Directory.Exists(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.LibreFolder))
+            && Directory.EnumerateFileSystemEntries(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.LibreFolder)).Any())
         {
             problems.Add($"--record-sensors '{recordSensors}' already holds a recording: give a new folder.");
         }

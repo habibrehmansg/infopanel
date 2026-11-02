@@ -125,6 +125,22 @@ public interface ISensorSampler : IDisposable
     long CatalogueVersion => 0;
 
     /// <summary>
+    /// The ids of sensors the sampler dropped on purpose since this was last called (a setting turned them off), read
+    /// by <see cref="PolledSensorSource"/> as it rediscovers: they are unlisted at once rather than kept stale until
+    /// unavailable, and one listed again starts with no reading. Empty (by default) for a sampler that drops none.
+    /// </summary>
+    IReadOnlyCollection<string> TakeWithdrawn() => [];
+
+    /// <summary>
+    /// The ids of sensors <see cref="PolledSensorSource"/> no longer lists (gone from the catalogue and now unavailable,
+    /// or withdrawn), told on the poll thread as it unlists them, so a sampler that keeps the ids it listed can let them
+    /// go. Ignored (by default) by a sampler that keeps none.
+    /// </summary>
+    void Unlisted(IReadOnlyCollection<string> ids)
+    {
+    }
+
+    /// <summary>
     /// The source's state as the latest round (or <see cref="Discover"/>) saw it, read on the poll thread after each:
     /// null (by default) while it reads, which <see cref="PolledSensorSource"/> reports as running.
     /// </summary>

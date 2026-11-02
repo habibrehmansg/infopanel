@@ -159,4 +159,54 @@ public sealed class SensorSourceEndpointTests(EngineFactory factory) : IClassFix
             Directory.Delete(folder, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task AReplayingEngine_RunsLibreFromTheRecording_AfterHWiNFOs_AndItsSettingTurnsItOffAndOn()
+    {
+        using var engine = new EngineFactory();
+        using var replaying = engine.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Engine:MockSeed", "");
+            builder.UseSetting("Engine:ReplaySensors", LibreFixture.Folder);
+        });
+        using var client = Client(replaying);
+        var sources = await Sources(client);
+
+        // The PC's sources in their start order: HWiNFO (not recorded: not running), its gadget values, then Libre.
+        Assert.Equal(["hwinfo", "infopanel.hwinfo-gadget", "libre", "plugins"], sources.Select(s => s.GetProperty("id").GetString()));
+        Assert.Equal(("unavailable", "notRunning"), (sources[0].GetProperty("state").GetString(), Reason(sources[0])));
+        // Recorded without the PawnIO driver: reading, limited.
+        Assert.Equal(("limited", "noDriver", 199), (sources[2].GetProperty("state").GetString(), Reason(sources[2]), sources[2].GetProperty("sensors").GetInt32()));
+        Assert.Equal(InfoPanel.Sensors.Libre.LibreSource.NoDriver.Message, sources[2].GetProperty("reason").GetProperty("message").GetString());
+        var sensors = await client.GetFromJsonAsync<JsonElement>("/api/sensors", Ct);
+        Assert.Contains(sensors.EnumerateArray(), s => s.GetProperty("key").GetString() == "libre:/amdcpu/0/load/0" && s.GetProperty("source").GetString() == "libre");
+
+        // sources.libre.enabled applies at the source's next round (every 2 s): off, then reading again.
+        await SetLibre(client, false);
+        Assert.Equal(("off", "disabled"), await LibreState(client, s => s.Item1 == "off"));
+        await SetLibre(client, true);
+        Assert.Equal(("limited", "noDriver"), await LibreState(client, s => s.Item1 == "limited"));
+    }
+
+    private static async Task SetLibre(HttpClient client, bool enabled)
+    {
+        using var content = new StringContent("{\"sources\":{\"libre\":{\"enabled\":" + (enabled ? "true" : "false") + "}}}", System.Text.Encoding.UTF8, "application/json");
+        using var response = await client.PatchAsync("/api/settings", content, Ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private static async Task<(string?, string?)> LibreState(HttpClient client, Func<(string?, string?), bool> until)
+    {
+        (string?, string?) state = default;
+        for (var i = 0; i < 100; i++)
+        {
+            var libre = (await Sources(client)).Single(s => s.GetProperty("id").GetString() == "libre");
+            state = (libre.GetProperty("state").GetString(), Reason(libre));
+            if (until(state))
+                break;
+            await Task.Delay(100, Ct);
+        }
+
+        return state;
+    }
 }

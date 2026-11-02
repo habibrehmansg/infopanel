@@ -34,6 +34,12 @@ public class EnginePublishTests
             var problems = new List<string>();
             CheckIsolated(problems, artifacts, restoreFiles);
             var listed = await CheckDeps(problems, "engine", root, "InfoPanel.deps.json");
+            // The sensor helper is published for Windows runtimes only (LibreHardwareMonitor's assemblies are Windows ones).
+            foreach (var helperFile in new[] { "InfoPanel.SensorHelper.dll", "InfoPanel.SensorHelper.deps.json", "LibreHardwareMonitorLib.dll" })
+            {
+                if (File.Exists(Path.Combine(root, helperFile)))
+                    problems.Add($"{helperFile}: the sensor helper's, in a publish for no runtime");
+            }
 
             // The bundled plugin is published under plugins/, and none of its own files land in the root; its own deps
             // file holds in its folder, and its whole closure resolves as its host loads it.
@@ -69,6 +75,50 @@ public class EnginePublishTests
 
             Assert.True(problems.Count == 0,
                 $"The published engine in {root} doesn't match its deps files:\n" + string.Join("\n", problems));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// A publish for Windows (<c>-r win-x64</c>, framework-dependent) carries the sensor helper beside the engine, where
+    /// the Libre source starts it: <c>InfoPanel.SensorHelper.exe</c> with its own deps and runtimeconfig files, everything
+    /// either deps file lists in the root at the version it names (so neither overwrote the other's), LibreHardwareMonitor
+    /// among them. (A publish for no runtime or another carries none: the test above.)
+    /// </summary>
+    [Fact]
+    public async Task AWindowsPublish_CarriesTheSensorHelperBesideTheEngine()
+    {
+        var dir = Directory.CreateTempSubdirectory("infopanel-publish-win-");
+        try
+        {
+            var artifacts = Path.Combine(dir.FullName, "artifacts");
+            var root = Path.Combine(dir.FullName, "win-x64");
+            await Publish(root, artifacts, "-r", "win-x64", "--self-contained", "false");
+
+            var problems = new List<string>();
+            foreach (var file in new[] { "InfoPanel.exe", "InfoPanel.SensorHelper.exe", "InfoPanel.SensorHelper.dll", "InfoPanel.SensorHelper.runtimeconfig.json", "LibreHardwareMonitorLib.dll" })
+            {
+                if (!File.Exists(Path.Combine(root, file)))
+                    problems.Add($"{file} is missing from the Windows publish");
+            }
+            await CheckDeps(problems, "engine", root, "InfoPanel.deps.json");
+            var helper = await CheckDeps(problems, "sensor helper", root, "InfoPanel.SensorHelper.deps.json");
+            if (!helper.Contains("LibreHardwareMonitorLib.dll"))
+                problems.Add("the sensor helper's deps file doesn't list LibreHardwareMonitorLib.dll");
+            // The helper is published through the test's own intermediate folder, never into the project's.
+            if (Directory.Exists(Path.Combine(LiveEngine.RepoRoot(), "InfoPanel", "sensor-helper")))
+                problems.Add("the sensor helper was published into InfoPanel/sensor-helper/ in the checkout");
+            if (!Directory.EnumerateFiles(artifacts, "InfoPanel.SensorHelper.dll", SearchOption.AllDirectories).Any())
+                problems.Add($"the sensor helper wasn't built under the test's folder {artifacts}");
+            Assert.True(problems.Count == 0, $"The Windows publish in {root}:\n" + string.Join("\n", problems));
+
+            // The helper runs on the runtime the engine needs anyway, rolling forward from its own.
+            using var config = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(root, "InfoPanel.SensorHelper.runtimeconfig.json"), Ct));
+            Assert.Equal("Major", config.RootElement.GetProperty("runtimeOptions").GetProperty("rollForward").GetString());
+
         }
         finally
         {

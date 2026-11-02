@@ -1,6 +1,8 @@
 using InfoPanel.Persistence;
 using InfoPanel.Sensors.HwInfo;
 using InfoPanel.Sensors.HwInfo.Gadget;
+using InfoPanel.Sensors.Libre;
+using InfoPanel.Settings;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -15,7 +17,7 @@ namespace InfoPanel.Sensors.Replay;
 /// mappings a <see cref="HwInfoSampler"/> opens through it read the recorded round's bytes, and each round the
 /// sampler ends (<see cref="RoundEnded"/>) moves to the next. A mapping the round has no file for isn't there (an open
 /// view of it reads <c>DEAD</c>, as HWiNFO's own does when it ends); the rounds are the manifest's, so rounds with no
-/// file at the end are played too. Loaded whole at start, only regular files, within <see cref="SensorRecordingLimits"/>
+/// file at the end are played too; a recording with none plays as HWiNFO not running. Loaded whole at start, only regular files, within <see cref="SensorRecordingLimits"/>
 /// (files listed, frames, mappings a round and rounds counted before anything is read).
 /// </summary>
 public sealed class HwInfoReplay : IHwInfoMemoryOpener, HwInfoSampler.IObserver
@@ -54,7 +56,9 @@ public sealed class HwInfoReplay : IHwInfoMemoryOpener, HwInfoSampler.IObserver
         var files = new List<(int Round, int Remote, string Path)>();
         var mappings = new Dictionary<int, int>();
         var listed = 0;
-        foreach (var path in Directory.EnumerateFileSystemEntries(Path.Combine(folder, SensorRecording.HwInfoFolder)))
+        // A recording of a PC where HWiNFO didn't run (Libre's alone) has no frames: every round reads as no HWiNFO.
+        var hwinfo = Path.Combine(folder, SensorRecording.HwInfoFolder);
+        foreach (var path in Directory.Exists(hwinfo) ? Directory.EnumerateFileSystemEntries(hwinfo) : [])
         {
             if (++listed > limits.MaxFiles)
                 throw new InvalidDataException($"The recording's {SensorRecording.HwInfoFolder} folder holds over {limits.MaxFiles} files.");
@@ -71,7 +75,7 @@ public sealed class HwInfoReplay : IHwInfoMemoryOpener, HwInfoSampler.IObserver
             files.Add((round, remote, path));
         }
 
-        var rounds = new Dictionary<int, byte[]>?[declared ?? files.Max(f => f.Round) + 1];
+        var rounds = new Dictionary<int, byte[]>?[declared ?? (files.Count == 0 ? 1 : files.Max(f => f.Round) + 1)];
         long total = 0;
         foreach (var (round, remote, path) in files)
         {
@@ -151,8 +155,9 @@ public sealed class HwInfoReplay : IHwInfoMemoryOpener, HwInfoSampler.IObserver
 
 /// <summary>
 /// The sources a recording replays (<c>--replay-sensors</c>), under their ids and keys: the sources of the Windows PC
-/// it was recorded on, in its order, HWiNFO's from the recording and HWiNFO Gadget's with no key (a recording doesn't
-/// hold the gadget key, so it reads as on a PC where gadget reporting isn't set up). No HWiNFO process runs in a
+/// it was recorded on, in its order, HWiNFO's from the recording, HWiNFO Gadget's with no key (a recording doesn't
+/// hold the gadget key, so it reads as on a PC where gadget reporting isn't set up), and Libre's from the recording when
+/// it holds Libre's. No HWiNFO process runs in a
 /// replay, so where HWiNFO's shared memory isn't recorded it isn't running.
 /// </summary>
 public static class SensorReplay
@@ -163,6 +168,14 @@ public static class SensorReplay
         var replay = HwInfoReplay.Load(folder);
         return HwInfoSource.Create(replay, time, observer: replay);
     }
+
+    /// <summary>
+    /// The Libre source over the recording's sensor helper (<see cref="LibreReplay"/>), its settings applied as on the
+    /// PC (<paramref name="settings"/>: off, storage). Only for a recording that holds Libre's frames
+    /// (<see cref="SensorRecording.HoldsLibre"/>): one made before the engine read Libre replays without a Libre source.
+    /// </summary>
+    public static LibreSource CreateLibre(string folder, Func<LibreSettings> settings, TimeProvider? time = null) =>
+        new(LibreReplay.Load(folder), settings, time);
 
     /// <summary>The HWiNFO Gadget source over a registry with no gadget key.</summary>
     public static PolledSensorSource CreateGadget(TimeProvider? time = null) => HwInfoGadgetSource.Create(new NoGadgetKey(), time);

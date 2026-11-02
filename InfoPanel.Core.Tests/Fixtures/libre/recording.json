@@ -1,0 +1,13 @@
+{
+  "format": "infopanel.sensor-recording/1",
+  "started": "2026-11-01T15:30:00.0000000+00:00",
+  "scrubbed": true,
+  "sources": [
+    "libre"
+  ],
+  "libre": {
+    "intervalMs": 2000,
+    "rounds": 3,
+    "ended": "2026-11-01T15:30:06.0000000+00:00"
+  }
+}

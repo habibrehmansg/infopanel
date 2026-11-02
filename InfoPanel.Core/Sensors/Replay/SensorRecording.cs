@@ -8,6 +8,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace InfoPanel.Sensors.Replay;
@@ -37,6 +38,7 @@ public static partial class SensorRecording
     public const string Format = "infopanel.sensor-recording/1";
     public const string ManifestName = "recording.json";
     public const string HwInfoFolder = "hwinfo";
+    public const string LibreFolder = "libre";
 
     /// <summary>At most this many rounds, frames, mappings a round and decompressed bytes are replayed (<see cref="SensorRecordingLimits"/>).</summary>
     public const int MaxRounds = 100_000;
@@ -53,6 +55,29 @@ public static partial class SensorRecording
     [GeneratedRegex(@"^(\d{6})\.(local|remote-(\d{1,4}))\.bin\.gz$")]
     private static partial Regex FilePattern();
 
+    /// <summary>
+    /// The file a Libre recorder claims its <c>libre/</c> folder with, created only when absent: a second recorder on
+    /// the same folder records nothing.
+    /// </summary>
+    public const string LibreClaimName = "recorder.claim";
+
+    /// <summary>A Libre round's file while it is written (its name, then this); it takes its own name once whole.</summary>
+    public const string LibreTempSuffix = ".partial";
+
+    /// <summary>Libre's file of one round: the helper's answers that round, as its frames (<c>{round:000000}.frames.gz</c>).</summary>
+    public static string LibreFileName(int round) => string.Create(CultureInfo.InvariantCulture, $"{round:000000}.frames.gz");
+
+    [GeneratedRegex(@"^(\d{6})\.frames\.gz$")]
+    private static partial Regex LibreFilePattern();
+
+    /// <summary>The round a Libre file name holds, or false for any other name.</summary>
+    public static bool TryParseLibreFileName(string name, out int round)
+    {
+        var match = LibreFilePattern().Match(name);
+        round = match.Success ? int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) : 0;
+        return match.Success;
+    }
+
     /// <summary>The round and remote index (−1 local) a file name holds, or false for any other name.</summary>
     public static bool TryParseFileName(string name, out int round, out int remote)
     {
@@ -67,38 +92,96 @@ public static partial class SensorRecording
         return true;
     }
 
-    /// <summary>Why <paramref name="folder"/> can't be replayed, or null when it can.</summary>
+    /// <summary>Why <paramref name="folder"/> can't be replayed, or null when it can: it holds HWiNFO's frames, Libre's, or both.</summary>
     public static string? Check(string folder)
     {
-        var hwinfo = Path.Combine(folder, HwInfoFolder);
         if (!Directory.Exists(folder))
             return $"'{folder}' does not exist.";
-        if (!Directory.Exists(hwinfo)
-            || !Directory.EnumerateFiles(hwinfo).Take(SensorRecordingLimits.Default.MaxFiles).Any(f => TryParseFileName(Path.GetFileName(f), out _, out _)))
-            return $"'{folder}' holds no recorded sensors (no {HwInfoFolder}/*.bin.gz).";
+        if (!HoldsFrames(folder))
+            return $"'{folder}' holds no recorded sensors (no {HwInfoFolder}/*.bin.gz or {LibreFolder}/*.frames.gz).";
         return null;
     }
 
-    /// <summary>
-    /// Writes the manifest: the format, when, the source's interval, whether names were scrubbed, and, once the
-    /// recording ended, its rounds and when it ended.
-    /// </summary>
-    public static void WriteManifest(string folder, TimeSpan interval, bool scrubbed, DateTimeOffset started, int? rounds = null, DateTimeOffset? ended = null)
+    /// <summary>Whether <paramref name="folder"/> holds a recorded frame of any source (a recorder never writes into one that does).</summary>
+    public static bool HoldsFrames(string folder) => HoldsHwInfo(folder) || HoldsLibre(folder);
+
+    /// <summary>Whether <paramref name="folder"/> holds HWiNFO frames.</summary>
+    public static bool HoldsHwInfo(string folder)
     {
-        Directory.CreateDirectory(folder);
-        var manifest = new Dictionary<string, object>
+        var hwinfo = Path.Combine(folder, HwInfoFolder);
+        return Directory.Exists(hwinfo)
+            && Directory.EnumerateFiles(hwinfo).Take(SensorRecordingLimits.Default.MaxFiles).Any(f => TryParseFileName(Path.GetFileName(f), out _, out _));
+    }
+
+    /// <summary>Whether <paramref name="folder"/> holds the sensor helper's frames (Libre's).</summary>
+    public static bool HoldsLibre(string folder)
+    {
+        var libre = Path.Combine(folder, LibreFolder);
+        return Directory.Exists(libre)
+            && Directory.EnumerateFiles(libre).Take(SensorRecordingLimits.Default.MaxFiles).Any(f => TryParseLibreFileName(Path.GetFileName(f), out _));
+    }
+
+    // Both recorders write the one manifest, each its own members, from their own poll threads.
+    private static readonly System.Threading.Lock ManifestLock = new();
+
+    /// <summary>
+    /// Writes HWiNFO's part of the manifest: the format, when, the source's interval, whether names were scrubbed, and,
+    /// once the recording ended, its rounds and when it ended. Libre's part (<see cref="WriteLibreManifest"/>) is kept.
+    /// </summary>
+    public static void WriteManifest(string folder, TimeSpan interval, bool scrubbed, DateTimeOffset started, int? rounds = null, DateTimeOffset? ended = null) =>
+        UpdateManifest(folder, scrubbed, started, HwInfoFolder, manifest =>
         {
-            ["format"] = Format,
-            ["started"] = started.ToString("O", CultureInfo.InvariantCulture),
-            ["intervalMs"] = (int)interval.TotalMilliseconds,
-            ["scrubbed"] = scrubbed,
-            ["sources"] = new[] { HwInfoFolder },
-        };
-        if (rounds is { } count)
-            manifest["rounds"] = count;
-        if (ended is { } end)
-            manifest["ended"] = end.ToString("O", CultureInfo.InvariantCulture);
-        File.WriteAllText(Path.Combine(folder, ManifestName), JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }) + "\n");
+            manifest["intervalMs"] = (int)interval.TotalMilliseconds;
+            manifest.Remove("rounds");
+            manifest.Remove("ended");
+            if (rounds is { } count)
+                manifest["rounds"] = count;
+            if (ended is { } end)
+                manifest["ended"] = end.ToString("O", CultureInfo.InvariantCulture);
+        });
+
+    /// <summary>
+    /// Writes Libre's part of the manifest, <c>libre</c>: its interval and, once its recording ended, its rounds and
+    /// when it ended. HWiNFO's part is kept; a manifest Libre writes first has the format, when and scrubbed too.
+    /// </summary>
+    public static void WriteLibreManifest(string folder, TimeSpan interval, bool scrubbed, DateTimeOffset started, int? rounds = null, DateTimeOffset? ended = null) =>
+        UpdateManifest(folder, scrubbed, started, LibreFolder, manifest =>
+        {
+            var libre = new JsonObject { ["intervalMs"] = (int)interval.TotalMilliseconds };
+            if (rounds is { } count)
+                libre["rounds"] = count;
+            if (ended is { } end)
+                libre["ended"] = end.ToString("O", CultureInfo.InvariantCulture);
+            manifest[LibreFolder] = libre;
+        });
+
+    private static void UpdateManifest(string folder, bool scrubbed, DateTimeOffset started, string source, Action<JsonObject> update)
+    {
+        lock (ManifestLock)
+        {
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, ManifestName);
+            JsonObject manifest;
+            try
+            {
+                manifest = File.Exists(path) && JsonNode.Parse(RegularFile.ReadAtMost(path, MaxManifestBytes)) is JsonObject read ? read : [];
+            }
+            catch (JsonException)
+            {
+                manifest = [];
+            }
+
+            manifest["format"] = Format;
+            if (!manifest.ContainsKey("started"))
+                manifest["started"] = started.ToString("O", CultureInfo.InvariantCulture);
+            manifest["scrubbed"] = scrubbed;
+            var sources = (manifest["sources"] as JsonArray)?.Select(n => n is JsonValue v && v.TryGetValue<string>(out var text) ? text : null).OfType<string>().ToList() ?? [];
+            if (!sources.Contains(source))
+                sources.Add(source);
+            manifest["sources"] = new JsonArray([.. sources.Order(StringComparer.Ordinal).Select(s => (JsonNode?)s)]);
+            update(manifest);
+            File.WriteAllText(path, manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+        }
     }
 
     /// <summary>
@@ -116,6 +199,29 @@ public static partial class SensorRecording
             if (manifest.RootElement.ValueKind != JsonValueKind.Object || !manifest.RootElement.TryGetProperty("rounds", out var rounds))
                 return null;
             return rounds.TryGetInt32(out var count) && count >= 1 ? count : throw new InvalidDataException($"{ManifestName}'s rounds is not a count.");
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidDataException($"{ManifestName} can't be read: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// The manifest's <c>libre.rounds</c>, or null when it has none. Throws <see cref="InvalidDataException"/> for a
+    /// manifest that can't be read.
+    /// </summary>
+    public static int? LibreRoundsOf(string folder)
+    {
+        var path = Path.Combine(folder, ManifestName);
+        if (!File.Exists(path))
+            return null;
+        try
+        {
+            using var manifest = JsonDocument.Parse(RegularFile.ReadAtMost(path, MaxManifestBytes));
+            if (manifest.RootElement.ValueKind != JsonValueKind.Object || !manifest.RootElement.TryGetProperty(LibreFolder, out var libre)
+                || libre.ValueKind != JsonValueKind.Object || !libre.TryGetProperty("rounds", out var rounds))
+                return null;
+            return rounds.TryGetInt32(out var count) && count >= 1 ? count : throw new InvalidDataException($"{ManifestName}'s libre.rounds is not a count.");
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
