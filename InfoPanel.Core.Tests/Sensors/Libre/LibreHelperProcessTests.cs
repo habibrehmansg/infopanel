@@ -18,6 +18,14 @@ public sealed class LibreHelperProcessTests
 {
     private static CancellationToken Cancel => TestContext.Current.CancellationToken;
 
+    /// <summary>
+    /// How long a start may take to reach the stand-in's read: a sanity limit, not a timing (the giving up runs on the
+    /// rig's manual clock). A start is a child process's exec, which the machine's exec checks and other tests' starts
+    /// and exits can hold for seconds, then the hello and the catalogue, whose completions run on this process's pool,
+    /// which a full run can starve for longer than <see cref="HelperTestKit.Patience"/>.
+    /// </summary>
+    private static readonly TimeSpan StartPatience = TimeSpan.FromSeconds(60);
+
     private static string HostPath => Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "InfoPanel.SensorHelper.TestHost.exe" : "InfoPanel.SensorHelper.TestHost");
 
     private static LibreRig ProcessRig(string behaviour, out LibreHelperProcess launcher)
@@ -88,9 +96,9 @@ public sealed class LibreHelperProcessTests
         var open = Task.Run(rig.Open, Cancel);
         // The stand-in says so on its output, which the launcher logs: its tree is inside a read that never returns.
         var patience = Stopwatch.StartNew();
-        while (!HasSaid(rig, "update-entered") && patience.Elapsed < HelperTestKit.Patience)
+        while (!HasSaid(rig, "update-entered") && patience.Elapsed < StartPatience)
             await Task.Delay(20, Cancel);
-        Assert.True(HasSaid(rig, "update-entered"));
+        Assert.True(HasSaid(rig, "update-entered"), $"the stand-in didn't say update-entered within {patience.Elapsed.TotalSeconds:0.0} s (the open {open.Status}); logged:\n{Logged(rig)}");
         Assert.False(open.IsCompleted);
 
         rig.Time.Advance(HelperProtocol.RequestTimeout);
@@ -98,6 +106,12 @@ public sealed class LibreHelperProcessTests
 
         Assert.Equal((SourceStateKind.Unavailable, "helperFailed"), (rig.State.Kind, rig.State.Reason?.Code));
         Assert.False(Runs(launcher.LastProcessId), "the hung helper's process outlived its giving up");
+    }
+
+    private static string Logged(LibreRig rig)
+    {
+        lock (rig.Log)
+            return string.Join("\n", rig.Log.Select(e => $"{e.Timestamp:HH:mm:ss.fff} {e.Level} {e.RenderMessage()}{(e.Exception is { } x ? $" ({x.GetType().Name}: {x.Message})" : "")}"));
     }
 
     private static bool HasSaid(LibreRig rig, string word)
