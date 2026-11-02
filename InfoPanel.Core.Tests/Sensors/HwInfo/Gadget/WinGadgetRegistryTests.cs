@@ -67,7 +67,8 @@ public sealed class WinGadgetRegistryTests
         {
             var session = HwInfoGadgetSource.CurrentSession();
             var sessions = HwInfoGadgetSource.HwInfoSessions();
-            Assert.Equal(sessions.Contains(session), HwInfoGadgetSource.IsHwInfoRunning());
+            // Run as a service (session 0), this process counts no HWiNFO: one there may be another user's.
+            Assert.Equal(session != 0 && sessions.Contains(session), HwInfoGadgetSource.IsHwInfoRunning());
             TestContext.Current.TestOutputHelper?.WriteLine($"This process's session {session}; HWiNFO64 in sessions [{string.Join(", ", sessions)}]; counted as running: {HwInfoGadgetSource.IsHwInfoRunning()}");
         }
     }
