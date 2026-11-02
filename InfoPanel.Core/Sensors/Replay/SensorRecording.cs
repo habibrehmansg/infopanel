@@ -56,10 +56,36 @@ public static partial class SensorRecording
     private static partial Regex FilePattern();
 
     /// <summary>
-    /// The file a Libre recorder claims its <c>libre/</c> folder with, created only when absent: a second recorder on
-    /// the same folder records nothing.
+    /// The file a recorder claims its source's folder with (<c>hwinfo/</c>, <c>libre/</c>), created only when absent
+    /// (<see cref="TryClaim"/>): a second recorder on the same folder records nothing and deletes nothing. A replay
+    /// skips it.
     /// </summary>
-    public const string LibreClaimName = "recorder.claim";
+    public const string ClaimName = "recorder.claim";
+
+    /// <summary>Libre's claim on <c>libre/</c>: <see cref="ClaimName"/>.</summary>
+    public const string LibreClaimName = ClaimName;
+
+    /// <summary>
+    /// Claims <paramref name="sourceFolder"/> (made when missing) for one recorder: creates <see cref="ClaimName"/> in
+    /// it. False, and never a throw, when it can't: <paramref name="problem"/> is then null when the claim is there
+    /// already (another recorder's), else why the folder or the claim couldn't be made (permission or any other I/O error).
+    /// </summary>
+    public static bool TryClaim(string sourceFolder, out string? problem)
+    {
+        problem = null;
+        var claim = Path.Combine(sourceFolder, ClaimName);
+        try
+        {
+            Directory.CreateDirectory(sourceFolder);
+            using var _ = new FileStream(claim, FileMode.CreateNew, FileAccess.Write);
+            return true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            problem = File.Exists(claim) ? null : e.Message;
+            return false;
+        }
+    }
 
     /// <summary>A Libre round's file while it is written (its name, then this); it takes its own name once whole.</summary>
     public const string LibreTempSuffix = ".partial";
@@ -235,8 +261,11 @@ public static partial class SensorRecording
 /// passed (from its first round), it has <c>maxRounds</c> rounds, the next round would take it past what a replay
 /// loads (<see cref="SensorRecordingLimits"/>), writing fails, or the source stops (<see cref="Stopped"/>, the engine
 /// shutting down); then it stops (the source reads on) and writes the rounds into the manifest. A round's frames are
-/// kept until it ends and written together, so a recording never holds part of one.
-/// With <c>scrub</c>, each copy is scrubbed first (<see cref="HwInfoScrubber"/>), and a copy that can't be (it doesn't
+/// kept until it ends and written together, so a recording never holds part of one. It never takes, or deletes, a file
+/// it didn't write: it claims <c>hwinfo/</c> first (<see cref="SensorRecording.TryClaim"/>, as Libre's recorder claims
+/// <c>libre/</c>), and a folder another recorder claimed is left alone (nothing recorded, the manifest untouched, an
+/// error logged); a frame's name another file holds ends the recording, and only the round's files it created are taken
+/// back. With <c>scrub</c>, each copy is scrubbed first (<see cref="HwInfoScrubber"/>), and a copy that can't be (it doesn't
 /// read) isn't kept. Called on the poll thread.
 /// </summary>
 public sealed class HwInfoRecorder : HwInfoSampler.IObserver
@@ -257,6 +286,7 @@ public sealed class HwInfoRecorder : HwInfoSampler.IObserver
     private int _frames;
     private long _bytes;
     private bool _finished;
+    private readonly bool _claimed;
 
     /// <param name="folder">The recording (made when missing); its <c>hwinfo/</c> must hold no frames yet.</param>
     /// <param name="duration">How long it records, from its first round; until <paramref name="maxRounds"/> when null.</param>
@@ -274,8 +304,31 @@ public sealed class HwInfoRecorder : HwInfoSampler.IObserver
         _started = started;
         _duration = duration;
         _time = time ?? TimeProvider.System;
-        SensorRecording.WriteManifest(folder, interval, scrub, started);
-        Directory.CreateDirectory(_folder);
+        _claimed = SensorRecording.TryClaim(_folder, out var problem);
+        if (!_claimed)
+        {
+            // Another recorder (another engine that passed the folder's check at the same time) has it, or the folder
+            // can't be written: either way HWiNFO's sensors aren't recorded, and the engine starts and reads on.
+            _finished = true;
+            if (problem is null)
+                _log.Error("Recording sensors: {Folder} is another recording's; HWiNFO's sensors aren't recorded", _folder);
+            else
+                _log.Error("Recording sensors: {Folder} can't be claimed ({Problem}); check its permissions; HWiNFO's sensors aren't recorded", _folder, problem);
+            return;
+        }
+
+        try
+        {
+            SensorRecording.WriteManifest(folder, interval, scrub, started);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // The recording's own folder refuses its manifest: nothing is recorded, and the engine starts and reads on.
+            _finished = true;
+            _log.Error("Recording sensors: {Folder}'s manifest can't be written ({Problem}); check its permissions; HWiNFO's sensors aren't recorded", folder, e.Message);
+            return;
+        }
+
         _log.Information("Recording sensors into {Folder} for {Duration}{Scrubbed}", folder,
             duration is { } d ? d.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture) + " s" : maxRounds + " rounds", scrub ? ", scrubbed" : "");
     }
@@ -331,6 +384,8 @@ public sealed class HwInfoRecorder : HwInfoSampler.IObserver
                 foreach (var (remote, compressed, _) in _pending)
                 {
                     var path = Path.Combine(_folder, SensorRecording.FileName(_round, remote));
+                    // Never a name another file holds; and only once this recorder created the file is it its own to
+                    // take back.
                     using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write))
                     {
                         written.Add(path);
@@ -340,7 +395,7 @@ public sealed class HwInfoRecorder : HwInfoSampler.IObserver
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // A round is whole or absent: take back what of it was written.
+                // A round is whole or absent: take back what of it this recorder created, nothing else.
                 foreach (var path in written)
                     TryDelete(path);
                 _log.Error(ex, "Recording sensors failed at round {Round}", _round);
@@ -377,6 +432,8 @@ public sealed class HwInfoRecorder : HwInfoSampler.IObserver
     private void Finish(string why)
     {
         _finished = true;
+        if (!_claimed)
+            return;
         try
         {
             SensorRecording.WriteManifest(_root, _interval, _scrubber != null, _started, _round, _time.GetUtcNow());

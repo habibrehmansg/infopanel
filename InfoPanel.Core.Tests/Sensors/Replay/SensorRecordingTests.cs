@@ -80,7 +80,7 @@ public sealed class SensorRecordingTests : IDisposable
         Assert.Equal(3, recorder.Rounds);
         // Round 0 (discovery) and 1 (the first poll) read both; round 2 found the local one DEAD and the remote's view
         // too (it keeps its last bytes, HWiNFO's DEAD not written there); round 3 isn't recorded.
-        Assert.Equal(["000000.local.bin.gz", "000000.remote-1.bin.gz", "000001.local.bin.gz", "000001.remote-1.bin.gz", "000002.local.bin.gz", "000002.remote-1.bin.gz"], Files());
+        Assert.Equal(["000000.local.bin.gz", "000000.remote-1.bin.gz", "000001.local.bin.gz", "000001.remote-1.bin.gz", "000002.local.bin.gz", "000002.remote-1.bin.gz", "recorder.claim"], Files());
         Assert.Equal(local.Build(), Gunzip(Path.Combine(_root, "hwinfo", "000000.local.bin.gz")));
         Assert.Equal(local.BuildDead()[..4], Gunzip(Path.Combine(_root, "hwinfo", "000002.local.bin.gz")));
 
@@ -326,7 +326,7 @@ public sealed class SensorRecordingTests : IDisposable
         recorder.Copied(-1, torn);
         recorder.Copied(1, whole);
         recorder.RoundEnded();
-        Assert.Equal(["000000.remote-1.bin.gz"], Files());
+        Assert.Equal(["000000.remote-1.bin.gz", "recorder.claim"], Files());
         ScrubCheck.AssertScrubbed(Gunzip(Path.Combine(_root, "hwinfo", "000000.remote-1.bin.gz")), "remote 1");
     }
 
@@ -400,7 +400,7 @@ public sealed class SensorRecordingTests : IDisposable
         Assert.True(recorder.Finished);
         using (var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(_root, "recording.json"))))
             Assert.Equal(8, manifest.RootElement.GetProperty("rounds").GetInt32());
-        Assert.Equal(["000000.local.bin.gz", "000001.local.bin.gz", "000002.local.bin.gz"], Files());
+        Assert.Equal(["000000.local.bin.gz", "000001.local.bin.gz", "000002.local.bin.gz", "recorder.claim"], Files());
 
         // Replayed: live for two rounds, then HWiNFO is gone for six, then around again.
         var replay = HwInfoReplay.Load(_root);
@@ -441,7 +441,7 @@ public sealed class SensorRecordingTests : IDisposable
 
         Assert.True(recorder.Finished);
         Assert.Equal(2, recorder.Rounds);
-        Assert.Equal(["000000.local.bin.gz", "000000.remote-1.bin.gz", "000001.local.bin.gz", "000001.remote-1.bin.gz"], Files());
+        Assert.Equal(["000000.local.bin.gz", "000000.remote-1.bin.gz", "000001.local.bin.gz", "000001.remote-1.bin.gz", "recorder.claim"], Files());
         using (var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(_root, "recording.json"))))
             Assert.Equal(2, manifest.RootElement.GetProperty("rounds").GetInt32());
         Assert.Equal(2, HwInfoReplay.Load(_root, limits: limits).Rounds);
@@ -509,7 +509,7 @@ public sealed class SensorRecordingTests : IDisposable
             Assert.True(manifest.RootElement.TryGetProperty("ended", out _));
         }
 
-        Assert.Equal(["000000.local.bin.gz", "000001.local.bin.gz", "000002.local.bin.gz"], Files());
+        Assert.Equal(["000000.local.bin.gz", "000001.local.bin.gz", "000002.local.bin.gz", "recorder.claim"], Files());
         Assert.Equal(7, HwInfoReplay.Load(_root).Rounds);
     }
 
@@ -550,6 +550,160 @@ public sealed class SensorRecordingTests : IDisposable
         Assert.False(File.Exists(manifest), "The manifest was written: its write didn't fail.");
         Assert.True(Directory.Exists(manifest));
         Assert.Empty(Directory.EnumerateFileSystemEntries(manifest));
+    }
+
+    [Fact]
+    public void ASecondRecorder_OnTheSameFolder_RecordsNothing_TakesNothingOver_AndDeletesNothing()
+    {
+        var time = new TimerTimeProvider(new DateTimeOffset(2026, 11, 1, 4, 53, 43, TimeSpan.Zero));
+        var first = new HwInfoRecorder(_root, 1000, scrub: false, Interval, time.GetUtcNow(), time: time);
+        // Another engine passed the folder's check before either wrote a frame, and its rounds come first.
+        var second = new HwInfoRecorder(_root, 1000, scrub: false, Interval, time.GetUtcNow(), time: time);
+        var theirs = Pc(1000, 70).Build();
+        second.Copied(-1, theirs);
+        second.RoundEnded();
+
+        var mine = Pc(1000, 50).Build();
+        var next = Pc(1001, 51).Build();
+        first.Copied(-1, mine);
+        first.RoundEnded();
+        first.Copied(-1, next);
+        first.RoundEnded();
+        second.Copied(-1, theirs);
+        second.RoundEnded();
+        second.Stopped();
+
+        // The first recorder's frames are its own, none taken or ended by the second's, which recorded nothing.
+        Assert.Equal(mine, Gunzip(Path.Combine(_root, "hwinfo", "000000.local.bin.gz")));
+        Assert.Equal(next, Gunzip(Path.Combine(_root, "hwinfo", "000001.local.bin.gz")));
+        Assert.Equal(["000000.local.bin.gz", "000001.local.bin.gz", "recorder.claim"], Files());
+        Assert.False(first.Finished);
+        Assert.Equal(2, first.Rounds);
+        Assert.True(second.Finished);
+        Assert.Equal(0, second.Rounds);
+
+        // The manifest is the first's alone, and the recording replays with its claim in the folder.
+        first.Stopped();
+        Assert.Equal(2, SensorRecording.RoundsOf(_root));
+        Assert.Equal(2, HwInfoReplay.Load(_root).Rounds);
+    }
+
+    [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public void AFolderThatCantBeClaimed_GivesAFinishedRecorder_AndNeverThrows()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes");
+        // A hwinfo/ folder that can be read but not written to: creating the claim is denied (UnauthorizedAccessException).
+        var folder = Path.Combine(_root, "hwinfo");
+        Directory.CreateDirectory(folder);
+        File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            var canWrite = false;
+            try
+            {
+                File.WriteAllText(Path.Combine(folder, "probe"), "x");
+                canWrite = true;
+                File.Delete(Path.Combine(folder, "probe"));
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+            Assert.SkipWhen(canWrite, "Running with rights that ignore the folder's mode");
+
+            var recorder = new HwInfoRecorder(_root, 1000, scrub: false, Interval, DateTimeOffset.UnixEpoch);
+            recorder.Copied(-1, Pc(1000, 50).Build());
+            recorder.RoundEnded();
+            recorder.Stopped();
+
+            Assert.True(recorder.Finished);
+            Assert.Equal(0, recorder.Rounds);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
+        }
+        finally
+        {
+            File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public void ARecordingFolderThatRefusesItsManifest_GivesAFinishedRecorder_AndNeverThrows()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes");
+        // hwinfo/ can be written (the claim succeeds), the recording's own folder can't: its manifest is denied.
+        var folder = Path.Combine(_root, "hwinfo");
+        Directory.CreateDirectory(folder);
+        File.SetUnixFileMode(_root, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            var canWrite = false;
+            try
+            {
+                File.WriteAllText(Path.Combine(_root, "probe"), "x");
+                canWrite = true;
+                File.Delete(Path.Combine(_root, "probe"));
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+            Assert.SkipWhen(canWrite, "Running with rights that ignore the folder's mode");
+
+            var recorder = new HwInfoRecorder(_root, 1000, scrub: false, Interval, DateTimeOffset.UnixEpoch);
+            recorder.Copied(-1, Pc(1000, 50).Build());
+            recorder.RoundEnded();
+            recorder.Stopped();
+
+            Assert.True(recorder.Finished);
+            Assert.Equal(0, recorder.Rounds);
+            Assert.Equal([SensorRecording.ClaimName], Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName));
+            Assert.False(File.Exists(Path.Combine(_root, SensorRecording.ManifestName)));
+        }
+        finally
+        {
+            File.SetUnixFileMode(_root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    [Fact]
+    public void AFrameNameAnotherFileHolds_EndsTheRecording_AndOnlyTheRoundsOwnFilesAreTakenBack()
+    {
+        var recorder = new HwInfoRecorder(_root, 1000, scrub: false, Interval, DateTimeOffset.UnixEpoch);
+        recorder.Copied(-1, Pc(1000, 50).Build());
+        recorder.RoundEnded();
+
+        // Round 1's remote file is there already, not the recorder's: it is left as it is, and so is round 0.
+        var stray = Path.Combine(_root, "hwinfo", SensorRecording.FileName(1, 1));
+        File.WriteAllText(stray, "someone else's");
+        recorder.Copied(-1, Pc(1001, 51).Build());
+        recorder.Copied(1, Pc(1001, 61, "OFFICE-PC").Build());
+        recorder.RoundEnded();
+
+        Assert.True(recorder.Finished);
+        Assert.Equal(1, recorder.Rounds);
+        Assert.Equal("someone else's", File.ReadAllText(stray));
+        Assert.Equal(["000000.local.bin.gz", "000001.remote-1.bin.gz", "recorder.claim"], Files());
+        Assert.Equal(1, SensorRecording.RoundsOf(_root));
+    }
+
+    [Fact]
+    public void AReplay_LoadsARecording_WithOrWithoutItsClaim()
+    {
+        var recorder = new HwInfoRecorder(_root, 2, scrub: false, Interval, DateTimeOffset.UnixEpoch);
+        recorder.Copied(-1, Pc(1000, 50).Build());
+        recorder.RoundEnded();
+        recorder.Copied(-1, Pc(1001, 51).Build());
+        recorder.RoundEnded();
+        Assert.True(recorder.Finished);
+        var claim = Path.Combine(_root, "hwinfo", "recorder.claim");
+        Assert.True(File.Exists(claim));
+        Assert.True(SensorRecording.HoldsHwInfo(_root));
+        Assert.Null(SensorRecording.Check(_root));
+        Assert.Equal(2, HwInfoReplay.Load(_root).Rounds);
+
+        // A recording made before the claim, or by hand, has none.
+        File.Delete(claim);
+        Assert.Equal(2, HwInfoReplay.Load(_root).Rounds);
     }
 
     [Fact]
