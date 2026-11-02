@@ -3,6 +3,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace InfoPanel.Sensors.HwInfo;
 
@@ -133,6 +134,9 @@ public sealed class HwInfoSampler : ISensorSampler
     /// <summary>The remote mappings open now, by index. For tests and diagnostics.</summary>
     public IReadOnlyCollection<int> Remotes => _remotes.Keys;
 
+    /// <summary>The bytes the refused remotes' image and catalogue buffers hold. For tests.</summary>
+    internal long RefusedBufferBytes => _refused.Values.Sum(c => (long)c.Image.Length + c.Catalogue.Length);
+
     public IReadOnlyList<SensorDefinition> Discover()
     {
         if (_rounds == 0)
@@ -242,9 +246,12 @@ public sealed class HwInfoSampler : ISensorSampler
         {
             foreach (var index in gone)
             {
-                // One that failed keeps its warning for the probes to come.
+                // One that failed keeps its warning for the probes to come, and only that: what it read is let go.
                 if (_remotes.Remove(index, out var remote) && remote.Trouble != null)
+                {
+                    Release(remote);
                     _refused[index] = remote;
+                }
             }
         }
 
@@ -507,6 +514,18 @@ public sealed class HwInfoSampler : ISensorSampler
         connection.ElementOf = [];
         connection.CatalogueLength = -1;
         return had;
+    }
+
+    /// <summary>
+    /// Lets go of the copy and catalogue buffers (up to <see cref="HwInfoLayout.MaxImageBytes"/>) of a remote whose
+    /// lifetime ended: kept among the refused, it needs only its index, name and warning. Opened again, it reads afresh.
+    /// </summary>
+    private static void Release(Connection connection)
+    {
+        connection.Image = [];
+        connection.Header = default;
+        connection.Catalogue = [];
+        connection.CatalogueLength = -1;
     }
 
     private void Trouble(Connection connection, string trouble)

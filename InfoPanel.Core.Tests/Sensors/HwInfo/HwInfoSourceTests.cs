@@ -513,6 +513,58 @@ public class HwInfoSourceTests
         }
     }
 
+    [Fact]
+    public void ARemoteThatEnds_WhileItsWarningStands_IsKeptForTheWarningOnly_ItsBuffersLetGo()
+    {
+        var events = new List<Serilog.Events.LogEvent>();
+        var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(events)).CreateLogger();
+        var memory = new FakeHwInfoMemory();
+        var time = new TimerTimeProvider(new DateTimeOffset(2026, 11, 1, 4, 53, 43, TimeSpan.Zero));
+        using var sampler = new HwInfoSampler(memory, time, log: log);
+        var local = Pc();
+        var remote = Pc(host: "PC1");
+        int Warnings() => events.Count(e => e.Level == Serilog.Events.LogEventLevel.Warning);
+        void Rounds(int n)
+        {
+            // The local mapping reads every round (its poll time moves); the remote's poll time never moves.
+            for (var i = 0; i < n; i++)
+            {
+                local.PollTime++;
+                memory.Set(Local, local.Build());
+                time.Advance(Round);
+                sampler.Sample([], Round);
+            }
+        }
+
+        memory.Set(Local, local.Build());
+        memory.Set(Remote(1), remote.Build());
+        sampler.Discover();
+        Assert.Equal([1], sampler.Remotes.ToArray());
+
+        // Frozen: withdrawn and warned about, kept with its frozen time.
+        Rounds(20);
+        Assert.Equal([1], sampler.Remotes.ToArray());
+        Assert.Equal(1, Warnings());
+
+        // It ends (DEAD) while its warning stands: kept among the refused for that warning, not for anything it read.
+        memory.Set(Remote(1), remote.BuildDead());
+        for (var i = 0; i < 12; i++)
+        {
+            Rounds(1);
+            Assert.Empty(sampler.Remotes);
+            Assert.Equal(0, sampler.RefusedBufferBytes);
+        }
+
+        Assert.Equal(1, Warnings());
+
+        // A new one under its index reads at the next probe, warned about no more.
+        remote.PollTime++;
+        memory.Set(Remote(1), remote.Build());
+        Rounds(5);
+        Assert.Equal([1], sampler.Remotes.ToArray());
+        Assert.Equal(1, Warnings());
+    }
+
     /// <summary>An observer (a recording, say) whose next round end throws, once armed.</summary>
     private sealed class FailingObserver : HwInfoSampler.IObserver
     {
