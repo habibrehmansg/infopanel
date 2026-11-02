@@ -112,9 +112,11 @@ public sealed class SceneZoomTests
 
     /// <summary>
     /// Every frame pixel in <paramref name="area"/> (canvas pixels; the whole canvas by default) against the panel's
-    /// pixel it shows: exact where <paramref name="exact"/> says so, else within 2 levels.
+    /// pixel it shows: exact where <paramref name="exact"/> says so (within <paramref name="exactTolerance"/> levels, 0 by
+    /// default), else within 2 levels.
     /// </summary>
-    private static void AgainstThePanel(SKBitmap frame, SKBitmap panel, float scale, Func<int, int, bool> exact, SKRectI? area = null)
+    private static void AgainstThePanel(SKBitmap frame, SKBitmap panel, float scale, Func<int, int, bool> exact, SKRectI? area = null,
+        int exactTolerance = 0)
     {
         var a = area ?? new SKRectI(0, 0, panel.Width, panel.Height);
         int inexact = 0, far = 0, worst = 0, checkedPixels = 0;
@@ -127,7 +129,7 @@ public sealed class SceneZoomTests
             checkedPixels++;
             var d = Distance(frame.GetPixel(i, j), panel.GetPixel(x, y));
             worst = Math.Max(worst, d);
-            var bad = exact(x, y) ? d > 0 : d > GoldenImage.ChannelTolerance;
+            var bad = exact(x, y) ? d > exactTolerance : d > GoldenImage.ChannelTolerance;
             if (!bad) continue;
             if (exact(x, y)) inexact++;
             else far++;
@@ -561,9 +563,12 @@ public sealed class SceneZoomTests
     [MemberData(nameof(ScalesAndThumbnails))]
     public void Raster_media_in_effect_layers_keeps_the_panels_pixels(float scale)
     {
+        // The one test that allows a level: Skia samples a layer's raster at the layer's device origin, which the zoom's
+        // picture (drawn at the canvas origin) can't reproduce, so a covered pixel may differ from the panel's by one level
+        // per channel on Windows (the Mac matches exactly by placement). Every other test compares exactly.
         // Rasters in groups drawn through a layer: shadows (sigma 0, offsets a multiple of 4 canvas pixels, so whole
         // frame pixels at every quarter step), one reaching above and left of the canvas's origin, one inside a shrunk
-        // group, and a blend. Opaque pixels exact, the rest within 2 levels, the shadows' included. At a thumbnail's scale
+        // group, and a blend. Opaque pixels within 1 level, the rest within 2 levels, the shadows' included. At a thumbnail's scale
         // an offset is a fraction of a frame pixel, an effect drawn at the scale like a blur, so there the shadows have none.
         var k = scale * 4 % 1 == 0 ? 1 : 0;
         var assets = new Assets();
@@ -592,7 +597,7 @@ public sealed class SceneZoomTests
             Assert.Equal(SKColors.Blue, panel.GetPixel(192, 112));
         }
         using var frame = Frame(Doc(nodes), assets, scale);
-        AgainstThePanel(frame, panel, scale, Covered);
+        AgainstThePanel(frame, panel, scale, Covered, exactTolerance: 1);
     }
 
     // ---- clipped and displaced rasters, the enlargement's bound, scales beside a quarter step ---------------------
