@@ -12,7 +12,7 @@ namespace InfoPanel.Tests.Preview.Video;
 /// chain, with no other backend: keyframe requests forced or answered by new sessions, a forced delta, a wedged
 /// shutdown, an unsupported size, a busy begin, a busy start's probe that recovers, a refused start whose teardown is
 /// wedged (nothing opened beside it), and a probe that finds nothing. The
-/// stream runs on a clock the test moves; the backend's own bounds on the real clock, which these cases never reach.
+/// stream runs on a clock the test moves; the backend's own bounds on a clock of their own, which these cases never move.
 /// </summary>
 public class MediaFoundationStreamTests
 {
@@ -21,14 +21,14 @@ public class MediaFoundationStreamTests
     private const string K = @"PCI\VEN_1002&DEV_1900&SUBSYS_00311F66&REV_C5\4&1234&0&0041";
 
     /// <summary>The run's chain: Media Foundation alone, over one catalog.</summary>
-    private sealed class Chain
+    private sealed class Chain : IDisposable
     {
         /// <param name="held">A log line that waits for the gate before it is recorded (<see cref="HeldLogger"/>).</param>
         public Chain(bool deviceKey = true, (string Text, ManualResetEventSlim Gate)? held = null)
         {
             Logger = held is var (text, gate) ? new HeldLogger(Log, text, gate) : Log;
             Entry = Catalog.Add("Encoder", deviceKey: deviceKey ? K : null);
-            Backend = new MediaFoundationH264(Catalog, Logger);
+            Backend = new MediaFoundationH264(Catalog, Logger, BackendTime);
             Backends = new H264Backends([Backend], Logger);
         }
 
@@ -48,9 +48,43 @@ public class MediaFoundationStreamTests
 
         public ManualTime Time { get; } = new(DateTimeOffset.UnixEpoch);
 
+        /// <summary>
+        /// The backend's clock, which these cases never move: its bounds (the probe's 3 s, a frame's wait, a start's 2 s)
+        /// are never reached. On the real clock a starved thread pool (the start of a full run) let the probe's bound pass
+        /// before the fake encoder's output was read, so the probe failed and the stream was images for good.
+        /// </summary>
+        public ManualTime BackendTime { get; } = new(DateTimeOffset.UnixEpoch);
+
         /// <summary>Sessions at the stream's size (a probe's are 322 × 194).</summary>
         public int Sessions(int width = W, int height = H) => Catalog.Ports.Count(p => p.Output?.Width == width && p.Output?.Height == height);
+
+        /// <summary>
+        /// A case's end, which a failing case must not leave blocked: the backend's clock is moved past every bound it has
+        /// (a start stalled in its probe, on the session's own token, times out and aborts its session), the backends are
+        /// stopped (probes cancelled, streams ended, sessions retired), and the pending starts and streams are awaited, at most
+        /// <see cref="Limit"/> (real time). The clock moves on each poll, for a bound armed after the first move.
+        /// </summary>
+        public void Dispose()
+        {
+            BackendTime.Advance(PastEveryBound);
+            var stopped = Backends.StopAsync();
+            var watch = Stopwatch.StartNew();
+            while (!stopped.IsCompleted && watch.Elapsed < Limit)
+            {
+                BackendTime.Advance(PastEveryBound);
+                Thread.Sleep(5);
+            }
+
+            Assert.True(stopped.IsCompleted, "the backends' stop didn't end: a start or a stream is still blocked");
+            stopped.GetAwaiter().GetResult();
+        }
+
+        private static readonly TimeSpan PastEveryBound = TimeSpan.FromMinutes(10);
     }
+
+    /// <summary>The backend's probe, at most <see cref="Limit"/> (real time): the backend's own bounds are on a clock that never moves.</summary>
+    private static Task<H264Probe> Probe(Chain chain) =>
+        chain.Backends.ProbeAsync(chain.Backend).WaitAsync(Limit, TestContext.Current.CancellationToken);
 
     /// <summary>One subscription's stream, fed as the sink feeds it.</summary>
     private sealed class Feed : IDisposable
@@ -157,13 +191,20 @@ public class MediaFoundationStreamTests
         }
     }
 
-    /// <summary>Waits (real time, at most 10 s) until <paramref name="condition"/>; with <paramref name="time"/>, moves it on 50 ms a poll.</summary>
+    /// <summary>
+    /// The most a wait lasts: a sanity limit, never the behaviour under test (the stream's times are on the test's clock,
+    /// the backend's on one never moved). At a full run's start the thread pool can be starved for over 10 s, and the
+    /// fake encoder's work, all on the pool, waits that long; a pool held 12 s made a 10 s limit fail.
+    /// </summary>
+    private static readonly TimeSpan Limit = TimeSpan.FromSeconds(60);
+
+    /// <summary>Waits (real time, at most <see cref="Limit"/>) until <paramref name="condition"/>; with <paramref name="time"/>, moves it on 50 ms a poll.</summary>
     private static async Task Eventually(Func<bool> condition, string what, ManualTime? time = null)
     {
         var watch = Stopwatch.StartNew();
         while (!condition())
         {
-            if (watch.Elapsed > TimeSpan.FromSeconds(10))
+            if (watch.Elapsed > Limit)
                 Assert.Fail("Timed out waiting until " + what);
             time?.Advance(TimeSpan.FromMilliseconds(50));
             await Task.Delay(5, TestContext.Current.CancellationToken);
@@ -173,7 +214,7 @@ public class MediaFoundationStreamTests
     [Fact]
     public async Task AKeyframeRequestOnAStillPanel_FourTimesInARow_IsEachAForcedIdrInTheSameSession()
     {
-        var chain = new Chain();
+        using var chain = new Chain();
         using var feed = new Feed(chain);
         feed.Frame();
         Assert.True((await feed.Next("the first keyframe")).Header.Keyframe);
@@ -198,7 +239,7 @@ public class MediaFoundationStreamTests
     [Fact]
     public async Task WithForcingOff_EachKeyframeRequest_IsANewSession_NotAFailure()
     {
-        var chain = new Chain();
+        using var chain = new Chain();
         chain.Entry.Encoder.IgnoreForce = true;
         using var feed = new Feed(chain);
         feed.Frame();
@@ -222,7 +263,7 @@ public class MediaFoundationStreamTests
     [Fact]
     public async Task AForcedDelta_ReplacesTheSessionOnce_AndCountsOneFailure()
     {
-        var chain = new Chain();
+        using var chain = new Chain();
         using var feed = new Feed(chain);
         feed.Frame();
         Assert.True((await feed.Next("the first keyframe")).Header.Keyframe);
@@ -240,7 +281,7 @@ public class MediaFoundationStreamTests
     [Fact]
     public async Task AWedgedShutdown_GivesMediaFoundationUpForTheStream_AndThreeGiveItUpForTheRun()
     {
-        var chain = new Chain();
+        using var chain = new Chain();
         var hold = new ManualResetEventSlim();
         try
         {
@@ -274,7 +315,7 @@ public class MediaFoundationStreamTests
     [Fact]
     public async Task UnsupportedAt4096x2304_IsPngWithEncoderSize_AndMediaFoundationAgainBelowIt()
     {
-        var chain = new Chain();
+        using var chain = new Chain();
         chain.Entry.Encoder.OutputTypeHr = t => t.Width == 4096 ? Mf.InvalidMediaType : Mf.SOk;
         using var feed = new Feed(chain);
         feed.Frame(4096, 2304);
@@ -295,9 +336,9 @@ public class MediaFoundationStreamTests
     [Fact]
     public async Task ABusyBegin_BacksOff_ThenMediaFoundationStarts()
     {
-        var chain = new Chain();
+        using var chain = new Chain();
         using var feed = new Feed(chain);
-        Assert.Equal(H264Probe.Available, await chain.Backends.ProbeAsync(chain.Backend));
+        Assert.Equal(H264Probe.Available, await Probe(chain));
         chain.Entry.Encoder.BeginHr = Mf.HwMftFailedStartStreaming;
         var asked = feed.Refreshes;
         feed.Frame();
@@ -323,7 +364,7 @@ public class MediaFoundationStreamTests
     public async Task ABusyBeginInAStartsProbe_BacksOff_AndRecoversOnceTheOtherSessionEnds()
     {
         // No device key: every start probes; the chip has one session.
-        var chain = new Chain(deviceKey: false);
+        using var chain = new Chain(deviceKey: false);
         chain.Entry.Encoder.Device = new FakeMfDevice(1);
         var first = new Feed(chain);
         using var second = new Feed(chain);
@@ -365,8 +406,8 @@ public class MediaFoundationStreamTests
         // The stream's give-up is logged only once the test has seen the quarantine: it is in the awaited condition,
         // never read straight after it.
         var logged = new ManualResetEventSlim();
-        var chain = new Chain(held: ("given up for this stream", logged));
-        Assert.Equal(H264Probe.Available, await chain.Backends.ProbeAsync(chain.Backend));
+        using var chain = new Chain(held: ("given up for this stream", logged));
+        Assert.Equal(H264Probe.Available, await Probe(chain));
         var hold = new ManualResetEventSlim();
         var advanced = Task.CompletedTask;
         using var feed = new Feed(chain);
@@ -425,14 +466,14 @@ public class MediaFoundationStreamTests
         {
             logged.Set();
             hold.Set();
-            await advanced;
+            await advanced.WaitAsync(Limit, TestContext.Current.CancellationToken);
         }
     }
 
     [Fact]
     public async Task AProbeThatFindsNoWorkingEncoder_SettlesOnUnavailable_AndASecondSubscriptionGetsItWithoutProbing()
     {
-        var chain = new Chain();
+        using var chain = new Chain();
         chain.Entry.Encoder.IdrWithoutParameterSets = true;
         using (var feed = new Feed(chain))
         {
@@ -455,6 +496,6 @@ public class MediaFoundationStreamTests
             return next.Pngs.Any(p => p.Fallback == VideoStream.Unavailable);
         }, "the second subscription's encoder.unavailable");
         Assert.Equal(listings, chain.Catalog.EnumerateFlags.Count);
-        Assert.Equal(H264Probe.Unavailable, await chain.Backends.ProbeAsync(chain.Backend));
+        Assert.Equal(H264Probe.Unavailable, await Probe(chain));
     }
 }
