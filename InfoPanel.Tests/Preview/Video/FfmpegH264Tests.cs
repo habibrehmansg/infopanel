@@ -697,26 +697,35 @@ public class FfmpegH264Tests
             lock (outcomes)
                 outcomes.Add(o);
         });
-        // The stand-in's writes block on a full pipe, so once it has written all of it the engine has read nearly all.
-        Assert.True(await Until(() => File.Exists(flooded), 60), "the stand-in wrote its flood");
-        var allocated = GC.GetTotalAllocatedBytes(precise: true) - before;
-        Assert.True(allocated < FloodAllocationBound, $"reading a {Flood}-byte line allocated {allocated} bytes");
+        try
+        {
+            // The stand-in's writes block on a full pipe, so once it has written all of it the engine has read nearly all.
+            Assert.True(await Until(() => File.Exists(flooded), 60), "the stand-in wrote its flood");
+            var allocated = GC.GetTotalAllocatedBytes(precise: true) - before;
+            Assert.True(allocated < FloodAllocationBound, $"reading a {Flood}-byte line allocated {allocated} bytes");
 
-        // The session goes on: a frame is taken, nothing failed.
-        Assert.Equal(H264Submit.Accepted, session.Submit(Solid(64, 64, (1, 2, 3)), 64, 64, 0, true, out _));
-        await Task.Delay(200, Ct);
-        lock (outcomes)
-            Assert.Empty(outcomes);
-        var teardown = session.Abort();
-        Assert.True(await Task.WhenAny(teardown, Task.Delay(Quarantine.Bound, Ct)) == teardown, "the teardown ends within the bound");
-        lock (outcomes)
-            Assert.Equal([(0L, H264OutcomeKind.Aborted)], outcomes.Select(o => (o.FrameId, o.Kind)));
-        Assert.False(IsRunning(session.ProcessId));
+            // The session goes on: a frame is taken, nothing failed.
+            Assert.Equal(H264Submit.Accepted, session.Submit(Solid(64, 64, (1, 2, 3)), 64, 64, 0, true, out _));
+            await Task.Delay(200, Ct);
+            lock (outcomes)
+                Assert.Empty(outcomes);
+            var teardown = session.Abort();
+            Assert.True(await Task.WhenAny(teardown, Task.Delay(Quarantine.Bound, Ct)) == teardown, "the teardown ends within the bound");
+            lock (outcomes)
+                Assert.Equal([(0L, H264OutcomeKind.Aborted)], outcomes.Select(o => (o.FrameId, o.Kind)));
+            Assert.False(IsRunning(session.ProcessId));
 
-        // Its diagnostics: the line logged once, cut at 1,024 characters.
-        var logged = Assert.Single(logger.Messages, m => m.Contains("xxxx", StringComparison.Ordinal));
-        Assert.Contains(new string('x', 1024), logged, StringComparison.Ordinal);
-        Assert.DoesNotContain(new string('x', 1025), logged, StringComparison.Ordinal);
+            // Its diagnostics: the line logged once, cut at 1,024 characters.
+            var logged = Assert.Single(logger.Messages, m => m.Contains("xxxx", StringComparison.Ordinal));
+            Assert.Contains(new string('x', 1024), logged, StringComparison.Ordinal);
+            Assert.DoesNotContain(new string('x', 1025), logged, StringComparison.Ordinal);
+        }
+        finally
+        {
+            // A failed assertion above must not leave the stand-in or the session's tasks running: abort (idempotent) and
+            // wait a bounded real time, not on the test's cancellation.
+            session.Abort().Wait(Quarantine.Bound);
+        }
     }
 }
 

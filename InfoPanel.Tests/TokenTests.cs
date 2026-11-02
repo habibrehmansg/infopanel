@@ -698,15 +698,19 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
     [Fact]
     public async Task Secret_IsNeverLogged()
     {
-        var console = new StringWriter();
+        // One synchronized writer for both streams (two wrappers over one StringWriter would hold two locks); its
+        // synchronization is a lock on the wrapper itself, so the text is read under that same lock.
+        var buffer = new StringWriter();
+        var console = TextWriter.Synchronized(buffer);
         var (stdout, stderr) = (Console.Out, Console.Error);
-        Console.SetOut(TextWriter.Synchronized(console));
-        Console.SetError(TextWriter.Synchronized(console));
+        Console.SetOut(console);
+        Console.SetError(console);
         string id, token;
         var logs = new List<(string Sink, string Text)>();
-        using var engine = new EngineFactory();
         try
         {
+            // Inside the try: a failing start still gives the console back to the rest of the run.
+            using var engine = new EngineFactory();
             using var session = engine.CreateApiClient();
             (id, token, _) = await CreateToken(session, "logged", "read");
             using var client = engine.CreateRawClient();
@@ -744,7 +748,8 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
             Console.SetError(stderr);
         }
 
-        logs.Add(("console", console.ToString()));
+        lock (console)
+            logs.Add(("console", buffer.ToString()));
         Assert.Contains(logs, l => l.Sink == "file");
         foreach (var (sink, text) in logs)
         {
