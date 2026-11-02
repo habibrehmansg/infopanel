@@ -25,7 +25,7 @@ public class PolledSensorSourceTests
         public IReadOnlyList<SensorDefinition> Discover()
         {
             InDiscovery.Set();
-            HoldDiscovery?.Wait(TimeSpan.FromSeconds(10));
+            HoldDiscovery?.Wait(Patience);
             return ids.Select(id => new SensorDefinition(id, "Group", "Name " + id, "u")).ToList();
         }
 
@@ -34,7 +34,7 @@ public class PolledSensorSourceTests
             if (Elapsed.Count > 0 && HoldSample != null)
             {
                 InSample.Set();
-                HoldSample.Wait(TimeSpan.FromSeconds(10));
+                HoldSample.Wait(Patience);
             }
 
             Elapsed.Add(elapsed);
@@ -278,7 +278,7 @@ public class PolledSensorSourceTests
         sampler.HoldSample = new ManualResetEventSlim();
         time.Advance(TimeSpan.FromSeconds(1));
         var poll = Task.Run(source.Poll, Ct);
-        Assert.True(sampler.InSample.Wait(TimeSpan.FromSeconds(10), Ct));
+        Assert.True(sampler.InSample.Wait(Patience, Ct));
         Assert.True(source.TryRead(key, out var reading));
         Assert.Equal(10, reading.ValueNow);
         sampler.HoldSample.Set();
@@ -364,7 +364,7 @@ public class PolledSensorSourceTests
         sampler.HoldDiscovery = new ManualResetEventSlim();
 
         var start = source.StartAsync(Ct);
-        Assert.True(sampler.InDiscovery.Wait(TimeSpan.FromSeconds(5)));
+        Assert.True(sampler.InDiscovery.Wait(Patience, Ct));
         source.Dispose();
         Assert.False(sampler.Disposed, "not while discovery is running");
         sampler.HoldDiscovery.Set();
@@ -387,7 +387,7 @@ public class PolledSensorSourceTests
         sampler.HoldSample = new ManualResetEventSlim();
         // The fake timer runs the poll inline on the advancing thread, so advance from another one.
         var advance = Task.Run(() => time.Advance(TimeSpan.FromSeconds(1)), Ct);
-        Assert.True(sampler.InSample.Wait(TimeSpan.FromSeconds(5)));
+        Assert.True(sampler.InSample.Wait(Patience, Ct));
         using (var shortWait = new CancellationTokenSource(TimeSpan.FromMilliseconds(50)))
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => source.StopAsync(shortWait.Token));
 
@@ -1192,9 +1192,18 @@ public class PolledSensorSourceTests
         Assert.Equal(before, GC.GetAllocatedBytesForCurrentThread());
     }
 
+    /// <summary>
+    /// The most a wait on the source's own threads lasts, and a hold the test releases: a sanity limit, never the behaviour
+    /// under test (the source's times are on the manual clock). Its loop and its start's discovery run on the thread pool,
+    /// which in a full run under parallel gates can be short of threads for seconds (blocking waits like these, and
+    /// program launches that stall on this Mac's endpoint protection); 5 s didn't always cover a start. Each wait still
+    /// ends as soon as its condition holds, and each hold as soon as the test releases it.
+    /// </summary>
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(60);
+
     private static async Task WaitFor(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        var deadline = DateTime.UtcNow + Patience;
         while (!condition())
         {
             Assert.True(DateTime.UtcNow < deadline, "timed out");
