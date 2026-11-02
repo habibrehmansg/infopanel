@@ -118,6 +118,12 @@ internal sealed class FakeH264Session(H264Config config, Action<H264Outcome> out
     /// <summary>The teardown never ends.</summary>
     public bool Wedged { get; set; }
 
+    /// <summary>
+    /// The teardown its abort hands back instead of its own (null: its own): a test's gate, ended when the test says, its
+    /// continuations inline unless the test's source runs them asynchronously.
+    /// </summary>
+    public Task? Teardown { get; set; }
+
     /// <summary>The teardowns its start hands back of sessions it let go first (none by default).</summary>
     public IReadOnlyList<Task> Released { get; set; } = [];
 
@@ -246,7 +252,7 @@ internal sealed class FakeH264Session(H264Config config, Action<H264Outcome> out
     public Task Abort()
     {
         if (Interlocked.Exchange(ref _aborted, 1) != 0)
-            return _teardown.Task;
+            return Teardown ?? _teardown.Task;
 
         List<(long Id, bool Key, byte[] Pixels)> held;
         lock (_lock)
@@ -261,6 +267,8 @@ internal sealed class FakeH264Session(H264Config config, Action<H264Outcome> out
             output(new H264Outcome(frame.Id, H264OutcomeKind.Aborted));
         }
 
+        if (Teardown is { } gate)
+            return gate;
         if (!Wedged)
             _teardown.TrySetResult();
         return _teardown.Task;

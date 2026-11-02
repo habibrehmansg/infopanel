@@ -53,7 +53,11 @@ internal sealed class SkipCounter
 /// its session's keyframe is out, a keyframe request retires it and a new session's first frame answers; a new frame
 /// rate retires it and the next frame starts one at that rate. Neither is a failure. A session of a backend that
 /// <see cref="IH264Backend.GivesUpWhenTeardownHangs"/> whose retirement passes the bound gives the backend up for the
-/// stream, so no other session of it starts beside the one still tearing down.</item>
+/// stream, so no other session of it starts beside the one still tearing down. A refused start's teardown (busy, or a
+/// size it can't take) is waited for, within the same bound, before that backend starts again in the stream, and one
+/// past the bound gives it up for the stream the same way; a wait whose quarantine gives the backend up for the run
+/// starts nothing of it, and a backend passed over as busy whose backoff the wait outlasted is tried after the
+/// rest.</item>
 /// <item><b>Waiting episodes.</b> A frame headed to video that finds no usable session (the loop awaits a selection, a
 /// start or a retirement, or the session's first keyframe isn't built yet) opens an episode, as does every retirement
 /// before it waits (but leaving video for PNG and the end of the stream), and a frame that goes back to video while a
@@ -193,6 +197,10 @@ internal sealed class VideoStream : IDisposable
     private readonly Dictionary<IH264Backend, Queue<long>> _failures = [];
     private readonly HashSet<IH264Backend> _givenUp = [];
     private readonly Dictionary<IH264Backend, Busy> _busy = [];
+
+    // A refused start's teardown, watched within the quarantine bound: whether it ended in time. The backend's next start
+    // in this stream waits for it first, so none opens beside a teardown still running.
+    private readonly Dictionary<IH264Backend, Task<bool>> _refusedTeardowns = [];
 
     /// <summary>A backend that said it was busy: tried again from <see cref="Until"/>; <see cref="Announced"/> once a fresh frame was asked for then.</summary>
     private sealed class Busy(long until, TimeSpan backoff)
@@ -938,8 +946,9 @@ internal sealed class VideoStream : IDisposable
         var now = _time.GetTimestamp();
         if (_session is { } current)
         {
-            // A better backend that was busy may be free now.
-            var better = _busy.Any(b => b.Value.Until <= now && _backends.Chain.Take(current.Index).Contains(b.Key));
+            // A better backend that was busy may be free now (one given up since isn't).
+            var better = _busy.Any(b => b.Value.Until <= now && _backends.Chain.Take(current.Index).Contains(b.Key)
+                && !_givenUp.Contains(b.Key) && !_backends.IsGivenUp(b.Key));
             if (current.Width == width && current.Height == height && !better)
                 return current;
             OpenEpisode();
@@ -952,81 +961,114 @@ internal sealed class VideoStream : IDisposable
 
         var sawUnsupported = false;
         var sawBusy = false;
-        for (var i = 0; i < _backends.Chain.Count; i++)
+        // The chain in its order; then, once, the backends left busy whose backoff a wait for a teardown outlasted.
+        IEnumerable<int> candidates = Enumerable.Range(0, _backends.Chain.Count);
+        for (var pass = 0; pass < 2; pass++)
         {
-            var backend = _backends.Chain[i];
-            if (_givenUp.Contains(backend) || _backends.IsGivenUp(backend))
-                continue;
-            if (_busy.TryGetValue(backend, out var busy) && now < busy.Until)
+            var leftBusy = new List<int>();
+            foreach (var i in candidates)
             {
-                sawBusy = true;
-                continue;
+                var backend = _backends.Chain[i];
+                if (_givenUp.Contains(backend) || _backends.IsGivenUp(backend))
+                    continue;
+                if (_busy.TryGetValue(backend, out var busy) && now < busy.Until)
+                {
+                    sawBusy = true;
+                    leftBusy.Add(i);
+                    continue;
+                }
+
+                var probe = await _backends.ProbeAsync(backend).WaitAsync(_stop.Token);
+                if (probe == H264Probe.Busy)
+                {
+                    // Its probe found no session free: transient, so the backoff applies, as for a busy start.
+                    Backoff(backend, now, "its probe found no session free");
+                    sawBusy = true;
+                    leftBusy.Add(i);
+                    continue;
+                }
+
+                if (probe != H264Probe.Available)
+                    continue;
+                if (_backends.IsUnsupported(backend, width, height))
+                {
+                    sawUnsupported = true;
+                    continue;
+                }
+
+                // A refused start of it still tearing down: waited for (within the bound) before another starts beside it.
+                if (_refusedTeardowns.Remove(backend, out var refused))
+                {
+                    var ended = await refused.WaitAsync(_stop.Token);
+                    now = _time.GetTimestamp();
+                    // The wait can give it up: a teardown past the bound is a quarantine, and the run's last one ends it.
+                    if (_givenUp.Contains(backend) || _backends.IsGivenUp(backend))
+                        continue;
+                    if (!ended && backend.GivesUpWhenTeardownHangs)
+                    {
+                        if (_givenUp.Add(backend))
+                            _logger.LogWarning("H.264 encoder {Backend} given up for this stream: a refused start's teardown didn't end within {Ms} ms, and another won't start beside it",
+                                backend.Name, (int)Quarantine.Bound.TotalMilliseconds);
+                        continue;
+                    }
+                }
+
+                var session = new Session(backend, i, width, height) { Fps = _fps };
+                try
+                {
+                    var bitrate = backend.Kind == H264Kind.Hardware ? HardwareBitrate : SoftwareBitrate;
+                    session.Encoder = backend.Start(new H264Config(width, height, _fps, bitrate), outcome => OnOutcome(session, outcome));
+                }
+                catch (H264StartException ex) when (ex.Problem == H264StartProblem.Unsupported)
+                {
+                    WatchTeardown(ex, backend);
+                    _backends.RecordUnsupported(backend, width, height, ex.Message);
+                    sawUnsupported = true;
+                    continue;
+                }
+                catch (H264StartException ex) when (ex.Problem == H264StartProblem.Busy)
+                {
+                    WatchTeardown(ex, backend);
+                    Backoff(backend, now, ex.Message);
+                    sawBusy = true;
+                    leftBusy.Add(i);
+                    continue;
+                }
+                catch (Exception ex)
+                {
+                    WatchTeardown(ex, backend);
+                    // A faulty start: given up for this stream at once (and counted for the run, by size).
+                    _logger.LogWarning("H.264 encoder {Backend} failed to start at {Width}x{Height}: {Message}; given up for this stream",
+                        backend.Name, width, height, ex.Message);
+                    _givenUp.Add(backend);
+                    _backends.RecordFaultyStart(backend, width, height);
+                    continue;
+                }
+
+                // What the start let go on the way (a retry's first session) is watched now: a wedged one counts while this runs.
+                foreach (var released in session.Encoder.Released)
+                    _ = Quarantine.WatchAsync(released, backend, _backends, _time, _logger);
+                _busy.Remove(backend);
+                _backends.RecordGoodStart(backend);
+                _session = session;
+                _lastProgress = 0;
+                _lastProgressAt = now;
+                _logger.LogInformation("H.264 stream started: {Kind} {Backend}, {Width}x{Height} at {Fps} frames a second", H264Backends.Word(backend.Kind),
+                    backend.Name, width, height, _fps);
+                return session;
             }
 
-            var probe = await _backends.ProbeAsync(backend).WaitAsync(_stop.Token);
-            if (probe == H264Probe.Busy)
-            {
-                // Its probe found no session free: transient, so the backoff applies, as for a busy start.
-                Backoff(backend, now, "its probe found no session free");
-                sawBusy = true;
-                continue;
-            }
-
-            if (probe != H264Probe.Available)
-                continue;
-            if (_backends.IsUnsupported(backend, width, height))
-            {
-                sawUnsupported = true;
-                continue;
-            }
-
-            var session = new Session(backend, i, width, height) { Fps = _fps };
-            try
-            {
-                var bitrate = backend.Kind == H264Kind.Hardware ? HardwareBitrate : SoftwareBitrate;
-                session.Encoder = backend.Start(new H264Config(width, height, _fps, bitrate), outcome => OnOutcome(session, outcome));
-            }
-            catch (H264StartException ex) when (ex.Problem == H264StartProblem.Unsupported)
-            {
-                WatchTeardown(ex, backend);
-                _backends.RecordUnsupported(backend, width, height, ex.Message);
-                sawUnsupported = true;
-                continue;
-            }
-            catch (H264StartException ex) when (ex.Problem == H264StartProblem.Busy)
-            {
-                WatchTeardown(ex, backend);
-                Backoff(backend, now, ex.Message);
-                sawBusy = true;
-                continue;
-            }
-            catch (Exception ex)
-            {
-                WatchTeardown(ex, backend);
-                // A faulty start: given up for this stream at once (and counted for the run, by size).
-                _logger.LogWarning("H.264 encoder {Backend} failed to start at {Width}x{Height}: {Message}; given up for this stream",
-                    backend.Name, width, height, ex.Message);
-                _givenUp.Add(backend);
-                _backends.RecordFaultyStart(backend, width, height);
-                continue;
-            }
-
-            // What the start let go on the way (a retry's first session) is watched now: a wedged one counts while this runs.
-            foreach (var released in session.Encoder.Released)
-                _ = Quarantine.WatchAsync(released, backend, _backends, _time, _logger);
-            _busy.Remove(backend);
-            _backends.RecordGoodStart(backend);
-            _session = session;
-            _lastProgress = 0;
-            _lastProgressAt = now;
-            _logger.LogInformation("H.264 stream started: {Kind} {Backend}, {Width}x{Height} at {Fps} frames a second", H264Backends.Word(backend.Kind),
-                backend.Name, width, height, _fps);
-            return session;
+            // A wait for a teardown moves the time on: a backend passed over (or refused) as busy before it may be free
+            // by now, and is tried, in the chain's order, before the stream settles on PNG.
+            candidates = leftBusy.Where(i => _busy.TryGetValue(_backends.Chain[i], out var b) && b.Until <= now).ToList();
+            if (!candidates.Any())
+                break;
         }
 
         // None: PNG frames, saying why; the stream settles on them, so an episode ends.
+        // A busy backend's next try: the earliest backoff still ahead; none ahead (a wait outlasted them all), at once.
         if (sawBusy)
-            Interlocked.Exchange(ref _retryAt, _busy.Values.Where(b => b.Until > now).Min(b => b.Until));
+            Interlocked.Exchange(ref _retryAt, _busy.Values.Where(b => b.Until > now).Select(b => b.Until).DefaultIfEmpty(Math.Max(now, 1)).Min());
         else if (sawUnsupported)
             Volatile.Write(ref _pngSizes, _pngSizes.Add((width, height)));
         else
@@ -1040,12 +1082,13 @@ internal sealed class VideoStream : IDisposable
 
     /// <summary>
     /// A failed start's teardown of what it had created (a native session's invalidation can block): watched off this
-    /// loop, so the next backend starts at once, and counted as quarantined if it doesn't end within the bound.
+    /// loop, so the next backend starts at once, and counted as quarantined if it doesn't end within the bound. That
+    /// backend's next start in this stream waits for the watch first (<see cref="_refusedTeardowns"/>).
     /// </summary>
     private void WatchTeardown(Exception refusal, IH264Backend backend)
     {
         if (refusal is H264StartException { Teardown: { } teardown })
-            _ = Quarantine.WatchAsync(teardown, backend, _backends, _time, _logger);
+            _refusedTeardowns[backend] = Quarantine.WatchAsync(teardown, backend, _backends, _time, _logger);
     }
 
     /// <summary>A busy backend: tried again after a backoff from <see cref="BusyFirst"/>, doubling to <see cref="BusyMax"/>; not counted.</summary>

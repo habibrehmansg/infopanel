@@ -409,6 +409,128 @@ public class VideoStreamTests
     }
 
     [Fact]
+    public async Task ARefusedStartsTeardown_WhoseWaitGivesTheBackendUpForTheRun_StartsNoSessionOfItAfterTheWait()
+    {
+        // A backend that starts beside a wedged teardown (as VideoToolbox), two quarantines in already: its busy start
+        // leaves a wedged teardown and software serves meanwhile. At the retry it passes the checks, then waits for that
+        // teardown, whose bound is the third quarantine: given up for the run, it starts nothing after the wait.
+        var wedged = new TaskCompletionSource();
+        var refusals = 0;
+        var hardware = new FakeH264Backend("Hardware")
+        {
+            Refuse = _ => Interlocked.Increment(ref refusals) == 1 ? H264StartProblem.Busy : null,
+            RefusalTeardown = wedged.Task,
+        };
+        // Software's first session's teardown is a gate the test ends, its continuations inline: ended from a pool thread
+        // (no synchronization context), it runs the loop on that thread up to the loop's next wait before returning.
+        var softwareTeardown = new TaskCompletionSource();
+        var replacementStarter = 0;
+        using var h = new Harness(software: true, hardware: hardware);
+        var software = h.Software!;
+        software.Configure = s =>
+        {
+            if (software.Sessions.Count == 0)
+                s.Teardown = softwareTeardown.Task;
+            else
+                Volatile.Write(ref replacementStarter, Environment.CurrentManagedThreadId);
+        };
+        h.Backends.RecordQuarantine(hardware);
+        h.Backends.RecordQuarantine(hardware);
+        try
+        {
+            h.Frame();
+            await Eventually(() => h.Stream.Queued == 1, "software takes the frame while hardware backs off");
+            Assert.Equal("software", Assert.Single(h.Take()).Header.Encoder);
+
+            // The backoff over, within the teardown's bound: software's session is retired for the better backend, the
+            // loop held in that retirement (its bound's timer armed). Ending the retirement from a pool thread runs the loop
+            // there, through hardware's checks (not given up: the clock is short of the bound), into its wait for hardware's
+            // refused teardown: once back, the loop is in that wait.
+            h.Time.Advance(VideoStream.BusyFirst);
+            h.Frame();
+            await Eventually(() => software.Last.Aborted && h.Time.HasTimerDueAt(VideoStream.BusyFirst + Quarantine.Bound),
+                "software's session retiring for hardware");
+            await Task.Run(softwareTeardown.SetResult, TestContext.Current.CancellationToken);
+            Assert.False(h.Backends.IsGivenUp(hardware));
+            Assert.Equal(1, hardware.Starts);
+
+            // The bound, from a pool thread: the teardown is the third quarantine, hardware given up for the run during the
+            // wait, and the loop, resumed on that thread, starts software's next session there, never hardware's. (One
+            // started on another thread would be a loop that hadn't reached the wait: the given-up check before it, not this case.)
+            await Task.Run(() =>
+            {
+                h.Time.Advance(Quarantine.Bound - VideoStream.BusyFirst);
+                Assert.Equal(1, hardware.Starts);
+                Assert.Equal(2, software.Sessions.Count);
+                Assert.Equal(Environment.CurrentManagedThreadId, Volatile.Read(ref replacementStarter));
+            }, TestContext.Current.CancellationToken);
+            Assert.True(h.Backends.IsGivenUp(hardware));
+            Assert.Equal(3, h.Backends.Quarantines(hardware));
+            Assert.Empty(hardware.Sessions);
+
+            // The replacement's first keyframe, taken before the frame that checks for churn.
+            await Eventually(() => h.Stream.Queued >= 1, "software's new session encodes its first keyframe");
+            var first = Assert.Single(h.Take());
+            Assert.True(first.Header.Keyframe);
+            Assert.Equal("software", first.Header.Encoder);
+
+            // Given up, it is no better backend to retire software's session for: the next frame goes to that session.
+            h.Time.Advance(Interval);
+            h.Frame();
+            await Eventually(() => h.Stream.Queued >= 1, "software's session encodes the next frame");
+            Assert.Equal(2, software.Sessions.Count);
+            Assert.False(Assert.Single(h.Take()).Header.Keyframe);
+        }
+        finally
+        {
+            softwareTeardown.TrySetResult();
+            wedged.SetResult();
+        }
+    }
+
+    [Fact]
+    public async Task AWaitForATeardown_ThatOutlastsAnEarlierBackendsBackoff_TriesThatBackendAfterIt_AndNeverEndsTheStream()
+    {
+        // A is busy until 1 s; B refused the first size and its teardown runs on; C serves. A new size at 0.1 s skips A,
+        // waits for B's teardown until 1.5 s, and B and C refuse the new size: A, free by then, is tried after them.
+        var busyOnce = 0;
+        var a = new FakeH264Backend("A") { Refuse = _ => Interlocked.Increment(ref busyOnce) == 1 ? H264StartProblem.Busy : null };
+        var teardown = new TaskCompletionSource();
+        var b = new FakeH264Backend("B") { Refuse = _ => H264StartProblem.Unsupported, RefusalTeardown = teardown.Task };
+        var c = new FakeH264Backend("C", H264Kind.Software) { Refuse = config => config.Width == 80 ? H264StartProblem.Unsupported : null };
+        using var h = new Harness(backends: new H264Backends([a, b, c], NullLogger.Instance), hardware: a);
+        try
+        {
+            h.Frame();
+            await Eventually(() => h.Stream.Queued == 1, "C takes the frame");
+            Assert.Equal("software", Assert.Single(h.Take()).Header.Encoder);
+
+            h.Time.Advance(TimeSpan.FromMilliseconds(100));
+            h.Frame(80, 48);
+            // The selection read its time (0.1 s) before it retired C; the time it reads after B's wait is 1.5 s.
+            await Eventually(() => c.Last.Aborted, "the new size retires C's session");
+            h.Time.Advance(TimeSpan.FromMilliseconds(1400));
+            teardown.SetResult();
+
+            await Eventually(() => a.Sessions.Count == 1, "A starts at the new size");
+            Assert.Equal(80, a.Last.Config.Width);
+            Assert.True(b.Starts >= 2);
+            Assert.True(h.Backends.IsUnsupported(c, 80, 48));
+            h.Frame(80, 48);
+            await Eventually(() => h.Stream.Queued >= 1, "A's keyframe");
+            var frame = h.Take()[0];
+            Assert.True(frame.Header.Keyframe);
+            Assert.Equal(80, frame.Header.PixelWidth);
+            Assert.Equal("hardware", frame.Header.Encoder);
+            Assert.False(h.Stream.Completion.IsCompleted);
+        }
+        finally
+        {
+            teardown.TrySetResult();
+        }
+    }
+
+    [Fact]
     public async Task ThreeQuarantines_GiveTheBackendUp_ForTheRun()
     {
         var hardware = new FakeH264Backend("Hardware");
