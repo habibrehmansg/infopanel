@@ -288,8 +288,16 @@ public class EngineStartupTests
 
     /// <summary>
     /// Runs the engine as a child process on <paramref name="data"/> until it answers <c>/healthz</c> (then stops it), it
-    /// exits, or 30 seconds pass (it is then killed: blocked, say): whether it answered, and everything it said.
+    /// exits, or <see cref="StartLimit"/> passes (it is then killed: blocked, say): whether it answered, and everything it said.
     /// </summary>
+    /// <summary>
+    /// The most the engine is given to answer: a sanity limit, not the behaviour under test (a start held up by its log
+    /// target would be held for good). Under parallel full runs this Mac's program launches and file opens can stall for
+    /// tens of seconds (its endpoint protection authorises each one); 30 s didn't always cover the engine's start. The wait
+    /// still ends as soon as it answers or exits.
+    /// </summary>
+    private static readonly TimeSpan StartLimit = TimeSpan.FromSeconds(120);
+
     private static async Task<(bool Listening, string Said)> RunUntilListening(string data)
     {
         var port = EngineRuntime.FindFreePort();
@@ -300,7 +308,7 @@ public class EngineStartupTests
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
         try
         {
-            var deadline = Environment.TickCount64 + 30_000;
+            var deadline = Environment.TickCount64 + (long)StartLimit.TotalMilliseconds;
             while (!listening && !engine.HasExited && Environment.TickCount64 < deadline)
             {
                 try

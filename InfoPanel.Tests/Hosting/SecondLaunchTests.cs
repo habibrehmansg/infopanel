@@ -112,7 +112,11 @@ public sealed class SecondLaunchTests
             stopping!.Dispose();
 
             var endpoint = LocalChannel.EndpointFor(Mcp.TestRunFolder.Path, data);
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+            // A sanity limit, not the behaviour under test (the launch either starts or exits, and either ends the wait):
+            // the launch is the built engine as a child process, and under parallel full runs this Mac's program launches
+            // and file opens can stall for tens of seconds (its endpoint protection authorises each one); 30 s didn't
+            // always cover its start. The wait still ends as soon as its channel answers.
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(120);
             int? answering = null;
             while (answering == null)
             {
