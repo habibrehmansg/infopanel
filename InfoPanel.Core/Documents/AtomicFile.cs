@@ -181,6 +181,20 @@ public static class AtomicFile
     internal static void WritePrivate(string path, ReadOnlyMemory<byte> content, string? root, IStorageFaults? faults) =>
         Write(path, content, root, faults, ownerOnly: true);
 
+    /// <summary>
+    /// As <see cref="WritePrivate(string, ReadOnlyMemory{byte}, string?)"/>, the temp file made by
+    /// <paramref name="createTemp"/> when given (a new file for writing, never an existing one): on Windows, where the
+    /// Unix mode doesn't apply, a creator that gives the file a protected access list for this user only, which the rename
+    /// keeps.
+    /// </summary>
+    /// <param name="replaced">
+    /// Called once the target is replaced, before its folder is flushed: an exception after it is the flush failing, with
+    /// the target already holding <paramref name="content"/>.
+    /// </param>
+    public static void WritePrivate(string path, ReadOnlyMemory<byte> content, string? root, Func<string, FileStream>? createTemp,
+        Action? replaced = null) =>
+        Write(path, content, root, faults: null, replaced, ownerOnly: true, createTemp: createTemp);
+
     /// <summary>A random part for a temp file's or a staging folder's name: <see cref="RandomLength"/> lower-case hex digits.</summary>
     internal static string NewRandom() => Guid.NewGuid().ToString("N");
 
@@ -211,18 +225,20 @@ public static class AtomicFile
     }
 
     internal static void Write(string path, ReadOnlyMemory<byte> content, string? root, IStorageFaults? faults, Action? replaced = null,
-        bool ownerOnly = false) =>
+        bool ownerOnly = false, Func<string, FileStream>? createTemp = null) =>
         Write(path, stream =>
         {
             var half = content.Length / 2;
             stream.Write(content.Span[..half]);
             faults?.Before(StorageStep.WriteTemp, path);
             stream.Write(content.Span[half..]);
-        }, root, faults, replaced, ownerOnly);
+        }, root, faults, replaced, ownerOnly, createTemp);
 
     /// <param name="replaced">Called once the target is replaced, before its folder is flushed (which may still fail).</param>
     /// <param name="ownerOnly">Create the temp file 0600 on Unix (ignored on Windows).</param>
-    internal static void Write(string path, Action<Stream> write, string? root, IStorageFaults? faults, Action? replaced = null, bool ownerOnly = false)
+    /// <param name="createTemp">Creates the temp file in place of a plain <see cref="FileStream"/> (a new file, for writing).</param>
+    internal static void Write(string path, Action<Stream> write, string? root, IStorageFaults? faults, Action? replaced = null, bool ownerOnly = false,
+        Func<string, FileStream>? createTemp = null)
     {
         var folder = Path.GetDirectoryName(Path.GetFullPath(path))!;
         CreateFolder(folder, root, faults);
@@ -233,7 +249,7 @@ public static class AtomicFile
             var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
             if (ownerOnly && !OperatingSystem.IsWindows())
                 options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-            using (var stream = new FileStream(temp, options))
+            using (var stream = createTemp?.Invoke(temp) ?? new FileStream(temp, options))
             {
                 write(stream);
                 faults?.Before(StorageStep.FlushTemp, temp);

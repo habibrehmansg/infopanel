@@ -8,7 +8,7 @@ namespace InfoPanel.Security;
 /// 403 before this runs and never sees a CORS header; the engine's own origin and <c>--dev-origin</c>s are same-origin
 /// (or proxied) and get none either.
 /// <list type="bullet">
-/// <item>Paths: <c>/api</c> and <c>/healthz</c>. <c>/ws</c> needs no CORS: its upgrade passes the Origin check like
+/// <item>Paths: <c>/api</c>, <c>/healthz</c> and <c>/auth/pairing</c> (the pairing requests, which take no token). <c>/ws</c> needs no CORS: its upgrade passes the Origin check like
 /// any request, and the WebSocket middleware's allowed origins include these.</item>
 /// <item>A preflight (<c>OPTIONS</c> with <c>Access-Control-Request-Method</c>) is answered 204 before the token check
 /// (browsers send preflights without credentials), with the exact origin, the API's methods and request headers,
@@ -29,7 +29,7 @@ public static class CrossOrigin
 
     /// <summary>The paths that answer cross-origin clients.</summary>
     public static bool AppliesTo(PathString path) =>
-        path.StartsWithSegments("/api") || path.StartsWithSegments("/healthz");
+        path.StartsWithSegments("/api") || path.StartsWithSegments("/healthz") || path.StartsWithSegments("/auth/pairing");
 
     /// <summary>
     /// For a request from a <c>--allow-origin</c> origin to a CORS path: answers a preflight (returns true, the

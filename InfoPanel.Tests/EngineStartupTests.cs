@@ -333,6 +333,140 @@ public class EngineStartupTests
         return (listening, await output + await errors);
     }
 
+    /// <summary>A <c>pairings.json</c> with one pairing and the engine's last port, as an engine that paired a client leaves it.</summary>
+    private static void WritePairings(string data, int port)
+    {
+        Directory.CreateDirectory(data);
+        File.WriteAllText(Path.Combine(data, "pairings.json"),
+            $$"""{"pairings":[{"id":"0123456789abcdef0123456789abcdef","name":"Chrome","created":"2026-11-02T09:30:00Z","secret":"{{new string('A', 43)}}"}],"port":{{port}}}""");
+    }
+
+    private static int? StoredPort(string data)
+    {
+        var file = Path.Combine(data, "pairings.json");
+        if (!File.Exists(file))
+            return null;
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(file));
+        return json.RootElement.TryGetProperty("port", out var port) ? port.GetInt32() : null;
+    }
+
+    /// <summary>
+    /// Runs the engine as a child process on <paramref name="data"/> with <c>--port</c> <paramref name="port"/> until it has
+    /// written <c>runtime.json</c> and answers <c>/healthz</c> on the port it names (then kills it), or 30 seconds pass: the
+    /// port it listened on (0 when it never did) and everything it said.
+    /// </summary>
+    private static async Task<(int Port, string Said)> RunUntilItListensOn(string data, int port)
+    {
+        using var engine = System.Diagnostics.Process.Start(EngineProcess(data, port))!;
+        var output = engine.StandardOutput.ReadToEndAsync(Ct);
+        var errors = engine.StandardError.ReadToEndAsync(Ct);
+        var listening = 0;
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        try
+        {
+            var deadline = Environment.TickCount64 + 30_000;
+            var runtime = Path.Combine(data, "runtime.json");
+            while (listening == 0 && !engine.HasExited && Environment.TickCount64 < deadline)
+            {
+                try
+                {
+                    using var json = System.Text.Json.JsonDocument.Parse(ReadShared(runtime));
+                    var named = json.RootElement.GetProperty("port").GetInt32();
+                    using var response = await http.GetAsync($"http://127.0.0.1:{named}/healthz", Ct);
+                    if (response.IsSuccessStatusCode)
+                        listening = named;
+                }
+                catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException or HttpRequestException or TaskCanceledException && !Ct.IsCancellationRequested)
+                {
+                }
+                if (listening == 0)
+                    await Task.Delay(100, Ct);
+            }
+        }
+        finally
+        {
+            if (!engine.HasExited)
+                engine.Kill(entireProcessTree: true);
+            await engine.WaitForExitAsync(Ct);
+        }
+
+        return (listening, await output + await errors);
+    }
+
+    [Fact]
+    public async Task AfterAPairing_PortZero_ListensOnTheRememberedPort()
+    {
+        using var temp = new TempFolder();
+        var data = Path.Combine(temp.Path, "data");
+        var remembered = EngineRuntime.FindFreePort();
+        WritePairings(data, remembered);
+
+        var (port, said) = await RunUntilItListensOn(data, 0);
+
+        Assert.True(port == remembered, said);
+        Assert.Equal(remembered, StoredPort(data));
+    }
+
+    [Fact]
+    public async Task WhenTheRememberedPortIsBusy_PortZero_ListensOnAnother_SaysSo_AndRemembersIt()
+    {
+        using var temp = new TempFolder();
+        var data = Path.Combine(temp.Path, "data");
+        var busy = new TcpListener(IPAddress.Loopback, 0);
+        busy.Start();
+        try
+        {
+            var remembered = ((IPEndPoint)busy.LocalEndpoint).Port;
+            WritePairings(data, remembered);
+
+            var (port, said) = await RunUntilItListensOn(data, 0);
+
+            Assert.True(port > 0 && port != remembered, said);
+            Assert.Contains($"Port {remembered} is in use; listening on {port}", said);
+            Assert.Equal(port, StoredPort(data));
+        }
+        finally
+        {
+            busy.Stop();
+        }
+    }
+
+    [Fact]
+    public async Task AnExplicitPort_WinsOverTheRememberedOne()
+    {
+        using var temp = new TempFolder();
+        var data = Path.Combine(temp.Path, "data");
+        WritePairings(data, EngineRuntime.FindFreePort());
+        var explicitPort = EngineRuntime.FindFreePort();
+
+        var (port, said) = await RunUntilItListensOn(data, explicitPort);
+
+        Assert.True(port == explicitPort, said);
+    }
+
+    [Fact]
+    public async Task WithoutAPairing_NoPairingsFileIsWritten()
+    {
+        using var temp = new TempFolder();
+        var data = Path.Combine(temp.Path, "data");
+
+        var (port, said) = await RunUntilItListensOn(data, 0);
+
+        Assert.True(port > 0, said);
+        Assert.False(File.Exists(Path.Combine(data, "pairings.json")));
+    }
+
+    /// <summary>A temp folder of its own, removed after.</summary>
+    private sealed class TempFolder : IDisposable
+    {
+        public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "infopanel-port-tests-" + Guid.NewGuid().ToString("N"));
+
+        public void Dispose()
+        {
+            try { Directory.Delete(Path, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
     /// <summary>
     /// Today's log file is a FIFO with nothing reading it, or <c>logs/</c> a link to a drive that isn't there: the engine
     /// starts anyway (the file log can't block it or stop it), says once on the console that it logs there only, and

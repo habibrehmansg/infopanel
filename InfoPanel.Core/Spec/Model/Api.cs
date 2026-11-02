@@ -496,6 +496,38 @@ public sealed record TokenInfo
     public string? Token { get; init; }
 }
 
+/// <summary><c>POST /auth/pairing/code</c>: a one-time code, the client's name, and the pairing it held before, if any.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pairingCodeRequest")]
+public sealed record PairingCodeRequest
+{
+    public required string Code { get; init; }
+    public required string Name { get; init; }
+    public string? Replaces { get; init; }
+}
+
+/// <summary>
+/// A paired client (the schema's <c>pairingInfo</c>, as listed), or a new one (<c>createdPairing</c>, with its secret in
+/// <see cref="Secret"/>, which only a code's exchange carries).
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pairingInfo", "urn:infopanel:api:1#/$defs/createdPairing")]
+public sealed record PairingInfo
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required string Created { get; init; }
+    public string? LastUsed { get; init; }
+    public string? Secret { get; init; }
+}
+
+/// <summary>201 to <c>POST /auth/pairing/code</c>: the run's session token and instance, and the new pairing unless the engine can't keep it.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pairingGrant")]
+public sealed record PairingGrant
+{
+    public PairingInfo? Pairing { get; init; }
+    public required string Token { get; init; }
+    public required string Instance { get; init; }
+}
+
 /// <summary>403: the token lacks <see cref="Scope"/> (<c>read</c>, <c>edit</c> or <c>session</c>).</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/scopeProblem")]
 public sealed record ScopeProblem

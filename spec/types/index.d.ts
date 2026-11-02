@@ -825,6 +825,62 @@ export type TokenScopes = ("read" | "edit")[];
  */
 export type Timestamp = string;
 
+/**
+ * A paired client's id, used to remove its pairing (DELETE /api/pairings/{id}): 32 lower-case hex digits. Not a secret (docs/api.md#pairing).
+ * Pattern: `^[0-9a-f]{32}$`.
+ */
+export type PairingId = string;
+
+/**
+ * A one-time pairing code: 16 random bytes as 22 base64url characters, usable once within 2 minutes (docs/api.md#pairing).
+ * Pattern: `^[A-Za-z0-9_-]{22}$`.
+ */
+export type PairingCode = string;
+
+/** A paired client, without its secret: GET /api/pairings (the session token only) answers an array of these, oldest first. A pairing another replaced isn't listed (docs/api.md#pairing). */
+export interface PairingInfo {
+  id: PairingId;
+  /** The client's name, for people, as it gave it when it paired. */
+  name: TokenName;
+  /** When the client paired. */
+  created: Timestamp;
+  /** When the client last proved its pairing, kept to within a minute; absent when it never has. */
+  lastUsed?: Timestamp;
+}
+
+/** POST /auth/pairing/code (no token): a one-time code from a link the engine opened, exchanged once for the run's session token and a lasting pairing (pairingGrant). Answered 403 for a code that is unknown, expired or used before (docs/api.md#pairing). */
+export interface PairingCodeRequest {
+  code: PairingCode;
+  /** The client's name, for people, as the pairing is listed. */
+  name: TokenName;
+  /** The pairing the client held before, if any: it is handed over to the new one, which replaces it (docs/api.md#pairing). An id the engine doesn't have changes nothing. */
+  replaces?: PairingId;
+}
+
+/** A new pairing in a pairingGrant: its pairingInfo members and its secret, which no other answer carries. The client keeps the secret and never sends it (docs/api.md#pairing). */
+export interface CreatedPairing {
+  id: PairingId;
+  name: TokenName;
+  created: Timestamp;
+  /**
+   * The pairing secret: 32 random bytes as 43 base64url characters.
+   * Pattern: `^[A-Za-z0-9_-]{43}$`.
+   */
+  secret: string;
+}
+
+/** 201 to POST /auth/pairing/code: the run's session token and instance, and the new pairing. `pairing` is absent when the engine can't keep pairings (it couldn't read or write them): the client connects for this run only (docs/api.md#pairing). */
+export interface PairingGrant {
+  pairing?: CreatedPairing;
+  /**
+   * The session token of this run of the engine, sent as `Authorization: Bearer {token}` and on /ws (docs/api.md#authentication).
+   * Length: ≥ 1.
+   */
+  token: string;
+  /** This run of the engine, as the session's `instance`. */
+  instance: InstanceId;
+}
+
 /** 403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings, the recent log entries, opening the engine's folders). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication). */
 export interface ScopeProblem {
   type?: string;
@@ -836,7 +892,7 @@ export interface ScopeProblem {
   scope: "read" | "edit" | "session";
 }
 
-/** application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept), 404 (no such profile, blob, token, folder or endpoint), 405, 413 (a blob over mediaBytes) and 500 (an engine error, a folder the engine couldn't open, or displays it couldn't list). Its members are for people; a client acts on the status (docs/api.md#errors). */
+/** application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept, a pairing code it refuses), 404 (no such profile, blob, token, pairing, folder or endpoint), 405, 409 (paired clients the engine can't read), 413 (a blob over mediaBytes) and 500 (an engine error, a folder the engine couldn't open, or displays it couldn't list). Its members are for people; a client acts on the status (docs/api.md#errors). */
 export interface Problem {
   /** A URI for the kind of error: the HTTP status's section of RFC 9110. */
   type?: string;
@@ -4404,6 +4460,51 @@ export interface ApiOperations {
     };
   };
   /**
+   * listPairings: The paired clients, oldest first, without their secrets.
+   *
+   * docs/api.md#pairing.
+   */
+  "GET /api/pairings": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The paired clients; a pairing another replaced isn't listed. */
+      200: PairingInfo[];
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** The engine couldn't read its paired clients at start; it keeps none this run (docs/api.md#pairing). */
+      409: Problem;
+    };
+  };
+  /**
+   * removePairing: Removes a paired client's pairing, and the pairings it replaced.
+   *
+   * docs/api.md#pairing.
+   */
+  "DELETE /api/pairings/{id}": {
+    params: {
+      /** The pairing's id (pairingId). */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** Removed: the client no longer proves the pairing. A connection it has keeps the run's session token until the engine stops. */
+      204: null;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The engine couldn't read its paired clients at start; it keeps none this run (docs/api.md#pairing). */
+      409: Problem;
+    };
+  };
+  /**
    * previewSocket: The preview socket: a WebSocket with the subprotocol infopanel.v1.
    *
    * docs/api.md#the-preview-socket. The upgrade takes no Authorization header: the token comes as the subprotocol auth.{token} or in the first message (authMessage).
@@ -4452,6 +4553,24 @@ export interface ApiOperations {
       302: null;
       /** Any token but the session token. */
       401: "text/plain";
+    };
+  };
+  /**
+   * exchangePairingCode: Exchanges a one-time pairing code, once, for the run's session token and a lasting pairing.
+   *
+   * docs/api.md#pairing. Answered to a client served from another origin with CORS, as /api is.
+   */
+  "POST /auth/pairing/code": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: PairingCodeRequest;
+    responses: {
+      /** The run's session token and instance, and the new pairing with its secret (absent when the engine can't keep pairings). */
+      201: PairingGrant;
+      /** The code is unknown, expired or used before (one answer for all three); a second use also removes the pairing the first made. */
+      403: Problem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
     };
   };
 }

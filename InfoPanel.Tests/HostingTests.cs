@@ -128,6 +128,23 @@ public sealed class HostingTests : IDisposable
     }
 
     [Fact]
+    public void Wipe_OfAFolderWithPairings_KeepsOnlyTheLock()
+    {
+        // --fresh on a folder holding the paired clients and a temp file an interrupted write of them left.
+        var lockPath = Path.Combine(_dir, "engine.lock");
+        using var held = InstanceLock.TryAcquire(lockPath, out _);
+        File.WriteAllText(Path.Combine(_dir, "pairings.json"), """{"pairings":[],"port":5000}""");
+        File.WriteAllText(Path.Combine(_dir, $"pairings.json.{Guid.NewGuid():N}.tmp"), "x");
+
+        Assert.True(DataPaths.IsEngineEntry("pairings.json"));
+        Assert.True(DataPaths.IsEngineEntry($"pairings.json.{Guid.NewGuid():N}.tmp"));
+        Assert.Null(DataFolder.CheckWipeable(_dir));
+        DataFolder.Wipe(_dir, lockPath);
+
+        Assert.Equal([lockPath], Directory.GetFileSystemEntries(_dir));
+    }
+
+    [Fact]
     public void Wipe_OfAFolderWithTheStoreMarker_KeepsOnlyTheLock()
     {
         // --fresh on a folder with the data folder's marker and a temp file an interrupted write of it left.

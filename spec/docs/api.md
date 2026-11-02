@@ -4,7 +4,7 @@ Schema: `urn:infopanel:api:1` (`schemas/api.schema.json`). Requests: `openapi.js
 
 The engine serves a REST API under `/api` and a preview socket at `/ws`. This page specifies the bodies that carry the formats, the tokens that give access to them, and the engine behaviour behind them; commits, undo, redo, revert and save have their own page ([commits](commit.md)). Members are camelCase, and errors are `application/problem+json` ([errors](#errors)). Request bodies and the socket's client messages are closed, and what the engine sends is read tolerantly ([versioning](versioning.md#unknown-members-and-values)).
 
-Every request under `/api` needs a token ([authentication](#authentication)): without a valid one the engine answers 401, and to a token without the scope the request needs, 403 `scopeProblem`. The preview socket takes its token its own way ([below](#connecting)); `GET /healthz` and `GET /auth/{token}` need none.
+Every request under `/api` needs a token ([authentication](#authentication)): without a valid one the engine answers 401, and to a token without the scope the request needs, 403 `scopeProblem`. The preview socket takes its token its own way ([below](#connecting)); `GET /healthz`, `GET /auth/{token}` and the pairing requests under `/auth/pairing` ([below](#pairing)) need none.
 
 | Request | Body | Answer |
 |---|---|---|
@@ -42,13 +42,16 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `POST /api/tokens` | `createTokenRequest` | 201 `createdToken`; 422 `invalidProblem` ([below](#integration-tokens)) |
 | `GET /api/tokens` | | An array of `tokenInfo`, oldest first |
 | `DELETE /api/tokens/{id}` | | 204; 404 when there is no such token |
+| `GET /api/pairings` | | An array of `pairingInfo`, oldest first; 409 `problem` when the engine couldn't read its paired clients ([below](#pairing)) |
+| `DELETE /api/pairings/{id}` | | 204; 404 when there is no such pairing; 409 `problem` when the engine couldn't read its paired clients |
 | `GET /ws` | | The preview socket: 101, then `serverMessage`s and frames ([below](#the-preview-socket)) |
 | `GET /healthz` | | 200 `ok` as `text/plain`, without a token |
 | `GET /auth/{token}` | | 302 to `/#token={token}`; 401 for any token but the session token ([below](#signing-in)) |
+| `POST /auth/pairing/code` | `pairingCodeRequest` | 201 `pairingGrant`; 403 `problem` for a code that is unknown, expired or used; 422 `invalidProblem` ([below](#pairing)) |
 
 A request on a profile is checked in this order, and the first failure answers: its query parameters (else 400 `problem`); the profile exists (else 404); a request that reads, changes or draws its document needs a profile that can be opened (else 409 `profileStatusProblem`, [below](#profiles)); the body matches its definition and the formats (else 422 `invalidProblem`, at most 100 errors and then one `more`, [validation](validation.md)); then what the request itself checks.
 
-A request body is held to its size limit as received, whitespace around the JSON value included, before it is parsed ([limits](limits.md#request-limits)): an undo's, redo's, revert's, save's or duplicate's to `requestBytes` (64 KiB), a token create's to `tokenRequestBytes` (4 KiB), a settings change's to `settingsRequestBytes` (512 KiB), a 1.x migration record's to `recordBytes` (1 MiB) and a commit's to `commitBytes`. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""`. A create's body is read up to `documentBytes` plus 64 KiB, then its document is held to `documentBytes` ([sizes](limits.md#sizes)); a blob's bytes are held to `videoBytes` and an archive's to `archiveBytes` (413).
+A request body is held to its size limit as received, whitespace around the JSON value included, before it is parsed ([limits](limits.md#request-limits)): an undo's, redo's, revert's, save's or duplicate's to `requestBytes` (64 KiB), a token create's and a pairing request's to `tokenRequestBytes` (4 KiB), a settings change's to `settingsRequestBytes` (512 KiB), a 1.x migration record's to `recordBytes` (1 MiB) and a commit's to `commitBytes`. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""`. A create's body is read up to `documentBytes` plus 64 KiB, then its document is held to `documentBytes` ([sizes](limits.md#sizes)); a blob's bytes are held to `videoBytes` and an archive's to `archiveBytes` (413).
 
 ## Errors
 
@@ -56,11 +59,11 @@ Every error under `/api` is `application/problem+json`: the definition the reque
 
 - 401 `problem` without a valid token, on every request under `/api` and on `/ws`;
 - 403 `scopeProblem` to a token without the scope a request that changes something needs (`edit`), or that only the session token may make (`session`); every token has `read`;
-- 404 `problem` on a request that names a profile, blob, token or folder that doesn't exist;
+- 404 `problem` on a request that names a profile, blob, token, pairing or folder that doesn't exist;
 - 400 `problem` for a query parameter that isn't a whole number from −2,147,483,648 to 2,147,483,647 (`w`, `history`), for an `after` that isn't one from 0 to 9,007,199,254,740,991 ([below](#logs)), and for a `DELETE` of a profile without one `instance` of 1–64 characters ([below](#deleting));
 - 500 `problem` when the engine fails; the error is in its log.
 
-A path under `/api` that isn't a request above, or a method a path doesn't take, is answered 404 (or 405) `problem`. Under `/ws/` and `/auth`, a path that isn't `/ws` or `/auth/{token}` is answered 404 with no body.
+A path under `/api` that isn't a request above, or a method a path doesn't take, is answered 404 (or 405) `problem`. Under `/ws/` and `/auth`, a path that isn't `/ws`, `/auth/{token}` or a pairing request is answered 404 with no body. The pairing requests under `/auth/pairing` answer as the table lists, their errors `application/problem+json` as under `/api` ([below](#pairing)).
 
 Before any of these, the engine checks where a request comes from ([below](#where-requests-come-from)): a `Host` that isn't a loopback name is answered 400 with no body, and an `Origin` the engine doesn't accept 403 `problem`.
 
@@ -68,7 +71,7 @@ Before any of these, the engine checks where a request comes from ([below](#wher
 
 Every request under `/api` carries a token, as `Authorization: Bearer {token}`. The preview socket takes it as the subprotocol `auth.{token}` offered with `infopanel.v1` or, when no `auth.*` subprotocol is offered, as its first message, `{"type": "auth", "token": "…"}`, within 5 seconds. There are two kinds of token:
 
-- The **session** token is made by the engine each time it starts, or given on its command line, and has full access. The engine shows it only in the sign-in link it prints (`/auth/{token}`) and in the pairing link for a client served from another origin, and never stores it.
+- The **session** token is made by the engine each time it starts, or given on its command line, and has full access. The engine shows it only in the sign-in link it prints (`/auth/{token}`), in the pairing link for a client served from another origin, and in a pairing code's exchange ([below](#pairing)), and never stores it.
 - **Integration** tokens are for scripts and other programs. They are made with the session token ([below](#integration-tokens)), kept by the engine across restarts until they are revoked, and limited to the scopes they were made with.
 
 | Scope | Allows |
@@ -76,7 +79,7 @@ Every request under `/api` carries a token, as `Authorization: Bearer {token}`. 
 | `read` | Every `GET` and `HEAD` under `/api` but the session token's own (below): the session, fonts, sensors, the displays, the profile list, documents, exports and archives, thumbnails, blobs, the 1.x migration's state; and the preview socket, `doc` messages and frames included |
 | `edit` | Every request that changes a profile, a document or a blob, or the engine's data: creating, duplicating and deleting profiles, commits, undo, redo, revert, save, `POST /api/blobs`, opening a profile archive, and the 1.x import's reads (which store blobs) and record. `edit` implies `read`: a token made with `edit` has both |
 
-Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token), uses the token endpoints, reads and changes the engine settings ([below](#settings)), reads the engine's recent log entries ([below](#logs)) and opens the engine's folders ([below](#folders)). Scopes fail closed: a request that neither scope covers needs the session token.
+Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token), uses the token and pairing endpoints, reads and changes the engine settings ([below](#settings)), reads the engine's recent log entries ([below](#logs)) and opens the engine's folders ([below](#folders)). Scopes fail closed: a request that neither scope covers needs the session token.
 
 Narrower access, such as a token that sees only some profiles, would come as a token kind of its own in a later version: `read` and `edit` keep allowing everything this table says.
 
@@ -88,9 +91,11 @@ A request without a token, or with one the engine doesn't know or has revoked, i
 
 `GET /healthz` answers 200 with the text `ok` (`text/plain`) to anyone: a client can poll it to see that the engine runs before it has a token.
 
+A client served from another origin can pair with the engine instead, so that it connects again after a restart without a new link ([below](#pairing)).
+
 ### Where requests come from
 
-The engine listens on the loopback interface only, and answers a request whose `Host` isn't `localhost`, `127.0.0.1` or `[::1]` (any port) with 400 and no body. A request with an `Origin` (a browser's, WebSocket upgrades included) must come from the engine's own origin or one the engine was started to accept; any other is answered 403 `problem`, without CORS headers. An origin the engine was started to accept as a separate client gets CORS on `/api` and `/healthz`: its preflights (`OPTIONS` with `Access-Control-Request-Method`) are answered 204 with no body before the token check, and every other answer carries `Access-Control-Allow-Origin`.
+The engine listens on the loopback interface only, and answers a request whose `Host` isn't `localhost`, `127.0.0.1` or `[::1]` (any port) with 400 and no body. A request with an `Origin` (a browser's, WebSocket upgrades included) must come from the engine's own origin or one the engine was started to accept; any other is answered 403 `problem`, without CORS headers. An origin the engine was started to accept as a separate client gets CORS on `/api`, `/healthz` and `/auth/pairing`: its preflights (`OPTIONS` with `Access-Control-Request-Method`) are answered 204 with no body before the token check, and every other answer carries `Access-Control-Allow-Origin`.
 
 ### Integration tokens
 
@@ -99,6 +104,18 @@ The engine listens on the loopback interface only, and answers a request whose `
 `GET /api/tokens` lists the integration tokens, oldest first, as `tokenInfo`: `id`, `name`, `kind` (`integration`), `scopes` (`read`, and `edit` when it has it) and `created`, with `lastUsed` once the token has authenticated a request (kept to within a minute). It has no secrets and never lists the session token.
 
 `DELETE /api/tokens/{id}` revokes a token and answers 204, or 404 when there is no token with that id. Revocation takes effect at once: the next request with the token is answered 401, and every preview socket authenticated with it is closed with status 1008 and the reason `token revoked`. Every other connection stays open.
+
+### Pairing
+
+A client served from another origin can pair with the engine: it keeps a pairing secret that lets it connect again after the engine restarts, without a new link. Pairing starts from a one-time **code** the engine hands the client in a link it opens.
+
+- A code is 16 random bytes as 22 base64url characters. The engine keeps codes in memory only, at most 8 unused (making another drops the oldest), each usable for 2 minutes from when it was made.
+- `POST /auth/pairing/code` (`pairingCodeRequest`, with no token) exchanges a code. `name` is the client's name for people, by the token name rule ([above](#integration-tokens)), and `replaces` is the id of the pairing the client held before, if any. The first use of a code within its 2 minutes is answered 201 `pairingGrant`: the run's session token and `instance` (as the session's), and `pairing`, the new pairing (`createdPairing`): its `id` (32 lower-case hex digits), `name`, `created` and `secret`, 32 random bytes as 43 base64url characters. That answer is the only one that carries the secret: the client keeps it and never sends it, and the engine never logs it or the code. When the engine can't keep pairings (it couldn't read its paired clients when it started, or can't write them), the grant has no `pairing`, and the client connects for this run only.
+- A code that is unknown, past its 2 minutes or used before is answered 403 `problem`, with one text for all three. A second use of a code also removes the pairing its first use made, and the engine logs a warning: a link used once and copied pairs nothing, and leaves nothing paired. Used codes are remembered until their 2 minutes end.
+- The pairing `replaces` names is handed over, not removed: it is no longer listed, and it goes when the pairing that replaced it is removed, when the engine drops it at the limit, or 30 days after it was replaced. An id the engine doesn't have changes nothing.
+- The engine keeps at most 32 pairings, replaced ones included: a new one past that drops replaced pairings first, then the least recently used.
+- `GET /api/pairings` lists the pairings, oldest first, as `pairingInfo`: `id`, `name`, `created`, and `lastUsed` once the client has connected with its pairing (kept to within a minute). It has no secrets, and leaves replaced pairings out. `DELETE /api/pairings/{id}` removes a listed pairing and the pairings it replaced, and answers 204, or 404 for an id not listed: the client can't connect with it again, though a connection it has keeps the run's session token until the engine stops. Both need the session token, and both are answered 409 `problem` when the engine couldn't read its paired clients when it started: it keeps none that run.
+- Every answer under `/auth/pairing` has `Cache-Control: no-store`. A body over `tokenRequestBytes` ([limits](limits.md#request-limits)), not JSON or breaking its definition is answered 422 `invalidProblem`.
 
 ## Session
 

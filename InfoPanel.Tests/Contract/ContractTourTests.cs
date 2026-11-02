@@ -101,6 +101,28 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(anonymous, "GET", $"/auth/{EngineFactory.Token}", 302);
         await Send(anonymous, "GET", "/auth/not-the-token", 401);
 
+        // Pairings: a code exchanged once (a second use refused), listed and removed; refused while pairings.json can't be
+        // read (an engine of its own, started on a file it can't read).
+        var codes = factory.Services.GetRequiredService<InfoPanel.Security.PairingCodes>();
+        var code = codes.Mint();
+        await Send(anonymous, "POST", "/auth/pairing/code", 201, JsonContent.Create(new { code, name = "Tour" }));
+        await Send(anonymous, "POST", "/auth/pairing/code", 403, JsonContent.Create(new { code, name = "Tour" }));
+        await Send(anonymous, "POST", "/auth/pairing/code", 422, Body("{}"));
+        var paired = await Send(anonymous, "POST", "/auth/pairing/code", 201, JsonContent.Create(new { code = codes.Mint(), name = "Tour" }));
+        await Send(session, "GET", "/api/pairings", 200);
+        await Send(session, "DELETE", $"/api/pairings/{paired.GetProperty("pairing").GetProperty("id").GetString()}", 204);
+        await Send(session, "DELETE", $"/api/pairings/{AbsentToken}", 404);
+        var pairingsUnreadable = Path.Combine(factory.Root, "pairings-unreadable");
+        Directory.CreateDirectory(pairingsUnreadable);
+        File.WriteAllText(Path.Combine(pairingsUnreadable, "pairings.json"), "{ not json");
+        using (var refusing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", pairingsUnreadable)))
+        using (var refusingSession = refusing.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            refusingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            await Send(refusingSession, "GET", "/api/pairings", 409);
+            await Send(refusingSession, "DELETE", $"/api/pairings/{AbsentToken}", 409);
+        }
+
         // The engine, fonts and sensors.
         await Send(session, "GET", "/api/session", 200);
         await Send(session, "GET", "/api/fonts", 200);

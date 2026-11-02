@@ -131,6 +131,26 @@ public sealed class EngineRuntime
         return CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(candidate), _token);
     }
 
+    /// <summary><paramref name="preferred"/> when it is a loopback port that is free right now, else one that is.</summary>
+    public static int FindFreePort(int? preferred)
+    {
+        if (preferred is >= 1 and <= 65535)
+        {
+            try
+            {
+                var listener = new TcpListener(IPAddress.Loopback, preferred.Value);
+                listener.Start();
+                listener.Stop();
+                return preferred.Value;
+            }
+            catch (SocketException)
+            {
+            }
+        }
+
+        return FindFreePort();
+    }
+
     /// <summary>A loopback port that is free right now.</summary>
     public static int FindFreePort()
     {

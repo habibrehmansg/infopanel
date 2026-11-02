@@ -362,7 +362,7 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
 
     /// <summary>
     /// Every endpoint under <c>/api</c> declares its scope: reads (GET, HEAD) <c>read</c>, everything else <c>edit</c>,
-    /// and only the token endpoints <c>session</c>; the fallback that answers 404 for unknown paths <c>read</c>. An
+    /// and only the token and pairing endpoints (and the others the session token alone may use) <c>session</c>; the fallback that answers 404 for unknown paths <c>read</c>. An
     /// endpoint added without a declaration fails here (and is session-only meanwhile).
     /// </summary>
     [Fact]
@@ -374,9 +374,10 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
         foreach (var (pattern, methods, scope) in endpoints)
         {
             var name = $"{string.Join(",", methods)} {pattern}";
-            // The token endpoints, the engine settings, the recent log entries and the engine's folders are the session token's alone.
-            var sessionEndpoint = pattern is "/api/tokens" or "/api/settings" or "/api/logs" or "/api/folders/{folder}/open"
-                || pattern.StartsWith("/api/tokens/", StringComparison.Ordinal);
+            // The token endpoints, the paired clients, the engine settings, the recent log entries and the engine's folders are
+            // the session token's alone.
+            var sessionEndpoint = pattern is "/api/tokens" or "/api/pairings" or "/api/settings" or "/api/logs" or "/api/folders/{folder}/open"
+                || pattern.StartsWith("/api/tokens/", StringComparison.Ordinal) || pattern.StartsWith("/api/pairings/", StringComparison.Ordinal);
             var reads = methods.All(m => m is "GET" or "HEAD") || pattern == "/api/{**rest}";
             ApiScope? expected = sessionEndpoint ? ApiScope.Session : reads ? ApiScope.Read : ApiScope.Edit;
             if (scope != expected)

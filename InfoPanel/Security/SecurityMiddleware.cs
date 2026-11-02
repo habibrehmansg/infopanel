@@ -9,7 +9,7 @@ namespace InfoPanel.Security;
 /// <list type="bullet">
 /// <item>An <c>Origin</c> header, when present on any request (any method, WebSocket upgrades included), must be
 /// <c>http://127.0.0.1:{port}</c>, <c>http://localhost:{port}</c> or a <c>--dev-origin</c>; otherwise 403.</item>
-/// <item>An origin given with <c>--allow-origin</c> gets CORS on <c>/api</c> and <c>/healthz</c> (<see cref="CrossOrigin"/>);
+/// <item>An origin given with <c>--allow-origin</c> gets CORS on <c>/api</c>, <c>/healthz</c> and <c>/auth/pairing</c> (<see cref="CrossOrigin"/>);
 /// its preflights are answered here, before the token check.</item>
 /// <item><c>/api/*</c> needs <c>Authorization: Bearer {token}</c>, the session token or an integration token
 /// (<see cref="TokenStore"/>); the request's <see cref="Caller"/> is set for <see cref="ScopeFilter"/>, which checks the
@@ -19,7 +19,7 @@ namespace InfoPanel.Security;
 /// (<see cref="PendingWebSocketAuthItem"/>, checked by <c>/ws</c> itself). Otherwise 401, before any upgrade; an
 /// <c>auth.*</c> subprotocol with a wrong token is always refused. There is no cookie: browsers send loopback cookies
 /// to every port on the host, so another local server would receive it. Everything else (static files,
-/// <c>/healthz</c>, <c>/auth/{token}</c>) is public.</item>
+/// <c>/healthz</c>, <c>/auth/{token}</c>, the pairing requests under <c>/auth/pairing</c>) is public.</item>
 /// </list>
 /// </summary>
 public sealed class SecurityMiddleware(RequestDelegate next, EngineRuntime runtime, TokenStore tokens)
@@ -116,7 +116,8 @@ public sealed class SecurityMiddleware(RequestDelegate next, EngineRuntime runti
 /// <c>GET /auth/{token}</c>: the session token redirects to <c>/#token={token}</c>. The web client reads the fragment
 /// (which is never sent to a server), keeps the token in <c>localStorage</c> (per origin, so per port), removes it from
 /// the address bar and sends it as a Bearer token. No cookie is set. Only the session token signs in: an integration
-/// token is refused like any other, so it can never be exchanged for the session token.
+/// token is refused like any other, so it can never be exchanged for the session token. The pairing requests under
+/// <c>/auth/pairing</c> are mapped here too (<see cref="Api.PairingEndpoints"/>).
 /// </summary>
 public static class AuthEndpoints
 {
@@ -133,6 +134,9 @@ public static class AuthEndpoints
 
             return Results.Redirect("/#token=" + runtime.Token);
         });
+
+        // Pairing (spec/docs/api.md, "Pairing"): public, with CORS for a client served from another origin (CrossOrigin).
+        app.MapPost("/auth/pairing/code", Api.PairingEndpoints.ExchangeCodeAsync);
     }
 }
 

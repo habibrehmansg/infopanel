@@ -222,6 +222,8 @@ try
     settings.Changed += snapshot => logLevel.MinimumLevel = LevelOf(snapshot.Settings.LogLevel);
     // Integration tokens: a file that can't be read stops the engine rather than dropping or overwriting them.
     var tokens = TokenStore.Open(paths.TokensFile, paths.Root, TimeProvider.System, engineLogger.ForContext<TokenStore>());
+    // The paired clients and the last port: a file that can't be read is logged, the run has none, and it is never rewritten.
+    var pairings = PairingStore.Open(paths.PairingsFile, paths.Root, TimeProvider.System, engineLogger.ForContext<PairingStore>());
 
     FontRegistry.RegisterEmbedded();
     var userFonts = FontRegistry.RegisterDirectory(paths.FontsDirectory);
@@ -243,7 +245,16 @@ try
     else
         Log.Warning("No web client installed (no wwwroot next to the engine and no --web-root); serving the API only");
 
-    var port = options.Port == 0 ? EngineRuntime.FindFreePort() : options.Port;
+    // --port 0 (the default) prefers the engine's last port, kept in pairings.json, so paired clients find it again; when
+    // that port is taken, a free one, and those clients follow the next link the engine opens. An explicit --port wins.
+    var port = options.Port;
+    if (port == 0)
+    {
+        port = EngineRuntime.FindFreePort(pairings.Port);
+        if (pairings.Port is { } last && last != port)
+            Log.Information("Port {Old} is in use; listening on {New}. Paired clients reconnect once they are opened from InfoPanel again", last, port);
+    }
+
     var runtime = new EngineRuntime(port, options.Token, options.DevOrigins, options.AllowOrigins) { Started = started, WebRootServed = webRoot != null };
 
     builder.Services.AddSerilog(engineLogger);
@@ -274,6 +285,8 @@ try
     builder.Services.AddSingleton(paths);
     builder.Services.AddSingleton(runtime);
     builder.Services.AddSingleton(tokens);
+    builder.Services.AddSingleton(pairings);
+    builder.Services.AddSingleton(sp => new PairingCodes(sp.GetRequiredService<TimeProvider>(), id => pairings.Find(id) is not null));
     builder.Services.AddSingleton(settings);
     builder.Services.AddSingleton(recentLog);
     builder.Services.AddSingleton(regionalFormat);
@@ -492,6 +505,7 @@ try
     app.MapBlobEndpoints();
     app.MapImportEndpoints();
     app.MapTokenEndpoints();
+    app.MapPairingEndpoints();
     app.MapSettingsEndpoints();
     app.MapLogEndpoints();
     app.MapFolderEndpoints();

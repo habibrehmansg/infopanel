@@ -8,7 +8,8 @@ namespace InfoPanel.Hosting;
 /// Once the server listens: confirms the port from <see cref="IServerAddressesFeature"/> (absent under
 /// <c>TestServer</c>, where the configured port stands), writes <c>runtime.json</c>, and logs the links that lead
 /// somewhere: the sign-in link when a web client is served here, the dev servers' and the pairing links for cross-origin
-/// clients (with the token on the console only, redacted in the file log). It opens no browser: the engine stays headless
+/// clients (with the token on the console only, redacted in the file log), and keeps the port in <c>pairings.json</c> when
+/// clients are paired (<see cref="Security.PairingStore.RememberPort"/>). It opens no browser: the engine stays headless
 /// until the user asks for the editor (the menu's Open Editor, a second launch: <see cref="EditorOpener"/>). Removes a
 /// crash's redirect files at start, and deletes <c>runtime.json</c> on clean shutdown.
 /// </summary>
@@ -18,6 +19,7 @@ public sealed class EngineLifetime(
     EngineRuntime runtime,
     DataPaths paths,
     RedirectFiles redirects,
+    Security.PairingStore pairings,
     ILogger<EngineLifetime> logger) : IHostedService
 {
     private CancellationTokenRegistration _started;
@@ -50,6 +52,9 @@ public sealed class EngineLifetime(
             logger.LogWarning("Listening on port {Actual}, not the expected {Expected}", listening, runtime.Port);
             runtime.Port = listening;
         }
+
+        // Before runtime.json, so a tool that sees the engine running sees the port it keeps.
+        pairings.RememberPort(runtime.Port);
 
         try
         {

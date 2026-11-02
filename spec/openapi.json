@@ -3,7 +3,7 @@
   "info": {
     "title": "InfoPanel engine API",
     "version": "2",
-    "summary": "The engine's requests on the loopback interface: its REST API under /api, the preview socket, the health check and the sign-in link.",
+    "summary": "The engine's requests on the loopback interface: its REST API under /api, the preview socket, the health check, the sign-in link and pairing under /auth/pairing.",
     "description": "An index of the engine API: every request, its parameters, and each status it answers with its media type and body. Bodies are definitions of the schemas in schemas/ (urn:infopanel:api:1), referred to by id; docs/api.md and docs/commit.md specify the behaviour. info.version is the API's protocol, as GET /api/session reports it (docs/versioning.md#the-engine-api)."
   },
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
@@ -805,6 +805,41 @@
         }
       }
     },
+    "/api/pairings": {
+      "get": {
+        "operationId": "listPairings",
+        "summary": "The paired clients, oldest first, without their secrets.",
+        "description": "docs/api.md#pairing.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "200": {
+            "description": "The paired clients; a pairing another replaced isn't listed.",
+            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "urn:infopanel:api:1#/$defs/pairingInfo"}}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "409": {"$ref": "#/components/responses/pairingsUnreadable"}
+        }
+      }
+    },
+    "/api/pairings/{id}": {
+      "parameters": [
+        {"name": "id", "in": "path", "required": true, "description": "The pairing's id (pairingId).", "schema": {"type": "string"}}
+      ],
+      "delete": {
+        "operationId": "removePairing",
+        "summary": "Removes a paired client's pairing, and the pairings it replaced.",
+        "description": "docs/api.md#pairing.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "204": {"description": "Removed: the client no longer proves the pairing. A connection it has keeps the run's session token until the engine stops."},
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {"$ref": "#/components/responses/notFound"},
+          "409": {"$ref": "#/components/responses/pairingsUnreadable"}
+        }
+      }
+    },
     "/ws": {
       "get": {
         "operationId": "previewSocket",
@@ -864,6 +899,29 @@
           "401": {"description": "Any token but the session token.", "content": {"text/plain": {}}}
         }
       }
+    },
+    "/auth/pairing/code": {
+      "post": {
+        "operationId": "exchangePairingCode",
+        "summary": "Exchanges a one-time pairing code, once, for the run's session token and a lasting pairing.",
+        "description": "docs/api.md#pairing. Answered to a client served from another origin with CORS, as /api is.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pairingCodeRequest"}}}
+        },
+        "responses": {
+          "201": {
+            "description": "The run's session token and instance, and the new pairing with its secret (absent when the engine can't keep pairings).",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pairingGrant"}}}
+          },
+          "403": {
+            "description": "The code is unknown, expired or used before (one answer for all three); a second use also removes the pairing the first made.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "422": {"$ref": "#/components/responses/invalid"}
+        }
+      }
     }
   },
   "components": {
@@ -915,6 +973,10 @@
       "invalid": {
         "description": "The body breaks its definition, the formats, a rule or a limit; nothing was applied.",
         "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+      },
+      "pairingsUnreadable": {
+        "description": "The engine couldn't read its paired clients at start; it keeps none this run (docs/api.md#pairing).",
+        "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
       }
     },
     "securitySchemes": {
