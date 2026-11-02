@@ -627,14 +627,16 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
             {
                 for (var x = 0; !stop.IsCancellationRequested; x = (x + 7) % 400)
                 {
-                    using var response = await TestDocs.CommitAsync(session, profile, stop.Token, TestDocs.Place("shape", x, 10));
+                    // Each commit runs to its end: the stop is taken between them. Cancelled mid-request, the test server
+                    // can fail a read with "the client aborted the request" (an IOException) rather than a cancellation.
+                    using var response = await TestDocs.CommitAsync(session, profile, Ct, TestDocs.Place("shape", x, 10));
                     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                     await Task.Delay(20, stop.Token);
                 }
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested)
             {
-                // Stopped mid-request: the cancellation is the only exception swallowed.
+                // Stopped in the pause between commits: the cancellation is the only exception swallowed.
             }
         });
 
