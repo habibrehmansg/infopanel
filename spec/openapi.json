@@ -922,6 +922,52 @@
           "422": {"$ref": "#/components/responses/invalid"}
         }
       }
+    },
+    "/auth/pairing/challenge": {
+      "post": {
+        "operationId": "pairingChallenge",
+        "summary": "A paired client's challenge: the engine proves first that it holds the pairing's secret, over its own port.",
+        "description": "docs/api.md#pairing. Answered to a client served from another origin with CORS, as /api is.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pairingChallengeRequest"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "The engine's nonce and proof; a replaced pairing's too.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pairingChallenge"}}}
+          },
+          "404": {
+            "description": "The engine has no such pairing: removed, another data folder, or pairings it couldn't read.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "422": {"$ref": "#/components/responses/invalid"}
+        }
+      }
+    },
+    "/auth/pairing/proof": {
+      "post": {
+        "operationId": "pairingProof",
+        "summary": "A paired client's proof: once it checks, the run's session token, with the engine's proof over it.",
+        "description": "docs/api.md#pairing. Answered to a client served from another origin with CORS, as /api is.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pairingProofRequest"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "The run's session token and instance, and the engine's proof over them.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pairingSession"}}}
+          },
+          "403": {
+            "description": "A check failed: the challenge is gone, expired or another pairing's, the pairing was replaced or removed, or the proof doesn't check (one answer for all).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "422": {"$ref": "#/components/responses/invalid"}
+        }
+      }
     }
   },
   "components": {

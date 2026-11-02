@@ -881,6 +881,55 @@ export interface PairingGrant {
   instance: InstanceId;
 }
 
+/**
+ * A nonce of the pairing proofs, Np (the client's) or Ne (the engine's): 32 random bytes as 43 base64url characters, new for every challenge (docs/api.md#pairing).
+ * Pattern: `^[A-Za-z0-9_-]{43}$`.
+ */
+export type PairingNonce = string;
+
+/**
+ * A pairing proof, E, C or A: an HMAC-SHA256 as 43 base64url characters (docs/api.md#pairing).
+ * Pattern: `^[A-Za-z0-9_-]{43}$`.
+ */
+export type PairingProof = string;
+
+/** POST /auth/pairing/challenge (no token): a client that paired asks the engine to prove first that it holds the pairing's secret, over the client's fresh nonce Np. Answered with pairingChallenge, or 404 for a pairing the engine doesn't have (docs/api.md#pairing). */
+export interface PairingChallengeRequest {
+  pairing: PairingId;
+  /** Np, the client's nonce. */
+  nonce: PairingNonce;
+}
+
+/** 200 to POST /auth/pairing/challenge: the engine's nonce Ne and its proof E over Np, Ne and its own listening port. A client checks E over the port it dialled before it sends anything more (docs/api.md#pairing). */
+export interface PairingChallenge {
+  /** Ne, the engine's nonce: the challenge, single use, for 30 seconds. */
+  nonce: PairingNonce;
+  /** E. */
+  proof: PairingProof;
+}
+
+/** POST /auth/pairing/proof (no token): the client's proof C for a challenge. Answered with pairingSession, or 403, with one text, for any check that fails (docs/api.md#pairing). */
+export interface PairingProofRequest {
+  pairing: PairingId;
+  /** Ne, the challenge this proof answers. */
+  nonce: PairingNonce;
+  /** C. */
+  proof: PairingProof;
+}
+
+/** 200 to POST /auth/pairing/proof: the run's session token and instance, and the engine's proof A over them. A client uses the token only once A checks over the port it dialled (docs/api.md#pairing). */
+export interface PairingSession {
+  /**
+   * The session token of this run of the engine (docs/api.md#authentication).
+   * Length: ≥ 1.
+   */
+  token: string;
+  /** This run of the engine, as the session's `instance`. */
+  instance: InstanceId;
+  /** A, over the token's and the instance's UTF-8 bytes. */
+  proof: PairingProof;
+}
+
 /** 403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings, the recent log entries, opening the engine's folders). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication). */
 export interface ScopeProblem {
   type?: string;
@@ -892,7 +941,7 @@ export interface ScopeProblem {
   scope: "read" | "edit" | "session";
 }
 
-/** application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept, a pairing code it refuses), 404 (no such profile, blob, token, pairing, folder or endpoint), 405, 409 (paired clients the engine can't read), 413 (a blob over mediaBytes) and 500 (an engine error, a folder the engine couldn't open, or displays it couldn't list). Its members are for people; a client acts on the status (docs/api.md#errors). */
+/** application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept, a pairing code or proof it refuses), 404 (no such profile, blob, token, pairing, folder or endpoint), 405, 409 (paired clients the engine can't read), 413 (a blob over mediaBytes) and 500 (an engine error, a folder the engine couldn't open, or displays it couldn't list). Its members are for people; a client acts on the status (docs/api.md#errors). */
 export interface Problem {
   /** A URI for the kind of error: the HTTP status's section of RFC 9110. */
   type?: string;
@@ -4568,6 +4617,42 @@ export interface ApiOperations {
       /** The run's session token and instance, and the new pairing with its secret (absent when the engine can't keep pairings). */
       201: PairingGrant;
       /** The code is unknown, expired or used before (one answer for all three); a second use also removes the pairing the first made. */
+      403: Problem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * pairingChallenge: A paired client's challenge: the engine proves first that it holds the pairing's secret, over its own port.
+   *
+   * docs/api.md#pairing. Answered to a client served from another origin with CORS, as /api is.
+   */
+  "POST /auth/pairing/challenge": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: PairingChallengeRequest;
+    responses: {
+      /** The engine's nonce and proof; a replaced pairing's too. */
+      200: PairingChallenge;
+      /** The engine has no such pairing: removed, another data folder, or pairings it couldn't read. */
+      404: Problem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * pairingProof: A paired client's proof: once it checks, the run's session token, with the engine's proof over it.
+   *
+   * docs/api.md#pairing. Answered to a client served from another origin with CORS, as /api is.
+   */
+  "POST /auth/pairing/proof": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: PairingProofRequest;
+    responses: {
+      /** The run's session token and instance, and the engine's proof over them. */
+      200: PairingSession;
+      /** A check failed: the challenge is gone, expired or another pairing's, the pairing was replaced or removed, or the proof doesn't check (one answer for all). */
       403: Problem;
       /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
       422: InvalidProblem;

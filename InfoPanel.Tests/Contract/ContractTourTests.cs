@@ -109,6 +109,18 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(anonymous, "POST", "/auth/pairing/code", 403, JsonContent.Create(new { code, name = "Tour" }));
         await Send(anonymous, "POST", "/auth/pairing/code", 422, Body("{}"));
         var paired = await Send(anonymous, "POST", "/auth/pairing/code", 201, JsonContent.Create(new { code = codes.Mint(), name = "Tour" }));
+        // Its proofs: the engine's, then the client's, answered with the run's token; refusals.
+        var pairingId = paired.GetProperty("pairing").GetProperty("id").GetString()!;
+        var key = System.Buffers.Text.Base64Url.DecodeFromChars(paired.GetProperty("pairing").GetProperty("secret").GetString()!);
+        var np = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        var challenge = await Send(anonymous, "POST", "/auth/pairing/challenge", 200, JsonContent.Create(new { pairing = pairingId, nonce = System.Buffers.Text.Base64Url.EncodeToString(np) }));
+        var ne = System.Buffers.Text.Base64Url.DecodeFromChars(challenge.GetProperty("nonce").GetString()!);
+        var proof = System.Buffers.Text.Base64Url.EncodeToString(InfoPanel.Security.PairingProofs.ClientProof(key, np, ne, EngineFactory.Port));
+        await Send(anonymous, "POST", "/auth/pairing/proof", 200, JsonContent.Create(new { pairing = pairingId, nonce = challenge.GetProperty("nonce").GetString(), proof }));
+        await Send(anonymous, "POST", "/auth/pairing/proof", 403, JsonContent.Create(new { pairing = pairingId, nonce = challenge.GetProperty("nonce").GetString(), proof }));
+        await Send(anonymous, "POST", "/auth/pairing/proof", 422, Body("{}"));
+        await Send(anonymous, "POST", "/auth/pairing/challenge", 404, JsonContent.Create(new { pairing = AbsentToken, nonce = System.Buffers.Text.Base64Url.EncodeToString(np) }));
+        await Send(anonymous, "POST", "/auth/pairing/challenge", 422, Body("{}"));
         await Send(session, "GET", "/api/pairings", 200);
         await Send(session, "DELETE", $"/api/pairings/{paired.GetProperty("pairing").GetProperty("id").GetString()}", 204);
         await Send(session, "DELETE", $"/api/pairings/{AbsentToken}", 404);

@@ -11,11 +11,16 @@ namespace InfoPanel.Api;
 /// without secrets (<c>pairingInfo</c>), <c>DELETE /api/pairings/{id}</c> removes one and the pairings it replaced (204,
 /// 404 when there is no such pairing listed); both 409 when <c>pairings.json</c> couldn't be read. With no token, under
 /// <c>/auth/pairing</c> (mapped by <see cref="AuthEndpoints.MapAuth"/>): <see cref="ExchangeCodeAsync"/>, a one-time code's
-/// exchange. Every answer is <c>Cache-Control: no-store</c>; nothing here logs a code, a secret or the token.
+/// exchange, and the proofs, <see cref="ChallengeAsync"/> and <see cref="ProveAsync"/> (<see cref="PairingProofs"/>). Every answer is <c>Cache-Control: no-store</c>; nothing here logs a code, a secret or the token.
 /// </summary>
 public static class PairingEndpoints
 {
     private const string CodeRequestSchema = SpecSchemas.Api + "#/$defs/pairingCodeRequest";
+    private const string ChallengeRequestSchema = SpecSchemas.Api + "#/$defs/pairingChallengeRequest";
+    private const string ProofRequestSchema = SpecSchemas.Api + "#/$defs/pairingProofRequest";
+
+    /// <summary>One text for every failed proof, so a prober learns nothing from which check failed.</summary>
+    public const string RefusedProof = "This pairing proof isn't valid.";
 
     /// <summary>One text for an unknown, expired and used code, so a prober can't tell them apart.</summary>
     public const string RefusedCode = "This pairing code isn't valid: it is unknown, expired or used. Open the client from InfoPanel again.";
@@ -111,6 +116,77 @@ public static class PairingEndpoints
         }
 
         return (use.Outcome, use.Outcome == CodeOutcome.Paired ? created : null);
+    }
+
+    /// <summary>
+    /// <c>POST /auth/pairing/challenge</c> (<c>pairingChallengeRequest</c>): 200 <c>pairingChallenge</c>, the engine's nonce
+    /// and proof, for a pairing the engine has (a replaced one's too); 404 for any other; 422 for a body that breaks its
+    /// definition.
+    /// </summary>
+    public static async Task<IResult> ChallengeAsync(HttpRequest request, PairingProofs proofs, Workspace workspace, HttpContext context, CancellationToken ct)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var (body, refused) = await ReadAsync<PairingChallengeRequest>(request, workspace, ChallengeRequestSchema, ct);
+        if (refused != null)
+            return refused;
+        if (Bytes(body!.Nonce) is not { } clientNonce)
+            return Invalid("/nonce", "schema", "A nonce is 32 bytes as 43 base64url characters.");
+
+        return proofs.Challenge(body.Pairing, clientNonce) is { } challenge
+            ? Json(new PairingChallenge { Nonce = PairingStore.Base64Url(challenge.Nonce), Proof = PairingStore.Base64Url(challenge.Proof) })
+            : Problems.NotFound($"No pairing '{body.Pairing}'.");
+    }
+
+    /// <summary>
+    /// <c>POST /auth/pairing/proof</c> (<c>pairingProofRequest</c>): 200 <c>pairingSession</c>, the run's session token and
+    /// instance with the engine's proof over them, once the client's proof checks; 403 with one text for any failed check
+    /// (a challenge gone, expired or another pairing's, a replaced pairing, a proof that doesn't check); 422 for a body that
+    /// breaks its definition.
+    /// </summary>
+    public static async Task<IResult> ProveAsync(HttpRequest request, PairingProofs proofs, Workspace workspace, HttpContext context, CancellationToken ct)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var (body, refused) = await ReadAsync<PairingProofRequest>(request, workspace, ProofRequestSchema, ct);
+        if (refused != null)
+            return refused;
+        if (Bytes(body!.Nonce) is not { } engineNonce)
+            return Invalid("/nonce", "schema", "A nonce is 32 bytes as 43 base64url characters.");
+        if (Bytes(body.Proof) is not { } proof)
+            return Invalid("/proof", "schema", "A proof is 32 bytes as 43 base64url characters.");
+
+        return proofs.Prove(body.Pairing, engineNonce, proof) is { } session
+            ? Json(new PairingSession { Token = session.Token, Instance = session.Instance, Proof = PairingStore.Base64Url(session.Proof) })
+            : Problem(new ProblemBody { Title = "Forbidden", Status = StatusCodes.Status403Forbidden, Detail = RefusedProof }, StatusCodes.Status403Forbidden);
+    }
+
+    /// <summary>A pairing request's body: held to <c>tokenRequestBytes</c>, JSON, and its definition; else the 422 to answer.</summary>
+    private static async Task<(T? Body, IResult? Refused)> ReadAsync<T>(HttpRequest request, Workspace workspace, string schema, CancellationToken ct)
+    {
+        var limits = workspace.Limits;
+        var (bytes, over) = await ReadBodyAsync(request, limits.TokenRequestBytes, ct);
+        if (over)
+            return (default, Invalid("", "limit.tokenRequestBytes", $"The body is over the limit of {limits.TokenRequestBytes} bytes (tokenRequestBytes)."));
+        using var json = ParseJson(bytes);
+        if (json == null)
+            return (default, Invalid("", "json", "The body isn't JSON."));
+        var check = SpecSchemas.Strict.Validate(json.RootElement, schema, limits.JsonDepth);
+        if (!check.IsValid)
+            return (default, InvalidBody([.. check.Errors.Select(ErrorBody)]));
+        return (SpecJson.Read<T>(json.RootElement), null);
+    }
+
+    /// <summary>32 bytes from 43 base64url characters (the schema's pattern checked first); null when they don't decode to 32.</summary>
+    private static byte[]? Bytes(string text)
+    {
+        try
+        {
+            var bytes = System.Buffers.Text.Base64Url.DecodeFromChars(text);
+            return bytes.Length == PairingProofs.NonceBytes ? bytes : null;
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
     }
 
     private static IResult RefusedCodeProblem() =>

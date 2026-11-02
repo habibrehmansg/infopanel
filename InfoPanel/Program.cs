@@ -287,6 +287,8 @@ try
     builder.Services.AddSingleton(tokens);
     builder.Services.AddSingleton(pairings);
     builder.Services.AddSingleton(sp => new PairingCodes(sp.GetRequiredService<TimeProvider>(), id => pairings.Find(id) is not null));
+    builder.Services.AddSingleton(sp => new PairingProofs(pairings, runtime, workspace.Instance, sp.GetRequiredService<TimeProvider>(),
+        engineLogger.ForContext<PairingProofs>()));
     builder.Services.AddSingleton(settings);
     builder.Services.AddSingleton(recentLog);
     builder.Services.AddSingleton(regionalFormat);

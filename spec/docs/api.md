@@ -48,6 +48,8 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `GET /healthz` | | 200 `ok` as `text/plain`, without a token |
 | `GET /auth/{token}` | | 302 to `/#token={token}`; 401 for any token but the session token ([below](#signing-in)) |
 | `POST /auth/pairing/code` | `pairingCodeRequest` | 201 `pairingGrant`; 403 `problem` for a code that is unknown, expired or used; 422 `invalidProblem` ([below](#pairing)) |
+| `POST /auth/pairing/challenge` | `pairingChallengeRequest` | `pairingChallenge`; 404 `problem` for a pairing the engine doesn't have; 422 `invalidProblem` ([below](#the-proofs)) |
+| `POST /auth/pairing/proof` | `pairingProofRequest` | `pairingSession`; 403 `problem` for any check that fails; 422 `invalidProblem` ([below](#the-proofs)) |
 
 A request on a profile is checked in this order, and the first failure answers: its query parameters (else 400 `problem`); the profile exists (else 404); a request that reads, changes or draws its document needs a profile that can be opened (else 409 `profileStatusProblem`, [below](#profiles)); the body matches its definition and the formats (else 422 `invalidProblem`, at most 100 errors and then one `more`, [validation](validation.md)); then what the request itself checks.
 
@@ -71,7 +73,7 @@ Before any of these, the engine checks where a request comes from ([below](#wher
 
 Every request under `/api` carries a token, as `Authorization: Bearer {token}`. The preview socket takes it as the subprotocol `auth.{token}` offered with `infopanel.v1` or, when no `auth.*` subprotocol is offered, as its first message, `{"type": "auth", "token": "…"}`, within 5 seconds. There are two kinds of token:
 
-- The **session** token is made by the engine each time it starts, or given on its command line, and has full access. The engine shows it only in the sign-in link it prints (`/auth/{token}`), in the pairing link for a client served from another origin, and in a pairing code's exchange ([below](#pairing)), and never stores it.
+- The **session** token is made by the engine each time it starts, or given on its command line, and has full access. The engine shows it only in the sign-in link it prints (`/auth/{token}`), in the pairing link for a client served from another origin, and in the answers of a pairing code's exchange and of a pairing proof ([below](#pairing)), and never stores it.
 - **Integration** tokens are for scripts and other programs. They are made with the session token ([below](#integration-tokens)), kept by the engine across restarts until they are revoked, and limited to the scopes they were made with.
 
 | Scope | Allows |
@@ -112,10 +114,38 @@ A client served from another origin can pair with the engine: it keeps a pairing
 - A code is 16 random bytes as 22 base64url characters. The engine keeps codes in memory only, at most 8 unused (making another drops the oldest), each usable for 2 minutes from when it was made.
 - `POST /auth/pairing/code` (`pairingCodeRequest`, with no token) exchanges a code. `name` is the client's name for people, by the token name rule ([above](#integration-tokens)), and `replaces` is the id of the pairing the client held before, if any. The first use of a code within its 2 minutes is answered 201 `pairingGrant`: the run's session token and `instance` (as the session's), and `pairing`, the new pairing (`createdPairing`): its `id` (32 lower-case hex digits), `name`, `created` and `secret`, 32 random bytes as 43 base64url characters. That answer is the only one that carries the secret: the client keeps it and never sends it, and the engine never logs it or the code. When the engine can't keep pairings (it couldn't read its paired clients when it started, or can't write them), the grant has no `pairing`, and the client connects for this run only.
 - A code that is unknown, past its 2 minutes or used before is answered 403 `problem`, with one text for all three. A second use of a code also removes the pairing its first use made, and the engine logs a warning: a link used once and copied pairs nothing, and leaves nothing paired. Used codes are remembered until their 2 minutes end.
-- The pairing `replaces` names is handed over, not removed: it is no longer listed, and it goes when the pairing that replaced it is removed, when the engine drops it at the limit, or 30 days after it was replaced. An id the engine doesn't have changes nothing.
+- The pairing `replaces` names is handed over, not removed: it is no longer listed, it still answers a challenge but never gets the session token ([below](#the-proofs)), so a client still holding it can check that the engine at a new address is its own, and it goes when the pairing that replaced it is removed, when the engine drops it at the limit, or 30 days after it was replaced. An id the engine doesn't have changes nothing.
 - The engine keeps at most 32 pairings, replaced ones included: a new one past that drops replaced pairings first, then the least recently used.
-- `GET /api/pairings` lists the pairings, oldest first, as `pairingInfo`: `id`, `name`, `created`, and `lastUsed` once the client has connected with its pairing (kept to within a minute). It has no secrets, and leaves replaced pairings out. `DELETE /api/pairings/{id}` removes a listed pairing and the pairings it replaced, and answers 204, or 404 for an id not listed: the client can't connect with it again, though a connection it has keeps the run's session token until the engine stops. Both need the session token, and both are answered 409 `problem` when the engine couldn't read its paired clients when it started: it keeps none that run.
+- `GET /api/pairings` lists the pairings, oldest first, as `pairingInfo`: `id`, `name`, `created`, and `lastUsed` once the client has proven its pairing ([below](#the-proofs); kept to within a minute). It has no secrets, and leaves replaced pairings out. `DELETE /api/pairings/{id}` removes a listed pairing and the pairings it replaced, and answers 204, or 404 for an id not listed: the client can't connect with it again, though a connection it has keeps the run's session token until the engine stops. Both need the session token, and both are answered 409 `problem` when the engine couldn't read its paired clients when it started: it keeps none that run.
 - Every answer under `/auth/pairing` has `Cache-Control: no-store`. A body over `tokenRequestBytes` ([limits](limits.md#request-limits)), not JSON or breaking its definition is answered 422 `invalidProblem`.
+
+#### The proofs
+
+A client that paired gets the run's session token, after a restart too, without a link and without sending its secret or any token first: the engine proves first that it holds the pairing's secret, then the client does.
+
+1. `POST /auth/pairing/challenge` (`pairingChallengeRequest`): the pairing's `id` and the client's nonce Np, 32 random bytes. For a pairing it has, a replaced one included, the engine draws its own nonce Ne, keeps the challenge for 30 seconds (single use; at most 64 for all pairings, the oldest dropped) and answers 200 `pairingChallenge`: Ne and its proof E. A pairing it doesn't have (removed, another data folder, pairings it couldn't read) is answered 404 `problem`.
+2. The client checks E over the port it dialled, and sends nothing more when it doesn't check. Otherwise it sends `POST /auth/pairing/proof` (`pairingProofRequest`): the pairing, Ne and its proof C.
+3. The engine takes the challenge out, whatever comes next, and checks C in constant time. Any check that fails (the challenge gone, past its 30 seconds or another pairing's, the pairing replaced or removed, a C that doesn't check) is answered 403 `problem`, with one text for all; the engine logs failed proofs as a warning at most once a minute, with a count. Otherwise it records the pairing's use and answers 200 `pairingSession`: the run's session token and `instance`, and its proof A over them.
+4. The client checks A over the port it dialled before it uses the token.
+
+The proofs are HMAC-SHA256 keyed with the pairing secret K, its 32 bytes, over a label, a zero byte, Np, Ne and P, the engine's own listening port as 2 bytes, big-endian:
+
+- `E = HMAC-SHA256(K, "InfoPanel pairing 1: engine" ‖ 0x00 ‖ Np ‖ Ne ‖ P)`
+- `C = HMAC-SHA256(K, "InfoPanel pairing 1: client" ‖ 0x00 ‖ Np ‖ Ne ‖ P)`
+- `A = HMAC-SHA256(K, "InfoPanel pairing 1: answer" ‖ 0x00 ‖ Np ‖ Ne ‖ P ‖ token ‖ 0x00 ‖ instance)`
+
+The labels are ASCII; `token` and `instance` are their UTF-8 bytes, exactly as the answer sends them, with no Unicode normalisation (a token holds no zero byte, and the instance comes last). Nonces and proofs travel as unpadded base64url, 43 characters. The engine takes P from the port it listens on, never from the request (its `Host` header) or anything the client sends; the client takes it from the address it dialled. So a program on another port that relays to the engine passes on an E that doesn't check over the port the client dialled, and a C over that port doesn't check at the engine. The labels differ, so the engine's E can never be sent back as C.
+
+The test vector (also as bodies in `examples/api/pairingChallengeRequest/`, `pairingChallenge/`, `pairingProofRequest/` and `pairingSession/`): K is the bytes `00` to `1f`, Np `20` to `3f`, Ne `40` to `5f`, P 51234 (`c822`), the token `Q7u4i3XzE2pW9vLkR8tY1aBcDeFgHiJkLmNoPqRsTuV` and the instance `0123456789abcdef0123456789abcdef`.
+
+| | Hex | base64url |
+|---|---|---|
+| E | `47dc18c9d81c68892f6f4c48cbcad6d0a5f31657c7ff53b13dd40c84c2fedcc8` | `R9wYydgcaIkvb0xIy8rW0KXzFlfH_1OxPdQMhML-3Mg` |
+| C | `19b0468fbbfd9086fd45ca4a89dd0400ecfdbcb2e3c4baaf7e6bc383bf521274` | `GbBGj7v9kIb9RcpKid0EAOz9vLLjxLqvfmvDg79SEnQ` |
+| A | `0068bfa88ff3dbd916a8b8ff67ac57428504bfe2dd4dabad52e178116b7f677f` | `AGi_qI_z29kWqLj_Z6xXQoUEv-LdTautUuF4EWt_Z38` |
+| E with P 51235 (a relay's port) | `161eddb30012e486e6aab7de036287e6c0660eae54fdccc22e7bfe59c886e1de` | |
+| A with the instance `Ünïcode-実行` (NFC, UTF-8 `c39c6ec3af636f64652de5ae9fe8a18c`) | `086d164f991d4d44247a063e70eee574264ef260772e0feee927adf1ef2a0258` | `CG0WT5kdTUQkegY-cO7ldCZO8mB3Lg_u6Set8e8qAlg` |
+| The same, the instance wrongly as UTF-16LE | `893fab19a5d7a7da510965a99a8159e0531db0ec64ae23986313b508fddb33d5` | |
 
 ## Session
 

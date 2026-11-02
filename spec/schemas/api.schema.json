@@ -968,6 +968,50 @@
         "instance": { "$ref": "#/$defs/instanceId", "description": "This run of the engine, as the session's `instance`." }
       }
     },
+    "pairingNonce": { "description": "A nonce of the pairing proofs, Np (the client's) or Ne (the engine's): 32 random bytes as 43 base64url characters, new for every challenge (docs/api.md#pairing).", "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+    "pairingProof": { "description": "A pairing proof, E, C or A: an HMAC-SHA256 as 43 base64url characters (docs/api.md#pairing).", "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+    "pairingChallengeRequest": {
+      "description": "POST /auth/pairing/challenge (no token): a client that paired asks the engine to prove first that it holds the pairing's secret, over the client's fresh nonce Np. Answered with pairingChallenge, or 404 for a pairing the engine doesn't have (docs/api.md#pairing).",
+      "type": "object",
+      "required": ["pairing", "nonce"],
+      "additionalProperties": false,
+      "properties": {
+        "pairing": { "$ref": "#/$defs/pairingId" },
+        "nonce": { "$ref": "#/$defs/pairingNonce", "description": "Np, the client's nonce." }
+      }
+    },
+    "pairingChallenge": {
+      "description": "200 to POST /auth/pairing/challenge: the engine's nonce Ne and its proof E over Np, Ne and its own listening port. A client checks E over the port it dialled before it sends anything more (docs/api.md#pairing).",
+      "type": "object",
+      "required": ["nonce", "proof"],
+      "additionalProperties": false,
+      "properties": {
+        "nonce": { "$ref": "#/$defs/pairingNonce", "description": "Ne, the engine's nonce: the challenge, single use, for 30 seconds." },
+        "proof": { "$ref": "#/$defs/pairingProof", "description": "E." }
+      }
+    },
+    "pairingProofRequest": {
+      "description": "POST /auth/pairing/proof (no token): the client's proof C for a challenge. Answered with pairingSession, or 403, with one text, for any check that fails (docs/api.md#pairing).",
+      "type": "object",
+      "required": ["pairing", "nonce", "proof"],
+      "additionalProperties": false,
+      "properties": {
+        "pairing": { "$ref": "#/$defs/pairingId" },
+        "nonce": { "$ref": "#/$defs/pairingNonce", "description": "Ne, the challenge this proof answers." },
+        "proof": { "$ref": "#/$defs/pairingProof", "description": "C." }
+      }
+    },
+    "pairingSession": {
+      "description": "200 to POST /auth/pairing/proof: the run's session token and instance, and the engine's proof A over them. A client uses the token only once A checks over the port it dialled (docs/api.md#pairing).",
+      "type": "object",
+      "required": ["token", "instance", "proof"],
+      "additionalProperties": false,
+      "properties": {
+        "token": { "description": "The session token of this run of the engine (docs/api.md#authentication).", "type": "string", "minLength": 1 },
+        "instance": { "$ref": "#/$defs/instanceId", "description": "This run of the engine, as the session's `instance`." },
+        "proof": { "$ref": "#/$defs/pairingProof", "description": "A, over the token's and the instance's UTF-8 bytes." }
+      }
+    },
     "scopeProblem": {
       "description": "403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings, the recent log entries, opening the engine's folders). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication).",
       "type": "object",
@@ -983,7 +1027,7 @@
       }
     },
     "problem": {
-      "description": "application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept, a pairing code it refuses), 404 (no such profile, blob, token, pairing, folder or endpoint), 405, 409 (paired clients the engine can't read), 413 (a blob over mediaBytes) and 500 (an engine error, a folder the engine couldn't open, or displays it couldn't list). Its members are for people; a client acts on the status (docs/api.md#errors).",
+      "description": "application/problem+json (RFC 9457) for an error without a definition of its own: 400 (a query parameter that isn't a whole number, GET /ws without a WebSocket upgrade), 401 (no valid token), 403 (a request from an origin the engine doesn't accept, a pairing code or proof it refuses), 404 (no such profile, blob, token, pairing, folder or endpoint), 405, 409 (paired clients the engine can't read), 413 (a blob over mediaBytes) and 500 (an engine error, a folder the engine couldn't open, or displays it couldn't list). Its members are for people; a client acts on the status (docs/api.md#errors).",
       "type": "object",
       "required": ["title", "status"],
       "additionalProperties": false,

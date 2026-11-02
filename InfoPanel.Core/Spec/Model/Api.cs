@@ -528,6 +528,40 @@ public sealed record PairingGrant
     public required string Instance { get; init; }
 }
 
+/// <summary><c>POST /auth/pairing/challenge</c>: the pairing and the client's nonce Np (43 base64url characters).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pairingChallengeRequest")]
+public sealed record PairingChallengeRequest
+{
+    public required string Pairing { get; init; }
+    public required string Nonce { get; init; }
+}
+
+/// <summary>200 to <c>POST /auth/pairing/challenge</c>: the engine's nonce Ne and its proof E.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pairingChallenge")]
+public sealed record PairingChallenge
+{
+    public required string Nonce { get; init; }
+    public required string Proof { get; init; }
+}
+
+/// <summary><c>POST /auth/pairing/proof</c>: the pairing, the engine's nonce Ne it answers, and the client's proof C.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pairingProofRequest")]
+public sealed record PairingProofRequest
+{
+    public required string Pairing { get; init; }
+    public required string Nonce { get; init; }
+    public required string Proof { get; init; }
+}
+
+/// <summary>200 to <c>POST /auth/pairing/proof</c>: the run's session token and instance, and the engine's proof A over them.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pairingSession")]
+public sealed record PairingSession
+{
+    public required string Token { get; init; }
+    public required string Instance { get; init; }
+    public required string Proof { get; init; }
+}
+
 /// <summary>403: the token lacks <see cref="Scope"/> (<c>read</c>, <c>edit</c> or <c>session</c>).</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/scopeProblem")]
 public sealed record ScopeProblem
