@@ -217,14 +217,16 @@ public sealed class DocumentPerformanceTests(ITestOutputHelper output)
     /// A profile's Save as the store does it, flushes included (on macOS every folder flush is a full flush): at a compact
     /// 30-item document's size (120 KiB) and at 1 MiB, a save that changed the content (it keeps the document it replaces
     /// as a version, and drops the oldest past ten) and one of the same bytes (it keeps none). Commits never wait for it:
-    /// Save writes outside the document's lock.
+    /// Save writes outside the document's lock. Every save is checked to flush the document's new content and then its
+    /// folder, each once (through the storage seam); the times are printed, and bounded only as a sanity limit.
     /// </summary>
     [Fact]
     public void A_save_writes_and_flushes_the_document()
     {
         using var temp = new InfoPanel.Core.Tests.Persistence.TempDirectory();
         var paths = new InfoPanel.Persistence.DataPaths(temp.Path);
-        var store = new DocumentStore(paths);
+        var faults = new MatchFaults();
+        var store = new DocumentStore(paths, null, faults);
         store.Open();
         foreach (var size in new[] { 120 * 1024, 1024 * 1024 })
         {
@@ -232,6 +234,7 @@ public sealed class DocumentPerformanceTests(ITestOutputHelper output)
             var content = new byte[size];
             new Random(size).NextBytes(content);
             store.Create(id, content);
+            var document = paths.DocumentFile(id);
             foreach (var changed in new[] { true, false })
             {
                 List<double> times = [];
@@ -239,17 +242,49 @@ public sealed class DocumentPerformanceTests(ITestOutputHelper output)
                 {
                     if (changed)
                         content[i] ^= 1;
+                    faults.Steps.Clear();
+                    lock (faults.FullSyncs)
+                        faults.FullSyncs.Clear();
                     var t0 = Stopwatch.GetTimestamp();
                     store.Save(id, content);
                     if (i >= 10) times.Add(Stopwatch.GetElapsedTime(t0).TotalMilliseconds);
+                    AssertFlushedOnce(faults, document);
                 }
                 var (p50, p95, p99) = ScenePerformanceTests.Percentiles(times);
                 output.WriteLine($"Save {size / 1024} KiB, {(changed ? "keeping a version" : "the same bytes, no version")}: p50 {p50:0.000} ms, p95 {p95:0.000} ms, p99 {p99:0.000} ms");
-                Assert.True(p95 < 500, "Save p95");
+                // A sanity limit against a gross regression, not the check: a save's time is mostly its full flushes,
+                // which wait on everything else writing to the drive (other processes' tests included). That a save
+                // flushes is checked above, on every save.
+                Assert.True(p95 < 2_000, $"Save p95 {p95:0.000} ms");
             }
             Assert.Equal(DocumentStore.VersionsKept, Directory.GetFiles(Path.Combine(paths.ProfileFolder(id), "versions")).Length);
         }
     }
+
+    /// <summary>
+    /// One save's storage steps: the document's new content (its temp file) flushed once, before it replaces the
+    /// document; and the document's folder flushed once, at once after the replace, which is what keeps the rename across
+    /// a power loss (on macOS a full flush, asked of the drive).
+    /// </summary>
+    private static void AssertFlushedOnce(MatchFaults faults, string document)
+    {
+        var steps = faults.Steps;
+        var folder = Path.GetDirectoryName(Path.GetFullPath(document))!;
+        var flushes = steps.Select((s, i) => (s, i)).Where(x => x.s.Step == StorageStep.FlushTemp && x.s.Path.StartsWith(document + ".", StringComparison.Ordinal)).ToList();
+        var replaces = steps.Select((s, i) => (s, i)).Where(x => x.s.Step == StorageStep.ReplaceFile && x.s.Path == document).ToList();
+        Assert.True(flushes.Count == 1, $"the save flushed the document's content {flushes.Count} times: {string.Join(", ", steps)}");
+        Assert.True(replaces.Count == 1, $"the save replaced the document {replaces.Count} times: {string.Join(", ", steps)}");
+        var replace = replaces[0].i;
+        Assert.True(flushes[0].i < replace, $"the document was replaced before its content was flushed: {string.Join(", ", steps)}");
+        var folderFlushes = steps.Skip(replace + 1).TakeWhile(s => s.Step == StorageStep.SyncFolder).Count(s => s.Path == folder);
+        Assert.True(folderFlushes == 1, $"the document's folder was flushed {folderFlushes} times after its replace: {string.Join(", ", steps)}");
+        if (OperatingSystem.IsMacOS())
+        {
+            lock (faults.FullSyncs)
+                Assert.Contains(folder, faults.FullSyncs);
+        }
+    }
+
     /// <summary>
     /// Keeping a dirty document of about 16 MiB (<c>documentBytes</c>) across a restart costs commits nothing: its
     /// checkpoints run on another thread, under the save lock, which a commit doesn't take. Times a placement commit on
