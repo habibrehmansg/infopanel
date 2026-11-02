@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -46,16 +45,19 @@ public static class SecondLaunch
     /// A launch that found <paramref name="lockFile"/> held. While an engine answers on <paramref name="dataRoot"/>'s
     /// channel, the launch is done: that engine is asked to open the editor when <paramref name="openEditor"/>. While none
     /// does, the lock is tried again until it is taken, or <paramref name="handOff"/> has passed. The hand-off is one
-    /// budget: each connection, answer and pause is cut to what is left of it.
+    /// budget: each connection, answer and pause is cut to what is left of it. The budget, the pauses and the limit on an
+    /// answer run on <paramref name="time"/>, the system's clock unless a test drives one.
     /// </summary>
-    public static async Task<Outcome> HandOffAsync(string lockFile, string runDirectory, string dataRoot, bool openEditor, TimeSpan handOff)
+    public static async Task<Outcome> HandOffAsync(string lockFile, string runDirectory, string dataRoot, bool openEditor, TimeSpan handOff,
+        TimeProvider? time = null)
     {
-        var waited = Stopwatch.StartNew();
-        TimeSpan Left() => handOff - waited.Elapsed;
+        time ??= TimeProvider.System;
+        var started = time.GetTimestamp();
+        TimeSpan Left() => handOff - time.GetElapsedTime(started);
         string? error = null;
         while (true)
         {
-            switch (await AskAsync(runDirectory, dataRoot, openEditor, Left()))
+            switch (await AskAsync(runDirectory, dataRoot, openEditor, Left(), time))
             {
                 case Answer.Opened:
                     return new Outcome(null, Opened: true, error, Held: true);
@@ -66,7 +68,7 @@ public static class SecondLaunch
             var left = Left();
             if (left <= TimeSpan.Zero)
                 return new Outcome(null, Opened: false, error, Held: true);
-            await Task.Delay(left < Look ? left : Look);
+            await Task.Delay(left < Look ? left : Look, time);
             var taken = InstanceLock.TryAcquire(lockFile, out error, out var held);
             if (taken != null || !held)
                 return new Outcome(taken, Opened: false, error, held);
@@ -80,13 +82,13 @@ public static class SecondLaunch
     /// its hello is an engine stopping, and doesn't. The connection and the answer together take at most
     /// <paramref name="left"/>, what is left of the hand-off.
     /// </summary>
-    private static async Task<Answer> AskAsync(string runDirectory, string dataRoot, bool openEditor, TimeSpan left)
+    private static async Task<Answer> AskAsync(string runDirectory, string dataRoot, bool openEditor, TimeSpan left, TimeProvider time)
     {
         if (left <= TimeSpan.Zero)
             return Answer.None;
         try
         {
-            using var limit = new CancellationTokenSource(left < Timeout ? left : Timeout);
+            using var limit = new CancellationTokenSource(left < Timeout ? left : Timeout, time);
             var endpoint = LocalChannel.EndpointFor(runDirectory, dataRoot);
             await using var channel = await LocalChannelClient.TryConnectAsync(endpoint, left < Look ? left : Look, limit.Token, client: LocalChannel.LaunchClient);
             if (channel == null)

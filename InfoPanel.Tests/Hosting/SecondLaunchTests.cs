@@ -3,6 +3,8 @@ using System.IO.Pipes;
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using InfoPanel.Hosting;
+using InfoPanel.Tests.Desktop;
+using InfoPanel.Tests.Plugins;
 using InfoPanel.Tests.Shell;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -22,6 +24,9 @@ namespace InfoPanel.Tests.Hosting;
 public sealed class SecondLaunchTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    /// <summary>The pause between a hand-off's looks for the channel (<see cref="SecondLaunch"/>'s).</summary>
+    private static readonly TimeSpan Look = TimeSpan.FromMilliseconds(250);
 
     private static WebApplicationFactory<Program> First(EngineFactory engine, RecordingBrowserLauncher browser) =>
         engine.WithWebHostBuilder(builder =>
@@ -181,7 +186,9 @@ public sealed class SecondLaunchTests
 
     /// <summary>
     /// The hand-off is one budget: a channel that appears near its end, says hello and never answers the launch's request
-    /// doesn't get a fresh answer timeout of its own. The launch ends within the budget, with the folder still held.
+    /// doesn't get a fresh answer timeout of its own. The launch ends within the budget, with the folder still held. The
+    /// hand-off runs on the test's clock, moved only once the launch waits on it, so a late wake of this test can't use up
+    /// the budget before the channel appears.
     /// </summary>
     [Fact]
     public async Task AChannelThatAppearsNearTheEnd_AndNeverAnswers_DoesntStretchTheHandOff()
@@ -195,20 +202,52 @@ public sealed class SecondLaunchTests
         FakeChannel? channel = null;
         try
         {
+            var time = new ManualTime(DateTimeOffset.UnixEpoch);
             var handOff = TimeSpan.FromSeconds(2);
-            var waited = Stopwatch.StartNew();
-            var launch = SecondLaunch.HandOffAsync(lockFile, Mcp.TestRunFolder.Path, data, openEditor: true, handOff);
-            await Task.Delay(handOff - TimeSpan.FromMilliseconds(500), Ct);
-            channel = FakeChannel.Start(LocalChannel.EndpointFor(Mcp.TestRunFolder.Path, data), hello: true);
+            var appears = handOff - TimeSpan.FromMilliseconds(500);
+            var launch = SecondLaunch.HandOffAsync(lockFile, Mcp.TestRunFolder.Path, data, openEditor: true, handOff, time);
 
-            var outcome = await launch.WaitAsync(TimeSpan.FromSeconds(30), Ct);
-            waited.Stop();
+            // The launch looks for the channel, then pauses a look's length: the clock moves a pause at a time, once the
+            // launch waits on it, and the channel appears for the look at `appears`.
+            var now = TimeSpan.Zero;
+            while (now < appears)
+            {
+                now += Look;
+                await Eventually.Until(() => time.HasTimerDueAt(now), $"the launch pauses until {now.TotalMilliseconds} ms");
+                if (now == appears)
+                    channel = FakeChannel.Start(LocalChannel.EndpointFor(Mcp.TestRunFolder.Path, data), hello: true);
+                time.Advance(Look);
+            }
 
-            Assert.True(channel.Met.Task.IsCompleted, "The launch never asked the channel that appeared.");
+            // A look's connection has a real-time limit of its own: one that ran out pauses again, and the clock moves on to
+            // the next look while one is left before the budget's end.
+            var met = channel!.Met.Task;
+            while (now + Look < handOff)
+            {
+                var next = now + Look;
+                await Eventually.Until(() => met.IsCompleted || time.HasTimerDueAt(next), "the launch asks the channel, or pauses");
+                if (met.IsCompleted)
+                    break;
+                now = next;
+                time.Advance(Look);
+            }
+            await Eventually.Until(() => met.IsCompleted, "the launch asks the channel that appeared");
+
+            // The answer's deadline is set before the launch connects, so by the time the channel is asked it is armed: on
+            // the launch's clock, at the budget's end. A fresh timeout of its own, or one on another clock (a real one,
+            // which the generous wait below would let run out), sets no timer there.
+            Assert.True(time.TimersDueAt(handOff) == 1, $"the answer's deadline isn't set on the launch's clock at the end of its {handOff.TotalMilliseconds:F0} ms budget");
+
+            // The channel never answers. At the budget's end the launch's wait for the answer is over: the clock moves no
+            // further, so a fresh answer timeout would leave the launch waiting.
+            time.Advance(handOff - now);
+            await Eventually.Until(() => launch.IsCompleted, $"the launch ends at the end of its {handOff.TotalMilliseconds:F0} ms budget");
+            var outcome = await launch;
+
             Assert.Null(outcome.Lock);
             Assert.False(outcome.Opened);
             Assert.True(outcome.Held);
-            Assert.True(waited.Elapsed < handOff + TimeSpan.FromSeconds(1.5), $"The hand-off took {waited.Elapsed.TotalMilliseconds:F0} ms of a {handOff.TotalMilliseconds:F0} ms budget.");
+            Assert.Equal(handOff, time.GetUtcNow() - DateTimeOffset.UnixEpoch);
         }
         finally
         {
