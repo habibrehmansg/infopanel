@@ -674,10 +674,12 @@ public class FfmpegH264Tests
 
     /// <summary>
     /// A shell command writing <see cref="Flood"/> bytes of <c>x</c> with no newline to its output, from a 1 MiB file it
-    /// makes in <paramref name="folder"/> (<c>tr</c> alone takes seconds).
+    /// makes in <paramref name="folder"/> (<c>tr</c> alone takes seconds), by one <c>cat</c> given that file once per MiB:
+    /// a <c>cat</c> per MiB was 128 program launches a flood, each of which the machine may check before it runs, and
+    /// under load those checks alone outlasted the probe's bound.
     /// </summary>
     internal static string FloodCommand(string folder) =>
-        $"(head -c 1048576 /dev/zero | tr '\\000' x > '{folder}/chunk'; i=0; while [ $i -lt {Flood / 1048576} ]; do cat '{folder}/chunk'; i=$((i+1)); done)";
+        $"(head -c 1048576 /dev/zero | tr '\\000' x > '{folder}/chunk'; set --; i=0; while [ $i -lt {Flood / 1048576} ]; do set -- \"$@\" '{folder}/chunk'; i=$((i+1)); done; cat \"$@\")";
 
     [Fact]
     public async Task ErrorsFloodedWithoutANewline_AreReadInBoundedMemory_AndTheSessionGoesOn()
