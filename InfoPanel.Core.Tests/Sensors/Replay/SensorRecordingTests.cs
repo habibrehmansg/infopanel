@@ -523,31 +523,33 @@ public sealed class SensorRecordingTests : IDisposable
         var drive = SensorKey.HwInfo(-1, 0xF0000500, 0, 0x1000000);
         var fan = SensorKey.HwInfo(-1, 0xF0000501, 0, 0x2000000);
         var manifest = Path.Combine(_root, "recording.json");
-        File.SetAttributes(manifest, FileAttributes.ReadOnly);
-        try
+        // A folder where the manifest goes: no user can write it there, an administrator or root neither (a read-only
+        // file is no failure to them).
+        File.Delete(manifest);
+        Directory.CreateDirectory(manifest);
+
+        // The recording's last round: two readings swap places, and its manifest can't be written.
+        (pc.Readings[1], pc.Readings[2]) = (pc.Readings[2], pc.Readings[1]);
+        for (var i = 0; i < 3; i++)
         {
-            // The recording's last round: two readings swap places, and its manifest can't be written.
-            (pc.Readings[1], pc.Readings[2]) = (pc.Readings[2], pc.Readings[1]);
-            for (var i = 0; i < 3; i++)
-            {
-                pc.PollTime++;
-                memory.Set(HwInfoSampler.LocalName, pc.Build());
-                time.Advance(Interval);
-                source.Poll();
-                Assert.True(recorder.Finished);
-                Assert.True(source.TryRead(drive, out var d));
-                Assert.Equal(30, d.ValueNow);
-                Assert.True(source.TryRead(fan, out var f));
-                Assert.Equal(1200, f.ValueNow);
-                Assert.Equal(SensorStatus.Live, source.GetStatus(fan));
-            }
-        }
-        finally
-        {
-            File.SetAttributes(manifest, FileAttributes.Normal);
+            pc.PollTime++;
+            memory.Set(HwInfoSampler.LocalName, pc.Build());
+            time.Advance(Interval);
+            source.Poll();
+            Assert.True(recorder.Finished);
+            Assert.True(source.TryRead(drive, out var d));
+            Assert.Equal(30, d.ValueNow);
+            Assert.True(source.TryRead(fan, out var f));
+            Assert.Equal(1200, f.ValueNow);
+            Assert.Equal(SensorStatus.Live, source.GetStatus(fan));
         }
 
         Assert.Equal(3, recorder.Rounds);
+        // The recording ended, and writing its rounds into the manifest failed: no manifest file was written (a write
+        // that succeeded leaves one, with the rounds), and the folder in its place is still there, empty.
+        Assert.False(File.Exists(manifest), "The manifest was written: its write didn't fail.");
+        Assert.True(Directory.Exists(manifest));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(manifest));
     }
 
     [Fact]
