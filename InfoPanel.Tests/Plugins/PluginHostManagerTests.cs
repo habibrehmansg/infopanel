@@ -61,7 +61,11 @@ public sealed class PluginHostManagerTests : IDisposable
         await Advance(TimeSpan.FromMilliseconds(1));
 
         await Eventually.Until(() => launcher.Started[0].Killed, "the host that didn't initialise is killed");
+        // As above: the host is killed before the runner records the failure (the error, then the state), so the error is
+        // read once the state says it is recorded.
+        await Eventually.Until(() => runner.State == PluginHostState.Restarting, "the killed host is restarting");
         Assert.Contains("initialising", runner.Errors[^1]);
+        Assert.Single(launcher.Started);
     }
 
     [Fact]

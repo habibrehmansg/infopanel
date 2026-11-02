@@ -191,10 +191,19 @@ internal sealed class FakeProcess(PluginHostCommand command, FakeHost host) : IP
 
 internal static class Eventually
 {
-    /// <summary>Waits (real time, up to 10 s) until <paramref name="condition"/> holds; fails with <paramref name="what"/> otherwise.</summary>
+    /// <summary>
+    /// The most a wait lasts: a sanity limit, never the behaviour under test (the manager's times are on the tests' manual
+    /// clock). Under parallel full runs this Mac's program launches can stall for tens of seconds (its endpoint protection
+    /// authorises each one), and while another test's <c>Process.Start</c> waits on that, .NET's process-wide start lock
+    /// holds this process's child-exit handling and the thread pool runs short; a fake host's start, all in this process,
+    /// then took over 10 s. Each wait still ends as soon as its condition holds.
+    /// </summary>
+    public static readonly TimeSpan Limit = TimeSpan.FromSeconds(60);
+
+    /// <summary>Waits (real time, up to <see cref="Limit"/>) until <paramref name="condition"/> holds; fails with <paramref name="what"/> otherwise.</summary>
     public static async Task Until(Func<bool> condition, string what)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        var deadline = DateTime.UtcNow + Limit;
         while (!condition())
         {
             if (DateTime.UtcNow > deadline)
