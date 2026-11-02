@@ -4,7 +4,7 @@
   "frameRate": 30,
   "graphRate": 250,
   "logLevel": "debug",
-  "sources": {"libre": {"enabled": true, "storage": false, "storageInterval": 300}},
+  "sources": {"libre": {"enabled": true, "storage": false, "storageInterval": 300}, "network": {"publicIp": false}},
   "media": {"localNetwork": false},
   "clients": {
     "web-client": {"theme": "dark", "grid": {"show": true, "spacing": 20}},

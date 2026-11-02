@@ -15,7 +15,10 @@ namespace InfoPanel.Sensors.Network;
 /// (<see cref="INetworkLister"/>), leaves out loopback, and reads each one's id, name, description, status, speed (whole
 /// Mbps; none, negative or zero, or unreadable fails, "—") and unicast addresses by position per family; with a lookup
 /// (<see cref="PublicIpLookup"/>, none under <c>--offline</c>), the public addresses first, read from its last result
-/// (never waited on). The catalogue is compared with the last one every round (<see cref="ISensorSampler.CatalogueVersion"/>),
+/// (never waited on), and listed only while lookups are on (<see cref="PublicIpLookup.Enabled"/>): the first round after
+/// they are turned off reads them unavailable (their last reading dropped, not kept stale) and unlists them, and the
+/// first round after any turn off reads them so, even when they are back on by then, so an address forgotten is never
+/// read again. The catalogue is compared with the last one every round (<see cref="ISensorSampler.CatalogueVersion"/>),
 /// so an interface or address that appears is listed after the round that saw it and read at the next, and one that
 /// goes fails (stale, then unavailable, then unlisted, as <see cref="PolledSensorSource"/> does). When the interfaces,
 /// their status or their addresses change from one round to the next, the lookup is told (<see cref="PublicIpLookup.NetworkChanged"/>).
@@ -25,7 +28,8 @@ namespace InfoPanel.Sensors.Network;
 /// whose longest key (its <c>description</c>'s) would be longer than <see cref="MaxKeyChars"/>, whose id makes no
 /// interface id, or makes the public addresses' (<c>public</c>), is left out. An interface whose read throws is left out
 /// of that round alone. Each is logged once while it stands; a listing that throws fails the interfaces' readings for the
-/// round (the public addresses still listed and read, a first listing's failure included; the catalogue stands).
+/// round (the public addresses still read, and listed or unlisted as the switch says, a first listing's failure
+/// included; the interfaces' catalogue stands).
 /// </para>
 /// <para>
 /// An interface id belongs to the interface (by its system id) that took it first: while the system lists that one
@@ -91,6 +95,11 @@ public sealed class NetworkSampler : ISensorSampler
     private long _version;
     private bool _rounded;
 
+    // This round's public addresses: listed (lookups on), and read unavailable (off, or turned off since the last round).
+    private bool _publicOn;
+    private bool _publicForget;
+    private long _publicGeneration;
+
     private bool _listFailed;
     private bool _tooMany;
     private HashSet<string> _failing = [];
@@ -144,6 +153,12 @@ public sealed class NetworkSampler : ISensorSampler
             var (container, field, index) = _handedOut[i];
             if (field is Field.PublicIPv4 or Field.PublicIPv6)
             {
+                if (_publicForget)
+                {
+                    samples[i].SetUnavailable();
+                    continue;
+                }
+
                 var result = _lookup!.Latest(field == Field.PublicIPv4 ? AddressFamily.InterNetwork : AddressFamily.InterNetworkV6);
                 if (result.Answered)
                     samples[i].SetText(result.Address);
@@ -213,6 +228,14 @@ public sealed class NetworkSampler : ISensorSampler
     private void Refresh()
     {
         _rounded = true;
+        if (_lookup != null)
+        {
+            _publicOn = _lookup.Enabled;
+            var generation = _lookup.Generation;
+            _publicForget = !_publicOn || generation != _publicGeneration;
+            _publicGeneration = generation;
+        }
+
         IReadOnlyList<INetworkInterface> interfaces;
         try
         {
@@ -227,9 +250,9 @@ public sealed class NetworkSampler : ISensorSampler
                 _log.Warning(ex, "Network: listing the interfaces failed: {Message}", ex.Message);
             _listFailed = true;
             _read = null;
-            // The catalogue stands; a first listing that fails still lists the public addresses.
-            if (_definitions.Length == 0)
-                Publish([]);
+            // The interfaces' catalogue stands; the public addresses follow the switch whatever the listing does (a
+            // first listing that fails included).
+            Commit([.. _definitions.Where(d => !IsPublic(d.Id))]);
             return;
         }
 
@@ -388,15 +411,12 @@ public sealed class NetworkSampler : ISensorSampler
     private static string Cut(string text) =>
         text.Length <= MaxTextChars ? text : text[..(char.IsHighSurrogate(text[MaxTextChars - 1]) ? MaxTextChars - 1 : MaxTextChars)];
 
+    private static bool IsPublic(string definitionId) =>
+        definitionId.StartsWith(NetworkSource.PublicContainer + "/", StringComparison.Ordinal);
+
     private void Publish(List<Interface> interfaces)
     {
         var definitions = new List<SensorDefinition>();
-        if (_lookup != null)
-        {
-            foreach (var (id, name) in NetworkSource.PublicEntries)
-                definitions.Add(new SensorDefinition($"{NetworkSource.PublicContainer}/{id}", NetworkSource.PublicGroup, name, "", SensorKind.Text));
-        }
-
         foreach (var ni in interfaces)
         {
             foreach (var (id, name, kind) in NetworkSource.Entries)
@@ -407,6 +427,20 @@ public sealed class NetworkSampler : ISensorSampler
                 definitions.Add(new SensorDefinition($"{ni.Container}/ipv6-{i}", ni.Group, NetworkSource.IPv6Name, "", SensorKind.Text));
         }
 
+        Commit(definitions);
+    }
+
+    /// <summary>The catalogue: the public addresses first, while lookups are on, then <paramref name="interfaces"/>' definitions.</summary>
+    private void Commit(List<SensorDefinition> interfaces)
+    {
+        var definitions = new List<SensorDefinition>();
+        if (_publicOn)
+        {
+            foreach (var (id, name) in NetworkSource.PublicEntries)
+                definitions.Add(new SensorDefinition($"{NetworkSource.PublicContainer}/{id}", NetworkSource.PublicGroup, name, "", SensorKind.Text));
+        }
+
+        definitions.AddRange(interfaces);
         if (definitions.SequenceEqual(_definitions))
             return;
         _definitions = [.. definitions];

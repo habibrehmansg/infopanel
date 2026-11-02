@@ -1085,10 +1085,11 @@
     "settingsSources": {
       "description": "The settings of the engine's sensor sources, by source.",
       "type": "object",
-      "required": ["libre"],
+      "required": ["libre", "network"],
       "additionalProperties": false,
       "properties": {
-        "libre": { "$ref": "#/$defs/libreSettings" }
+        "libre": { "$ref": "#/$defs/libreSettings" },
+        "network": { "$ref": "#/$defs/networkSettings" }
       }
     },
     "libreSettings": {
@@ -1100,6 +1101,15 @@
         "enabled": { "description": "Whether the source reads sensors; true by default.", "type": "boolean" },
         "storage": { "description": "Whether it reads storage drives' sensors; true by default.", "type": "boolean" },
         "storageInterval": { "description": "Seconds between its reads of storage drives: 1 to 300, 30 by default.", "type": "integer", "minimum": 1, "maximum": 300 }
+      }
+    },
+    "networkSettings": {
+      "description": "The settings of the network sensor source (`infopanel.network`, on every operating system): whether it looks up this network's public address. An engine keeps them whether or not it has the source.",
+      "type": "object",
+      "required": ["publicIp"],
+      "additionalProperties": false,
+      "properties": {
+        "publicIp": { "description": "Whether the source asks ipify for this network's public address while a public-address reading is in use, and lists the two (docs/api.md#settings); true by default. Off, it asks nothing and lists neither.", "type": "boolean" }
       }
     },
     "mediaSettings": {
@@ -1121,7 +1131,7 @@
       "pattern": "^[A-Za-z0-9._-]{1,64}$"
     },
     "settingsChange": {
-      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `media` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
+      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `media` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -1139,6 +1149,13 @@
                 "enabled": { "type": ["boolean", "null"] },
                 "storage": { "type": ["boolean", "null"] },
                 "storageInterval": { "description": "Seconds, 1 to 300 (libreSettings).", "type": ["integer", "null"], "minimum": 1, "maximum": 300 }
+              }
+            },
+            "network": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "publicIp": { "description": "networkSettings.", "type": ["boolean", "null"] }
               }
             }
           }

@@ -73,6 +73,7 @@ public static class SettingsEndpoints
                     Storage = settings.Libre.Storage,
                     StorageInterval = settings.Libre.StorageInterval,
                 },
+                Network = new NetworkSettingsBody { PublicIp = settings.Network.PublicIp },
             },
             Media = new MediaSettingsBody { LocalNetwork = settings.Media.LocalNetwork },
             Clients = settings.Clients,

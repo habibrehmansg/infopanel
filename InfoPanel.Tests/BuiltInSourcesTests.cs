@@ -1,13 +1,17 @@
+using System.Text.Json;
 using InfoPanel.Hosting;
+using InfoPanel.Persistence;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.Network;
+using InfoPanel.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace InfoPanel.Tests;
 
 // The engine's own sources that read on every OS (the clock, the drives, the network): registered outside mock mode and a
-// replay, none in either; the network's public address lookup is left out under --offline.
+// replay, none in either; the network's public address lookup is left out under --offline, and follows the engine's
+// settings (sources.network.publicIp) as they change.
 public class BuiltInSourcesTests
 {
     [Theory]
@@ -36,5 +40,32 @@ public class BuiltInSourcesTests
         var network = Assert.IsType<NetworkSource>(provider.GetServices<ISensorSource>().Single(s => s.Id == "infopanel.network"));
 
         Assert.Equal(lookup, network.Lookup != null);
+    }
+
+    [Fact]
+    public void TheNetwork_FollowsThePublicAddressSetting_FromTheEnginesSettings_AsItChanges()
+    {
+        var data = Path.Combine(Path.GetTempPath(), "infopanel-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(data);
+        try
+        {
+            var paths = new DataPaths(data);
+            File.WriteAllText(paths.SettingsFile, """{"format":"infopanel.settings/1","sources":{"network":{"publicIp":false}}}""");
+            var settings = SettingsStore.Open(paths);
+            var services = new ServiceCollection().AddSingleton(TimeProvider.System).AddSingleton(settings);
+            services.AddBuiltInSources(new EngineOptions());
+
+            using var provider = services.BuildServiceProvider();
+            var network = Assert.IsType<NetworkSource>(provider.GetServices<ISensorSource>().Single(s => s.Id == "infopanel.network"));
+
+            Assert.False(network.PublicIp);
+            Assert.False(network.Lookup!.Enabled);
+            settings.Apply(JsonDocument.Parse("""{"sources":{"network":{"publicIp":true}}}""").RootElement);
+            Assert.True(network.PublicIp);
+        }
+        finally
+        {
+            try { Directory.Delete(data, recursive: true); } catch (IOException) { }
+        }
     }
 }

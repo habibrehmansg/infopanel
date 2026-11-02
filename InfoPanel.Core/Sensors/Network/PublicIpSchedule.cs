@@ -116,6 +116,20 @@ public sealed class PublicIpSchedule(TimeProvider time)
         }
     }
 
+    /// <summary>
+    /// Lookups were turned on again: what the last ones left (the time of the next, a back-off) is forgotten, and a
+    /// lookup is due at once, taken while a public-address reading is in use. Whether one is in use carries over.
+    /// </summary>
+    public void Restart()
+    {
+        lock (_lock)
+        {
+            _pending = true;
+            _due = Never;
+            _backoff = TimeSpan.Zero;
+        }
+    }
+
     // Under the lock: a failed lookup's back-off hasn't ended at now.
     private bool InBackoff(long now) => _backoff != TimeSpan.Zero && _due != Never && now < _due;
 

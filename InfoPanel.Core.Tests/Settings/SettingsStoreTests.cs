@@ -393,6 +393,51 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void ThePublicAddressSetting_IsOnByDefault_SetAndResetMemberByMember_AndAStoredOneOfTheWrongTypeGetsItsDefault()
+    {
+        var store = Open();
+        Assert.Equal(new NetworkSettings(PublicIp: true), store.Current.Settings.Network);
+        Assert.Equal(NetworkSettings.Default, EngineSettings.Default.Network);
+
+        store.Apply(Change("""{"sources":{"libre":{"storage":false},"network":{"publicIp":false}}}"""));
+        Assert.False(store.Current.Settings.Network.PublicIp);
+        Assert.True(JsonNode.DeepEquals(
+            JsonNode.Parse("""{"format":"infopanel.settings/1","sources":{"libre":{"storage":false},"network":{"publicIp":false}}}"""), Stored()));
+
+        // Merged member by member: libre's change leaves it; null sets it back and empties its container.
+        store.Apply(Change("""{"sources":{"libre":{"storage":null}}}"""));
+        Assert.False(Open().Current.Settings.Network.PublicIp);
+        store.Apply(Change("""{"sources":{"network":{"publicIp":null}}}"""));
+        Assert.True(store.Current.Settings.Network.PublicIp);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"format":"infopanel.settings/1"}"""), Stored()));
+
+        File.WriteAllText(File_, """{"format":"infopanel.settings/1","sources":{"libre":{"enabled":false},"network":{"publicIp":"no"}}}""");
+        var read = Open();
+        Assert.True(read.Current.Settings.Network.PublicIp);
+        Assert.False(read.Current.Settings.Libre.Enabled);
+        Assert.Contains("/sources/network/publicIp", Assert.Single(Warnings).RenderMessage(), StringComparison.Ordinal);
+
+        File.WriteAllText(File_, """{"format":"infopanel.settings/1","sources":{"network":false}}""");
+        Assert.True(Open().Current.Settings.Network.PublicIp);
+    }
+
+    [Theory]
+    [InlineData("""{"sources":{"network":{"publicIp":"no"}}}""", "/sources/network/publicIp")]
+    [InlineData("""{"sources":{"network":{"publicIP":true}}}""", "/sources/network/publicIP")]
+    [InlineData("""{"sources":{"network":null}}""", "/sources/network")]
+    [InlineData("""{"sources":{"network":true}}""", "/sources/network")]
+    public void ABadPublicAddressChange_IsRefusedAtItsPath_AndChangesNothing(string json, string path)
+    {
+        var store = Open();
+
+        var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(Change(json)));
+
+        Assert.Contains(refused.Errors, e => e.Path == path && e.Code == "schema");
+        Assert.True(store.Current.Settings.Network.PublicIp);
+        Assert.False(File.Exists(File_));
+    }
+
+    [Fact]
     public void UnknownMembers_AtEveryDepth_SurviveAChange_AsTheyWere()
     {
         const string unknown = """{"n":1.50e2,"s":"café 😀","deep":[{"a":null},true,-0.0],"big":123456789012345678901234567890}""";

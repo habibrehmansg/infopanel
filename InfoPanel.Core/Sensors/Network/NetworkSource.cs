@@ -1,8 +1,10 @@
 using InfoPanel.Models;
 using InfoPanel.Sensors.Drives;
+using InfoPanel.Settings;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -21,6 +23,14 @@ namespace InfoPanel.Sensors.Network;
 /// isn't one, nor is the history's own sampling, which never reads a text: <see cref="SensorHistory"/>) puts it in use
 /// (<see cref="PublicIpLookup.NoteUse"/>), the only time the lookup asks. The engine never
 /// answers the plugin's keys; a 1.x import binds them to these (<see cref="RetiredPlugins"/>).
+/// <para>
+/// The setting <c>sources.network.publicIp</c> (<see cref="FollowSettings"/>, <see cref="SetPublicIp"/>) turns the
+/// lookup off and on as the engine runs. Off, at once: nothing more is asked (a lookup in flight cancelled), the
+/// addresses are forgotten, and the two are unlisted and read unavailable, as a key no source lists (a read still puts
+/// them in use, so turning it on again asks at once when a shown profile binds one). On: they are listed again from the
+/// next round, and read nothing until a round after the switch has read the lookup's result, so an address read before
+/// it was turned off is never read again.
+/// </para>
 /// </summary>
 public sealed class NetworkSource : ISensorSource, ISensorStatusSource, ISensorSourceState, IDisposable
 {
@@ -112,6 +122,14 @@ public sealed class NetworkSource : ISensorSource, ISensorStatusSource, ISensorS
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
     private readonly SensorKey _publicV4 = PublicKeyOf("ipv4");
     private readonly SensorKey _publicV6 = PublicKeyOf("ipv6");
+    private readonly Lock _switch = new();
+    // The public addresses are read from the polled source once it has polled this many rounds (two after the switch turned on).
+    private long _shownFrom;
+    private ListedWithoutPublic? _withoutPublic;
+    private Action? _unfollow;
+
+    /// <summary>A listing, and the same without the public addresses, kept while the listing stands.</summary>
+    private sealed record ListedWithoutPublic(IReadOnlyList<SensorInfo> Listed, IReadOnlyList<SensorInfo> Without);
 
     /// <param name="lister">The interfaces: <see cref="SystemNetworkLister"/>, or a test's.</param>
     /// <param name="lookup">The public addresses' lookup, started and stopped (and disposed) with the source; null lists none (<c>--offline</c>).</param>
@@ -125,11 +143,55 @@ public sealed class NetworkSource : ISensorSource, ISensorStatusSource, ISensorS
         _polled = new PolledSensorSource(SourceId, () => new NetworkSampler(lister, lookup, log, ownerHold, time), ages, time, log: log);
     }
 
-    /// <summary>The source over this computer's interfaces; under <c>--offline</c> (<paramref name="offline"/>) no lookup and no public addresses.</summary>
-    public static NetworkSource CreateSystem(TimeProvider? time, bool offline) =>
-        new(new SystemNetworkLister(), offline ? null : PublicIpLookup.CreateSystem(time), time);
+    /// <summary>
+    /// The source over this computer's interfaces; under <c>--offline</c> (<paramref name="offline"/>) no lookup and no
+    /// public addresses. With <paramref name="settings"/>, its lookup follows their <c>sources.network.publicIp</c>.
+    /// </summary>
+    public static NetworkSource CreateSystem(TimeProvider? time, bool offline, SettingsStore? settings = null)
+    {
+        var source = new NetworkSource(new SystemNetworkLister(), offline ? null : PublicIpLookup.CreateSystem(time), time);
+        return settings == null ? source : source.FollowSettings(settings);
+    }
 
     public string Id => SourceId;
+
+    /// <summary>Whether the public addresses are looked up and listed: false under <c>--offline</c> and while the setting is off.</summary>
+    public bool PublicIp => _lookup is { Enabled: true };
+
+    /// <summary>
+    /// Turns the public address lookup off or on, at once (the setting <c>sources.network.publicIp</c>); nothing under
+    /// <c>--offline</c>, which has no lookup.
+    /// </summary>
+    public void SetPublicIp(bool on)
+    {
+        if (_lookup == null)
+            return;
+        lock (_switch)
+        {
+            if (_lookup.Enabled == on)
+                return;
+            // Before the lookup turns on: the round under way may hold what was read before the switch went off, the next doesn't.
+            if (on)
+                Interlocked.Exchange(ref _shownFrom, _polled.Polls + 2);
+            _lookup.SetEnabled(on);
+        }
+    }
+
+    /// <summary>
+    /// Follows <paramref name="settings"/>' <c>sources.network.publicIp</c>: applied now, and at once on every change,
+    /// until the source is disposed. Under <c>--offline</c> there is nothing to follow.
+    /// </summary>
+    public NetworkSource FollowSettings(SettingsStore settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (_lookup == null)
+            return this;
+        void Follow(SettingsSnapshot snapshot) => SetPublicIp(snapshot.Settings.Network.PublicIp);
+        settings.Changed += Follow;
+        _unfollow = () => settings.Changed -= Follow;
+        SetPublicIp(settings.Current.Settings.Network.PublicIp);
+        return this;
+    }
 
     /// <summary>The polled source underneath. For tests.</summary>
     internal PolledSensorSource Polled => _polled;
@@ -141,28 +203,54 @@ public sealed class NetworkSource : ISensorSource, ISensorStatusSource, ISensorS
 
     public bool Handles(SensorKey key) => _polled.Handles(key);
 
-    public IReadOnlyList<SensorInfo> GetSensors() => _polled.GetSensors();
+    /// <summary>The polled source's sensors; while the lookup is off, without the public addresses (until the sampler has unlisted them too).</summary>
+    public IReadOnlyList<SensorInfo> GetSensors()
+    {
+        var listed = _polled.GetSensors();
+        if (_lookup is not { Enabled: false })
+            return listed;
+        var kept = Volatile.Read(ref _withoutPublic);
+        if (kept != null && ReferenceEquals(kept.Listed, listed))
+            return kept.Without;
+        var without = listed.Where(s => s.Key != _publicV4 && s.Key != _publicV6).ToArray();
+        Volatile.Write(ref _withoutPublic, new ListedWithoutPublic(listed, without));
+        return without;
+    }
 
     public bool TryRead(SensorKey key, out SensorReading reading)
     {
-        NoteRead(key);
+        if (IsPublic(key))
+        {
+            _lookup!.NoteUse();
+            if (Hidden())
+            {
+                reading = default;
+                return false;
+            }
+        }
+
         return _polled.TryRead(key, out reading);
     }
 
     public SensorState ReadState(SensorKey key)
     {
-        NoteRead(key);
+        if (IsPublic(key))
+        {
+            _lookup!.NoteUse();
+            if (Hidden())
+                return SensorState.Without(SensorStatus.Unavailable);
+        }
+
         return _polled.ReadState(key);
     }
 
     /// <summary>A status isn't a read: listing the sensors (<c>/api/sensors</c>) or importing puts no public address in use.</summary>
-    public SensorStatus GetStatus(SensorKey key) => _polled.GetStatus(key);
+    public SensorStatus GetStatus(SensorKey key) => IsPublic(key) && Hidden() ? SensorStatus.Unavailable : _polled.GetStatus(key);
 
-    private void NoteRead(SensorKey key)
-    {
-        if (_lookup != null && (key == _publicV4 || key == _publicV6))
-            _lookup.NoteUse();
-    }
+    private bool IsPublic(SensorKey key) => _lookup != null && (key == _publicV4 || key == _publicV6);
+
+    // The public addresses read nothing: the lookup is off, or on again before a round after the switch has read it.
+    private bool Hidden() => !_lookup!.Enabled || _polled.Polls < Interlocked.Read(ref _shownFrom);
 
     /// <summary>Starts the polling (discovery first), then the lookup; a stop asked meanwhile waits for both to have started.</summary>
     public async Task StartAsync(CancellationToken ct)
@@ -200,6 +288,7 @@ public sealed class NetworkSource : ISensorSource, ISensorStatusSource, ISensorS
 
     public void Dispose()
     {
+        _unfollow?.Invoke();
         _lookup?.Dispose();
         _polled.Dispose();
     }

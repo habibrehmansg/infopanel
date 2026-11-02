@@ -108,6 +108,15 @@ public sealed record LibreSettings(bool Enabled, bool Storage, int StorageInterv
 }
 
 /// <summary>
+/// The network source's settings: whether it looks up this network's public address (<c>sources.network.publicIp</c>;
+/// <c>InfoPanel.Sensors.Network.NetworkSource</c>).
+/// </summary>
+public sealed record NetworkSettings(bool PublicIp)
+{
+    public static NetworkSettings Default { get; } = new(true);
+}
+
+/// <summary>
 /// The media providers' settings: whether they may connect to this computer and the local network (spec/docs/providers.md).
 /// </summary>
 public sealed record MediaSettings(bool LocalNetwork)
@@ -124,6 +133,7 @@ public sealed record EngineSettings(
     int GraphRate,
     EngineLogLevel LogLevel,
     LibreSettings Libre,
+    NetworkSettings Network,
     MediaSettings Media,
     IReadOnlyDictionary<string, JsonElement> Clients)
 {
@@ -132,6 +142,7 @@ public sealed record EngineSettings(
         SettingsLimits.GraphRate.Default,
         SettingsLimits.LogLevel,
         LibreSettings.Default,
+        NetworkSettings.Default,
         MediaSettings.Default,
         ImmutableDictionary<string, JsonElement>.Empty);
 

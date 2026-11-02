@@ -124,6 +124,7 @@ public class SettingsSchemaTests
         Assert.Equal(SettingsLimits.NameOf(defaults.LogLevel), example["logLevel"]!.GetValue<string>());
         var libre = example["sources"]!["libre"]!;
         Assert.Equal(defaults.Libre, new LibreSettings(libre["enabled"]!.GetValue<bool>(), libre["storage"]!.GetValue<bool>(), libre["storageInterval"]!.GetValue<int>()));
+        Assert.Equal(defaults.Network, new NetworkSettings(example["sources"]!["network"]!["publicIp"]!.GetValue<bool>()));
         Assert.Empty(example["clients"]!.AsObject());
     }
 

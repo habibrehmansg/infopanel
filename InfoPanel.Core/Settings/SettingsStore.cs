@@ -148,7 +148,7 @@ public sealed class SettingsStore
 
     /// <summary>
     /// Merges <paramref name="change"/> into the settings and writes them: a member's value sets it, <c>null</c> removes it
-    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>media</c> and <c>clients</c> merge member by member, and each
+    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>media</c> and <c>clients</c> merge member by member, and each
     /// <c>clients</c> member is set or removed whole. Unknown members are refused.
     /// </summary>
     /// <returns>The settings in effect afterwards (the same version when nothing changed).</returns>
@@ -421,11 +421,17 @@ public sealed class SettingsStore
         Check(tree, "frameRate", "/frameRate", e => IntProblem(e, SettingsLimits.FrameRate));
         Check(tree, "graphRate", "/graphRate", e => IntProblem(e, SettingsLimits.GraphRate));
         Check(tree, "logLevel", "/logLevel", LogLevelProblem);
-        if (Container(tree, "sources", "/sources") is { } sources && Container(sources, "libre", "/sources/libre") is { } libre)
+        if (Container(tree, "sources", "/sources") is { } sources)
         {
-            Check(libre, "enabled", "/sources/libre/enabled", BoolProblem);
-            Check(libre, "storage", "/sources/libre/storage", BoolProblem);
-            Check(libre, "storageInterval", "/sources/libre/storageInterval", e => IntProblem(e, SettingsLimits.StorageInterval));
+            if (Container(sources, "libre", "/sources/libre") is { } libre)
+            {
+                Check(libre, "enabled", "/sources/libre/enabled", BoolProblem);
+                Check(libre, "storage", "/sources/libre/storage", BoolProblem);
+                Check(libre, "storageInterval", "/sources/libre/storageInterval", e => IntProblem(e, SettingsLimits.StorageInterval));
+            }
+
+            if (Container(sources, "network", "/sources/network") is { } network)
+                Check(network, "publicIp", "/sources/network/publicIp", BoolProblem);
         }
 
         if (Container(tree, "media", "/media") is { } media)
@@ -459,6 +465,7 @@ public sealed class SettingsStore
     private static EngineSettings Effective(JsonObject tree)
     {
         var libre = (tree["sources"] as JsonObject)?["libre"] as JsonObject;
+        var network = (tree["sources"] as JsonObject)?["network"] as JsonObject;
         var media = tree["media"] as JsonObject;
         var clients = ImmutableDictionary.CreateBuilder<string, JsonElement>(StringComparer.Ordinal);
         if (tree["clients"] is JsonObject stored)
@@ -475,6 +482,7 @@ public sealed class SettingsStore
                 Bool(libre?["enabled"]) ?? LibreSettings.Default.Enabled,
                 Bool(libre?["storage"]) ?? LibreSettings.Default.Storage,
                 Int(libre?["storageInterval"]) ?? LibreSettings.Default.StorageInterval),
+            new NetworkSettings(Bool(network?["publicIp"]) ?? NetworkSettings.Default.PublicIp),
             new MediaSettings(Bool(media?["localNetwork"]) ?? MediaSettings.Default.LocalNetwork),
             clients.ToImmutable());
 
@@ -555,7 +563,7 @@ public sealed class SettingsStore
                     foreach (var source in member.Value.EnumerateObject())
                     {
                         var sourcePointer = pointer + "/" + Escape(source.Name);
-                        if (source.Name != "libre")
+                        if (source.Name is not ("libre" or "network"))
                         {
                             Unknown(sourcePointer);
                             continue;
@@ -566,12 +574,12 @@ public sealed class SettingsStore
                         foreach (var setting in source.Value.EnumerateObject())
                         {
                             var settingPointer = sourcePointer + "/" + Escape(setting.Name);
-                            switch (setting.Name)
+                            switch (source.Name, setting.Name)
                             {
-                                case "enabled" or "storage":
+                                case ("libre", "enabled" or "storage") or ("network", "publicIp"):
                                     Leaf(setting.Value, settingPointer, BoolProblem);
                                     break;
-                                case "storageInterval":
+                                case ("libre", "storageInterval"):
                                     Leaf(setting.Value, settingPointer, e => IntProblem(e, SettingsLimits.StorageInterval));
                                     break;
                                 default:
@@ -639,13 +647,13 @@ public sealed class SettingsStore
                     var sources = Child(tree, "sources");
                     foreach (var source in member.Value.EnumerateObject())
                     {
-                        var libre = Child(sources, source.Name);
+                        var settings = Child(sources, source.Name);
                         foreach (var setting in source.Value.EnumerateObject())
                         {
                             if (setting.Name == "storageInterval")
-                                Set(libre, setting.Name, setting.Value, e => JsonValue.Create(SpecJson.ReadInt32(e)));
+                                Set(settings, setting.Name, setting.Value, e => JsonValue.Create(SpecJson.ReadInt32(e)));
                             else
-                                Set(libre, setting.Name, setting.Value, e => JsonValue.Create(e.GetBoolean()));
+                                Set(settings, setting.Name, setting.Value, e => JsonValue.Create(e.GetBoolean()));
                         }
 
                         PruneIfEmpty(sources, source.Name);

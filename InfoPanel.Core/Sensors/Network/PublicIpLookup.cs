@@ -22,6 +22,12 @@ namespace InfoPanel.Sensors.Network;
 /// network without IPv6 doesn't count as failing for want of it); one log line when lookups start failing, one when
 /// they answer again. <see cref="StopAsync"/> cancels a lookup in flight and waits for the task to end.
 /// </para>
+/// <para>
+/// A switch (<see cref="SetEnabled"/>, the setting <c>sources.network.publicIp</c>) turns it off and on while it runs:
+/// off cancels a lookup in flight, ends the task and forgets the addresses, so nothing is asked and nothing kept until it
+/// is on again (an answer that comes back as it turns off is dropped); on starts the task again (once the cancelled one
+/// has ended, so two never run) with a lookup due at once, which it takes while a public-address reading is in use.
+/// </para>
 /// </summary>
 public sealed class PublicIpLookup : IDisposable
 {
@@ -47,12 +53,18 @@ public sealed class PublicIpLookup : IDisposable
     private Result _v4;
     private Result _v6;
     private bool _failing;
+    private volatile bool _enabled = true;
+    private long _generation;
+    // Whether the owner started the task (Start, until StopAsync): the switch runs it only then.
+    private bool _started;
     private TaskCompletionSource _wake = NewWake();
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private long _lookups;
     private long _waits;
     private volatile bool _waiting;
+    private int _running;
+    private int _mostRunning;
     private bool _disposed;
 
     /// <param name="handler">Where the requests go: <see cref="CreateHandler"/>, or a test's. Disposed with the lookup.</param>
@@ -98,11 +110,68 @@ public sealed class PublicIpLookup : IDisposable
     /// <summary>Whether the task waits for a cause or its time (no lookup under way). For tests.</summary>
     internal bool IsWaiting => _waiting;
 
+    /// <summary>How many tasks run now, and the most that ever ran at once. For tests.</summary>
+    internal int Running => Volatile.Read(ref _running);
+
+    internal int MostRunning => Volatile.Read(ref _mostRunning);
+
+    /// <summary>Awaited by the task each time just before it takes a lookup that is due. For tests: a pause there.</summary>
+    internal Func<Task>? BeforeTakeDue { get; set; }
+
     /// <summary>The family's last result: <see cref="AddressFamily.InterNetwork"/> or <see cref="AddressFamily.InterNetworkV6"/>.</summary>
     public Result Latest(AddressFamily family)
     {
         lock (_lock)
             return family == AddressFamily.InterNetworkV6 ? _v6 : _v4;
+    }
+
+    /// <summary>
+    /// How many times lookups were turned off: a reader of <see cref="Latest"/> that saw another count holds a result
+    /// that was forgotten since (<see cref="NetworkSampler"/>).
+    /// </summary>
+    public long Generation => Interlocked.Read(ref _generation);
+
+    /// <summary>Whether lookups are on (the setting <c>sources.network.publicIp</c>); on until <see cref="SetEnabled"/> turns them off.</summary>
+    public bool Enabled => _enabled;
+
+    /// <summary>
+    /// Turns lookups off or on, at once. Off: a lookup in flight is cancelled, the task ends without waiting for it here,
+    /// and both families' results are forgotten. On: once started, the task runs again, with a lookup due at once (not
+    /// after the 30 minutes or a back-off), taken while a public-address reading is in use. The same value again does
+    /// nothing.
+    /// </summary>
+    public void SetEnabled(bool enabled)
+    {
+        _lifecycle.Wait();
+        try
+        {
+            if (_disposed || _enabled == enabled)
+                return;
+            _enabled = enabled;
+            if (!enabled)
+            {
+                // Cancelled first, then forgotten: a lookup that ends meanwhile sees the cancellation under the lock and keeps nothing.
+                _cts?.Cancel();
+                lock (_lock)
+                {
+                    _v4 = default;
+                    _v6 = default;
+                    _failing = false;
+                    Interlocked.Increment(ref _generation);
+                }
+
+                return;
+            }
+
+            if (_started)
+                StartLoop(restart: true);
+            else
+                _schedule.Restart();
+        }
+        finally
+        {
+            _lifecycle.Release();
+        }
     }
 
     /// <summary>A public-address reading was read: when that brings it into use, a lookup runs at once. Allocates nothing while it stays in use.</summary>
@@ -119,24 +188,52 @@ public sealed class PublicIpLookup : IDisposable
             Wake();
     }
 
-    /// <summary>Starts the task (a no-op when it runs).</summary>
+    /// <summary>Starts the task (a no-op when it runs); while lookups are off, only once they are turned on.</summary>
     public void Start()
     {
         _lifecycle.Wait();
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_loop is { IsCompleted: false })
-                return;
-            _cts?.Dispose();
-            _cts = new CancellationTokenSource();
-            var token = _cts.Token;
-            _loop = Task.Run(() => RunAsync(token));
+            _started = true;
+            if (_enabled)
+                StartLoop(restart: false);
         }
         finally
         {
             _lifecycle.Release();
         }
+    }
+
+    // Under _lifecycle: a task runs, after the one before it (cancelled by the switch) has ended, unless one runs already.
+    // With restart (the switch turned on), the schedule starts afresh (PublicIpSchedule.Restart) only once the task before
+    // has ended: that one, ending at its cancellation, can't take the lookup due at once and never ask it. And only while
+    // lookups stay on since (the generation unchanged, the new task not cancelled): a later turn on restarts it again.
+    private void StartLoop(bool restart)
+    {
+        if (_loop is { IsCompleted: false } && !_cts!.IsCancellationRequested)
+            return;
+        var before = _loop is { IsCompleted: false } ? _loop : null;
+        if (before == null)
+            _cts?.Dispose();
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+        if (before == null)
+        {
+            if (restart)
+                _schedule.Restart();
+            _loop = Task.Run(() => RunAsync(token));
+            return;
+        }
+
+        var generation = Generation;
+        _loop = Task.Run(async () =>
+        {
+            await before.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (restart && Generation == generation && !token.IsCancellationRequested)
+                _schedule.Restart();
+            await RunAsync(token).ConfigureAwait(false);
+        });
     }
 
     /// <summary>Cancels a lookup in flight and waits for the task to end.</summary>
@@ -145,6 +242,7 @@ public sealed class PublicIpLookup : IDisposable
         await _lifecycle.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            _started = false;
             if (_loop is not { } loop)
                 return;
             await _cts!.CancelAsync().ConfigureAwait(false);
@@ -182,6 +280,13 @@ public sealed class PublicIpLookup : IDisposable
 
     private async Task RunAsync(CancellationToken ct)
     {
+        var running = Interlocked.Increment(ref _running);
+        for (var most = Volatile.Read(ref _mostRunning); running > most; most = Volatile.Read(ref _mostRunning))
+        {
+            if (Interlocked.CompareExchange(ref _mostRunning, running, most) == most)
+                break;
+        }
+
         try
         {
             while (!ct.IsCancellationRequested)
@@ -189,6 +294,8 @@ public sealed class PublicIpLookup : IDisposable
                 // A new wake before the schedule is read: a cause noted after the read completes it, so none is missed.
                 var wake = NewWake();
                 Volatile.Write(ref _wake, wake);
+                if (BeforeTakeDue is { } pause)
+                    await pause().ConfigureAwait(false);
                 if (_schedule.TakeDue(_time.GetTimestamp()))
                 {
                     await LookUpAsync(ct).ConfigureAwait(false);
@@ -218,34 +325,46 @@ public sealed class PublicIpLookup : IDisposable
         {
             _log.Error(ex, "Public IP: the lookup task failed");
         }
+        finally
+        {
+            Interlocked.Decrement(ref _running);
+        }
     }
 
     /// <summary>One lookup, both families together; the results kept, the schedule told.</summary>
     internal async Task LookUpAsync(CancellationToken ct)
     {
+        // Nothing is asked while off, or once cancelled.
+        if (!_enabled)
+            return;
+        ct.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _lookups);
         var v4 = FetchAsync(IPv4Endpoint, AddressFamily.InterNetwork, ct);
         var v6 = FetchAsync(IPv6Endpoint, AddressFamily.InterNetworkV6, ct);
         await Task.WhenAll(v4, v6).ConfigureAwait(false);
-        ct.ThrowIfCancellationRequested();
 
-        bool answered;
+        bool answered, wasFailing;
         lock (_lock)
         {
+            // Turned off (or stopped) since: the answer is dropped, so an address forgotten stays forgotten.
+            ct.ThrowIfCancellationRequested();
+            if (!_enabled)
+                return;
             var before4 = _v4.Answered;
             var before6 = _v6.Answered;
             _v4 = Next(_v4, v4.Result);
             _v6 = Next(_v6, v6.Result);
             answered = (_v4.Answered || _v6.Answered) && (_v4.Answered || !before4) && (_v6.Answered || !before6);
+            _schedule.LookedUp(_time.GetTimestamp(), answered);
+            wasFailing = _failing;
+            _failing = !answered;
         }
 
-        _schedule.LookedUp(_time.GetTimestamp(), answered);
         _log.Debug("Public IP: looked up; IPv4 {V4}, IPv6 {V6}", v4.Result != null ? "answered" : "no answer", v6.Result != null ? "answered" : "no answer");
-        if (!answered && !_failing)
+        if (!answered && !wasFailing)
             _log.Warning("Public IP: the lookup failed; the public address readings go stale, then unavailable, until it answers (next in {Wait})", _schedule.Backoff);
-        else if (answered && _failing)
+        else if (answered && wasFailing)
             _log.Information("Public IP: the lookup answers again");
-        _failing = !answered;
     }
 
     // An address unchanged since the last answer is handed back as the same string.

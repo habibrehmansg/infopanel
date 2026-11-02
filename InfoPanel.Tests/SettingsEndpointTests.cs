@@ -84,8 +84,33 @@ public sealed class SettingsEndpointTests
         Assert.Equal("information", settings.GetProperty("logLevel").GetString());
         var libre = settings.GetProperty("sources").GetProperty("libre");
         Assert.Equal((true, true, 30), (libre.GetProperty("enabled").GetBoolean(), libre.GetProperty("storage").GetBoolean(), libre.GetProperty("storageInterval").GetInt32()));
+        Assert.True(settings.GetProperty("sources").GetProperty("network").GetProperty("publicIp").GetBoolean());
         Assert.Empty(settings.GetProperty("clients").EnumerateObject());
         Assert.False(File.Exists(Settings(factory)));
+    }
+
+    [Fact]
+    public async Task ThePublicAddressSetting_IsChangedAndSetBack_StoredAndReadBack_LibreKept()
+    {
+        using var factory = new EngineFactory();
+        using var api = factory.CreateApiClient();
+        await Patch(api, """{"sources":{"libre":{"enabled":false}}}""");
+
+        var off = await Patch(api, """{"sources":{"network":{"publicIp":false}}}""");
+
+        Assert.Equal(2, off.GetProperty("version").GetInt64());
+        Assert.False(off.GetProperty("sources").GetProperty("network").GetProperty("publicIp").GetBoolean());
+        Assert.False(off.GetProperty("sources").GetProperty("libre").GetProperty("enabled").GetBoolean());
+        Assert.True(JsonElement.DeepEquals(off, await Get(api)));
+        Assert.False(JsonNode.Parse(File.ReadAllText(Settings(factory)))!["sources"]!["network"]!["publicIp"]!.GetValue<bool>());
+        Assert.False(factory.Services.GetRequiredService<SettingsStore>().Current.Settings.Network.PublicIp);
+
+        var reset = await Patch(api, """{"sources":{"network":{"publicIp":null}}}""");
+
+        Assert.Equal(3, reset.GetProperty("version").GetInt64());
+        Assert.True(reset.GetProperty("sources").GetProperty("network").GetProperty("publicIp").GetBoolean());
+        Assert.False(reset.GetProperty("sources").GetProperty("libre").GetProperty("enabled").GetBoolean());
+        Assert.False(JsonNode.Parse(File.ReadAllText(Settings(factory)))!["sources"]!.AsObject().ContainsKey("network"));
     }
 
     [Fact]
@@ -213,6 +238,9 @@ public sealed class SettingsEndpointTests
         { """{"theme":"dark"}""", "/theme", "schema" },
         { """{"sources":{"macos":{}}}""", "/sources/macos", "schema" },
         { """{"sources":{"libre":{"interval":30}}}""", "/sources/libre/interval", "schema" },
+        { """{"sources":{"network":{"publicIp":"off"}}}""", "/sources/network/publicIp", "schema" },
+        { """{"sources":{"network":{"lookup":false}}}""", "/sources/network/lookup", "schema" },
+        { """{"sources":{"network":null}}""", "/sources/network", "schema" },
         { """{"clients":{"my client":{}}}""", "/clients/my client", "schema" },
         { """{"clients":null}""", "/clients", "schema" },
         { "[]", "", "schema" },

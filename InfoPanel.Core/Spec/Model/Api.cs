@@ -603,6 +603,14 @@ public sealed record EngineSettingsBody
 public sealed record SettingsSources
 {
     public required LibreSettingsBody Libre { get; init; }
+    public required NetworkSettingsBody Network { get; init; }
+}
+
+/// <summary>The network source's settings (<c>networkSettings</c>, engineSettings' <c>sources.network</c>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/networkSettings")]
+public sealed record NetworkSettingsBody
+{
+    public required bool PublicIp { get; init; }
 }
 
 /// <summary>The media providers' settings (<c>mediaSettings</c>, engineSettings' <c>media</c>).</summary>
@@ -643,6 +651,17 @@ public sealed record SettingsChange : IRemovesMembers
 public sealed record SettingsChangeSources
 {
     public LibreSettingsChange? Libre { get; init; }
+    public NetworkSettingsChange? Network { get; init; }
+}
+
+/// <summary>The network source's settings to change; one given as <c>null</c> goes back to its default (<see cref="IRemovesMembers"/>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/sources/properties/network")]
+public sealed record NetworkSettingsChange : IRemovesMembers
+{
+    public bool? PublicIp { get; init; }
+    /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 /// <summary>The media providers' settings to change; one given as <c>null</c> goes back to its default (<see cref="IRemovesMembers"/>).</summary>

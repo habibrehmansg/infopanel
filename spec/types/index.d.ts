@@ -990,6 +990,7 @@ export interface EngineSettingsProblem {
 /** The settings of the engine's sensor sources, by source. */
 export interface SettingsSources {
   libre: LibreSettings;
+  network: NetworkSettings;
 }
 
 /** The settings of the LibreHardwareMonitor sensor source (on Windows): whether it reads sensors, whether it reads storage drives, and how often. An engine keeps them whether or not it has the source. */
@@ -1003,6 +1004,12 @@ export interface LibreSettings {
    * Range: 1–300.
    */
   storageInterval: number;
+}
+
+/** The settings of the network sensor source (`infopanel.network`, on every operating system): whether it looks up this network's public address. An engine keeps them whether or not it has the source. */
+export interface NetworkSettings {
+  /** Whether the source asks ipify for this network's public address while a public-address reading is in use, and lists the two (docs/api.md#settings); true by default. Off, it asks nothing and lists neither. */
+  publicIp: boolean;
 }
 
 /** The settings of the engine's media providers (docs/providers.md). */
@@ -1020,7 +1027,7 @@ export type LogLevel = "debug" | "information" | "warning" | "error";
  */
 export type ClientName = string;
 
-/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `media` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
+/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `media` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
 export interface SettingsChange {
   /**
    * Frames a second, 1 to 60 (engineSettings).
@@ -1042,6 +1049,10 @@ export interface SettingsChange {
        * Range: 1–300.
        */
       storageInterval?: number | null;
+    };
+    network?: {
+      /** networkSettings. */
+      publicIp?: boolean | null;
     };
   };
   media?: {
