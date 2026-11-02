@@ -24,7 +24,8 @@ public class FfmpegDiscoveryTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static void SkipOnWindows() => Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in ffmpeg is a shell script.");
+    private static void SkipOnWindows() =>
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no software H.264 encoder, and the stand-in ffmpeg is a shell script.");
 
     // ---- discovery ----
 
@@ -119,44 +120,110 @@ public class FfmpegDiscoveryTests
 
     // ---- the chain ----
 
+    /// <summary>A backend that only has a name and a kind: the chain's factories build these.</summary>
+    private sealed class Named(string name, H264Kind kind) : IH264Backend
+    {
+        public string Name => name;
+        public H264Kind Kind => kind;
+        public H264Probe Probe() => H264Probe.Unavailable;
+        public IH264Session Start(H264Config config, Action<H264Outcome> output) => throw new NotSupportedException();
+    }
+
+    public static TheoryData<string, string, string[]> Chains => new()
+    {
+        // Windows: Media Foundation's hardware encoder alone; no software encoder, so software is none.
+        { "Windows", "auto", ["hardware"] },
+        { "Windows", "hardware", ["hardware"] },
+        { "Windows", "software", [] },
+        { "Windows", "off", [] },
+        { "MacOS", "auto", ["hardware", "ffmpeg"] },
+        { "MacOS", "hardware", ["hardware"] },
+        { "MacOS", "software", ["ffmpeg"] },
+        { "MacOS", "off", [] },
+        { "Linux", "auto", ["ffmpeg"] },
+        { "Linux", "hardware", [] },
+        { "Linux", "software", ["ffmpeg"] },
+        { "Linux", "off", [] },
+    };
+
+    [Theory]
+    [MemberData(nameof(Chains))]
+    public void TheChain_ForEachOs(string osName, string mode, string[] expected)
+    {
+        var os = Enum.Parse<H264Os>(osName);
+        var logger = new RecordingLogger();
+        var softwareAsked = 0;
+        IH264Backend Software()
+        {
+            softwareAsked++;
+            // Windows never builds ffmpeg: a factory that throws if asked.
+            if (os == H264Os.Windows)
+                throw new InvalidOperationException("the software encoder was built on Windows");
+            return new Named("ffmpeg", H264Kind.Software);
+        }
+
+        var chain = H264Backends.ChainFor(os, mode, () => new Named("hardware", H264Kind.Hardware), Software, logger);
+        Assert.Equal(expected, chain.Select(b => b.Name));
+        Assert.Equal(expected.Contains("ffmpeg") ? 1 : 0, softwareAsked);
+        // Windows' software mode says why it is images, once; nothing else logs.
+        var line = "--h264 software: Windows has no software H.264 encoder; the preview's video is images";
+        Assert.Equal(os == H264Os.Windows && mode == "software" ? [line] : [], logger.Messages);
+    }
+
     [Fact]
-    public void TheChain_PutsFfmpegAfterTheHardwareEncoder()
+    public void TheChain_ForThisComputer()
     {
         var discovery = new FfmpegDiscovery(null, null, []);
         string[] Names(string mode) => [.. H264Backends.ForThisComputer(mode, NullLogger.Instance, discovery).Chain.Select(b => b.Name)];
-        if (OperatingSystem.IsMacOS())
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(["Media Foundation"], Names("auto"));
+            Assert.Equal(["Media Foundation"], Names("hardware"));
+            Assert.Empty(Names("software"));
+        }
+        else if (OperatingSystem.IsMacOS())
         {
             Assert.Equal(["VideoToolbox", "ffmpeg"], Names("auto"));
             Assert.Equal(["VideoToolbox"], Names("hardware"));
+            Assert.Equal(["ffmpeg"], Names("software"));
+            Assert.Equal(H264Kind.Software, H264Backends.ForThisComputer("software", NullLogger.Instance, discovery).Chain[0].Kind);
         }
         else
         {
             Assert.Equal(["ffmpeg"], Names("auto"));
             Assert.Empty(Names("hardware"));
+            Assert.Equal(["ffmpeg"], Names("software"));
         }
 
-        Assert.Equal(["ffmpeg"], Names("software"));
         Assert.Empty(Names("off"));
-        Assert.Equal(H264Kind.Software, H264Backends.ForThisComputer("software", NullLogger.Instance, discovery).Chain[0].Kind);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void TheFfmpegFlag_TakesAFileThatExists(bool inline)
+    public void TheFfmpegFlag_TakesAFileThatExists_AndIsRefusedOnWindows(bool inline)
     {
         using var folder = new StandIns();
         var file = folder.Write("ffmpeg", "exit 0");
         string[] args = inline ? [$"--ffmpeg={file}"] : ["--ffmpeg", file];
+        Assert.Contains("--ffmpeg <path>", EngineCommandLine.Usage, StringComparison.Ordinal);
+        Assert.Contains("(macOS and Linux", EngineCommandLine.Usage, StringComparison.Ordinal);
+        Assert.Null(Load([], out _)!.Ffmpeg);
+        if (OperatingSystem.IsWindows())
+        {
+            // Windows has no software encoder: an existing file is refused (exit 2), with why.
+            Assert.Null(Load(args, out var refused));
+            Assert.Equal(["--ffmpeg isn't used on Windows: the preview's video there comes from the graphics chip's encoder only."], refused);
+            return;
+        }
+
         Assert.Equal(Path.GetFullPath(file), Load(args, out var errors)!.Ffmpeg);
         Assert.Empty(errors);
-        Assert.Null(Load([], out _)!.Ffmpeg);
 
         Assert.Null(Load(["--ffmpeg", Path.Combine(folder.Path, "missing")], out errors));
         Assert.Contains(errors, e => e.Contains("--ffmpeg", StringComparison.Ordinal) && e.Contains("does not exist", StringComparison.Ordinal));
         Assert.Null(Load(["--ffmpeg", folder.Path], out errors));
         Assert.Contains(errors, e => e.Contains("--ffmpeg", StringComparison.Ordinal));
-        Assert.Contains("--ffmpeg <path>", EngineCommandLine.Usage, StringComparison.Ordinal);
     }
 
     private static EngineOptions? Load(string[] args, out IReadOnlyList<string> errors)

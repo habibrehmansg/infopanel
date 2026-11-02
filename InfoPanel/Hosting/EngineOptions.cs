@@ -109,13 +109,15 @@ public sealed partial class EngineOptions
 
     /// <summary>
     /// Which H.264 encoders the preview's video may use (<c>--h264</c>): <c>auto</c> (every one, hardware first),
-    /// <c>hardware</c>, <c>software</c> or <c>off</c> (none: an <c>h264</c> subscription's frames are PNG).
+    /// <c>hardware</c>, <c>software</c> or <c>off</c> (none: an <c>h264</c> subscription's frames are PNG). Windows has
+    /// no software encoder, so <c>software</c> there is none too.
     /// </summary>
     public string H264 { get; init; } = "auto";
 
     /// <summary>
     /// The ffmpeg the software H.264 encoder runs (<c>--ffmpeg</c>), a full path to a file that exists; null means it is
-    /// looked for on <c>PATH</c>, then in <c>/opt/homebrew/bin</c> and <c>/usr/local/bin</c> (not on Windows).
+    /// looked for on <c>PATH</c>, then in <c>/opt/homebrew/bin</c> and <c>/usr/local/bin</c>. macOS and Linux only:
+    /// refused on Windows, which has no software encoder.
     /// </summary>
     public string? Ffmpeg { get; init; }
 
@@ -253,7 +255,11 @@ public sealed partial class EngineOptions
 
         var ffmpeg = Value(section, "Ffmpeg");
         string? fullFfmpeg = null;
-        if (ffmpeg != null)
+        if (ffmpeg != null && OperatingSystem.IsWindows())
+        {
+            problems.Add("--ffmpeg isn't used on Windows: the preview's video there comes from the graphics chip's encoder only.");
+        }
+        else if (ffmpeg != null)
         {
             try
             {

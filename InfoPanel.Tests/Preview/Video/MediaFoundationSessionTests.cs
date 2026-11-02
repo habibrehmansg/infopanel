@@ -26,6 +26,9 @@ public class MediaFoundationSessionTests
     private static readonly Guid C = new("ADC9BC80-0F41-46C6-AB75-D693D793597D");
     private static readonly Guid C2 = new("60F44560-5A20-4857-BFEF-D29773CB8040");
 
+    /// <summary>A driver version as the identity keeps it: its text.</summary>
+    private static string Text(ulong version) => MfIdentity.Version(version);
+
     // ---- the rig ----
 
     private sealed class Rig : IDisposable
@@ -208,7 +211,7 @@ public class MediaFoundationSessionTests
         var inputs = calls.Where(c => c.Name == "ProcessInput").ToList();
         Assert.True(force.Seq > inputs[1].Seq && force.Seq < inputs[2].Seq);
         Assert.True(rig.Backend.ChangesLive);
-        Assert.Equal(new MfIdentity(C, "Encoder", K, V), rig.Backend.Trusted);
+        Assert.Equal(new MfIdentity(C, "Encoder", K, Text(V)), rig.Backend.Trusted);
         Assert.True(port.ShutDown && port.Released);
         Assert.Equal(0, rig.Catalog.Live);
     }
@@ -553,7 +556,7 @@ public class MediaFoundationSessionTests
     {
         using var rig = new Rig();
         var a = rig.Trusted("A");
-        Assert.Equal(new MfIdentity(C, "A", K, V), rig.Backend.Trusted);
+        Assert.Equal(new MfIdentity(C, "A", K, Text(V)), rig.Backend.Trusted);
         var probes = a.Probes;
 
         // [A′ (A's CLSID and URL, device key K′), A]: A, with no probe.
@@ -587,7 +590,43 @@ public class MediaFoundationSessionTests
         var run = rig.Start();
         Assert.Equal(1, replacement.Probes);
         Assert.Same(replacement, run.Port.Entry);
-        Assert.Equal(new MfIdentity(C, "A2", K, V), rig.Backend.Trusted);
+        Assert.Equal(new MfIdentity(C, "A2", K, Text(V)), rig.Backend.Trusted);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheDriverVersion_AsAUInt64_OrAsTheStringTheHeadersDeclare_IsTheIdentitysText_AndTrusted(bool asString)
+    {
+        using var rig = new Rig();
+        var a = rig.Entry("A");
+        if (asString)
+        {
+            a.Encoder.DriverVersion = null;
+            a.Encoder.DriverVersionText = "32.0.21030.2001";
+        }
+
+        Assert.Equal(H264Probe.Available, rig.Probe());
+        Assert.Equal(new MfIdentity(C, "A", K, "32.0.21030.2001"), rig.Backend.Trusted);
+        Assert.True(rig.Backend.Trusted!.Complete);
+
+        // Trusted, so a start probes nothing more.
+        var probes = a.Probes;
+        rig.Start();
+        Assert.Equal(probes, a.Probes);
+    }
+
+    [Fact]
+    public async Task AnOutputCallWithEventsAndNoSample_FailsNothing_AndTheFrameFollows()
+    {
+        using var rig = new Rig();
+        var e = rig.Trusted().Encoder;
+        e.NoSampleAnswers = 2;
+        var run = rig.Start();
+        Assert.Equal(H264OutcomeKind.Encoded, (await run.Encode(0, force: true)).Kind);
+        Assert.Equal(H264OutcomeKind.Encoded, (await run.Encode(1)).Kind);
+        Assert.Equal(2, PortCalls(rig.Catalog, run.Port).Count(c => c.Name == "ProcessOutput") - 2);
+        Assert.DoesNotContain(rig.Log.Messages, m => m.Contains("failed", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -600,7 +639,7 @@ public class MediaFoundationSessionTests
         var run = rig.Start();
         Assert.Equal(probes + 1, a.Probes);
         Assert.Same(a, run.Port.Entry);
-        Assert.Equal(new MfIdentity(C, "A", K, V2), rig.Backend.Trusted);
+        Assert.Equal(new MfIdentity(C, "A", K, Text(V2)), rig.Backend.Trusted);
 
         // And now trusted: the next start probes nothing.
         rig.Start();
@@ -627,7 +666,7 @@ public class MediaFoundationSessionTests
 
         // V2's pass doesn't vouch for V3: V3 is probed before it is used, and trusted after.
         Assert.Equal(probes + 2, a.Probes);
-        Assert.Equal(new MfIdentity(C, "A", K, V3), rig.Backend.Trusted);
+        Assert.Equal(new MfIdentity(C, "A", K, Text(V3)), rig.Backend.Trusted);
         Assert.Equal(rig.Backend.Trusted, run.Session.Identity);
         Assert.Equal(H264OutcomeKind.Encoded, (await run.Encode(0, force: true)).Kind);
         Assert.All(a.Ports.SkipLast(1), p => Assert.True(p.ShutDown && p.Released));

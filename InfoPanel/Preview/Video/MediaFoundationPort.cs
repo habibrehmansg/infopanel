@@ -9,6 +9,7 @@ internal static class Mf
 {
     // ---- HRESULTs ----
     public const int SOk = 0;
+    public const int SFalse = 1;
     public const int ENotImpl = unchecked((int)0x80004001);
     public const int EFail = unchecked((int)0x80004005);
     public const int EInvalidArg = unchecked((int)0x80070057);
@@ -182,6 +183,9 @@ internal interface IMfEncoderPort
 
     int GetUInt64(Guid key, out ulong value);
 
+    /// <summary>A string attribute of the activated transform (null: none).</summary>
+    int GetString(Guid key, out string? value);
+
     int SetUInt32(Guid key, uint value);
 
     /// <summary><c>ICodecAPI::SetValue</c> and <c>GetValue</c>.</summary>
@@ -218,7 +222,8 @@ internal interface IMfEncoderPort
 
     /// <summary>
     /// <c>ProcessOutput</c> into the encoder's sample, or one of ours as <paramref name="allocation"/> says (made and
-    /// released within the call); the output is copied out and its sample released before this returns.
+    /// released within the call); the output is copied out and its sample released before this returns. <see cref="Mf.SFalse"/>
+    /// with no output: the call gave no sample (events only, or no sample flagged, or an empty one), and nothing failed.
     /// </summary>
     int ProcessOutput(MfOutputAllocation allocation, out MfOutput? output);
 

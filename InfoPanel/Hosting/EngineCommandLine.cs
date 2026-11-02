@@ -99,9 +99,11 @@ public static class EngineCommandLine
           --bundled-plugins <dir>
                                 The bundled plugins' folder (default: plugins next to the engine)
           --h264 <mode>         H.264 encoders the live preview's video may use: auto (default;
-                                hardware, then software), hardware, software or off (images only)
-          --ffmpeg <path>       The ffmpeg the software H.264 encoder runs (default: found on PATH,
-                                then in /opt/homebrew/bin and /usr/local/bin)
+                                hardware, then software), hardware, software (macOS and Linux)
+                                or off (images only)
+          --ffmpeg <path>       The ffmpeg the software H.264 encoder runs (macOS and Linux;
+                                default: found on PATH, then in /opt/homebrew/bin and
+                                /usr/local/bin)
           --record-sensors <dir>
                                 Record what the platform's sensor sources read into <dir>, a
                                 folder with no recording in it yet (Windows: HWiNFO), for

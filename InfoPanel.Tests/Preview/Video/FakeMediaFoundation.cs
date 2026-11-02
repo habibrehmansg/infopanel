@@ -214,8 +214,14 @@ internal sealed class FakeEncoder
     /// <summary><c>MF_TRANSFORM_ASYNC</c> on the transform (null: absent, so not asynchronous).</summary>
     public uint? Async = 1;
 
-    /// <summary>The transform's driver version (null: absent). 32.0.21030.2001.</summary>
+    /// <summary>The transform's driver version as a UINT64 (null: absent). 32.0.21030.2001.</summary>
     public ulong? DriverVersion = 0x0020_0000_5226_07D1;
+
+    /// <summary>The transform's driver version as a string, the type mfapi.h declares (null: absent).</summary>
+    public string? DriverVersionText;
+
+    /// <summary>The first ProcessOutput calls with an output ready answer events and no sample (S_FALSE), this many, each followed by another HaveOutput.</summary>
+    public int NoSampleAnswers;
 
     public Dictionary<Guid, int> RefuseAttribute { get; } = [];
 
@@ -348,6 +354,7 @@ internal sealed class FakeMfPort : IMfEncoderPort
     private bool _deviceSlot;
     private bool _awaitingType;
     private int _changesLeft;
+    private int _noSampleLeft;
     private MfStreamInfo _outputInfo;
 
     public FakeMfPort(FakeMfCatalog catalog, FakeMfEntry entry, FakeEncoder encoder)
@@ -356,6 +363,7 @@ internal sealed class FakeMfPort : IMfEncoderPort
         _e = encoder;
         Entry = entry;
         _changesLeft = encoder.StreamChanges;
+        _noSampleLeft = encoder.NoSampleAnswers;
         _outputInfo = encoder.OutputInfo;
         Id = catalog.NewPort(this);
     }
@@ -472,6 +480,19 @@ internal sealed class FakeMfPort : IMfEncoderPort
         if (key == Mf.DriverVersion && _e.DriverVersion is { } version)
         {
             value = version;
+            return Mf.SOk;
+        }
+
+        return unchecked((int)0xC00D36E6);
+    }
+
+    public int GetString(Guid key, out string? value)
+    {
+        Record("GetString", Name(key));
+        value = null;
+        if (key == Mf.DriverVersion && _e.DriverVersionText is { } text)
+        {
+            value = text;
             return Mf.SOk;
         }
 
@@ -708,6 +729,7 @@ internal sealed class FakeMfPort : IMfEncoderPort
     {
         Record("ProcessOutput", allocation.EncoderProvides ? "theirs" : $"ours {allocation.Size}/{allocation.Alignment}");
         output = null;
+        var noSample = false;
         if (_e.HoldProcessOutput is { } hold)
             WaitHandle.WaitAny([hold.WaitHandle, _shut.WaitHandle]);
         if (ShutDown)
@@ -734,10 +756,27 @@ internal sealed class FakeMfPort : IMfEncoderPort
                 return Mf.EInvalidArg;
             }
 
-            if (!_ready.TryDequeue(out var ready))
+            if (_ready.Count > 0 && _noSampleLeft > 0)
+            {
+                _noSampleLeft--;
+                noSample = true;
+            }
+            else if (!_ready.TryDequeue(out var ready))
+            {
                 return Mf.TransformNeedMoreInput;
-            output = ready;
-            _outputs++;
+            }
+            else
+            {
+                output = ready;
+                _outputs++;
+            }
+        }
+
+        if (noSample)
+        {
+            // Events and no sample: the output follows on the next HaveOutput.
+            Send(new MfEvent(Mf.EventHaveOutput, 0));
+            return Mf.SFalse;
         }
 
         if (!allocation.EncoderProvides)

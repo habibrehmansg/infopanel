@@ -9,6 +9,9 @@
     <RootNamespace>InfoPanel.Tests</RootNamespace>
     <!-- Run through VSTest (xunit.runner.visualstudio), like InfoPanel.Core.Tests. -->
     <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
+    <!-- MediaFoundationAbiTests build synthetic COM objects (vtables of UnmanagedCallersOnly functions) and call the
+         generated stubs' pointer parameters. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

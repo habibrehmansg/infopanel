@@ -7,10 +7,11 @@ namespace InfoPanel.Preview.Video;
 
 /// <summary>
 /// What a probe trusts: one activation's whole identity, the entry's CLSID, hardware URL and device key (a PCI
-/// device-instance path, else an adapter LUID) and the activated transform's driver version. A start trusts an entry only
+/// device-instance path, else an adapter LUID) and the activated transform's driver version, kept as its text (a UINT64
+/// written as Windows writes a driver version, or the string the SDK declares, as given). A start trusts an entry only
 /// when all four are known and equal to the probed ones; otherwise it probes that entry first.
 /// </summary>
-internal sealed record MfIdentity(Guid? Clsid, string? HardwareUrl, string? DeviceKey, ulong? DriverVersion)
+internal sealed record MfIdentity(Guid? Clsid, string? HardwareUrl, string? DeviceKey, string? DriverVersion)
 {
     public bool Complete => Clsid != null && HardwareUrl != null && DeviceKey != null && DriverVersion != null;
 
@@ -23,7 +24,7 @@ internal sealed record MfIdentity(Guid? Clsid, string? HardwareUrl, string? Devi
         string.Create(CultureInfo.InvariantCulture, $"{v >> 48}.{(v >> 32) & 0xFFFF}.{(v >> 16) & 0xFFFF}.{v & 0xFFFF}");
 
     public override string ToString() =>
-        $"CLSID {Clsid?.ToString() ?? "none"}, URL {HardwareUrl ?? "none"}, device {DeviceKey ?? "none"}, driver {(DriverVersion is { } v ? Version(v) : "none")}";
+        $"CLSID {Clsid?.ToString() ?? "none"}, URL {HardwareUrl ?? "none"}, device {DeviceKey ?? "none"}, driver {DriverVersion ?? "none"}";
 }
 
 /// <summary>
@@ -829,9 +830,18 @@ internal sealed class MfSession : IH264Session
         }
 
         CheckAlive();
-        Identity = identity with { DriverVersion = port.GetUInt64(Mf.DriverVersion, out var version) >= 0 ? version : null };
+        Identity = identity with { DriverVersion = DriverVersionOf(port) };
         return null;
     }
+
+    /// <summary>
+    /// The transform's driver version as text: read as a UINT64 (what the spike saw), else as the string mfapi.h declares
+    /// it; null when it is neither.
+    /// </summary>
+    private static string? DriverVersionOf(IMfEncoderPort port) =>
+        port.GetUInt64(Mf.DriverVersion, out var version) >= 0 ? MfIdentity.Version(version)
+        : port.GetString(Mf.DriverVersion, out var text) >= 0 && !string.IsNullOrEmpty(text) ? text
+        : null;
 
     /// <summary>Shuts down and releases the session's port during the setup (an activation not used).</summary>
     internal void DropPort()
@@ -1257,8 +1267,8 @@ internal sealed class MfSession : IH264Session
 
         if (problem != null)
             Fail(problem);
-        else if (IsAborted || hr == Mf.TransformNeedMoreInput)
-            return;
+        else if (IsAborted || hr == Mf.TransformNeedMoreInput || (hr == Mf.SFalse && output == null))
+            return; // nothing yet (no sample this call: events only): the output follows on a later HaveOutput
         else if (hr < 0 || output == null)
             Fail($"ProcessOutput failed ({Mf.Hr(hr)})");
         else

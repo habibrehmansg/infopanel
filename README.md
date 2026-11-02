@@ -31,13 +31,12 @@ Without `--web-root`, an engine serves the `wwwroot` folder next to it if that f
 
 ### The live preview as video, and ffmpeg
 
-A client can ask for the live preview as H.264 video instead of PNG images. The engine encodes it with the computer's hardware encoder where it has one (VideoToolbox on macOS), otherwise with ffmpeg, if ffmpeg is installed: the engine runs the ffmpeg it finds as a separate program and doesn't include one. Without either, the preview stays images. To use ffmpeg, install a build with libx264 (the usual packages have it):
+A client can ask for the live preview as H.264 video instead of PNG images. The engine encodes it with the computer's hardware encoder where it has one: VideoToolbox on macOS, and on Windows Media Foundation, the graphics chip's own encoder (AMD, Intel or NVIDIA), checked with a short test encode the first time a preview asks for video. Windows uses its graphics chip's encoder only: a PC without a working one keeps the preview as images. On macOS and Linux the engine falls back to ffmpeg, if ffmpeg is installed: the engine runs the ffmpeg it finds as a separate program and doesn't include one. Without either, the preview stays images. To use ffmpeg, install a build with libx264 (the usual packages have it):
 
 - **macOS:** `brew install ffmpeg` ([Homebrew](https://brew.sh)).
-- **Windows:** `winget install ffmpeg`, or download a build from [ffmpeg.org](https://ffmpeg.org/download.html) and add its `bin` folder to your `PATH`.
 - **Linux, Raspberry Pi OS:** `sudo apt install ffmpeg` (or your distribution's package).
 
-The engine looks for ffmpeg once, the first time a preview asks for video: at the path given with `--ffmpeg <path>` if there is one, otherwise on the `PATH` the engine was started with, then (except on Windows) in `/opt/homebrew/bin` and `/usr/local/bin`, where an app started from the Dock or Finder doesn't look. It checks that ffmpeg really encodes with a tiny test before using it, and logs which ffmpeg it found and its version. `--h264 software` uses ffmpeg even where there is a hardware encoder, and `--h264 off` turns video off.
+The engine looks for ffmpeg once, the first time a preview asks for video: at the path given with `--ffmpeg <path>` if there is one, otherwise on the `PATH` the engine was started with, then in `/opt/homebrew/bin` and `/usr/local/bin`, where an app started from the Dock or Finder doesn't look. It checks that ffmpeg really encodes with a tiny test before using it, and logs which ffmpeg it found and its version. `--h264 software` uses ffmpeg even where there is a hardware encoder (on Windows, which has no software encoder, it leaves the preview as images; `--ffmpeg` is refused there), and `--h264 off` turns video off.
 
 For development and tests, see [`CLAUDE.md`](CLAUDE.md). What still has to come over from 1.x is in [`PORTING.md`](PORTING.md).
 

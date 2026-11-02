@@ -70,32 +70,41 @@ public partial class H264SpsTests
     [GeneratedRegex(@"\]\s+\d+\s+(\S+)\s+[01]+ = (-?\d+)\s*$")]
     private static partial Regex TraceField();
 
-    /// <summary>The SPS's fields in order, (name, value), as ffmpeg's <c>trace_headers</c> parses the record's parameter sets.</summary>
-    internal static async Task<List<(string Name, long Value)>> TraceSps(byte[] avcc, CancellationToken ct)
+    /// <summary>
+    /// The SPS's fields in order, (name, value), as ffmpeg's <c>trace_headers</c> parses the record's parameter sets, with
+    /// <paramref name="ffmpeg"/> (default <see cref="TestFfmpeg.Path"/>). <c>framecrc</c>, not <c>null</c>: the null muxer
+    /// wants the picture's dimensions, which parameter sets alone don't give it.
+    /// </summary>
+    internal static async Task<List<(string Name, long Value)>> TraceSps(byte[] avcc, CancellationToken ct, string? ffmpeg = null)
     {
         var (sps, pps, _) = Split(avcc);
         var folder = Directory.CreateTempSubdirectory("infopanel-sps-");
         var file = Path.Combine(folder.FullName, "sets.h264");
         await File.WriteAllBytesAsync(file, [0, 0, 0, 1, .. sps, 0, 0, 0, 1, .. pps], ct);
-        var info = new ProcessStartInfo(TestFfmpeg.Path,
+        var info = new ProcessStartInfo(ffmpeg ?? TestFfmpeg.Path,
             ["-hide_banner", "-nostdin", "-loglevel", "debug", "-f", "h264", "-i", file, "-c", "copy", "-bsf:v", "trace_headers", "-f", "framecrc", "-"])
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        using var ffmpeg = Process.Start(info)!;
-        var stdout = ffmpeg.StandardOutput.ReadToEndAsync(ct);
-        var stderr = await ffmpeg.StandardError.ReadToEndAsync(ct);
-        await ffmpeg.WaitForExitAsync(ct);
+        using var process = Process.Start(info)!;
+        var stdout = process.StandardOutput.ReadToEndAsync(ct);
+        var stderr = await process.StandardError.ReadToEndAsync(ct);
+        await process.WaitForExitAsync(ct);
         await stdout;
         File.Delete(file);
         folder.Delete();
-        Assert.True(ffmpeg.ExitCode == 0, $"ffmpeg couldn't read the parameter sets: {stderr}");
+        Assert.True(process.ExitCode == 0, $"ffmpeg couldn't read the parameter sets: {stderr}");
+        return ParseTrace(stderr);
+    }
 
+    /// <summary>The SPS's fields, (name, value), in ffmpeg's <c>trace_headers</c> text (a line ends in LF or CRLF).</summary>
+    internal static List<(string Name, long Value)> ParseTrace(string stderr)
+    {
         var fields = new List<(string, long)>();
         var inSps = false;
-        foreach (var line in stderr.Split('\n'))
+        foreach (var line in stderr.ReplaceLineEndings("\n").Split('\n'))
         {
             if (!line.Contains("[trace_headers @"))
                 continue;
@@ -114,6 +123,22 @@ public partial class H264SpsTests
 
         Assert.NotEmpty(fields);
         return fields;
+    }
+
+    private const string TraceText =
+        "[trace_headers @ 0x1] Sequence Parameter Set\n" +
+        "[trace_headers @ 0x1] 0         profile_idc                                                 01000010 = 66\n" +
+        "[trace_headers @ 0x1] 8         constraint_set0_flag                                        0 = 0\n" +
+        "[trace_headers @ 0x1] 40        level_idc                                                   00101000 = 40\n" +
+        "[trace_headers @ 0x1] Picture Parameter Set\n" +
+        "[trace_headers @ 0x1] 0         pic_parameter_set_id                                        1 = 0\n";
+
+    [Fact]
+    public void TheTraceParser_ReadsTheSameFields_FromLfAndFromCrlfText()
+    {
+        var lf = ParseTrace(TraceText);
+        Assert.Equal([("profile_idc", 66L), ("constraint_set0_flag", 0L), ("level_idc", 40L)], lf);
+        Assert.Equal(lf, ParseTrace(TraceText.Replace("\n", "\r\n")));
     }
 
     private static long Field(List<(string Name, long Value)> fields, string name) => fields.Single(f => f.Name == name).Value;

@@ -57,18 +57,54 @@ internal sealed class H264Backends
     public static readonly string[] Modes = ["auto", "hardware", "software", "off"];
 
     /// <summary>
-    /// This OS's backends, best first, as <c>--h264</c> enables them: its hardware encoder (VideoToolbox on macOS; none
-    /// yet elsewhere), then the software one, ffmpeg found by <paramref name="software"/> (the engine always passes it;
-    /// null leaves the software encoder out).
+    /// This OS's backends, best first, as <c>--h264</c> enables them (<see cref="ChainFor"/>): on Windows Media
+    /// Foundation's hardware encoder alone; on macOS VideoToolbox, then ffmpeg found by <paramref name="software"/>; on
+    /// Linux that ffmpeg. The engine always passes <paramref name="software"/> (null leaves the software encoder out);
+    /// on Windows nothing is ever asked of it.
     /// </summary>
     public static H264Backends ForThisComputer(string mode, ILogger logger, FfmpegDiscovery? software = null)
     {
-        var all = new List<IH264Backend>();
-        if (OperatingSystem.IsMacOS())
-            all.Add(new VideoToolboxH264(logger));
-        if (software != null)
-            all.Add(new FfmpegH264(software, logger));
-        return new H264Backends(Enabled(all, mode), logger);
+        var os = OperatingSystem.IsWindows() ? H264Os.Windows : OperatingSystem.IsMacOS() ? H264Os.MacOS : H264Os.Linux;
+        Func<IH264Backend>? hardware = null;
+        if (OperatingSystem.IsWindows())
+            hardware = MediaFoundation(logger);
+        else if (OperatingSystem.IsMacOS())
+            hardware = VideoToolbox(logger);
+        Func<IH264Backend>? softwareBackend = software == null ? null : () => new FfmpegH264(software, logger);
+        return new H264Backends(ChainFor(os, mode, hardware, softwareBackend, logger), logger);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+    private static Func<IH264Backend> VideoToolbox(ILogger logger) => () => new VideoToolboxH264(logger);
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static Func<IH264Backend> MediaFoundation(ILogger logger) => () => new MediaFoundationH264(new MfComCatalog(), logger);
+
+    /// <summary>
+    /// An OS's chain, best first, as <paramref name="mode"/> enables it, each backend built by its factory only when the
+    /// chain holds it: Windows [hardware] (Media Foundation: no software encoder and no ffmpeg there, so
+    /// <paramref name="software"/> is never called, and <c>software</c> leaves the chain empty, logged once); macOS
+    /// [hardware, software]; Linux [software]. A null factory leaves its backend out.
+    /// </summary>
+    public static IReadOnlyList<IH264Backend> ChainFor(H264Os os, string mode, Func<IH264Backend>? hardware, Func<IH264Backend>? software, ILogger logger)
+    {
+        (H264Kind Kind, Func<IH264Backend>? Make)[] steps = os switch
+        {
+            H264Os.Windows => [(H264Kind.Hardware, hardware)],
+            H264Os.MacOS => [(H264Kind.Hardware, hardware), (H264Kind.Software, software)],
+            _ => [(H264Kind.Software, software)],
+        };
+        if (os == H264Os.Windows && mode == "software")
+            logger.LogInformation("--h264 software: Windows has no software H.264 encoder; the preview's video is images");
+        var chain = new List<IH264Backend>();
+        foreach (var (kind, make) in steps)
+        {
+            if (make == null || mode == "off" || (mode == "hardware" && kind != H264Kind.Hardware) || (mode == "software" && kind != H264Kind.Software))
+                continue;
+            chain.Add(make());
+        }
+
+        return chain;
     }
 
     /// <summary>The backends <paramref name="mode"/> enables, in order.</summary>
@@ -282,6 +318,14 @@ internal sealed class H264Backends
     }
 
     public static string Word(H264Kind kind) => kind == H264Kind.Hardware ? "hardware" : "software";
+}
+
+/// <summary>The OS whose chain <see cref="H264Backends.ChainFor"/> builds.</summary>
+internal enum H264Os
+{
+    Windows,
+    MacOS,
+    Linux,
 }
 
 /// <summary>

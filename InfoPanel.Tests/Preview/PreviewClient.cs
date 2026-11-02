@@ -48,6 +48,16 @@ internal sealed class PreviewClient : IAsyncDisposable
         return new PreviewClient(await client.ConnectAsync(new Uri("ws://localhost/ws"), ct));
     }
 
+    /// <summary>A client of an engine on a real socket (a child process, say): <paramref name="uri"/> with the session token.</summary>
+    public static async Task<PreviewClient> ConnectAsync(Uri uri, string token, CancellationToken ct)
+    {
+        var socket = new ClientWebSocket();
+        socket.Options.AddSubProtocol(EngineRuntime.WebSocketProtocol);
+        socket.Options.AddSubProtocol(EngineRuntime.WebSocketAuthPrefix + token);
+        await socket.ConnectAsync(uri, ct);
+        return new PreviewClient(socket);
+    }
+
     public Task SendAsync(object message, CancellationToken ct) => SendTextAsync(JsonSerializer.Serialize(message), ct);
 
     public Task SendTextAsync(string text, CancellationToken ct)
