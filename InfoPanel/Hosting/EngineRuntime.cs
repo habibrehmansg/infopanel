@@ -6,13 +6,14 @@ using System.Text;
 namespace InfoPanel.Hosting;
 
 /// <summary>
-/// The link that opens the editor (<see cref="EngineRuntime.EditorLink"/>), with the session token in it: a web client's
-/// pairing link (<paramref name="WebClient"/>, opened in Chrome when installed) or the engine's sign-in link.
+/// The link the engine opens when asked (<see cref="EngineRuntime.EditorLinkFor"/>): a web client's code link
+/// (<paramref name="WebClient"/>, opened in Chrome when installed), which carries a one-time pairing code and never the
+/// session token, or the engine's sign-in link, which carries the token to the web client served here.
 /// </summary>
 public sealed record EditorLink(string Url, bool WebClient)
 {
-    /// <summary>The link with <see cref="EngineRuntime.RedactedToken"/> for the token: never print or log <see cref="Url"/> but on the console.</summary>
-    public override string ToString() => WebClient ? "a web client's pairing link" : "the sign-in link";
+    /// <summary>What the link is, without it: never print or log <see cref="Url"/> but on the console.</summary>
+    public override string ToString() => WebClient ? "a web client's code link" : "the sign-in link";
 }
 
 /// <summary>
@@ -63,13 +64,21 @@ public sealed class EngineRuntime
     public bool WebRootServed { get; init; }
 
     /// <summary>
-    /// What opens the editor when the user asks for it (the menu's Open Editor, a second launch): with no web client served
-    /// here and exactly one cross origin allowed, that origin's pairing link (a release build's configured web client);
-    /// otherwise the sign-in link (<see cref="AuthUrl"/>), to the web client served here.
+    /// What the engine opens when the user asks for it (the menu's Open Editor, a second launch): with no web client served
+    /// here and exactly one cross origin allowed, that origin's code link (a release build's configured web client) with a
+    /// new one-time pairing code from <paramref name="newCode"/>, asked for only then (<see cref="CodeUrlFor"/>: the session
+    /// token is never in it); otherwise the sign-in link (<see cref="AuthUrl"/>), to the web client served here.
     /// </summary>
-    public EditorLink EditorLink => !WebRootServed && CrossOrigins.Count == 1
-        ? new EditorLink(PairingUrlFor(CrossOrigins[0]), WebClient: true)
+    public EditorLink EditorLinkFor(Func<string> newCode) => !WebRootServed && CrossOrigins.Count == 1
+        ? new EditorLink(CodeUrlFor(CrossOrigins[0], newCode()), WebClient: true)
         : new EditorLink(AuthUrl, WebClient: false);
+
+    /// <summary>
+    /// The code link for a cross-origin client: its own origin with the engine's URL and a one-time pairing code in the
+    /// fragment (<c>{origin}/#engine={BaseUrl}&amp;code={code}</c>), which the client exchanges once for the run's token
+    /// and a lasting pairing (spec/docs/api.md, "Pairing").
+    /// </summary>
+    public string CodeUrlFor(string origin, string code) => $"{origin}/#engine={BaseUrl}&code={code}";
 
     /// <summary>
     /// Origins of web clients served from elsewhere (<c>--allow-origin</c>): allowed like the others, and the only

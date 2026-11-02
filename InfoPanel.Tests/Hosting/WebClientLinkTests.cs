@@ -79,20 +79,22 @@ public sealed class WebClientLinkTests
     // ---- the link ---------------------------------------------------------------------------------------------------
 
     [Fact]
-    public void WithNoWebRoot_AndOneCrossOrigin_TheLinkIsItsPairingLink()
+    public void WithNoWebRoot_AndOneCrossOrigin_TheLinkIsItsCodeLink_WithNoToken()
     {
         var runtime = new EngineRuntime(5300, "tok", [], ["https://client.example"]) { WebRootServed = false };
 
-        Assert.Equal(new EditorLink("https://client.example/#engine=http://127.0.0.1:5300&token=tok", WebClient: true), runtime.EditorLink);
+        Assert.Equal(new EditorLink("https://client.example/#engine=http://127.0.0.1:5300&code=q3Zt0vK8Lw2NxR5yB7mC1A", WebClient: true),
+            runtime.EditorLinkFor(() => "q3Zt0vK8Lw2NxR5yB7mC1A"));
     }
 
     [Fact]
-    public void WithAWebRoot_OrNoneOrTwoCrossOrigins_TheLinkIsTheSignInLink()
+    public void WithAWebRoot_OrNoneOrTwoCrossOrigins_TheLinkIsTheSignInLink_AndNoCodeIsMinted()
     {
         var signIn = new EditorLink("http://127.0.0.1:5300/auth/tok", WebClient: false);
-        Assert.Equal(signIn, new EngineRuntime(5300, "tok", [], ["https://client.example"]) { WebRootServed = true }.EditorLink);
-        Assert.Equal(signIn, new EngineRuntime(5300, "tok", ["http://localhost:5180"], []) { WebRootServed = false }.EditorLink);
-        Assert.Equal(signIn, new EngineRuntime(5300, "tok", [], ["https://a.example", "https://b.example"]) { WebRootServed = false }.EditorLink);
+        string NoCode() => throw new InvalidOperationException("No code is minted for the sign-in link.");
+        Assert.Equal(signIn, new EngineRuntime(5300, "tok", [], ["https://client.example"]) { WebRootServed = true }.EditorLinkFor(NoCode));
+        Assert.Equal(signIn, new EngineRuntime(5300, "tok", ["http://localhost:5180"], []) { WebRootServed = false }.EditorLinkFor(NoCode));
+        Assert.Equal(signIn, new EngineRuntime(5300, "tok", [], ["https://a.example", "https://b.example"]) { WebRootServed = false }.EditorLinkFor(NoCode));
     }
 
     // ---- on the engine host -------------------------------------------------------------------------------------------
@@ -123,17 +125,65 @@ public sealed class WebClientLinkTests
         Assert.Empty(browser.Links);
     }
 
+    /// <summary>
+    /// Open Editor mints a code each time and opens the web client's code link, never the session token; a code from an
+    /// opened link exchanges once.
+    /// </summary>
     [Fact]
-    public void OpenEditor_WithoutAWebRoot_OpensTheWebClientsPairingLink()
+    public async Task OpenEditor_WithoutAWebRoot_OpensACodeLink_ANewCodeEachTime_WithNoToken()
     {
         using var engine = new EngineFactory();
         var browser = new RecordingBrowserLauncher();
         using var factory = WithoutWebRoot(engine, browser);
 
         factory.Services.GetRequiredService<EditorOpener>().Open();
+        factory.Services.GetRequiredService<EditorOpener>().Open();
 
-        Assert.Equal([new EditorLink($"{EngineFactory.CrossOrigin}/#engine=http://127.0.0.1:{EngineFactory.Port}&token={EngineFactory.Token}", WebClient: true)],
-            browser.Links);
+        Assert.Equal(2, browser.Links.Count);
+        var codes = new List<string>();
+        foreach (var link in browser.Links)
+        {
+            Assert.True(link.WebClient);
+            Assert.DoesNotContain(EngineFactory.Token, link.Url);
+            var match = System.Text.RegularExpressions.Regex.Match(link.Url,
+                $"^{System.Text.RegularExpressions.Regex.Escape($"{EngineFactory.CrossOrigin}/#engine=http://127.0.0.1:{EngineFactory.Port}&code=")}([A-Za-z0-9_-]{{22}})$");
+            Assert.True(match.Success, link.Url);
+            codes.Add(match.Groups[1].Value);
+        }
+
+        Assert.NotEqual(codes[0], codes[1]);
+        using var client = factory.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false });
+        HttpContent Exchange() => new StringContent(System.Text.Json.JsonSerializer.Serialize(new { code = codes[0], name = "Chrome" }), System.Text.Encoding.UTF8, "application/json");
+        using (var first = await client.PostAsync("/auth/pairing/code", Exchange(), Ct))
+            Assert.Equal(System.Net.HttpStatusCode.Created, first.StatusCode);
+        using (var second = await client.PostAsync("/auth/pairing/code", Exchange(), Ct))
+            Assert.Equal(System.Net.HttpStatusCode.Forbidden, second.StatusCode);
+    }
+
+    /// <summary>
+    /// What the browser is handed is a private redirect file: it holds the code link and no session token. The launcher's
+    /// process start is replaced, so nothing opens.
+    /// </summary>
+    [Fact]
+    public void OpenEditor_WithoutAWebRoot_WritesTheCodeLinkIntoTheRedirectFile_AndNoToken()
+    {
+        using var engine = new EngineFactory();
+        var started = new List<System.Diagnostics.ProcessStartInfo>();
+        using var factory = engine.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Engine:WebRoot", "");
+            builder.ConfigureTestServices(services => services.AddSingleton(sp => new BrowserLauncher(
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<BrowserLauncher>>(), sp.GetRequiredService<RedirectFiles>(),
+                start => { started.Add(start); return 0; }, findChrome: () => "/Applications/Google Chrome.app", os: BrowserOS.MacOS)));
+        });
+
+        factory.Services.GetRequiredService<EditorOpener>().Open();
+
+        var file = Assert.Single(started.SelectMany(s => s.ArgumentList).Where(a => a.EndsWith(".html", StringComparison.Ordinal)));
+        var html = File.ReadAllText(file);
+        Assert.Contains($"{EngineFactory.CrossOrigin}/#engine=http://127.0.0.1:{EngineFactory.Port}&amp;code=", html);
+        Assert.DoesNotContain(EngineFactory.Token, html);
+        Assert.DoesNotContain("token=", html);
     }
 
     [Fact]

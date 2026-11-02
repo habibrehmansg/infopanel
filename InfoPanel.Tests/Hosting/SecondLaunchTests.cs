@@ -48,8 +48,12 @@ public sealed class SecondLaunchTests
         Assert.Equal(3, exit);
         Assert.Contains("InfoPanel is already running; opened the editor", said);
         Assert.DoesNotContain(EngineFactory.Token, said);
-        Assert.Equal([new EditorLink($"{EngineFactory.CrossOrigin}/#engine=http://127.0.0.1:{EngineFactory.Port}&token={EngineFactory.Token}", WebClient: true)],
-            browser.Links);
+        var link = Assert.Single(browser.Links);
+        Assert.True(link.WebClient);
+        Assert.Matches(
+            $"^{System.Text.RegularExpressions.Regex.Escape($"{EngineFactory.CrossOrigin}/#engine=http://127.0.0.1:{EngineFactory.Port}&code=")}[A-Za-z0-9_-]{{22}}$",
+            link.Url);
+        Assert.DoesNotContain(EngineFactory.Token, link.Url);
     }
 
     [Fact]
