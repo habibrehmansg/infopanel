@@ -120,10 +120,11 @@ public sealed class LocalChannelTests : IDisposable
         using (var crashed = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified))
         {
             // .NET removes the file of a socket it closes, so it is bound elsewhere and moved into place: closed, it is
-            // left there as a crash leaves it.
+            // left there as a crash leaves it. It never listens: a copy of this process forked by another test's program
+            // launch holds its descriptor until that launch's exec, which can stall for seconds, and a listening copy
+            // would take the companion's connect and then drop it.
             var elsewhere = Path.Combine(Run, "crashed.sock");
             crashed.Bind(new UnixDomainSocketEndPoint(elsewhere));
-            crashed.Listen(1);
             File.Move(elsewhere, endpoint.SocketPath!);
         }
 
