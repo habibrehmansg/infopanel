@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Ipc;
@@ -95,11 +96,11 @@ public sealed class PluginEngineTests : IDisposable
         await Eventually.Until(() => hub.GetStatus(SensorKey.Plugin("/test-fixture/readings/counter")) == SensorStatus.Stale, "the sensor is stale while its host restarts");
         await Until(() => runner.ProcessId is { } pid && pid != first && hub.GetStatus(SensorKey.Plugin("/test-fixture/readings/counter")) == SensorStatus.Live,
             "a new host runs and the sensor is live again");
-        var second = runner.ProcessId!.Value;
+        using var second = HostProcess.Of(runner.ProcessId!.Value);
 
         engine.Dispose();
 
-        Assert.True(Exited(second), "the host is gone once the engine stopped");
+        Assert.True(await Ended(second), "the host is gone once the engine stopped");
     }
 
     [Fact]
@@ -214,18 +215,30 @@ public sealed class PluginEngineTests : IDisposable
     private static async Task<JsonElement[]> Listed(HttpClient client)
     {
         JsonElement[] sensors = [];
-        await Until(() =>
+        // Each read awaited, never blocked on: a thread held for it is one the engine under test can't use.
+        await Until(async () =>
         {
-            sensors = client.GetFromJsonAsync<JsonElement[]>("/api/sensors", Ct).GetAwaiter().GetResult()!;
+            sensors = (await client.GetFromJsonAsync<JsonElement[]>("/api/sensors", Ct))!;
             return sensors.Any(s => s.GetProperty("key").GetString() == Counter && s.GetProperty("status").GetString() == "live");
         }, "the test plugin's sensors are listed, live");
         return sensors;
     }
 
-    private static async Task Until(Func<bool> condition, string what, TimeSpan? within = null)
+    /// <summary>
+    /// The most a wait lasts by default: a sanity limit, not the behaviour under test. The host is the built engine as a
+    /// child process, and under parallel full runs this Mac's program launches and file opens can stall for tens of seconds
+    /// (its endpoint protection authorises each one), so a host's start (or its restart, after a connect the engine gave
+    /// up on) took over 20 s. Each wait still ends as soon as its condition holds.
+    /// </summary>
+    private static readonly TimeSpan Limit = TimeSpan.FromSeconds(120);
+
+    private static Task Until(Func<bool> condition, string what, TimeSpan? within = null) =>
+        Until(() => Task.FromResult(condition()), what, within);
+
+    private static async Task Until(Func<Task<bool>> condition, string what, TimeSpan? within = null)
     {
-        var deadline = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(20));
-        while (!condition())
+        var deadline = DateTime.UtcNow + (within ?? Limit);
+        while (!await condition())
         {
             if (DateTime.UtcNow > deadline)
                 Assert.Fail($"timed out waiting until {what}");
@@ -233,16 +246,101 @@ public sealed class PluginEngineTests : IDisposable
         }
     }
 
-    private static bool Exited(int pid)
+    /// <summary>
+    /// How long a host may outlive the engine's stop, judged by the operating system: the stop waits for its host, so this
+    /// is only slack for scheduling. Not <see cref="Limit"/>, which is patience for a start.
+    /// </summary>
+    private static readonly TimeSpan GoneWithin = TimeSpan.FromSeconds(5);
+
+    /// <summary>Whether the host ends within <see cref="GoneWithin"/>, as the operating system tells (<see cref="HostProcess.Runs"/>).</summary>
+    private static async Task<bool> Ended(HostProcess host)
     {
-        try
+        var since = Stopwatch.StartNew();
+        while (host.Runs())
         {
-            using var process = Process.GetProcessById(pid);
-            return process.WaitForExit(TimeSpan.FromSeconds(5));
+            if (since.Elapsed > GoneWithin)
+                return false;
+            await Task.Delay(50, Ct);
         }
-        catch (ArgumentException)
-        {
-            return true;
-        }
+        return true;
     }
+
+    /// <summary>
+    /// A host's process, identified while it runs, and whether it still runs, asked of the operating system, not of .NET:
+    /// on Unix .NET learns of a child's end late (it handles a child's end only while no program launch of this process
+    /// holds its start lock, and another test's launch can stall for seconds), and until it does, the ended child keeps
+    /// its pid as a zombie. A pid another process takes after the host ended is never read as the host. Windows: the one
+    /// handle opened while the host ran, kept and signalled at its end (no process takes the id while a handle to it is
+    /// open). macOS (<c>proc_pidinfo</c>, which finds no zombie) and Linux (<c>/proc/&lt;pid&gt;/stat</c>): the start time
+    /// read while the host ran, compared with the pid's at each look (another start is another process: the host is gone).
+    /// </summary>
+    private sealed class HostProcess : IDisposable
+    {
+        private readonly int _pid;
+        private readonly Process? _handle;
+        private readonly ulong _start;
+
+        private HostProcess(int pid, Process? handle, ulong start)
+        {
+            _pid = pid;
+            _handle = handle;
+            _start = start;
+        }
+
+        public static HostProcess Of(int pid)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var process = Process.GetProcessById(pid);
+                _ = process.SafeHandle; // opened now, while the host runs, and kept for every look
+                return new HostProcess(pid, process, 0);
+            }
+
+            return Look(pid) is { Zombie: false } seen ? new HostProcess(pid, null, seen.Start) : throw new InvalidOperationException($"the host {pid} isn't running");
+        }
+
+        public bool Runs() =>
+            _handle != null ? !_handle.WaitForExit(0) : Look(_pid) is { } seen && seen.Start == _start && !seen.Zombie;
+
+        /// <summary>
+        /// The process at <paramref name="pid"/> now, its start time and whether it is a zombie; none when there is no
+        /// process there, or one this user can't read (which isn't the host: the host is this user's).
+        /// </summary>
+        private static (ulong Start, bool Zombie)? Look(int pid)
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                var info = new byte[ProcBsdInfoSize];
+                if (proc_pidinfo(pid, ProcPidTbsdInfo, 0, info, info.Length) <= 0)
+                {
+                    var error = Marshal.GetLastPInvokeError();
+                    return error is Esrch or Eperm ? null : throw new InvalidOperationException($"proc_pidinfo({pid}) failed: errno {error}");
+                }
+                var start = BitConverter.ToUInt64(info, 120) * 1_000_000 + BitConverter.ToUInt64(info, 128); // pbi_start_tvsec, pbi_start_tvusec
+                return (start, BitConverter.ToUInt32(info, 4) == Szomb); // pbi_status
+            }
+
+            try
+            {
+                var stat = File.ReadAllText($"/proc/{pid}/stat");
+                var fields = stat[(stat.LastIndexOf(')') + 2)..].Split(' '); // from the third, the state
+                return (ulong.Parse(fields[22 - 3], System.Globalization.CultureInfo.InvariantCulture), fields[0] is "Z" or "X"); // the 22nd, starttime
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) // no such file, or the process went as it was read
+            {
+                return null;
+            }
+        }
+
+        public void Dispose() => _handle?.Dispose();
+    }
+
+    private const int ProcPidTbsdInfo = 3;     // PROC_PIDTBSDINFO
+    private const int ProcBsdInfoSize = 136;   // sizeof(struct proc_bsdinfo)
+    private const int Eperm = 1;
+    private const int Esrch = 3;
+    private const uint Szomb = 5;
+
+    [DllImport("/usr/lib/libproc.dylib", SetLastError = true)]
+    private static extern int proc_pidinfo(int pid, int flavor, ulong arg, byte[] buffer, int bufferSize);
 }

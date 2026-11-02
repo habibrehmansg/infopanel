@@ -15,7 +15,13 @@ namespace InfoPanel.Tests.Plugins;
 // serves, with the test plugin, and a home folder of its own, so "nothing written there" is checked on a clean folder.
 public sealed class PluginHostModeTests : IDisposable
 {
-    private static readonly TimeSpan Bound = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// The most a step's wait lasts (the host connecting, answering, exiting after its shutdown): a sanity limit, not the
+    /// behaviour under test. Under parallel full runs this Mac's program launches and file opens can stall for tens of
+    /// seconds (its endpoint protection authorises each one), and a host that is the built engine opens many; 30 s didn't
+    /// always cover its connect. Each wait still ends as soon as its step does.
+    /// </summary>
+    private static readonly TimeSpan Bound = TimeSpan.FromSeconds(120);
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private readonly string _root = PluginFixtures.NewTempRoot("ip-hm-");
