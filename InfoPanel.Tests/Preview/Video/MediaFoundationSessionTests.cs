@@ -171,6 +171,15 @@ public class MediaFoundationSessionTests
         return calls.FirstOrDefault(c => c.Name == "Leave" && c.Seq > enter.Seq && c.Thread == enter.Thread)?.Seq ?? long.MaxValue;
     }
 
+    /// <summary>From the call marked <paramref name="mark"/> to the end of the latest teardown thread, on the calls' own timestamps.</summary>
+    private static TimeSpan TeardownTime(FakeMfCatalog catalog, long mark)
+    {
+        var calls = catalog.Calls;
+        var from = calls.Single(c => c.Seq == mark);
+        var end = ThreadEnd(catalog, "teardown");
+        return Stopwatch.GetElapsedTime(from.At, calls.Single(c => c.Seq == end).At);
+    }
+
     private static IEnumerable<FakeMfCall> PortCalls(FakeMfCatalog catalog, FakeMfPort port) => catalog.Calls.Where(c => c.Port == port.Id);
 
     private static long SeqOf(FakeMfCatalog catalog, FakeMfPort port, string name, string? detail = null) =>
@@ -1059,10 +1068,12 @@ public class MediaFoundationSessionTests
         }
 
         var mark = rig.Catalog.Mark("abort");
-        var watch = Stopwatch.StartNew();
         var teardown = run.Session.Abort();
         await Eventually(() => teardown.IsCompleted, "the abort wakes the input thread and the teardown, which joins it, ends");
-        Assert.True(watch.ElapsedMilliseconds < 100, $"the teardown took {watch.ElapsedMilliseconds} ms");
+        // Timed on the calls' own clock, from the abort's mark to the teardown thread's end: the wait above polls through
+        // the thread pool, which a full run can starve for longer than the bound while the teardown itself takes under 1 ms.
+        var took = TeardownTime(rig.Catalog, mark);
+        Assert.True(took < TimeSpan.FromMilliseconds(100), $"the teardown took {took.TotalMilliseconds:0} ms");
         var backends = new H264Backends([rig.Backend], NullLogger.Instance);
         Assert.True(await Quarantine.WatchAsync(teardown, rig.Backend, backends, rig.Time, NullLogger.Instance, TestContext.Current.CancellationToken));
         Assert.Equal(0, backends.Quarantines(rig.Backend));

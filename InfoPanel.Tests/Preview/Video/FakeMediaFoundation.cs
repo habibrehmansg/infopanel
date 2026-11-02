@@ -3,8 +3,11 @@ using InfoPanel.Preview.Video;
 
 namespace InfoPanel.Tests.Preview.Video;
 
-/// <summary>A call the fake saw, in order across the catalog: its port (-1: the catalog), name, detail and thread.</summary>
-internal sealed record FakeMfCall(long Seq, int Port, string Name, string Detail, int Thread);
+/// <summary>
+/// A call the fake saw, in order across the catalog: its port (-1: the catalog), name, detail, thread, and when
+/// (<see cref="System.Diagnostics.Stopwatch.GetTimestamp"/>, taken in order with the sequence number).
+/// </summary>
+internal sealed record FakeMfCall(long Seq, int Port, string Name, string Detail, int Thread, long At);
 
 /// <summary>
 /// Media Foundation's hardware encoders as a script, beneath <see cref="IMfCatalog"/> and <see cref="IMfEncoderPort"/>:
@@ -87,7 +90,7 @@ internal sealed class FakeMfCatalog : IMfCatalog
         lock (_lock)
         {
             var seq = ++_seq;
-            _calls.Add(new FakeMfCall(seq, port, name, detail, Environment.CurrentManagedThreadId));
+            _calls.Add(new FakeMfCall(seq, port, name, detail, Environment.CurrentManagedThreadId, System.Diagnostics.Stopwatch.GetTimestamp()));
             return seq;
         }
     }
