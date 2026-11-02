@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using InfoPanel.SensorHelper;
 using Xunit;
 using static InfoPanel.Core.Tests.SensorHelper.HelperTestKit;
+using TimerTimeProvider = InfoPanel.Core.Tests.Sensors.TimerTimeProvider;
 
 namespace InfoPanel.Core.Tests.SensorHelper;
 
@@ -13,7 +14,8 @@ namespace InfoPanel.Core.Tests.SensorHelper;
 /// the pipe closes and when the engine dies, while the tree hangs inside a call (never closing it under that call); a
 /// close that hangs is cut at the 2 s bound, and the engine's end cuts it at once; a thread holding the console's lock
 /// doesn't hold the exit; a process that took the engine's id
-/// is never served; a computer that fails to open ends it. Each time is written to the test's output.
+/// is never served; a computer that fails to open ends it. Each time is written to the test's output. That a hung close
+/// is never cut before its bound is shown on the helper's own clock, its lifetime run in this process on a manual one.
 /// </summary>
 public sealed class HelperChildProcessTests
 {
@@ -270,6 +272,92 @@ public sealed class HelperChildProcessTests
         Assert.True(cut <= HelperProcess.CleanupBound + Slack, $"cut {cut.TotalMilliseconds:0} ms into the close: past the bound");
         Assert.True(after >= HelperProcess.CleanupBound - TimeSpan.FromMilliseconds(100), $"ended {after.TotalMilliseconds:0} ms on: before the bound, so the close wasn't given its time");
         End(engine);
+    }
+
+    /// <summary>The engine as the helper's lifetime sees it when run in this process: always the process it was told of, never ending.</summary>
+    private sealed class StandInEngine : IHelperParent
+    {
+        public const int Pid = 4242;
+
+        public long StartTime => 639_000_000_000_000_000;
+
+        public Task Exited => EngineRunsOn;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>A manual clock (<see cref="TimerTimeProvider"/>) that counts the timers set on it and those that fired.</summary>
+    private sealed class CountingTime(TimerTimeProvider inner) : TimeProvider
+    {
+        public int Set;
+        public int Fired;
+
+        public override long TimestampFrequency => inner.TimestampFrequency;
+
+        public override long GetTimestamp() => inner.GetTimestamp();
+
+        public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = inner.CreateTimer(s =>
+            {
+                Interlocked.Increment(ref Fired);
+                callback(s);
+            }, state, dueTime, period);
+            Interlocked.Increment(ref Set); // once its due time is set, so a test that saw it can move the clock past it
+            return timer;
+        }
+
+        public void Advance(TimeSpan by) => inner.Advance(by);
+    }
+
+    /// <summary>
+    /// The cut of <see cref="ACloseThatHangs_IsCutAtTheBound_ThenTheProcessEnds"/>, never before the bound: the helper's
+    /// lifetime runs in this process on a manual clock, where no late thread or late notice of an exit can blur the
+    /// time. Up to the bound's last tick the close is still given its time; at the bound it is cut, and the process
+    /// exits. The bound is the one the helper documents, not read from it.
+    /// </summary>
+    [Fact]
+    public async Task ACloseThatHangs_IsNeverCutBeforeTheBound_OnTheHelpersClock()
+    {
+        var bound = TimeSpan.FromSeconds(2);
+        var time = new CountingTime(new TimerTimeProvider(DateTimeOffset.UnixEpoch));
+        var tree = FakeTree.Pc();
+        tree.DisposeGo.Reset();
+        var engine = new StandInEngine();
+        var exited = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pipe = PipeName();
+        var options = new HelperProcessOptions
+        {
+            OpenParent = pid => pid == StandInEngine.Pid ? engine : null,
+            ClientProcessId = _ => StandInEngine.Pid, // the test is the client, and on Windows its real id isn't the stand-in's
+            Time = time,
+            Exit = code => exited.TrySetResult(code),
+            Error = TextWriter.Null,
+        };
+        var run = HelperProcess.RunAsync([.. new HelperCommandLine(pipe, StandInEngine.Pid, engine.StartTime).Arguments], () => tree, "2.0.0-test", options);
+        var client = await Connect(pipe);
+        await client.HelloAsync(Cancel);
+
+        await client.DisposeAsync();
+        Assert.True(tree.DisposeEntered.Wait(Patience, Cancel), "the helper closes the tree");
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref time.Set) > 0, Patience), "the helper sets its bound on its own clock");
+        Assert.Equal(1, Volatile.Read(ref time.Set));
+
+        // The clock's timers fire inside Advance: none having fired, nothing cut the close.
+        time.Advance(bound - TimeSpan.FromTicks(1));
+        Assert.Equal(0, Volatile.Read(ref time.Fired));
+        Assert.False(exited.Task.IsCompleted, "the helper exited before the bound");
+
+        time.Advance(TimeSpan.FromTicks(1));
+        Assert.Equal(1, Volatile.Read(ref time.Fired));
+        Assert.Equal(0, await exited.Task.WaitAsync(Patience, Cancel));
+        Assert.Equal(0, await run.WaitAsync(Patience, Cancel));
+        Assert.False(tree.Disposed);
+        tree.DisposeGo.Set();
     }
 
     [Fact]

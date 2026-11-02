@@ -66,11 +66,30 @@ public static class HelperProcess
         };
 
         // The engine dead, nothing is closed: the process's end frees it. Otherwise the tree is closed only when no
-        // call is inside it, and only for as long as the bound and the engine allow.
+        // call is inside it, and only for as long as the bound (on the helper's clock) and the engine allow.
         if (!engine.Exited.IsCompleted && server.Retire())
         {
             var close = Task.Factory.StartNew(tree.Dispose, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-            Task.WaitAny([close, engine.Exited], options.CleanupBound);
+            Task[] tasks = [close, engine.Exited];
+            try
+            {
+                // A starved pool can't run a timer callback; the timed wait returns on its own, so the system clock uses it.
+                // Only an injected clock takes the cancellation timer.
+                if (options.Time == TimeProvider.System)
+                {
+                    Task.WaitAny(tasks, options.CleanupBound);
+                }
+                else
+                {
+                    using var bound = new CancellationTokenSource(options.CleanupBound, options.Time);
+                    Task.WaitAny(tasks, bound.Token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // The bound passed: the close is cut.
+            }
+
             _ = close.Exception; // a close that threw changes nothing: the process ends either way
         }
 
@@ -109,6 +128,9 @@ public sealed class HelperProcessOptions
 {
     /// <summary>The longest the tree's close may take (<see cref="HelperProcess.CleanupBound"/>).</summary>
     public TimeSpan CleanupBound { get; init; } = HelperProcess.CleanupBound;
+
+    /// <summary>The clock <see cref="CleanupBound"/> runs on: the system's.</summary>
+    public TimeProvider Time { get; init; } = TimeProvider.System;
 
     /// <summary>Opens the engine's process by its id (<see cref="HelperParent.Open"/>).</summary>
     public Func<int, IHelperParent?> OpenParent { get; init; } = HelperParent.Open;
