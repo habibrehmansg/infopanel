@@ -327,7 +327,7 @@ try
         });
         // HWiNFO's gadget values (the readings ticked "Report value in Gadget"), read from the user's registry.
         builder.Services.AddSingleton<ISensorSource>(sp => HwInfoGadgetSource.CreateWindows(sp.GetRequiredService<TimeProvider>()));
-        // LibreHardwareMonitor's sensors, after HWiNFO's (1.4.x's start order): the sensor helper beside the engine, started
+        // LibreHardwareMonitor's sensors, after HWiNFO's (1.4.x's start order): the sensor helper in its own folder beside the engine, started
         // by the source and run by sources.libre.* as they change; --record-sensors records its answers too.
         builder.Services.AddSingleton<ISensorSource>(sp =>
         {

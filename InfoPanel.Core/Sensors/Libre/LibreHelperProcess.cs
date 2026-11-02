@@ -47,9 +47,9 @@ public sealed class LibreHelperProcess : ILibreHelperLauncher
         _log = (log ?? Log.Logger).ForContext<LibreHelperProcess>();
     }
 
-    /// <summary>The helper the engine's build carries: <c>InfoPanel.SensorHelper.exe</c> beside the engine.</summary>
+    /// <summary>The helper the engine's publish carries: <c>sensor-helper/InfoPanel.SensorHelper.exe</c>, in a folder of its own beside the engine.</summary>
     public static string DefaultPath =>
-        Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "InfoPanel.SensorHelper.exe" : "InfoPanel.SensorHelper");
+        Path.Combine(AppContext.BaseDirectory, "sensor-helper", OperatingSystem.IsWindows() ? "InfoPanel.SensorHelper.exe" : "InfoPanel.SensorHelper");
 
     /// <summary>The process id of the helper started last (0 before any). For tests.</summary>
     internal int LastProcessId { get; private set; }

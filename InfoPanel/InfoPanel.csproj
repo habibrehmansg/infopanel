@@ -80,12 +80,16 @@
   </Target>
 
   <!-- The sensor helper (InfoPanel.SensorHelper, which hosts LibreHardwareMonitorLib for the Libre source): a publish for
-       a Windows runtime (dotnet publish -r win-x64) publishes it for that runtime, framework-dependent as the engine is
-       by default, and puts it beside the engine, where the engine starts it (InfoPanel.SensorHelper.exe, with its own
-       deps and runtimeconfig files). Only then: LibreHardwareMonitorLib's assemblies exist only for Windows runtimes, so
-       a build, or a publish for any other runtime, carries no helper (the Libre source then says helperFailed). Restored
-       with the engine for that runtime, as the bundled plugin is, and published into the engine's intermediate folder
-       first; added to the publish list after it is computed, as the bundled plugin's files are. -->
+       a Windows runtime (dotnet publish -r win-x64), self-contained or not, publishes it for that runtime, framework-
+       dependent whatever the engine is (it rolls forward to an installed .NET), and puts it in its own folder,
+       sensor-helper\ beside the engine, where the engine starts it (sensor-helper\InfoPanel.SensorHelper.exe, with its
+       own deps and runtimeconfig files; LibreHelperProcess.DefaultPath). Its own folder, because in a self-contained
+       publish the helper's apphost would find the engine's hostfxr.dll beside it, take that folder for its .NET and fail,
+       and because the two carry some of the same assemblies (System.Threading.AccessControl.dll), which can't share a
+       folder. Only then: LibreHardwareMonitorLib's assemblies exist only for Windows runtimes, so a build, or a publish
+       for any other runtime, carries no helper (the Libre source then says helperFailed). Restored with the engine for
+       that runtime, as the bundled plugin is, and published into the engine's intermediate folder first; added to the
+       publish list after it is computed, as the bundled plugin's files are. -->
   <PropertyGroup>
     <_PublishesSensorHelper Condition="$(RuntimeIdentifier.StartsWith('win-'))">true</_PublishesSensorHelper>
   </PropertyGroup>
@@ -105,7 +109,7 @@
              RemoveProperties="TargetFramework;NoBuild" />
     <ItemGroup>
       <_SensorHelperFile Include="$(_SensorHelperPublishDir)**\*" Exclude="$(_SensorHelperPublishDir)**\*.pdb" />
-      <ResolvedFileToPublish Include="@(_SensorHelperFile)" RelativePath="%(_SensorHelperFile.RecursiveDir)%(_SensorHelperFile.Filename)%(_SensorHelperFile.Extension)" CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="@(_SensorHelperFile)" RelativePath="sensor-helper$([System.IO.Path]::DirectorySeparatorChar)%(_SensorHelperFile.RecursiveDir)%(_SensorHelperFile.Filename)%(_SensorHelperFile.Extension)" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 

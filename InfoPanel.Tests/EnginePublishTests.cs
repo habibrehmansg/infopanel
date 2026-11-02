@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using InfoPanel.Sensors.Libre;
 using InfoPanel.Tests.Editing;
 using Xunit;
 
@@ -35,6 +36,8 @@ public class EnginePublishTests
             CheckIsolated(problems, artifacts, restoreFiles);
             var listed = await CheckDeps(problems, "engine", root, "InfoPanel.deps.json");
             // The sensor helper is published for Windows runtimes only (LibreHardwareMonitor's assemblies are Windows ones).
+            if (Directory.Exists(Path.Combine(root, "sensor-helper")))
+                problems.Add("sensor-helper/: the sensor helper's folder, in a publish for no runtime");
             foreach (var helperFile in new[] { "InfoPanel.SensorHelper.dll", "InfoPanel.SensorHelper.deps.json", "LibreHardwareMonitorLib.dll" })
             {
                 if (File.Exists(Path.Combine(root, helperFile)))
@@ -83,13 +86,15 @@ public class EnginePublishTests
     }
 
     /// <summary>
-    /// A publish for Windows (<c>-r win-x64</c>, framework-dependent) carries the sensor helper beside the engine, where
-    /// the Libre source starts it: <c>InfoPanel.SensorHelper.exe</c> with its own deps and runtimeconfig files, everything
-    /// either deps file lists in the root at the version it names (so neither overwrote the other's), LibreHardwareMonitor
-    /// among them. (A publish for no runtime or another carries none: the test above.)
+    /// A publish for Windows (<c>-r win-x64</c>, framework-dependent) carries the sensor helper in its own folder,
+    /// <c>sensor-helper/</c> beside the engine, where the Libre source starts it (<see cref="LibreHelperProcess.DefaultPath"/>):
+    /// <c>InfoPanel.SensorHelper.exe</c> with its own deps and runtimeconfig files, everything its deps file lists in that
+    /// folder, LibreHardwareMonitor among them, and none of its files in the engine's root (in a self-contained publish the
+    /// helper's apphost would take the engine's <c>hostfxr.dll</c> for its .NET). (A publish for no runtime or another
+    /// carries none: the test above.)
     /// </summary>
     [Fact]
-    public async Task AWindowsPublish_CarriesTheSensorHelperBesideTheEngine()
+    public async Task AWindowsPublish_CarriesTheSensorHelperInItsOwnFolder()
     {
         var dir = Directory.CreateTempSubdirectory("infopanel-publish-win-");
         try
@@ -98,14 +103,22 @@ public class EnginePublishTests
             var root = Path.Combine(dir.FullName, "win-x64");
             await Publish(root, artifacts, "-r", "win-x64", "--self-contained", "false");
 
+            var folder = Path.Combine(root, "sensor-helper");
             var problems = new List<string>();
-            foreach (var file in new[] { "InfoPanel.exe", "InfoPanel.SensorHelper.exe", "InfoPanel.SensorHelper.dll", "InfoPanel.SensorHelper.runtimeconfig.json", "LibreHardwareMonitorLib.dll" })
+            if (!File.Exists(Path.Combine(root, "InfoPanel.exe")))
+                problems.Add("InfoPanel.exe is missing from the Windows publish");
+            foreach (var file in new[] { "InfoPanel.SensorHelper.exe", "InfoPanel.SensorHelper.dll", "InfoPanel.SensorHelper.runtimeconfig.json", "LibreHardwareMonitorLib.dll" })
             {
-                if (!File.Exists(Path.Combine(root, file)))
-                    problems.Add($"{file} is missing from the Windows publish");
+                if (!File.Exists(Path.Combine(folder, file)))
+                    problems.Add($"sensor-helper/{file} is missing from the Windows publish");
+                if (File.Exists(Path.Combine(root, file)))
+                    problems.Add($"{file}: the sensor helper's, in the engine's root");
             }
+            // The engine starts the helper from where the publish puts it.
+            if (LibreHelperProcess.DefaultPath != Path.Combine(AppContext.BaseDirectory, "sensor-helper", OperatingSystem.IsWindows() ? "InfoPanel.SensorHelper.exe" : "InfoPanel.SensorHelper"))
+                problems.Add($"LibreHelperProcess.DefaultPath isn't in sensor-helper/: {LibreHelperProcess.DefaultPath}");
             await CheckDeps(problems, "engine", root, "InfoPanel.deps.json");
-            var helper = await CheckDeps(problems, "sensor helper", root, "InfoPanel.SensorHelper.deps.json");
+            var helper = await CheckDeps(problems, "sensor helper", folder, "InfoPanel.SensorHelper.deps.json");
             if (!helper.Contains("LibreHardwareMonitorLib.dll"))
                 problems.Add("the sensor helper's deps file doesn't list LibreHardwareMonitorLib.dll");
             // The helper is published through the test's own intermediate folder, never into the project's.
@@ -116,7 +129,7 @@ public class EnginePublishTests
             Assert.True(problems.Count == 0, $"The Windows publish in {root}:\n" + string.Join("\n", problems));
 
             // The helper runs on the runtime the engine needs anyway, rolling forward from its own.
-            using var config = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(root, "InfoPanel.SensorHelper.runtimeconfig.json"), Ct));
+            using var config = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(folder, "InfoPanel.SensorHelper.runtimeconfig.json"), Ct));
             Assert.Equal("Major", config.RootElement.GetProperty("runtimeOptions").GetProperty("rollForward").GetString());
 
         }

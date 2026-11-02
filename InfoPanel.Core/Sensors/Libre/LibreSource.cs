@@ -50,7 +50,7 @@ public sealed class LibreSource : ISensorSource, ISensorStatusSource, ISensorSou
             options ?? new PolledSensorSourceOptions { Interval = Interval }, time, SensorKeySpace.Of(SensorType.Libre), log);
     }
 
-    /// <summary>The helper's process beside the engine (<see cref="LibreHelperProcess.DefaultPath"/>).</summary>
+    /// <summary>The helper's process in the engine's <c>sensor-helper</c> folder (<see cref="LibreHelperProcess.DefaultPath"/>).</summary>
     public static LibreSource CreateWindows(Func<LibreSettings> settings, TimeProvider? time = null, LibreSampler.IObserver? observer = null) =>
         new(new LibreHelperProcess(LibreHelperProcess.DefaultPath, time: time), settings, time, observer: observer);
 
