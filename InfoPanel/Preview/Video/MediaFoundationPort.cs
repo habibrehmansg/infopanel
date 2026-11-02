@@ -222,7 +222,7 @@ internal interface IMfEncoderPort
     /// </summary>
     int ProcessOutput(MfOutputAllocation allocation, out MfOutput? output);
 
-    /// <summary><c>MFShutdownObject</c>: ends a blocked <see cref="NextEvent"/> with <see cref="Mf.Shutdown"/>.</summary>
+    /// <summary><c>IMFActivate::ShutdownObject</c>: ends a blocked <see cref="NextEvent"/> with <see cref="Mf.Shutdown"/>.</summary>
     int Shutdown();
 
     /// <summary>Releases the transform and the activation; nothing is called after it.</summary>

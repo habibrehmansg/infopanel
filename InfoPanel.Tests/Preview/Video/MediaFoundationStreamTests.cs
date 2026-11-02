@@ -299,14 +299,20 @@ public class MediaFoundationStreamTests
         using var feed = new Feed(chain);
         Assert.Equal(H264Probe.Available, await chain.Backends.ProbeAsync(chain.Backend));
         chain.Entry.Encoder.BeginHr = Mf.HwMftFailedStartStreaming;
+        var asked = feed.Refreshes;
         feed.Frame();
-        await Eventually(() => chain.Log.Messages.Any(m => m.Contains("is busy")), "the backoff");
+        // The stream logs the backoff before it settles on PNG (the retry time set, then a fresh frame asked for): the
+        // wait is for that ask, its last step, not for the log line alone.
+        await Eventually(() => chain.Log.Messages.Any(m => m.Contains("is busy")) && feed.Refreshes > asked, "the backoff, settled");
         Assert.Equal(VideoStream.Failed, feed.Frame());
 
         chain.Entry.Encoder.BeginHr = Mf.SOk;
         chain.Time.Advance(VideoStream.BusyFirst);
+        var sent = feed.Sent.Count;
         feed.Frame();
-        var frame = await feed.Next("Media Foundation's keyframe after the backoff");
+        await feed.Next("Media Foundation's keyframe after the backoff");
+        // The new session's first frame: a delta may follow it (the backoff's end asks for a fresh frame too).
+        var frame = feed.Sent[sent];
         Assert.True(frame.Header.Keyframe);
         Assert.Equal("hardware", frame.Header.Encoder);
         Assert.False(chain.Backends.IsGivenUp(chain.Backend));
@@ -326,8 +332,10 @@ public class MediaFoundationStreamTests
             first.Frame();
             Assert.True((await first.Next("the first stream's keyframe")).Header.Keyframe);
 
+            var asked = second.Refreshes;
             second.Frame();
-            await Eventually(() => chain.Log.Messages.Any(m => m.Contains("is busy")), "the second stream's start is busy");
+            // The backoff is logged before the stream settles on PNG: the wait is for its fresh-frame ask, the last step.
+            await Eventually(() => chain.Log.Messages.Any(m => m.Contains("is busy")) && second.Refreshes > asked, "the second stream's start is busy, settled");
             Assert.Equal(VideoStream.Failed, second.Frame());
             Assert.False(chain.Backends.IsGivenUp(chain.Backend));
             Assert.DoesNotContain(chain.Log.Messages, m => m.Contains("failed to start") || m.Contains("failed in a stream"));
@@ -335,8 +343,11 @@ public class MediaFoundationStreamTests
             first.Dispose();
             await Eventually(() => chain.Entry.Encoder.Device!.Used == 0, "the first stream's session ends");
             chain.Time.Advance(VideoStream.BusyFirst);
+            var sent = second.Sent.Count;
             second.Frame();
-            var frame = await second.Next("the second stream's keyframe");
+            await second.Next("the second stream's keyframe");
+            // The new session's first frame: a delta may follow it (the backoff's end asks for a fresh frame too).
+            var frame = second.Sent[sent];
             Assert.True(frame.Header.Keyframe);
             Assert.Equal("hardware", frame.Header.Encoder);
         }
