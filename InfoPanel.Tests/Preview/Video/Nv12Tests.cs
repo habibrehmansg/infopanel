@@ -71,6 +71,51 @@ public class Nv12Tests
         }
     }
 
+    /// <summary>Y, Cb and Cr back to RGB with BT.709's exact limited-range maths (Kr 0.2126, Kb 0.0722), rounded.</summary>
+    private static (int R, int G, int B) Inverse(int y, int cb, int cr)
+    {
+        const double kr = 0.2126, kb = 0.0722, kg = 1 - kr - kb;
+        double luma = (y - 16) / 219.0, pb = (cb - 128) / 224.0, pr = (cr - 128) / 224.0;
+        var r = luma + 2 * (1 - kr) * pr;
+        var b = luma + 2 * (1 - kb) * pb;
+        var g = (luma - kr * r - kb * b) / kg;
+        return ((int)Math.Round(255 * r), (int)Math.Round(255 * g), (int)Math.Round(255 * b));
+    }
+
+    /// <summary>The same swatches' colours alone: the eight a Windows spike drew and decoded.</summary>
+    public static TheoryData<string, byte, byte, byte> SwatchColours => new()
+    {
+        { "panel", 24, 26, 32 },
+        { "grey", 128, 128, 128 },
+        { "white", 235, 235, 235 },
+        { "red", 200, 40, 40 },
+        { "green", 40, 180, 80 },
+        { "blue", 40, 90, 220 },
+        { "orange", 250, 160, 30 },
+        { "teal", 20, 160, 170 },
+    };
+
+    [Theory]
+    [MemberData(nameof(SwatchColours))]
+    public void TheSwatches_RoundTripThroughExactBt709Limited_WithinTwo(string name, byte r, byte g, byte b)
+    {
+        // Sixteen pixels a row: eight flat 2 × 2 blocks, so chroma averaging changes nothing and the vector path runs
+        // where the CPU has one; the scalar path too.
+        var layout = Nv12Layout.Packed(16, 2);
+        foreach (var vectorised in new[] { false, true })
+        {
+            var nv12 = Dirty(layout);
+            Nv12.Write(Solid(16, 2, r, g, b), 16, 2, nv12, layout, vectorised);
+            for (var i = 0; i < 32; i++)
+            {
+                var (yAt, cbAt, crAt) = (nv12[i], nv12[32 + (i % 16) / 2 * 2], nv12[32 + (i % 16) / 2 * 2 + 1]);
+                var (br, bg, bb) = Inverse(yAt, cbAt, crAt);
+                Assert.True(Math.Abs(br - r) <= 2 && Math.Abs(bg - g) <= 2 && Math.Abs(bb - b) <= 2,
+                    $"{name} (vectorised {vectorised}): Y {yAt}, Cb {cbAt}, Cr {crAt} give ({br}, {bg}, {bb}), not ({r}, {g}, {b}) within 2");
+            }
+        }
+    }
+
     [Fact]
     public void OddSides_ArePaddedBlack_AndAlphaIsIgnored()
     {
@@ -181,6 +226,41 @@ public class Nv12Tests
         // Sizes that match a layout just inside the limit still have to bring the bytes.
         var big = new Nv12Layout(2, 715_827_882, 2);
         Assert.Throws<ArgumentException>(() => Nv12.Write(rgba, 2, 715_827_882, new byte[small.Size], big));
+    }
+
+    [Fact]
+    public void TheVectorPath_IsBitForBitTheScalarPath_OverRandomImages_OddSides_AndPadding()
+    {
+        Assert.SkipUnless(Nv12.Vectorised, "this computer has no vector acceleration: only the scalar path runs");
+        var rng = new Random(2026_11_02);
+        var cases = new List<(int W, int H, int Extra)>
+        {
+            (1, 1, 0), (15, 3, 0), (16, 2, 0), (17, 5, 3), (31, 7, 0), (32, 4, 64), (33, 1, 1), (1282, 723, 0), (4096, 8, 0),
+        };
+        for (var n = 0; n < 300; n++)
+            cases.Add((rng.Next(1, 400), rng.Next(1, 24), rng.Next(3) == 0 ? 0 : rng.Next(1, 80)));
+
+        foreach (var (w, h, extra) in cases)
+        {
+            // Every byte's extremes as well as noise, so the chroma's clamps and the luma's rounding are reached.
+            var rgba = new byte[w * h * 4 + rng.Next(0, 9)];
+            rng.NextBytes(rgba);
+            for (var i = 0; i < rgba.Length; i++)
+                rgba[i] = rng.Next(4) switch { 0 => 0, 1 => 255, _ => rgba[i] };
+
+            var layout = new Nv12Layout((w + 1) & ~1, (h + 1) & ~1, ((w + 1) & ~1) + extra);
+            var scalar = Dirty(layout);
+            var vector = Dirty(layout);
+            Nv12.Write(rgba, w, h, scalar, layout, vectorised: false);
+            Nv12.Write(rgba, w, h, vector, layout, vectorised: true);
+            var at = scalar.AsSpan().CommonPrefixLength(vector);
+            Assert.True(at == scalar.Length, $"{w} × {h}, pitch {layout.Pitch}: byte {at} is {vector.ElementAtOrDefault(at)} by the vector path, {scalar.ElementAtOrDefault(at)} by the scalar one");
+
+            // The public entry takes the vector path here, and gives the same bytes.
+            var chosen = Dirty(layout);
+            Nv12.Write(rgba, w, h, chosen, layout);
+            Assert.Equal(scalar, chosen);
+        }
     }
 
     /// <summary>
