@@ -131,12 +131,25 @@ public class EnginePublishTests
             // The helper runs on the runtime the engine needs anyway, rolling forward from its own.
             using var config = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(folder, "InfoPanel.SensorHelper.runtimeconfig.json"), Ct));
             Assert.Equal("Major", config.RootElement.GetProperty("runtimeOptions").GetProperty("rollForward").GetString());
+            // Startup hooks off: DOTNET_STARTUP_HOOKS loads nothing into the helper, its task's or an elevated one.
+            Assert.False(config.RootElement.GetProperty("runtimeOptions").GetProperty("configProperties").GetProperty("System.StartupHookProvider.IsSupported").GetBoolean());
+            // A Windows-subsystem program (IMAGE_SUBSYSTEM_WINDOWS_GUI, 2): a task's launch shows no console window.
+            Assert.Equal(2, Subsystem(Path.Combine(folder, "InfoPanel.SensorHelper.exe")));
 
         }
         finally
         {
             dir.Delete(recursive: true);
         }
+    }
+
+    /// <summary>The PE subsystem of the executable at <paramref name="path"/>: its optional header's <c>Subsystem</c>.</summary>
+    private static int Subsystem(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        var pe = BitConverter.ToInt32(bytes, 0x3C);
+        Assert.Equal("PE\0\0", System.Text.Encoding.ASCII.GetString(bytes, pe, 4));
+        return BitConverter.ToUInt16(bytes, pe + 4 + 20 + 68); // signature, file header, then Subsystem at 68 in the optional header
     }
 
     /// <summary>

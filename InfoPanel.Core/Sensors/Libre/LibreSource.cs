@@ -66,11 +66,16 @@ public sealed class LibreSource : ISensorSource, ISensorStatusSource, ISensorSou
 
     /// <summary>
     /// The helper's process in the engine's <c>sensor-helper</c> folder (<see cref="LibreHelperProcess.DefaultPath"/>), the
-    /// PawnIO driver read from Windows' registry.
+    /// PawnIO driver read from Windows' registry. With <paramref name="elevation"/> (Windows), each start runs the
+    /// helper's task as SYSTEM when its user set it up (<see cref="LibreHelperChooser"/>), else the child.
     /// </summary>
-    public static LibreSource CreateWindows(Func<LibreSettings> settings, TimeProvider? time = null, LibreSampler.IObserver? observer = null) =>
-        new(new LibreHelperProcess(LibreHelperProcess.DefaultPath, time: time), settings, time, observer: observer,
-            driverRegistry: OperatingSystem.IsWindows() ? new WindowsPawnIoRegistry() : null);
+    public static LibreSource CreateWindows(Func<LibreSettings> settings, TimeProvider? time = null, LibreSampler.IObserver? observer = null, LibreElevation? elevation = null)
+    {
+        ILibreHelperLauncher launcher = new LibreHelperProcess(LibreHelperProcess.DefaultPath, time: time);
+        if (elevation?.System is { } system)
+            launcher = new LibreHelperChooser(launcher, elevation.TaskUser, system, time: time, fellBack: elevation.HelperFellBack);
+        return new(launcher, settings, time, observer: observer, driverRegistry: OperatingSystem.IsWindows() ? new WindowsPawnIoRegistry() : null);
+    }
 
     public string Id => SourceId;
 
@@ -92,6 +97,12 @@ public sealed class LibreSource : ISensorSource, ISensorStatusSource, ISensorSou
     /// The driver was installed (any thread): the registry is read again and a new helper started at the next round.
     /// </summary>
     public void DriverChanged() => _sampler?.DriverChanged();
+
+    /// <summary>
+    /// The helper's administrator rights changed (any thread; <see cref="LibreElevation"/>): a new helper is started at
+    /// the next round, so the launcher chooses again.
+    /// </summary>
+    public void HelperChanged() => _sampler?.HelperChanged();
 
     /// <summary>
     /// Whether an install that ended well is still being taken (any thread; <see cref="LibreSampler.DriverSettling"/>): the

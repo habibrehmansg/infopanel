@@ -1,0 +1,1 @@
+{"id": "libre", "state": "running", "sensors": 263, "driver": {"state": "installed", "version": "2.2.0.0", "installer": "2.2.0", "lastInstall": null}, "elevation": {"state": "on", "lastChange": {"outcome": "on"}}}

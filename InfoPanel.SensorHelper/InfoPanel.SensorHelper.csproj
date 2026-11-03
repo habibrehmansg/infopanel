@@ -6,8 +6,13 @@
        EnableWindowsTargeting; it runs on Windows only, and its build output carries LibreHardwareMonitorLib only when
        built or published for a Windows runtime (dotnet publish -r win-x64), since the package ships its assemblies per
        runtime. -->
+  <!-- A Windows-subsystem program (WinExe): a scheduled task's launch shows no console window; the engine's child launch
+       still hands it redirected input and output. StartupHookSupport off: the runtime ignores DOTNET_STARTUP_HOOKS, so an
+       environment variable can't load code into the helper (its runtimeconfig.json is in Program Files with it, where only
+       administrators write). -->
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
+    <StartupHookSupport>false</StartupHookSupport>
     <TargetFramework>net8.0-windows</TargetFramework>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <RollForward>Major</RollForward>

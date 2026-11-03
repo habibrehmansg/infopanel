@@ -190,6 +190,44 @@
         }
       }
     },
+    "/api/sensors/sources/libre/elevation": {
+      "post": {
+        "operationId": "setUpLibreElevation",
+        "summary": "Sets up reading all sensors: a task that runs the sensor helper as SYSTEM for the engine's user; Windows asks for administrator rights once.",
+        "description": "docs/api.md#reading-all-sensors. No body: the engine runs its own sensor helper with fixed arguments.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "202": {
+            "description": "The change started: the state is `settingUp` until it ends, and its outcome is then `lastChange` (GET /api/sensors/sources).",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/libreElevation"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "409": {
+            "description": "No change started: one runs already, or there is nothing to set up here (not Windows, a replay, the engine elevated, or not installed under Program Files).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      },
+      "delete": {
+        "operationId": "turnOffLibreElevation",
+        "summary": "Turns reading all sensors off: removes the engine's user's task; Windows asks for administrator rights once.",
+        "description": "docs/api.md#reading-all-sensors. No body.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "202": {
+            "description": "The change started: the state is `settingUp` until it ends, and its outcome is then `lastChange` (GET /api/sensors/sources).",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/libreElevation"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "409": {
+            "description": "No change started: one runs already, or there is nothing to set up here (not Windows, a replay, the engine elevated, or not installed under Program Files).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
     "/api/folders/{folder}/open": {
       "parameters": [
         {

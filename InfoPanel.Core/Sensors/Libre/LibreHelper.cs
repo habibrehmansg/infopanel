@@ -23,6 +23,15 @@ public interface ILibreHelper : IAsyncDisposable
 
     /// <summary>Completes with the helper's exit code (null when it has none, a replay's) when it ends.</summary>
     Task<int?> Exited { get; }
+
+    /// <summary>
+    /// The engine gives this helper up as failed, right before it stops it: it ended or dropped the engine on its own,
+    /// stopped answering, broke the protocol, failed its reads, or failed its start after it was handed on. Never said of
+    /// a stop the engine chose (Libre off, a restart it asked for, the source's stop). Nothing by default.
+    /// </summary>
+    void GivenUp()
+    {
+    }
 }
 
 /// <summary>Starts a sensor helper and connects to it: the helper's process on Windows, a recording in a replay, a fake in tests.</summary>
@@ -47,14 +56,18 @@ public class LibreHelperConnection(SensorHelperClient client, Task<int?> exited)
 
     public Task<int?> Exited { get; } = exited;
 
-    public Task<HelloAnswer> HelloAsync(CancellationToken cancel) => Client.HelloAsync(cancel);
+    public virtual Task<HelloAnswer> HelloAsync(CancellationToken cancel) => Client.HelloAsync(cancel);
 
     public Task<CatalogueAnswer> CatalogueAsync(CancellationToken cancel) => Client.CatalogueAsync(cancel);
 
-    public Task<HelperSample> SampleAsync(CancellationToken cancel) => Client.SampleAsync(cancel);
+    public virtual Task<HelperSample> SampleAsync(CancellationToken cancel) => Client.SampleAsync(cancel);
 
     public Task<ConfigureAnswer> ConfigureAsync(bool storage, int storageInterval, CancellationToken cancel) =>
         Client.ConfigureAsync(storage, storageInterval, cancel);
 
     public virtual ValueTask DisposeAsync() => Client.DisposeAsync();
+
+    public virtual void GivenUp()
+    {
+    }
 }

@@ -200,6 +200,28 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
             pawnIoLauncher.Exit.TrySetResult(0);
         }
 
+        // Reading all sensors, the session token's: nothing to set up on this engine (409), either way; an engine of its own
+        // on a stand-in Windows starts each change (202), run by a fake shell (nothing is ever run), one at a time.
+        await Send(session, "POST", "/api/sensors/sources/libre/elevation", 409);
+        await Send(session, "DELETE", "/api/sensors/sources/libre/elevation", 409);
+        var helper = Path.Combine(factory.Root, "sensor-helper", "InfoPanel.SensorHelper.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(helper)!);
+        File.WriteAllBytes(helper, "MZ a stand-in"u8.ToArray());
+        var elevationShell = new TourPawnIoLauncher();
+        using (var elevating = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", Path.Combine(factory.Root, "elevation-data"))
+                   .ConfigureTestServices(s => s.AddSingleton(new InfoPanel.Sensors.Libre.LibreElevation(helper, new TourWindows(), elevationShell, () => { })))))
+        using (var elevatingSession = elevating.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            elevatingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            Assert.Equal("settingUp", (await Send(elevatingSession, "POST", "/api/sensors/sources/libre/elevation", 202)).GetProperty("state").GetString());
+            await Send(elevatingSession, "DELETE", "/api/sensors/sources/libre/elevation", 409);
+            elevationShell.Exit.TrySetResult(0);
+            var elevation = elevating.Services.GetRequiredService<InfoPanel.Sensors.Libre.LibreElevation>();
+            for (var i = 0; i < 300 && elevation.Report().State == "settingUp"; i++)
+                await Task.Delay(50, TestContext.Current.CancellationToken);
+            Assert.Equal("settingUp", (await Send(elevatingSession, "DELETE", "/api/sensors/sources/libre/elevation", 202)).GetProperty("state").GetString());
+        }
+
         // The displays, every token's: none where the engine shows no desktop windows (this one); listed by an engine of
         // its own on a fake desktop, then 500 once that desktop fails to list them. No test needs a real display.
         Assert.False((await Send(reader, "GET", "/api/displays", 200)).GetProperty("supported").GetBoolean());
@@ -398,4 +420,22 @@ internal sealed class TourPawnIoLauncher : InfoPanel.Sensors.Libre.IPawnIoLaunch
         {
         }
     }
+}
+
+/// <summary>The tour's stand-in for Windows: an unelevated engine installed under Program Files, its user's task not set up.</summary>
+internal sealed class TourWindows : InfoPanel.Sensors.Libre.ILibreElevationSystem
+{
+    public bool EngineElevated => false;
+
+    public string? UserSid => "S-1-5-21-1-2-3-1001";
+
+    public string? ProgramFiles => @"C:\Program Files";
+
+    public string FinalPathOf(FileStream file) => @"\\?\C:\Program Files\InfoPanel\sensor-helper\InfoPanel.SensorHelper.exe";
+
+    public (string Path, string Arguments)? TaskAction(string sid) => null;
+
+    public void RunTask(string sid) => throw new IOException("No task runs in the tour.");
+
+    public string? PipeOwner(System.IO.Pipes.NamedPipeClientStream pipe) => null;
 }

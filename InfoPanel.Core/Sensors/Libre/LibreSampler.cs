@@ -121,6 +121,9 @@ public sealed class LibreSampler : ISensorSampler
     private long _installsSettled;
     private bool _closed;
     private long _installsTaken;
+    // The helper's elevation changed (its task set up or removed): asked from any thread, taken by the poll thread.
+    private long _helperChangesAsked;
+    private long _helperChangesTaken;
 
     // Sensors dropped on purpose (Off; storage off) since the polled source last took them.
     private readonly HashSet<string> _withdrawn = new(StringComparer.Ordinal);
@@ -204,6 +207,23 @@ public sealed class LibreSampler : ISensorSampler
         }
 
         ReadDriver();
+    }
+
+    /// <summary>
+    /// The helper's task was set up or removed (from any thread: <see cref="LibreElevation"/>): at the next round the
+    /// running helper, if any, is stopped and a new one started, once, with no backoff, so the launcher chooses again
+    /// (<see cref="LibreHelperChooser"/>); with none running (waiting out a restart's backoff), one starts in that round.
+    /// </summary>
+    public void HelperChanged() => Interlocked.Increment(ref _helperChangesAsked);
+
+    /// <summary>Whether the helper's elevation changed since the last start (the poll thread), taking the change.</summary>
+    private string? TakeHelperChange()
+    {
+        var asked = Interlocked.Read(ref _helperChangesAsked);
+        if (asked == _helperChangesTaken)
+            return null;
+        _helperChangesTaken = asked;
+        return "the sensor helper's administrator rights changed";
     }
 
     /// <summary>
@@ -354,6 +374,7 @@ public sealed class LibreSampler : ISensorSampler
             TurnOff();
             _installsTaken = asked;
             Settle(asked);
+            _helperChangesTaken = Interlocked.Read(ref _helperChangesAsked);
             Fail(samples);
             return;
         }
@@ -362,8 +383,10 @@ public sealed class LibreSampler : ISensorSampler
         if (TakeOffHeard())
             TurnOff();
 
-        // The driver changed since the running helper read it (or an install finished): a new helper reads it, now.
-        var driverChanged = CheckDriver(InstallsAsked());
+        // The driver changed since the running helper read it (or an install finished), or the helper's administrator
+        // rights did: a new helper reads it, now.
+        var helperChanged = TakeHelperChange();
+        var driverChanged = CheckDriver(InstallsAsked()) ?? helperChanged;
         if (driverChanged is { } why && _helper is not null)
         {
             Restart(wanted, why);
@@ -465,6 +488,8 @@ public sealed class LibreSampler : ISensorSampler
         // (its hello, a failure, an interruption), they are settled then; one that ends later is the next start's.
         var installs = InstallsAsked();
         _installsTaken = installs;
+        // So is a change of the helper's administrator rights asked before it: the launcher chooses now.
+        _helperChangesTaken = Interlocked.Read(ref _helperChangesAsked);
         // The engine's own reading before the helper reads it: a change while it starts differs from this at the next read.
         // Taken at every start, one that fails too, so a change is acted on once.
         _driverAtStart = ReadDriver();
@@ -518,6 +543,7 @@ public sealed class LibreSampler : ISensorSampler
         }
         catch (Exception ex)
         {
+            helper?.GivenUp();
             Stop(helper);
             Backoff(LibreSource.HelperFailed, $"it didn't start ({ex.Message})");
         }
@@ -622,13 +648,14 @@ public sealed class LibreSampler : ISensorSampler
         _state = SourceState.OffBecause(LibreSource.Disabled);
     }
 
-    /// <summary>The helper is lost: stopped, and started again after its backoff.</summary>
+    /// <summary>The helper is lost: given up as failed (<see cref="ILibreHelper.GivenUp"/>), stopped, and started again after its backoff.</summary>
     private void Lost(string why)
     {
         var helper = _helper;
         _helper = null;
         _hello = null;
         _failedRounds = 0;
+        helper?.GivenUp();
         Stop(helper);
         Backoff(LibreSource.HelperFailed, why);
     }

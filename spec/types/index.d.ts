@@ -1022,6 +1022,8 @@ export interface SensorSource {
   sensors: number;
   /** The Libre source's only (`libre`): the PawnIO driver its sensor helper reads ring0 sensors through (docs/api.md#the-pawnio-driver). */
   driver?: LibreDriver;
+  /** The Libre source's only (`libre`): whether its sensor helper reads every sensor with administrator rights while the engine runs without them (docs/api.md#reading-all-sensors). */
+  elevation?: LibreElevation;
 }
 
 /** The PawnIO driver (docs/api.md#the-pawnio-driver): on the Libre source's entry in GET /api/sensors/sources, and the answer to POST /api/sensors/sources/libre/driver. */
@@ -1047,6 +1049,26 @@ export interface LibreDriverInstall {
   /** `installed`; `restartNeeded` (installed, Windows must restart to finish); `declined` (Windows' prompt for administrator rights was declined: nothing changed); `failed`. A client treats an outcome it doesn't know as `failed`. */
   outcome: "installed" | "restartNeeded" | "declined" | "failed";
   /** With `failed`: the installer's exit code, when it exited (absent when it couldn't be started). */
+  code?: number;
+}
+
+/** Reading all sensors (docs/api.md#reading-all-sensors): on the Libre source's entry in GET /api/sensors/sources, and the answer to POST and DELETE /api/sensors/sources/libre/elevation. */
+export interface LibreElevation {
+  /** `off` (the sensor helper runs with the engine's rights), `on` (a task set up for the engine's user runs it as SYSTEM, so it reads every sensor), `settingUp` (a change the engine started runs now: Windows asks for administrator rights) or `unavailable` (nothing to set up here: `reason` says why). A client treats a state it doesn't know as `unavailable`. */
+  state: "off" | "on" | "settingUp" | "unavailable";
+  /** With `unavailable` only: `notInstalled` (the engine isn't installed under Program Files, where only administrators write), `notWindows` (another operating system, or a replay) or `engineElevated` (the engine itself runs as administrator, so its sensor helper reads everything already). A client treats a reason it doesn't know as `notInstalled`. */
+  reason?: "notInstalled" | "notWindows" | "engineElevated";
+  /** How the last change the engine started since it started ended, or null when none has. */
+  lastChange: LibreElevationChange | null;
+  /** With `on` only, and only when the sensor helper running is the engine's own instead of the task's: why the last start fell back to it. Codes: `notServing` (the task's helper didn't serve within 10 seconds), `notSystem` (the pipe of its name isn't SYSTEM's), `startRefused` (Windows refused to start the task), `taskUnreadable` (whether the task is set up couldn't be read). A client words the codes it knows and shows `message` for one it doesn't. */
+  fallback?: SensorSourceReason;
+}
+
+/** How a change to reading all sensors ended (docs/api.md#reading-all-sensors). */
+export interface LibreElevationChange {
+  /** `on` (set up), `off` (removed), `declined` (Windows' prompt for administrator rights was declined: nothing changed) or `failed`. A client treats an outcome it doesn't know as `failed`. */
+  outcome: "on" | "off" | "declined" | "failed";
+  /** With `failed`: the sensor helper's exit code, when it exited (absent when it couldn't be started): `10` it didn't get administrator rights, `11` it isn't under Program Files, `12` the engine's user isn't a user of this computer, `13` the Task Scheduler refused, `15` a variable of .NET's couldn't be cleared (the helper wasn't run), `16` its path can't be given to the Task Scheduler as it is; any other is Windows' or the helper's own. */
   code?: number;
 }
 
@@ -3949,6 +3971,46 @@ export interface ApiOperations {
       /** The token lacks the scope the request needs. */
       403: ScopeProblem;
       /** No install started: one runs already (the driver's state is `installing`, which after an install that ended `installed` lasts until the engine has read the driver again and started a new sensor helper for it), or the engine has no bundled installer to run (not Windows, a replay, a build without it, or one whose SHA-256 isn't the one the engine pins). */
+      409: Problem;
+    };
+  };
+  /**
+   * setUpLibreElevation: Sets up reading all sensors: a task that runs the sensor helper as SYSTEM for the engine's user; Windows asks for administrator rights once.
+   *
+   * docs/api.md#reading-all-sensors. No body: the engine runs its own sensor helper with fixed arguments.
+   */
+  "POST /api/sensors/sources/libre/elevation": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The change started: the state is `settingUp` until it ends, and its outcome is then `lastChange` (GET /api/sensors/sources). */
+      202: LibreElevation;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No change started: one runs already, or there is nothing to set up here (not Windows, a replay, the engine elevated, or not installed under Program Files). */
+      409: Problem;
+    };
+  };
+  /**
+   * turnOffLibreElevation: Turns reading all sensors off: removes the engine's user's task; Windows asks for administrator rights once.
+   *
+   * docs/api.md#reading-all-sensors. No body.
+   */
+  "DELETE /api/sensors/sources/libre/elevation": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The change started: the state is `settingUp` until it ends, and its outcome is then `lastChange` (GET /api/sensors/sources). */
+      202: LibreElevation;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No change started: one runs already, or there is nothing to set up here (not Windows, a replay, the engine elevated, or not installed under Program Files). */
       409: Problem;
     };
   };

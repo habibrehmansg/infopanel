@@ -632,6 +632,7 @@ public sealed record SensorSourceBody
     public SensorSourceReason? Reason { get; init; }
     public required int Sensors { get; init; }
     public LibreDriverBody? Driver { get; init; }
+    public LibreElevationBody? Elevation { get; init; }
 }
 
 /// <summary>
@@ -651,6 +652,29 @@ public sealed record LibreDriverBody
 /// <summary>How an install of the PawnIO driver ended, with the installer's exit code for <c>failed</c> when it exited.</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/libreDriverInstall")]
 public sealed record LibreDriverInstall
+{
+    public required string Outcome { get; init; }
+    public int? Code { get; init; }
+}
+
+/// <summary>
+/// "Read all sensors", on the Libre source's entry only (<c>GET /api/sensors/sources</c>), and the answer to
+/// <c>POST</c> and <c>DELETE /api/sensors/sources/libre/elevation</c>: its state, why when it's <c>unavailable</c>, and
+/// how the last change since the engine started ended (null when none has); with <c>on</c>, why the helper running is
+/// the engine's own instead of the task's, when it is.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/libreElevation")]
+public sealed record LibreElevationBody
+{
+    public required string State { get; init; }
+    public string? Reason { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required LibreElevationChangeBody? LastChange { get; init; }
+    public SensorSourceReason? Fallback { get; init; }
+}
+
+/// <summary>How a change to "Read all sensors" ended, with the helper's exit code for <c>failed</c> when it exited.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/libreElevationChange")]
+public sealed record LibreElevationChangeBody
 {
     public required string Outcome { get; init; }
     public int? Code { get; init; }

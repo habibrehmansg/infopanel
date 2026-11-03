@@ -306,31 +306,7 @@ public sealed class PawnIoInstaller : IDisposable
     /// ends in a dot or a space, none is empty, and on Windows <see cref="Path.GetFullPath(string)"/> gives it back as it
     /// is). Otherwise null: it isn't launched at all, since a launch by the <c>\\?\</c> path itself is untried.
     /// </summary>
-    public static string? LaunchPathOf(string finalPath)
-    {
-        const int MaxPath = 260; // with the terminating null
-        var plain = finalPath.StartsWith(@"\\?\UNC\", StringComparison.Ordinal) ? @"\\" + finalPath[8..]
-            : finalPath.StartsWith(@"\\?\", StringComparison.Ordinal) ? finalPath[4..]
-            : finalPath;
-        return plain.Length < MaxPath && NormalisedAsItIs(plain) ? plain : null;
-    }
-
-    /// <summary>
-    /// Whether Windows' normalisation leaves <paramref name="path"/> (<c>C:\…</c> or <c>\\server\share\…</c>) as it is: it
-    /// drops a name's trailing dots and spaces (<c>verified.</c> would be <c>verified</c>, another folder), folds empty
-    /// names and resolves <c>.</c> and <c>..</c>.
-    /// </summary>
-    private static bool NormalisedAsItIs(string path)
-    {
-        var names = path.StartsWith(@"\\", StringComparison.Ordinal) ? path[2..] : path;
-        foreach (var name in names.Split('\\'))
-        {
-            if (name.Length == 0 || name.EndsWith('.') || name.EndsWith(' '))
-                return false;
-        }
-
-        return !OperatingSystem.IsWindows() || string.Equals(Path.GetFullPath(path), path, StringComparison.Ordinal);
-    }
+    public static string? LaunchPathOf(string finalPath) => HelperTask.LaunchPathOf(finalPath);
 
     /// <summary>
     /// The engine stops: an install's wait is abandoned, its installer left running (never killed); from now on no outcome

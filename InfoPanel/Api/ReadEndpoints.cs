@@ -20,7 +20,8 @@ namespace InfoPanel.Api;
 /// <c>/api</c> and needs a token with the <c>read</c> scope. Bodies are the spec model (<c>session</c>, <c>sensorEntry</c>,
 /// <c>sensorValue</c>), written with the format's JSON options like every other API body. One action is the session
 /// token's: installing the PawnIO driver (<c>POST /api/sensors/sources/libre/driver</c>, spec/docs/api.md "The PawnIO
-/// driver"), beside the sources' states it changes.
+/// driver") and reading all sensors (<c>POST</c> and <c>DELETE /api/sensors/sources/libre/elevation</c>, "Reading all
+/// sensors"), beside the sources' states they change.
 /// </summary>
 public static partial class ReadEndpoints
 {
@@ -42,6 +43,31 @@ public static partial class ReadEndpoints
             Version = driver.Version,
             Installer = installer?.Available,
             LastInstall = installer?.LastInstall is { } last ? new LibreDriverInstall { Outcome = last.Outcome, Code = last.Code } : null,
+        };
+    }
+
+    /// <summary>"Read all sensors" as the Libre source's elevation has it now.</summary>
+    private static LibreElevationBody ElevationOf(LibreElevation elevation)
+    {
+        var report = elevation.Report();
+        return new LibreElevationBody
+        {
+            State = report.State,
+            Reason = report.Reason,
+            LastChange = report.LastChange is { } last ? new LibreElevationChangeBody { Outcome = last.Outcome, Code = last.Code } : null,
+            Fallback = report.Fallback is { } fallback ? new SensorSourceReason { Code = fallback.Code, Message = fallback.Message } : null,
+        };
+    }
+
+    /// <summary>Sets up (<paramref name="on"/>) or removes the sensor helper's task: 202 with the state <c>settingUp</c>; 409 while a change runs, or when there is nothing to set up here.</summary>
+    private static IResult ChangeElevation(IServiceProvider services, bool on)
+    {
+        var elevation = services.GetService<LibreElevation>();
+        return elevation?.Start(on) switch
+        {
+            ElevationStart.Started => ApiResults.Json(ElevationOf(elevation) with { State = LibreElevation.SettingUp, Reason = null, Fallback = null }, StatusCodes.Status202Accepted),
+            ElevationStart.Busy => Conflict("Reading all sensors is being set up or turned off already."),
+            _ => Conflict(elevation?.Report() is { Reason: { } reason } ? $"Reading all sensors can't be set up here ({reason})." : "Reading all sensors can't be set up here."),
         };
     }
 
@@ -99,6 +125,7 @@ public static partial class ReadEndpoints
         {
             var libre = services.GetService<LibreSource>();
             var installer = services.GetService<PawnIoInstaller>();
+            var elevation = services.GetService<LibreElevation>();
             return ApiResults.Json(
                 hub.SourceStates()
                     .Select(s => new SensorSourceBody
@@ -108,6 +135,7 @@ public static partial class ReadEndpoints
                         Reason = s.State.Reason is { } reason ? new SensorSourceReason { Code = reason.Code, Message = reason.Message } : null,
                         Sensors = s.Sensors,
                         Driver = s.Id == LibreSource.SourceId && libre is not null ? DriverOf(libre, installer) : null,
+                        Elevation = s.Id == LibreSource.SourceId && elevation is not null ? ElevationOf(elevation) : null,
                     })
                     .ToList());
         }).RequireScope(ApiScope.Read);
@@ -126,6 +154,12 @@ public static partial class ReadEndpoints
                 _ => Conflict("The engine has no PawnIO installer to run here."),
             };
         }).RequireScope(ApiScope.Session);
+
+        // "Read all sensors": sets up the sensor helper's task, run as SYSTEM, through this install's own helper run with
+        // runas (one Windows prompt), or removes it; one change at a time; 409 meanwhile, or when there is nothing to set up
+        // here (not Windows, a replay, the engine elevated, or not installed under Program Files).
+        api.MapPost("/sensors/sources/libre/elevation", (IServiceProvider services) => ChangeElevation(services, on: true)).RequireScope(ApiScope.Session);
+        api.MapDelete("/sensors/sources/libre/elevation", (IServiceProvider services) => ChangeElevation(services, on: false)).RequireScope(ApiScope.Session);
 
         api.MapGet("/sensors/values", (int? history, SensorHub hub, SensorHistory sensorHistory) =>
         {

@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 using InfoPanel.SensorHelper;
 
@@ -22,6 +25,13 @@ namespace InfoPanel.SensorHelper.TestHost;
 /// stand-in for that installer instead: it writes its own path to <c>ran.txt</c> beside itself and exits with the number
 /// in <c>exit-code.txt</c> there. It installs nothing.
 /// </para>
+/// <para>
+/// <c>client-of &lt;pipe&gt; &lt;SID&gt; &lt;file&gt;</c> (Windows; <c>HelperPipeSessionWindowsTests</c>, run as SYSTEM by a
+/// task): creates the task's pipe as the helper does (<see cref="WindowsHelperPipe.Create"/>), waits up to 60 s for a
+/// client, reads it as the helper does (<see cref="WindowsHelperPipe.ClientOf"/>), then one byte from it, and writes
+/// <c>key=value</c> lines to the file: <c>server</c> (its own SID), <c>session</c> (the client's), <c>client</c> (SID and
+/// integrity level, or <c>null</c>) and <c>read</c>.
+/// </para>
 /// </summary>
 internal static class Program
 {
@@ -29,6 +39,9 @@ internal static class Program
     {
         if (args is ["-install", "-silent"])
             return Task.FromResult(InstallerStandIn());
+
+        if (args is ["client-of", var pipe, var sid, var file] && OperatingSystem.IsWindows())
+            return ClientOfAsync(pipe, sid, file);
 
         if (args.Length < 1 || args[0] is not ("serve" or "hang-update" or "hang-dispose" or "fail-open" or "hold-console"))
         {
@@ -70,6 +83,34 @@ internal static class Program
         };
         return HelperProcess.RunAsync(rest, () => new TestTree(behaviour), "2.0.0-testhost", options);
     }
+
+    /// <summary><c>client-of</c>: the helper's pipe and its reading of the client, written to <paramref name="file"/>.</summary>
+    [SupportedOSPlatform("windows")]
+    private static async Task<int> ClientOfAsync(string pipe, string sid, string file)
+    {
+        var lines = new List<string> { "server=" + WindowsIdentity.GetCurrent().User?.Value };
+        try
+        {
+            using var server = WindowsHelperPipe.Create(pipe, sid);
+            using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await server.WaitForConnectionAsync(wait.Token);
+            lines.Add("session=" + (GetNamedPipeClientSessionId(server.SafePipeHandle, out var session) ? session.ToString(CultureInfo.InvariantCulture) : "unknown"));
+            var client = WindowsHelperPipe.ClientOf(server);
+            lines.Add("client=" + (client is null ? "null" : client.Sid + " " + client.Integrity.ToString(CultureInfo.InvariantCulture)));
+            lines.Add("read=" + (await server.ReadAsync(new byte[1], wait.Token)).ToString(CultureInfo.InvariantCulture));
+        }
+        catch (Exception ex)
+        {
+            lines.Add("error=" + ex.GetType().Name + ": " + ex.Message);
+        }
+
+        File.WriteAllLines(file, lines);
+        return 0;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetNamedPipeClientSessionId(SafePipeHandle pipe, out uint session);
 
     /// <summary>The installer's stand-in: says it ran, and exits with the code its folder holds.</summary>
     private static int InstallerStandIn()

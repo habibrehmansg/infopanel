@@ -21,6 +21,9 @@ public enum HelperExit
 
     /// <summary>LibreHardwareMonitor's computer failed to open; the helper answered <c>treeFailed</c> and closed the pipe.</summary>
     TreeFailed,
+
+    /// <summary>No engine connected within the time the helper waits for one (a task's helper: <see cref="HelperTask.ConnectWithin"/>).</summary>
+    NoEngine,
 }
 
 /// <summary>
@@ -45,6 +48,7 @@ public sealed class HelperServer(ISensorTree tree, string helperVersion)
     private bool _inTree;
     private bool _retired;
     private bool _greeted;
+    private readonly TaskCompletionSource _hello = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _open;
     private bool _reopened;
     private bool _storage = HelperProtocol.DefaultStorage;
@@ -52,6 +56,9 @@ public sealed class HelperServer(ISensorTree tree, string helperVersion)
     private long _version;
     private IReadOnlyList<HelperHardware> _hardware = [];
     private IReadOnlyList<HelperSensor> _sensors = [];
+
+    /// <summary>Completes once the engine's hello has been taken (before its answer is written).</summary>
+    public Task Greeted => _hello.Task;
 
     /// <summary>
     /// Stops the server calling the tree from now on, and says whether no call is inside it: only then may the tree be
@@ -160,6 +167,7 @@ public sealed class HelperServer(ISensorTree tree, string helperVersion)
                 return (new ErrorAnswer("protocol", $"The helper speaks protocol {HelperProtocol.Version}."), HelperExit.Refused);
 
             _greeted = true;
+            _hello.TrySetResult();
             return (new HelloAnswer(HelperProtocol.Version, helperVersion, tree.Elevated, tree.Driver), null);
         }
 

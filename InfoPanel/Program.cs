@@ -324,6 +324,9 @@ try
             builder.Services.AddSingleton<ISensorSource>(sp => sp.GetRequiredService<LibreSource>());
             builder.Services.AddSingleton(sp => new PawnIoInstaller(PawnIoInstaller.DefaultPath, new ShellPawnIoLauncher(),
                 sp.GetRequiredService<LibreSource>().DriverChanged, supported: false, sp.GetRequiredService<TimeProvider>()));
+            // Reading all sensors: nothing to set up in a replay (not this computer).
+            builder.Services.AddSingleton(sp => new LibreElevation(LibreHelperProcess.DefaultPath, system: null, new ShellPawnIoLauncher(),
+                sp.GetRequiredService<LibreSource>().HelperChanged, sp.GetRequiredService<TimeProvider>()));
         }
     }
     else if (options.Mock)
@@ -356,7 +359,7 @@ try
             var recorder = options.RecordSensors is { } folder
                 ? new LibreRecorder(folder, SensorRecording.MaxRounds, options.Scrub, LibreSource.Interval, time.GetUtcNow(), TimeSpan.FromSeconds(options.RecordSeconds), time)
                 : null;
-            var libre = LibreSource.CreateWindows(() => settings.Current.Settings.Libre, time, recorder);
+            var libre = LibreSource.CreateWindows(() => settings.Current.Settings.Libre, time, recorder, sp.GetRequiredService<LibreElevation>());
             // A change is heard at once: Off stops the helper even while a request to it hangs.
             settings.Changed += _ => libre.SettingsChanged();
             return libre;
@@ -366,6 +369,11 @@ try
         // session asks (POST /api/sensors/sources/libre/driver); an install that ends well starts a new sensor helper.
         builder.Services.AddSingleton(sp => new PawnIoInstaller(PawnIoInstaller.DefaultPath, new ShellPawnIoLauncher(),
             sp.GetRequiredService<LibreSource>().DriverChanged, supported: true, sp.GetRequiredService<TimeProvider>()));
+        // Reading all sensors (POST/DELETE /api/sensors/sources/libre/elevation): the sensor helper's task, run as SYSTEM
+        // for the engine's user, set up or removed through this install's own helper run with runas when a session asks;
+        // each helper start runs that task when it names this helper and the engine is unelevated, else the child.
+        builder.Services.AddSingleton(sp => new LibreElevation(LibreHelperProcess.DefaultPath, OperatingSystem.IsWindows() ? new WindowsLibreElevationSystem() : null, new ShellPawnIoLauncher(),
+            () => sp.GetRequiredService<LibreSource>().HelperChanged(), sp.GetRequiredService<TimeProvider>()));
     }
     // The engine's own sources on every OS (the clock, the drives, the network), outside mock mode and a replay.
     builder.Services.AddBuiltInSources(options);

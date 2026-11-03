@@ -17,9 +17,9 @@ namespace InfoPanel.SensorHelper;
 /// connection first can't hold the engine out). What happens to the process after: <see cref="HelperProcess"/>.
 /// </summary>
 /// <remarks>
-/// The pipe is the current user's only (<see cref="PipeOptions.CurrentUserOnly"/>), which on Windows also requires the
-/// same elevation: a normal engine can't connect to an elevated helper this way. That case gets a pipe security of its
-/// own, for the engine's identity, with the elevated helper's start; until then the helper runs at the engine's level.
+/// The engine's child's pipe is the current user's only (<see cref="PipeOptions.CurrentUserOnly"/>), which on Windows also
+/// requires the same elevation. The helper a task runs as SYSTEM serves on a pipe of its own instead, created with its
+/// own security (<see cref="HelperTaskCommands.ServeAsync"/>), through <see cref="ServeAsync"/>.
 /// </remarks>
 public static class HelperHost
 {
@@ -43,19 +43,64 @@ public static class HelperHost
         if (OperatingSystem.IsWindows())
             options |= PipeOptions.FirstPipeInstance;
 
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, options);
+        return await ServeAsync(pipe, server, engineExited, isEngine, cancel: cancel).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Serves with <paramref name="server"/> on <paramref name="pipe"/>, a server end already created (which it owns and
+    /// disposes), until the engine closes it or <paramref name="engineExited"/> completes; a client
+    /// <paramref name="isEngine"/> refuses is disconnected unserved (none refused when it is null). With
+    /// <paramref name="connectWithin"/>, no engine accepted within that time (on <paramref name="time"/>'s clock, the
+    /// clients refused meanwhile included) ends it, <see cref="HelperExit.NoEngine"/>; so does, with
+    /// <paramref name="helloWithin"/>, a client accepted that says no hello within that time. A client refused when
+    /// <paramref name="endsOnRefusal"/> then says so ends it too, <see cref="HelperExit.Refused"/>, rather than waiting on.
+    /// </summary>
+    public static async Task<HelperExit> ServeAsync(NamedPipeServerStream pipe, HelperServer server, Task engineExited, Func<NamedPipeServerStream, bool>? isEngine = null,
+        TimeSpan? connectWithin = null, TimeProvider? time = null, CancellationToken cancel = default, TimeSpan? helloWithin = null, Func<bool>? endsOnRefusal = null)
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        using var deadline = connectWithin is { } within ? new CancellationTokenSource(within, time ?? TimeProvider.System) : new CancellationTokenSource();
         var serve = Task.Run(async () =>
         {
-            while (true)
+            using (var waiting = CancellationTokenSource.CreateLinkedTokenSource(stop.Token, deadline.Token))
             {
-                await pipe.WaitForConnectionAsync(stop.Token).ConfigureAwait(false);
-                if (isEngine is null || isEngine(pipe))
-                    break;
-                pipe.Disconnect(); // not the engine: nothing read from it, nothing answered
+                while (true)
+                {
+                    try
+                    {
+                        await pipe.WaitForConnectionAsync(waiting.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (deadline.IsCancellationRequested && !stop.IsCancellationRequested)
+                    {
+                        return HelperExit.NoEngine;
+                    }
+
+                    if (isEngine is null || isEngine(pipe))
+                        break;
+                    pipe.Disconnect(); // not the engine: nothing read from it, nothing answered
+                    if (endsOnRefusal?.Invoke() == true)
+                        return HelperExit.Refused;
+                }
             }
 
-            return await server.ServeAsync(pipe, stop.Token).ConfigureAwait(false);
+            var serving = server.ServeAsync(pipe, stop.Token);
+            if (helloWithin is { } helloTime)
+            {
+                using var greeted = new CancellationTokenSource();
+                var late = Task.Delay(helloTime, time ?? TimeProvider.System, greeted.Token);
+                var first = await Task.WhenAny(serving, server.Greeted, late).ConfigureAwait(false);
+                greeted.Cancel();
+                if (first == late && !server.Greeted.IsCompleted)
+                {
+                    // Accepted, then silent: no engine. Its pipe is closed, and the helper ends.
+                    stop.Cancel();
+                    _ = await serving.ConfigureAwait(false);
+                    return HelperExit.NoEngine;
+                }
+            }
+
+            return await serving.ConfigureAwait(false);
         }, CancellationToken.None);
 
         try

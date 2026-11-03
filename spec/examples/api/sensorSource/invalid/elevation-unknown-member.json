@@ -1,0 +1,1 @@
+{"id": "libre", "state": "limited", "reason": {"code": "notElevated", "message": "Not elevated"}, "sensors": 179, "elevation": {"state": "off", "lastChange": null, "task": "x"}}

@@ -65,36 +65,45 @@ public static class HelperProcess
             _ => ExitDone,
         };
 
-        // The engine dead, nothing is closed: the process's end frees it. Otherwise the tree is closed only when no
-        // call is inside it, and only for as long as the bound (on the helper's clock) and the engine allow.
-        if (!engine.Exited.IsCompleted && server.Retire())
-        {
-            var close = Task.Factory.StartNew(tree.Dispose, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-            Task[] tasks = [close, engine.Exited];
-            try
-            {
-                // A starved pool can't run a timer callback; the timed wait returns on its own, so the system clock uses it.
-                // Only an injected clock takes the cancellation timer.
-                if (options.Time == TimeProvider.System)
-                {
-                    Task.WaitAny(tasks, options.CleanupBound);
-                }
-                else
-                {
-                    using var bound = new CancellationTokenSource(options.CleanupBound, options.Time);
-                    Task.WaitAny(tasks, bound.Token);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // The bound passed: the close is cut.
-            }
-
-            _ = close.Exception; // a close that threw changes nothing: the process ends either way
-        }
+        // The engine dead, nothing is closed: the process's end frees it.
+        if (!engine.Exited.IsCompleted)
+            CloseTree(server, tree, engine.Exited, options.CleanupBound, options.Time);
 
         options.Exit(code);
         return code;
+    }
+
+    /// <summary>
+    /// Closes <paramref name="tree"/> only when no call is inside it (<see cref="HelperServer.Retire"/>), and only for as
+    /// long as <paramref name="bound"/> (on <paramref name="time"/>'s clock) and the engine (<paramref name="engineExited"/>)
+    /// allow: the process ends after, whatever still runs in it.
+    /// </summary>
+    internal static void CloseTree(HelperServer server, ISensorTree tree, Task engineExited, TimeSpan bound, TimeProvider time)
+    {
+        if (!server.Retire())
+            return;
+        var close = Task.Factory.StartNew(tree.Dispose, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        Task[] tasks = [close, engineExited];
+        try
+        {
+            // A starved pool can't run a timer callback; the timed wait returns on its own, so the system clock uses it.
+            // Only an injected clock takes the cancellation timer.
+            if (time == TimeProvider.System)
+            {
+                Task.WaitAny(tasks, bound);
+            }
+            else
+            {
+                using var cut = new CancellationTokenSource(bound, time);
+                Task.WaitAny(tasks, cut.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The bound passed: the close is cut.
+        }
+
+        _ = close.Exception; // a close that threw changes nothing: the process ends either way
     }
 
     /// <summary>
