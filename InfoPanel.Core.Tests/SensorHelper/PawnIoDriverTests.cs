@@ -7,7 +7,9 @@ namespace InfoPanel.Core.Tests.SensorHelper;
 /// The PawnIO driver's state as the sensor helper reads it at its start and the engine every 10 s
 /// (<see cref="PawnIoDriver.Read"/>), from a fake registry: the uninstall entry's <c>DisplayVersion</c> missing or
 /// unparseable is <c>missing</c> (1.4.x: not installed), below 2.0.0.0 <c>outdated</c> (1.4.x's minimum), else
-/// <c>installed</c>, with the version as Windows lists it; and the state reaches the engine in <c>hello</c>.
+/// <c>installed</c>, with the version as Windows lists it; the helper says <c>installed</c> only with administrator
+/// rights, <c>notLoaded</c> without them (<see cref="PawnIoDriver.OfHelper"/>); and the state reaches the engine in
+/// <c>hello</c>.
 /// </summary>
 public sealed class PawnIoDriverTests
 {
@@ -40,13 +42,25 @@ public sealed class PawnIoDriverTests
     }
 
     [Theory]
-    [InlineData(null, "missing")]
-    [InlineData("1.0.3.0", "outdated")]
-    [InlineData("2.2.0", "installed")]
-    public async Task TheHelpersHello_SaysTheState_ItReadAtItsStart(string? displayVersion, string state)
+    [InlineData("missing", false, "missing")]
+    [InlineData("missing", true, "missing")]
+    [InlineData("outdated", false, "outdated")]
+    [InlineData("outdated", true, "outdated")]
+    [InlineData("installed", true, "installed")]
+    [InlineData("installed", false, "notLoaded")] // LibreHardwareMonitorLib can't open PawnIO without administrator rights
+    [InlineData("unknown", false, "unknown")]
+    public void TheHelper_SaysInstalled_OnlyWithAdministratorRights_NotLoadedWithout(string read, bool elevated, string said) =>
+        Assert.Equal(said, PawnIoDriver.OfHelper(new PawnIoReading(read, read == "missing" ? null : "2.2.0.0"), elevated));
+
+    [Theory]
+    [InlineData(null, false, "missing")]
+    [InlineData("1.0.3.0", false, "outdated")]
+    [InlineData("2.2.0", true, "installed")]
+    [InlineData("2.2.0", false, "notLoaded")]
+    public async Task TheHelpersHello_SaysTheState_ItReadAtItsStart(string? displayVersion, bool elevated, string state)
     {
         var registry = new FakePawnIoRegistry { Value = displayVersion };
-        var tree = new RegistryTree(registry);
+        var tree = new RegistryTree(registry, elevated);
         registry.Value = "9.9.9.9"; // read at the start only
         var (pipe, run) = HelperTestKit.StartHelper(tree);
         await using (var client = await HelperTestKit.Connect(pipe))
@@ -58,14 +72,17 @@ public sealed class PawnIoDriverTests
         await run.WaitAsync(HelperTestKit.Patience, TestContext.Current.CancellationToken);
     }
 
-    /// <summary>A tree that reads the driver as the helper's own does: once, as it is made.</summary>
-    private sealed class RegistryTree(IPawnIoRegistry registry) : ISensorTree
+    /// <summary>
+    /// A tree that reads the driver as the helper's own does (<c>LibreTree</c>): once, as it is made, said as a helper with
+    /// or without administrator rights says it (the elevation a seam here).
+    /// </summary>
+    private sealed class RegistryTree(IPawnIoRegistry registry, bool elevated) : ISensorTree
     {
         private readonly FakeTree _inner = FakeTree.Pc();
 
-        public bool Elevated => false;
+        public bool Elevated => elevated;
 
-        public string Driver { get; } = PawnIoDriver.Read(registry).State;
+        public string Driver { get; } = PawnIoDriver.OfHelper(PawnIoDriver.Read(registry), elevated);
 
         public void Configure(bool storage, int storageInterval) => _inner.Configure(storage, storageInterval);
 

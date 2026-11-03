@@ -178,13 +178,13 @@
         "security": [{"bearer": ["session"]}],
         "responses": {
           "202": {
-            "description": "The install started: the driver's state is `installing` until it ends, and its outcome is then the driver's `lastInstall` (GET /api/sensors/sources).",
+            "description": "The install started: the driver's state is `installing` until it ends (after `installed`, until the engine has read the driver again and started a new sensor helper for it), and its outcome is then the driver's `lastInstall` (GET /api/sensors/sources).",
             "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/libreDriver"}}}
           },
           "401": {"$ref": "#/components/responses/unauthorized"},
           "403": {"$ref": "#/components/responses/forbidden"},
           "409": {
-            "description": "No install started: one runs already, or the engine has no bundled installer to run (not Windows, a replay, a build without it, or one whose SHA-256 isn't the one the engine pins).",
+            "description": "No install started: one runs already (the driver's state is `installing`, which after an install that ended `installed` lasts until the engine has read the driver again and started a new sensor helper for it), or the engine has no bundled installer to run (not Windows, a replay, a build without it, or one whose SHA-256 isn't the one the engine pins).",
             "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
           }
         }

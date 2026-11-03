@@ -21,7 +21,10 @@ public static class PawnIoDriver
     /// <summary>Installed at <see cref="Minimum"/> or later.</summary>
     public const string Installed = "installed";
 
-    /// <summary>Installed, but LibreHardwareMonitor couldn't open it in the helper's process.</summary>
+    /// <summary>
+    /// Installed, but the sensor helper can't open it: without administrator rights (LibreHardwareMonitorLib opens PawnIO
+    /// only with them; <see cref="OfHelper"/>), or Windows blocked it.
+    /// </summary>
     public const string NotLoaded = "notLoaded";
 
     /// <summary>Not read: a helper that doesn't read it, or no registry to read (a recording's helper says what it said).</summary>
@@ -51,6 +54,16 @@ public static class PawnIoDriver
 
         return Of(value);
     }
+
+    /// <summary>
+    /// The state the sensor helper says in <c>hello</c>, from the registry's <paramref name="reading"/> and whether it runs
+    /// with administrator rights: <see cref="Installed"/> without them is <see cref="NotLoaded"/>, since
+    /// LibreHardwareMonitorLib can't open PawnIO without them (found on a PC with PawnIO 2.2.0: 179 sensors unelevated,
+    /// 263 elevated); anything else is the registry's state. The engine compares registry readings only, so this never
+    /// starts a helper again by itself.
+    /// </summary>
+    public static string OfHelper(PawnIoReading reading, bool elevated) =>
+        reading.State == Installed && !elevated ? NotLoaded : reading.State;
 
     /// <summary>
     /// The state a <c>DisplayVersion</c> stands for: none, or one that isn't a version, is <see cref="Missing"/> (1.4.x

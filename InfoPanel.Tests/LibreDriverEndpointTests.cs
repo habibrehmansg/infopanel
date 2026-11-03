@@ -15,7 +15,8 @@ namespace InfoPanel.Tests;
 /// <summary>
 /// The PawnIO driver over the API: <c>driver</c> on the Libre source's entry only, valid against the schema; and
 /// <c>POST /api/sensors/sources/libre/driver</c>, the session token's: 202 with the driver installing, 409 while an
-/// install runs or without a bundled installer (a mock engine, a replay), 403 for an integration token. The engines here
+/// install runs (and after it ended well, until the Libre source has read the driver again and its new helper said
+/// hello) or without a bundled installer (a mock engine, a replay), 403 for an integration token. The engines here
 /// replay the Libre recording; the install's launcher is a fake (nothing is ever run).
 /// </summary>
 public sealed class LibreDriverEndpointTests : IDisposable
@@ -47,10 +48,12 @@ public sealed class LibreDriverEndpointTests : IDisposable
     }
 
     /// <summary>An engine replaying the Libre recording, its bundled installer this test's file, run by the fake launcher.</summary>
-    private WebApplicationFactory<Program> Replaying(EngineFactory engine, bool withInstaller = true) => engine.WithWebHostBuilder(builder =>
+    private WebApplicationFactory<Program> Replaying(EngineFactory engine, bool withInstaller = true, TimeProvider? clock = null) => engine.WithWebHostBuilder(builder =>
     {
         builder.UseSetting("Engine:MockSeed", "");
         builder.UseSetting("Engine:ReplaySensors", LibreFixture.Folder);
+        if (clock is not null)
+            builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(clock));
         if (withInstaller)
             builder.ConfigureTestServices(services => services.AddSingleton(sp =>
                 new PawnIoInstaller(_installer, _launcher, sp.GetRequiredService<LibreSource>().DriverChanged, supported: true, sha256: _sha256)));
@@ -147,6 +150,49 @@ public sealed class LibreDriverEndpointTests : IDisposable
         Assert.Equal("missing", driver.GetProperty("state").GetString());
         Assert.Equal("restartNeeded", driver.GetProperty("lastInstall").GetProperty("outcome").GetString());
         Assert.False(driver.GetProperty("lastInstall").TryGetProperty("code", out _));
+    }
+
+    [Fact]
+    public async Task AfterAnInstallThatEndedWell_TheDriverIsInstalling_AndAnotherInstallIs409_UntilTheNextRoundReadsIt()
+    {
+        // The engine's clock moves only when the test says: no Libre round runs until then.
+        var clock = new Desktop.ManualTime(DateTimeOffset.UtcNow);
+        using var engine = new EngineFactory();
+        using var replaying = Replaying(engine, clock: clock);
+        using var client = Client(replaying);
+
+        Assert.Equal(HttpStatusCode.Accepted, (await Install(client)).Status);
+        (await _launcher.Launched).Exit(0);
+        var driver = await DriverWhen(client, d => d.GetProperty("lastInstall").ValueKind != JsonValueKind.Null);
+
+        // The installer has exited 0 (its outcome shows); the engine hasn't read the driver again.
+        Assert.Equal("installed", driver.GetProperty("lastInstall").GetProperty("outcome").GetString());
+        Assert.Equal("installing", driver.GetProperty("state").GetString());
+        var (status, body) = await Install(client);
+        Assert.Equal(HttpStatusCode.Conflict, status);
+        Assert.True(ReadEndpointTests.Valid(body, "problem"));
+        Assert.Single(_launcher.Starts);
+        Assert.Equal("installing", (await Driver(client)).GetProperty("state").GetString());
+
+        // The next round reads it and starts a new helper; once that says hello, the driver is what it says.
+        clock.Advance(LibreSource.Interval);
+        driver = await DriverWhen(client, d => d.GetProperty("state").GetString() != "installing");
+        Assert.Equal("missing", driver.GetProperty("state").GetString()); // the recorded helper's
+        Assert.Equal("installed", driver.GetProperty("lastInstall").GetProperty("outcome").GetString());
+    }
+
+    /// <summary>The driver once <paramref name="ready"/> holds (the install's end and the Libre round run on their own threads).</summary>
+    private static async Task<JsonElement> DriverWhen(HttpClient client, Func<JsonElement, bool> ready)
+    {
+        for (var i = 0; i < 300; i++)
+        {
+            var driver = await Driver(client);
+            if (ready(driver))
+                return driver;
+            await Task.Delay(50, Ct);
+        }
+
+        throw new Xunit.Sdk.XunitException("The driver never got there: " + (await Driver(client)));
     }
 
     [Fact]

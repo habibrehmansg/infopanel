@@ -16,7 +16,8 @@ namespace InfoPanel.Sensors.Libre;
 /// first ends any request to the helper in flight, so a helper that hangs never holds up the engine's stop; its sampler
 /// then stops the helper. Its state: <c>running</c>; <c>limited</c> while the helper says the PawnIO driver is missing
 /// (<c>noDriver</c>), older than LibreHardwareMonitor needs (<c>driverOutdated</c>), or installed but not opened
-/// (<c>driverNotLoaded</c> as administrator, <c>notElevated</c> without); <c>off</c> · <c>disabled</c> while
+/// (<c>notElevated</c> for a helper without administrator rights, which LibreHardwareMonitorLib needs to open it;
+/// <c>driverNotLoaded</c> as administrator); <c>off</c> · <c>disabled</c> while
 /// <c>sources.libre.enabled</c> is off; <c>unavailable</c> ·
 /// <c>helperFailed</c> while the helper restarts or the build doesn't carry it. The engine tells it of each change to
 /// the stored settings (<see cref="SettingsChanged"/>), so Off stops the helper at once, even while a request hangs.
@@ -91,6 +92,13 @@ public sealed class LibreSource : ISensorSource, ISensorStatusSource, ISensorSou
     /// The driver was installed (any thread): the registry is read again and a new helper started at the next round.
     /// </summary>
     public void DriverChanged() => _sampler?.DriverChanged();
+
+    /// <summary>
+    /// Whether an install that ended well is still being taken (any thread; <see cref="LibreSampler.DriverSettling"/>): the
+    /// driver not yet read again with a new helper's hello. The API reports <c>installing</c> meanwhile and refuses another
+    /// install (<see cref="PawnIoInstaller.Report"/>).
+    /// </summary>
+    public bool DriverSettling => _sampler?.DriverSettling ?? false;
 
     /// <summary>
     /// The stored settings changed (the settings store's <c>Changed</c>; any thread, quick): Off ends the helper's request

@@ -46,6 +46,16 @@ namespace InfoPanel.Sensors.Libre;
 /// registry says. Either, with no helper running (waiting out a restart's backoff), starts one in that round, the wait
 /// cleared.
 /// </para>
+/// <para>
+/// <b>An install's tail.</b> From <see cref="DriverChanged"/> on, <see cref="DriverSettling"/> is true until the engine
+/// has read the driver again and the helper started after that read has said hello (its state is then the driver's), or
+/// no such helper will: that start failed or was interrupted, Libre is off at the round, or the sampler closed (the source
+/// stopped). Each of those reads the registry first, so the driver it leaves is never the one from before the install.
+/// The installs asked and the installs settled are counts under one lock: <see cref="DriverChanged"/> counts one on the
+/// installer's thread, and only the poll thread settles them (a start settles the count it took as it began, so an
+/// install that ends while a helper starts is settled by the next one). Nothing waits for it: the helper's own start,
+/// with its deadlines, bounds it.
+/// </para>
 /// </summary>
 public sealed class LibreSampler : ISensorSampler
 {
@@ -103,7 +113,14 @@ public sealed class LibreSampler : ISensorSampler
     private volatile PawnIoReading? _driverRead;
     private long _driverReadAt;
     private PawnIoReading? _driverAtStart;
-    private int _driverChanged;
+
+    // Installs that ended well (DriverChanged, any thread) and those the poll thread has settled, under _installGate; once
+    // the sampler is closed nothing more is counted. _installsTaken: the count the poll thread last acted on.
+    private readonly Lock _installGate = new();
+    private long _installsAsked;
+    private long _installsSettled;
+    private bool _closed;
+    private long _installsTaken;
 
     // Sensors dropped on purpose (Off; storage off) since the polled source last took them.
     private readonly HashSet<string> _withdrawn = new(StringComparer.Ordinal);
@@ -172,9 +189,49 @@ public sealed class LibreSampler : ISensorSampler
 
     /// <summary>
     /// The driver was installed (from any thread): at the next round the registry is read again and the running helper,
-    /// if any, is stopped and a new one started, once, with no backoff.
+    /// if any, is stopped and a new one started, once, with no backoff; <see cref="DriverSettling"/> until its hello. On a
+    /// closed sampler (the source stopped) no round will: the registry is read now instead.
     /// </summary>
-    public void DriverChanged() => Interlocked.Exchange(ref _driverChanged, 1);
+    public void DriverChanged()
+    {
+        lock (_installGate)
+        {
+            if (!_closed)
+            {
+                _installsAsked++;
+                return;
+            }
+        }
+
+        ReadDriver();
+    }
+
+    /// <summary>
+    /// Whether an install that ended well hasn't been settled yet (any thread): the driver hasn't been read again with a
+    /// helper started for it that said hello, and nothing has ended that wait (Libre off, a failed start, the sampler
+    /// closed). Read before <see cref="Driver"/>: once this is false, <see cref="Driver"/> is the one read after the install.
+    /// </summary>
+    public bool DriverSettling
+    {
+        get
+        {
+            lock (_installGate)
+                return _installsSettled != _installsAsked;
+        }
+    }
+
+    private long InstallsAsked()
+    {
+        lock (_installGate)
+            return _installsAsked;
+    }
+
+    /// <summary>Installs up to <paramref name="asked"/> are settled (the poll thread, after the registry was read for them).</summary>
+    private void Settle(long asked)
+    {
+        lock (_installGate)
+            _installsSettled = Math.Max(_installsSettled, asked);
+    }
 
     public IReadOnlyCollection<string> TakeWithdrawn()
     {
@@ -291,8 +348,12 @@ public sealed class LibreSampler : ISensorSampler
         var wanted = _settings();
         if (!wanted.Enabled)
         {
-            CheckDriver();
+            // Off: no helper will say hello for an install, so it is settled now, the registry read for it first.
+            var asked = InstallsAsked();
+            CheckDriver(asked);
             TurnOff();
+            _installsTaken = asked;
+            Settle(asked);
             Fail(samples);
             return;
         }
@@ -302,7 +363,7 @@ public sealed class LibreSampler : ISensorSampler
             TurnOff();
 
         // The driver changed since the running helper read it (or an install finished): a new helper reads it, now.
-        var driverChanged = CheckDriver();
+        var driverChanged = CheckDriver(InstallsAsked());
         if (driverChanged is { } why && _helper is not null)
         {
             Restart(wanted, why);
@@ -400,9 +461,25 @@ public sealed class LibreSampler : ISensorSampler
     {
         _waiting = false;
         NewGeneration();
+        // The installs this start answers for: those ended well before the registry is read just below. However it ends
+        // (its hello, a failure, an interruption), they are settled then; one that ends later is the next start's.
+        var installs = InstallsAsked();
+        _installsTaken = installs;
         // The engine's own reading before the helper reads it: a change while it starts differs from this at the next read.
         // Taken at every start, one that fails too, so a change is acted on once.
         _driverAtStart = ReadDriver();
+        try
+        {
+            StartHelper(wanted);
+        }
+        finally
+        {
+            Settle(installs);
+        }
+    }
+
+    private void StartHelper(LibreSettings wanted)
+    {
         ILibreHelper? helper = null;
         try
         {
@@ -596,13 +673,14 @@ public sealed class LibreSampler : ISensorSampler
     }
 
     /// <summary>
-    /// Reads the driver when an install finished or <see cref="LibreSource.DriverCheckInterval"/> passed since the last
-    /// read, and says why the running helper should start again: an install finished, or the driver isn't what it was as
-    /// that helper started. Null for nothing to do.
+    /// Reads the driver when an install finished since the last start took the count (<paramref name="asked"/> is the
+    /// count now) or <see cref="LibreSource.DriverCheckInterval"/> passed since the last read, and says why the running
+    /// helper should start again: an install finished, or the driver isn't what it was as that helper started. Null for
+    /// nothing to do.
     /// </summary>
-    private string? CheckDriver()
+    private string? CheckDriver(long asked)
     {
-        if (Interlocked.Exchange(ref _driverChanged, 0) == 1)
+        if (asked != _installsTaken)
         {
             ReadDriver();
             return "the PawnIO driver was installed";
@@ -675,7 +753,21 @@ public sealed class LibreSampler : ISensorSampler
     {
         var helper = _helper;
         _helper = null;
+        // A retired helper no longer speaks for the driver, as when it's turned off, lost or restarted.
+        _hello = null;
         Stop(helper);
+        // No round runs from now on: an install not settled is, with the registry as it is now; a later one reads it itself.
+        bool settling;
+        lock (_installGate)
+        {
+            _closed = true;
+            settling = _installsSettled != _installsAsked;
+        }
+
+        if (settling)
+            ReadDriver();
+        lock (_installGate)
+            _installsSettled = _installsAsked;
         Tell(o => o.Stopped());
         lock (_gate)
         {

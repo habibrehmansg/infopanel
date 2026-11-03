@@ -1,3 +1,4 @@
+using InfoPanel.SensorHelper;
 using Serilog;
 using System;
 using System.ComponentModel;
@@ -141,7 +142,27 @@ public sealed class PawnIoInstaller : IDisposable
         }
     }
 
-    /// <summary>Whether an install runs now.</summary>
+    /// <summary>The driver's state the API reports while an install runs or its tail lasts (<see cref="Report"/>).</summary>
+    public const string InstallingState = "installing";
+
+    /// <summary>
+    /// The driver as the API reports it: <see cref="InstallingState"/> while an install runs (<see cref="Installing"/>) or
+    /// after one that ended well until the Libre source has read the driver again and its new helper said hello
+    /// (<paramref name="settling"/>: <see cref="LibreSource.DriverSettling"/>), else <paramref name="driver"/>
+    /// (<see cref="LibreSource.Driver"/>); the version is the driver's either way. Read in that order, never the other: the
+    /// installer marks the source's install (<see cref="LibreSource.DriverChanged"/>) under its lock as it stops
+    /// installing, so a read that finds it not installing finds the source settling; and the source settles only after it
+    /// has read the driver again, so a read that finds it settled reads that driver or a later one, never the one from
+    /// before the install.
+    /// </summary>
+    public static PawnIoReading Report(PawnIoInstaller? installer, Func<bool> settling, Func<PawnIoReading> driver)
+    {
+        var installing = installer?.Installing == true || settling();
+        var now = driver();
+        return installing ? now with { State = InstallingState } : now;
+    }
+
+    /// <summary>Whether an install runs now: its installer hasn't ended (its tail is the Libre source's, <see cref="Report"/>).</summary>
     public bool Installing
     {
         get
@@ -172,18 +193,21 @@ public sealed class PawnIoInstaller : IDisposable
     }
 
     /// <summary>
-    /// Starts an install: <see cref="PawnIoStart.Busy"/> while one runs (until its installer ends, however long),
-    /// <see cref="PawnIoStart.NoInstaller"/> without a bundled installer (none here, no file, a link, or another hash),
-    /// else <see cref="PawnIoStart.Started"/>; the launch and the wait run on their own, and the outcome is
-    /// <see cref="LastInstall"/> once it ends.
+    /// Starts an install: <see cref="PawnIoStart.Busy"/> while one runs (until its installer ends, however long) or while
+    /// <paramref name="busy"/> says the last one's tail lasts (<see cref="LibreSource.DriverSettling"/>: the driver not yet
+    /// read again with a new helper's hello), <see cref="PawnIoStart.NoInstaller"/> without a bundled installer (none here,
+    /// no file, a link, or another hash), else <see cref="PawnIoStart.Started"/>; the launch and the wait run on their own,
+    /// and the outcome is <see cref="LastInstall"/> once it ends. <paramref name="busy"/> is asked under the same lock as
+    /// the install's own flag, which an install that ends well clears only as it marks the source's install, so no start
+    /// slips in between the two.
     /// </summary>
-    public PawnIoStart Start()
+    public PawnIoStart Start(Func<bool>? busy = null)
     {
         if (!_supported)
             return PawnIoStart.NoInstaller;
         lock (_gate)
         {
-            if (_installing)
+            if (_installing || busy?.Invoke() == true)
                 return PawnIoStart.Busy;
             _installing = true;
         }

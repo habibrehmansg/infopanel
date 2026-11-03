@@ -1102,7 +1102,7 @@
       "additionalProperties": false,
       "properties": {
         "state": {
-          "description": "`missing` (not installed), `outdated` (older than 2.0, which LibreHardwareMonitor needs), `installed`, `notLoaded` (installed, but the sensor helper couldn't open it), `installing` (an install the engine started runs now) or `unknown` (not read: no registry to read, or a sensor helper that doesn't say). A client treats a state it doesn't know as `unknown`.",
+          "description": "`missing` (not installed), `outdated` (older than 2.0, which LibreHardwareMonitor needs), `installed`, `notLoaded` (installed, but the sensor helper can't open it: it runs without administrator rights, or Windows blocked the driver), `installing` (an install the engine started runs now, or ended `installed` and the engine hasn't yet read the driver again and started a new sensor helper for it) or `unknown` (not read: no registry to read, or a sensor helper that doesn't say). A client treats a state it doesn't know as `unknown`.",
           "enum": ["missing", "outdated", "installed", "notLoaded", "installing", "unknown"]
         },
         "version": { "description": "The installed version as Windows lists it (dotted whole numbers), or null when the engine doesn't read it or none is installed.", "type": ["string", "null"], "maxLength": 64 },

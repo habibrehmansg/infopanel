@@ -1026,7 +1026,7 @@ export interface SensorSource {
 
 /** The PawnIO driver (docs/api.md#the-pawnio-driver): on the Libre source's entry in GET /api/sensors/sources, and the answer to POST /api/sensors/sources/libre/driver. */
 export interface LibreDriver {
-  /** `missing` (not installed), `outdated` (older than 2.0, which LibreHardwareMonitor needs), `installed`, `notLoaded` (installed, but the sensor helper couldn't open it), `installing` (an install the engine started runs now) or `unknown` (not read: no registry to read, or a sensor helper that doesn't say). A client treats a state it doesn't know as `unknown`. */
+  /** `missing` (not installed), `outdated` (older than 2.0, which LibreHardwareMonitor needs), `installed`, `notLoaded` (installed, but the sensor helper can't open it: it runs without administrator rights, or Windows blocked the driver), `installing` (an install the engine started runs now, or ended `installed` and the engine hasn't yet read the driver again and started a new sensor helper for it) or `unknown` (not read: no registry to read, or a sensor helper that doesn't say). A client treats a state it doesn't know as `unknown`. */
   state: "missing" | "outdated" | "installed" | "notLoaded" | "installing" | "unknown";
   /**
    * The installed version as Windows lists it (dotted whole numbers), or null when the engine doesn't read it or none is installed.
@@ -3942,13 +3942,13 @@ export interface ApiOperations {
     query: { [key: string]: never };
     request: never;
     responses: {
-      /** The install started: the driver's state is `installing` until it ends, and its outcome is then the driver's `lastInstall` (GET /api/sensors/sources). */
+      /** The install started: the driver's state is `installing` until it ends (after `installed`, until the engine has read the driver again and started a new sensor helper for it), and its outcome is then the driver's `lastInstall` (GET /api/sensors/sources). */
       202: LibreDriver;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
       /** The token lacks the scope the request needs. */
       403: ScopeProblem;
-      /** No install started: one runs already, or the engine has no bundled installer to run (not Windows, a replay, a build without it, or one whose SHA-256 isn't the one the engine pins). */
+      /** No install started: one runs already (the driver's state is `installing`, which after an install that ended `installed` lasts until the engine has read the driver again and started a new sensor helper for it), or the engine has no bundled installer to run (not Windows, a replay, a build without it, or one whose SHA-256 isn't the one the engine pins). */
       409: Problem;
     };
   };

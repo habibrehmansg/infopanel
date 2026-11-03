@@ -18,7 +18,8 @@ namespace InfoPanel.Core.Tests.Sensors.Libre;
 /// <c>PawnIO_setup.exe</c>, which, given the installer's arguments, writes <c>ran.txt</c> beside itself and exits with the
 /// number in <c>exit-code.txt</c> there. Each test works in a folder of its own under the temporary folder and removes it,
 /// its junction first (<c>rmdir</c>, which never touches the target's contents). And the real sensor helper, built beside
-/// these tests, says the driver the engine reads in its hello. (Making a symbolic link needs an administrator here, so
+/// these tests, says the driver the engine reads in its hello, as a helper with its rights says it (installed without
+/// administrator rights is <c>notLoaded</c>). (Making a symbolic link needs an administrator here, so
 /// <c>PawnIoInstallerTests</c>' link case runs on Windows only in this class.)
 /// </summary>
 public sealed class PawnIoWindowsTests : IDisposable
@@ -280,7 +281,7 @@ public sealed class PawnIoWindowsTests : IDisposable
         var hello = await helper.HelloAsync(Ct).WaitAsync(Patience, Ct);
         Say($"the engine reads {engine}; the helper's hello says {hello.Driver}");
 
-        Assert.Equal(engine.State, hello.Driver);
+        Assert.Equal(PawnIoDriver.OfHelper(engine, hello.Elevated), hello.Driver);
     }
 
     /// <summary>Calls <paramref name="before"/> as a launch starts (after the hash, the file still held), then launches.</summary>

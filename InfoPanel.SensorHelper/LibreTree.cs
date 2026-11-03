@@ -23,11 +23,13 @@ internal sealed class LibreTree : ISensorTree
 
     /// <summary>
     /// The PawnIO driver's state, read once as the helper starts (<see cref="PawnIoDriver.Read"/>: the registry's
-    /// <c>DisplayVersion</c>, unelevated): <c>missing</c>, <c>outdated</c> or <c>installed</c>. LibreHardwareMonitorLib
-    /// 0.9.6 doesn't say whether it opened the driver (its <c>PawnIo</c> handle is its own), so the helper never says
-    /// <c>notLoaded</c>. The engine reads the same value every 10 s and starts a new helper when it changes.
+    /// <c>DisplayVersion</c>, unelevated), as the helper says it (<see cref="PawnIoDriver.OfHelper"/>): <c>missing</c>,
+    /// <c>outdated</c>, <c>installed</c> as administrator, and <c>notLoaded</c> installed without administrator rights,
+    /// which LibreHardwareMonitorLib needs to open PawnIO. LibreHardwareMonitorLib 0.9.6 doesn't say whether it opened the
+    /// driver (its <c>PawnIo</c> handle is its own), so an elevated helper Windows blocked the driver for still says
+    /// <c>installed</c>. The engine reads the same registry value every 10 s and starts a new helper when it changes.
     /// </summary>
-    public string Driver { get; } = PawnIoDriver.Read(new WindowsPawnIoRegistry()).State;
+    public string Driver { get; } = PawnIoDriver.OfHelper(PawnIoDriver.Read(new WindowsPawnIoRegistry()), Environment.IsPrivilegedProcess);
 
     public void Configure(bool storage, int storageInterval)
     {

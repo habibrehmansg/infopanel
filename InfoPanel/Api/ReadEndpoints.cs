@@ -27,13 +27,18 @@ public static partial class ReadEndpoints
     /// <summary>The engine API's version (spec/docs/api.md): 2 since documents are the 2.0 format.</summary>
     public const int Protocol = 2;
 
-    /// <summary>The PawnIO driver as the Libre source and the bundled installer have it now.</summary>
+    /// <summary>
+    /// The PawnIO driver as the Libre source and the bundled installer have it now: <c>installing</c> while an install runs
+    /// and after one that ended well until the source has read the driver again and its new helper said hello, read in the
+    /// order that can't give the state from before the install (<see cref="PawnIoInstaller.Report"/>).
+    /// </summary>
     private static LibreDriverBody DriverOf(LibreSource? libre, PawnIoInstaller? installer)
     {
-        var driver = libre?.Driver ?? new PawnIoReading(PawnIoDriver.Unknown, null);
+        var driver = PawnIoInstaller.Report(installer, () => libre?.DriverSettling == true,
+            () => libre?.Driver ?? new PawnIoReading(PawnIoDriver.Unknown, null));
         return new LibreDriverBody
         {
-            State = installer?.Installing == true ? "installing" : driver.State,
+            State = driver.State,
             Version = driver.Version,
             Installer = installer?.Available,
             LastInstall = installer?.LastInstall is { } last ? new LibreDriverInstall { Outcome = last.Outcome, Code = last.Code } : null,
@@ -108,15 +113,16 @@ public static partial class ReadEndpoints
         }).RequireScope(ApiScope.Read);
 
         // Installs the PawnIO driver from the engine's own bundled installer (nothing in the request chooses what runs);
-        // one at a time; 409 while one runs or without that installer (not Windows, a replay, no file, another hash).
+        // one at a time, its tail included (until the Libre source has read the driver it installed); 409 meanwhile, or
+        // without that installer (not Windows, a replay, no file, another hash).
         api.MapPost("/sensors/sources/libre/driver", (IServiceProvider services) =>
         {
             var libre = services.GetService<LibreSource>();
             var installer = services.GetService<PawnIoInstaller>();
-            return installer?.Start() switch
+            return installer?.Start(() => libre?.DriverSettling == true) switch
             {
                 PawnIoStart.Started => ApiResults.Json(DriverOf(libre, installer) with { State = "installing" }, StatusCodes.Status202Accepted),
-                PawnIoStart.Busy => Conflict("An install of the PawnIO driver runs already."),
+                PawnIoStart.Busy => Conflict("An install of the PawnIO driver runs already, or the engine is still reading the driver it installed."),
                 _ => Conflict("The engine has no PawnIO installer to run here."),
             };
         }).RequireScope(ApiScope.Session);

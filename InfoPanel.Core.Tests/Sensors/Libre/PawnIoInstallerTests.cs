@@ -5,6 +5,7 @@ using InfoPanel.Core.Tests.SensorHelper;
 using InfoPanel.SensorHelper;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.Libre;
+using InfoPanel.Settings;
 using Serilog.Events;
 using Xunit;
 
@@ -18,6 +19,9 @@ namespace InfoPanel.Core.Tests.Sensors.Libre;
 /// hash or another operating system meaning no installer; one at a time, for as long as the installer runs; the outcomes
 /// of exits 0, 3010 and 1641, a declined prompt (1223) and any other code, a late one too; the engine stopping abandons
 /// the wait, kills nothing and publishes nothing, a launch it blocked included; and after success the Libre source reads the driver again and starts a new helper.
+/// After an install that ended <c>installed</c> the driver reads <c>installing</c>, and another install is refused, until
+/// the engine has read the driver again and the helper started for it said hello, or no such helper will (Libre off,
+/// the source stopped, its start failed); a read racing that end never gives the state from before the install.
 /// (<c>PawnIoWindowsTests</c> launches for real on Windows.)
 /// </summary>
 public sealed class PawnIoInstallerTests : IDisposable
@@ -439,6 +443,242 @@ public sealed class PawnIoInstallerTests : IDisposable
         Assert.Equal(2, libreLauncher.Starts);
         Assert.Equal(SourceState.Running, rig.State);
         Assert.Equal(new PawnIoReading("installed", "2.2.0.0"), rig.Source.Driver);
+    }
+
+    /// <summary>
+    /// Helpers that say the driver as the real one does without administrator rights (the PC's case: PawnIO installed is
+    /// <c>notLoaded</c>), from the registry the installer writes; <paramref name="starting"/> is called as each starts,
+    /// before its hello.
+    /// </summary>
+    private static ScriptedLauncher Helpers(FakePawnIoRegistry registry, Action? starting = null) => new(helper =>
+    {
+        starting?.Invoke();
+        helper.Hello = new HelloAnswer(HelperProtocol.Version, "2.0.0-test", false, PawnIoDriver.OfHelper(PawnIoDriver.Read(registry), false));
+        helper.Sample = () => ScriptedHelper.Answer(1, 5f);
+    });
+
+    /// <summary>The installer as the engine wires it to the Libre source.</summary>
+    private PawnIoInstaller WiredTo(LibreRig rig) => new(_path, _launcher, rig.Source.DriverChanged, supported: true, _time, rig.Logger, _sha256);
+
+    /// <summary>The driver as <c>GET /api/sensors/sources</c> reports it.</summary>
+    private static PawnIoReading Reported(PawnIoInstaller installer, LibreRig rig) =>
+        PawnIoInstaller.Report(installer, () => rig.Source.DriverSettling, () => rig.Source.Driver);
+
+    /// <summary>An install as <c>POST /api/sensors/sources/libre/driver</c> starts it.</summary>
+    private static PawnIoStart Install(PawnIoInstaller installer, LibreRig rig) => installer.Start(() => rig.Source.DriverSettling);
+
+    [Fact]
+    public async Task AfterAnInstallThatEndedWell_TheDriverIsInstalling_UntilTheNewHelperSaysHello_ThenWhatThatHelperSays()
+    {
+        var registry = new FakePawnIoRegistry();
+        PawnIoInstaller? installer = null;
+        LibreRig? rig = null;
+        var whileStarting = new List<PawnIoReading>();
+        // A new helper starting (the engine has read the driver again), before its hello: what a client reads meanwhile.
+        var helpers = Helpers(registry, () =>
+        {
+            if (installer is not null)
+                whileStarting.Add(Reported(installer, rig!));
+        });
+        rig = new LibreRig(_ => helpers, driver: registry);
+        using var owned = rig;
+        rig.Open();
+        installer = WiredTo(rig);
+        Assert.Equal(new PawnIoReading("missing", null), Reported(installer, rig));
+
+        Assert.Equal(PawnIoStart.Started, Install(installer, rig));
+        var process = await _launcher.Launched(0);
+        Assert.Equal("installing", Reported(installer, rig).State);
+
+        // The installer writes the registry and exits 0: its own wait is over, but the engine hasn't read the driver again.
+        registry.Value = "2.2.0.0";
+        process.Exit(0);
+        await Ended(installer);
+        Assert.Equal(new PawnIoOutcome("installed", null), installer.LastInstall);
+        Assert.False(installer.Installing);
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.Equal("installing", Reported(installer, rig).State);
+            Assert.True(rig.Source.DriverSettling);
+            rig.Time.Advance(TimeSpan.FromMilliseconds(500)); // short of the next round
+        }
+
+        Assert.Equal(1, helpers.Starts);
+
+        // The next round reads it and starts a new helper: installing while it starts, then what its hello says.
+        rig.Poll(LibreSource.Interval);
+        Assert.Equal(2, helpers.Starts);
+        Assert.Equal(["installing"], whileStarting.Select(r => r.State));
+        Assert.Equal(new PawnIoReading("notLoaded", "2.2.0.0"), Reported(installer, rig));
+        Assert.False(rig.Source.DriverSettling);
+        Assert.Equal((SourceStateKind.Limited, "notElevated"), (rig.State.Kind, rig.State.Reason?.Code));
+    }
+
+    [Fact]
+    public async Task AnotherInstall_IsRefused_UntilTheNewHelperSaysHello()
+    {
+        var registry = new FakePawnIoRegistry();
+        var helpers = Helpers(registry);
+        using var rig = new LibreRig(_ => helpers, driver: registry);
+        rig.Open();
+        var installer = WiredTo(rig);
+        Assert.Equal(PawnIoStart.Started, Install(installer, rig));
+        registry.Value = "2.2.0.0";
+        (await _launcher.Launched(0)).Exit(0);
+        await Ended(installer);
+
+        // The installer has exited; the engine hasn't read the driver it installed: one install at a time includes this.
+        Assert.Equal(PawnIoStart.Busy, Install(installer, rig));
+        Assert.Equal(PawnIoStart.Busy, Install(installer, rig));
+        Assert.Single(_launcher.Starts);
+
+        rig.Poll(LibreSource.Interval);
+        Assert.Equal(2, helpers.Starts);
+        Assert.Equal(PawnIoStart.Started, Install(installer, rig));
+        (await _launcher.Launched(1)).Exit(0);
+        await Ended(installer);
+        Assert.Equal(2, _launcher.Starts.Count);
+    }
+
+    [Theory]
+    [InlineData("libreTurnedOff", null)]
+    [InlineData("sourceStopped", null)]
+    [InlineData("sourceStoppedWhileTheInstallerRan", null)]
+    [InlineData("theNewHelpersStartFailed", null)]
+    // An older PawnIO before it, the helper unelevated: its hello said `notLoaded`, and a helper retired by any of the
+    // ends no longer speaks for the driver.
+    [InlineData("libreTurnedOff", "2.0.0.0")]
+    [InlineData("sourceStopped", "2.0.0.0")]
+    [InlineData("sourceStoppedWhileTheInstallerRan", "2.0.0.0")]
+    [InlineData("theNewHelpersStartFailed", "2.0.0.0")]
+    public async Task Installing_EndsAtOnce_WithWhatTheRegistrySays_WhenNoNewHelperWillSayHello(string end, string? before)
+    {
+        var registry = new FakePawnIoRegistry { Value = before };
+        var helpers = Helpers(registry);
+        using var rig = new LibreRig(_ => helpers, driver: registry);
+        rig.Open();
+        if (before is not null)
+            Assert.Equal(new PawnIoReading("notLoaded", before), rig.Source.Driver);
+        var installer = WiredTo(rig);
+        Assert.Equal(PawnIoStart.Started, Install(installer, rig));
+        var process = await _launcher.Launched(0);
+        registry.Value = "2.2.0.0";
+        if (end == "sourceStoppedWhileTheInstallerRan")
+            rig.Source.Dispose();
+        process.Exit(0);
+        await Ended(installer);
+        Assert.Equal(new PawnIoOutcome("installed", null), installer.LastInstall);
+
+        switch (end)
+        {
+            case "libreTurnedOff":
+                Assert.Equal("installing", Reported(installer, rig).State);
+                rig.Settings = LibreSettings.Default with { Enabled = false };
+                rig.Poll(LibreSource.Interval);
+                Assert.Equal(1, helpers.Starts);
+                Assert.Equal((SourceStateKind.Off, "disabled"), (rig.State.Kind, rig.State.Reason?.Code));
+                break;
+            case "sourceStopped":
+                Assert.Equal("installing", Reported(installer, rig).State);
+                rig.Source.Dispose(); // the source's stop closes its sampler
+                Assert.Equal(1, helpers.Starts);
+                break;
+            case "theNewHelpersStartFailed":
+                Assert.Equal("installing", Reported(installer, rig).State);
+                helpers.Refuse = () => new IOException("The helper's pipe broke.");
+                rig.Poll(LibreSource.Interval);
+                Assert.Equal(2, helpers.Starts);
+                Assert.Equal((SourceStateKind.Unavailable, "helperFailed"), (rig.State.Kind, rig.State.Reason?.Code));
+                break;
+        }
+
+        // Not installing, and never the pre-install `missing`: the registry as read after the installer's exit.
+        Assert.False(rig.Source.DriverSettling);
+        Assert.Equal(new PawnIoReading("installed", "2.2.0.0"), Reported(installer, rig));
+        Assert.Equal(PawnIoStart.Started, Install(installer, rig));
+        (await _launcher.Launched(1)).Exit(5);
+        await Ended(installer);
+    }
+
+    [Theory]
+    [InlineData("declined")]
+    [InlineData("restartNeeded")]
+    [InlineData("failed")]
+    public async Task AnInstallThatEndedOtherwise_EndsInstalling_AtTheInstallersExit(string outcome)
+    {
+        var registry = new FakePawnIoRegistry();
+        var helpers = Helpers(registry);
+        using var rig = new LibreRig(_ => helpers, driver: registry);
+        rig.Open();
+        var installer = WiredTo(rig);
+        if (outcome == "declined")
+            _launcher.Refusal = () => new Win32Exception(PawnIoInstaller.Declined, "The operation was canceled by the user.");
+
+        Assert.Equal(PawnIoStart.Started, Install(installer, rig));
+        if (outcome != "declined")
+            (await _launcher.Launched(0)).Exit(outcome == "restartNeeded" ? PawnIoInstaller.RebootRequired : 5);
+        await Ended(installer);
+
+        Assert.Equal(outcome, installer.LastInstall?.Outcome);
+        Assert.False(rig.Source.DriverSettling);
+        Assert.Equal(new PawnIoReading("missing", null), Reported(installer, rig));
+        _launcher.Refusal = null;
+        Assert.Equal(PawnIoStart.Started, Install(installer, rig));
+        (await _launcher.Launched(1)).Exit(5);
+        await Ended(installer);
+        Assert.Equal(1, helpers.Starts);
+    }
+
+    [Theory]
+    [InlineData(true)] // the installer still runs as the read begins
+    [InlineData(false)] // it has exited 0; the round that reads the driver again hasn't run
+    public async Task ASourcesReadRacingTheInstallsEnd_NeverGivesTheStateFromBeforeTheInstall(bool running)
+    {
+        var registry = new FakePawnIoRegistry();
+        var helpers = Helpers(registry);
+        using var rig = new LibreRig(_ => helpers, driver: registry);
+        rig.Open();
+        var installer = WiredTo(rig);
+        Assert.Equal(PawnIoStart.Started, Install(installer, rig));
+        var process = await _launcher.Launched(0);
+        registry.Value = "2.2.0.0";
+        if (!running)
+        {
+            process.Exit(0);
+            await Ended(installer);
+        }
+
+        // The race, run once right after the read's first look at the source, whichever that is: the installer exits 0,
+        // its end is taken, and the round reads the driver again and starts the new helper, which says hello.
+        var raced = false;
+        void Race()
+        {
+            if (raced)
+                return;
+            raced = true;
+            process.Exit(0);
+            Assert.True(installer.Run!.Wait(HelperTestKit.Patience));
+            rig.Poll(LibreSource.Interval);
+            Assert.Equal(2, helpers.Starts);
+        }
+
+        var read = PawnIoInstaller.Report(installer,
+            () =>
+            {
+                var settling = rig.Source.DriverSettling;
+                Race();
+                return settling;
+            },
+            () =>
+            {
+                var driver = rig.Source.Driver;
+                Race();
+                return driver;
+            });
+
+        Assert.True(raced);
+        Assert.Equal("installing", read.State);
+        Assert.Equal(new PawnIoReading("notLoaded", "2.2.0.0"), Reported(installer, rig));
     }
 
     /// <summary>Records each start and hands back a process the test ends; never starts anything.</summary>

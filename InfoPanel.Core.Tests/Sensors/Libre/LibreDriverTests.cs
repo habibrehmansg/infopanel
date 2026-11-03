@@ -17,9 +17,10 @@ namespace InfoPanel.Core.Tests.Sensors.Libre;
 /// </summary>
 public sealed class LibreDriverTests
 {
-    private static ScriptedLauncher Launcher(FakePawnIoRegistry? registry = null, bool elevated = false) => new(helper =>
+    /// <summary>Helpers that say the driver as the real one does (<see cref="PawnIoDriver.OfHelper"/>), as administrator by default.</summary>
+    private static ScriptedLauncher Launcher(FakePawnIoRegistry? registry = null, bool elevated = true) => new(helper =>
     {
-        helper.Hello = new HelloAnswer(HelperProtocol.Version, "2.0.0-test", elevated, registry is null ? "unknown" : PawnIoDriver.Read(registry).State);
+        helper.Hello = new HelloAnswer(HelperProtocol.Version, "2.0.0-test", elevated, registry is null ? "unknown" : PawnIoDriver.OfHelper(PawnIoDriver.Read(registry), elevated));
         helper.Sample = () => ScriptedHelper.Answer(1, 5f);
     });
 
@@ -248,6 +249,33 @@ public sealed class LibreDriverTests
         for (var i = 0; i < 10; i++)
             rig.Poll(LibreSource.Interval);
         Assert.Equal(1, launcher.Starts);
+    }
+
+    [Theory]
+    [InlineData(false, "notLoaded", SourceStateKind.Limited, "notElevated")]
+    [InlineData(true, "installed", SourceStateKind.Running, null)]
+    public void PawnIoInstalled_IsNotLoaded_WithoutAdministratorRights_AndTheTenSecondReadsNeverStartTheHelperAgainOverIt(
+        bool elevated, string driver, SourceStateKind state, string? reason)
+    {
+        // The PC: PawnIO 2.2.0 installed, the helper without administrator rights read 179 sensors, as administrator 263.
+        var registry = new FakePawnIoRegistry { Value = "2.2.0.0" };
+        var launcher = Launcher(registry, elevated);
+        using var rig = new LibreRig(_ => launcher, driver: registry);
+        rig.Open();
+
+        Assert.Equal(driver, launcher.Last.Hello.Driver);
+        Assert.Equal(new PawnIoReading(driver, "2.2.0.0"), rig.Source.Driver);
+        Assert.Equal((state, reason), (rig.State.Kind, rig.State.Reason?.Code));
+
+        // The registry is read every 10 s and says what it said as the helper started: no restart, ever.
+        var reads = registry.Reads;
+        for (var i = 0; i < 30; i++)
+            rig.Poll(LibreSource.Interval); // 60 s
+        Assert.Equal(6, registry.Reads - reads);
+        Assert.Equal(1, launcher.Starts);
+        Assert.Equal((state, reason), (rig.State.Kind, rig.State.Reason?.Code));
+        Assert.Equal(new PawnIoReading(driver, "2.2.0.0"), rig.Source.Driver);
+        Assert.Equal(SensorStatus.Live, rig.Status("/amdcpu/0/load/0"));
     }
 
     [Fact]
