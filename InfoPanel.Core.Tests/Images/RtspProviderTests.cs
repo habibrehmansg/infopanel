@@ -733,4 +733,221 @@ public sealed class RtspProviderTests
         Assert.Null(refused.Sample);
         Assert.Empty(server.Authorizations);
     }
+
+    // ---- cameras that don't echo CSeq ---------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ACameraThatDoesntEchoCSeq_IsSignedInto_AndPlays(bool signIn)
+    {
+        // An answer without CSeq answers the oldest request not yet answered, as FFmpeg's own client takes it: the
+        // SETUP's channels are agreed, and a 401 is signed and asked again.
+        var server = new RtspTestServer { EchoCSeq = _ => null, Digest = signIn ? ("viewer", "secret") : null };
+        await using var rig = new Rig(server: server);
+        var url = signIn ? $"rtsp://viewer:secret@127.0.0.1:{server.Port}/camera" : server.Url();
+        var shown = await rig.AskUntil(url, m => m.Sample is not null || m.Status is { Code: not "media.loading" });
+        Assert.Null(shown.Status);
+        shown.Sample!.Release();
+        Assert.Equal(signIn, server.Challenges >= 1);
+        Assert.Equal(signIn, server.Authorizations.Count > 0);
+    }
+
+    [Fact]
+    public async Task AnAnswerNamingNoRequestsCSeq_IsStillRefused()
+    {
+        // A CSeq that names no request sent isn't taken for another's: the 401 is refused, and nothing is signed.
+        var server = new RtspTestServer
+        {
+            EchoCSeq = cseq => (int.Parse(cseq, System.Globalization.CultureInfo.InvariantCulture) + 1000).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Digest = ("viewer", "secret"),
+        };
+        await using var rig = new Rig(server: server);
+        var refused = await rig.AskUntil($"rtsp://viewer:secret@127.0.0.1:{server.Port}/camera", m => m.Status is { Code: "media.provider" });
+        Assert.Equal(Malformed, refused.Status!.Message);
+        Assert.Null(refused.Sample);
+        Assert.True(server.Challenges >= 1);
+        Assert.Empty(server.Authorizations);
+    }
+
+    // ---- the relay's answers to its requests, in an order the test sets ------------------------------------------
+
+    private const string Basic = "WWW-Authenticate: Basic realm=\"camera\"\r\n";
+
+    /// <summary>
+    /// A relay between a camera and an FFmpeg the test plays itself over loopback sockets, without FFmpeg: each step
+    /// writes a message, or reads one whole, so the order the relay sees them in is the test's.
+    /// </summary>
+    private sealed class RelayRig : IAsyncDisposable
+    {
+        private readonly Socket _cameraSide;
+        private readonly Socket _ffmpegSide;
+        private readonly NetworkStream _camera;
+        private readonly NetworkStream _ffmpeg;
+        private readonly StreamReader _cameraReader;
+        private readonly StreamReader _ffmpegReader;
+
+        private RelayRig(RtspRelay relay, Socket cameraSide, Socket ffmpegSide)
+        {
+            Relay = relay;
+            _cameraSide = cameraSide;
+            _ffmpegSide = ffmpegSide;
+            _camera = new NetworkStream(cameraSide);
+            _ffmpeg = new NetworkStream(ffmpegSide);
+            _cameraReader = new StreamReader(_camera, System.Text.Encoding.Latin1);
+            _ffmpegReader = new StreamReader(_ffmpeg, System.Text.Encoding.Latin1);
+        }
+
+        public RtspRelay Relay { get; }
+
+        /// <summary>A relay with <paramref name="userInfo"/>'s credentials; <paramref name="sending"/> is its seam before each send.</summary>
+        public static async Task<RelayRig> StartAsync(string userInfo = "", Func<Task>? sending = null)
+        {
+            using var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            listener.Listen(1);
+            var relaySide = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            await relaySide.ConnectAsync(listener.LocalEndPoint!, Ct);
+            var cameraSide = await listener.AcceptAsync(Ct);
+            var relay = RtspRelay.Start(new NetworkStream(relaySide, ownsSocket: true), "rtsp://camera.test", userInfo, 1024 * 1024);
+            relay.Sending = sending;
+            var ffmpegSide = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            await ffmpegSide.ConnectAsync(new IPEndPoint(IPAddress.Loopback, relay.Port), Ct);
+            return new RelayRig(relay, cameraSide, ffmpegSide);
+        }
+
+        /// <summary>FFmpeg sends a request to the relay's address.</summary>
+        public Task Request(int cseq, string method = "OPTIONS") =>
+            Write(_ffmpeg, $"{method} {Relay.RelayBase}/camera RTSP/1.0\r\nCSeq: {cseq}\r\n\r\n");
+
+        /// <summary>The camera answers, with <paramref name="cseq"/> or no CSeq.</summary>
+        public Task CameraAnswers(string status, int? cseq, string headers = "") =>
+            Write(_camera, $"RTSP/1.0 {status}\r\n{(cseq is { } c ? $"CSeq: {c}\r\n" : "")}{headers}\r\n");
+
+        /// <summary>The next message the camera receives, or null when the relay closed its connection.</summary>
+        public Task<string?> CameraReads() => Read(_cameraReader);
+
+        /// <summary>The next message FFmpeg receives, or null when the relay closed its connection.</summary>
+        public Task<string?> FFmpegReads() => Read(_ffmpegReader);
+
+        private static async Task Write(Stream stream, string message)
+        {
+            await stream.WriteAsync(System.Text.Encoding.Latin1.GetBytes(message), Ct);
+            await stream.FlushAsync(Ct);
+        }
+
+        private static async Task<string?> Read(StreamReader reader)
+        {
+            var message = new System.Text.StringBuilder();
+            while (true)
+            {
+                string? line;
+                try
+                {
+                    line = await reader.ReadLineAsync(Ct).AsTask().WaitAsync(Wait, Ct);
+                }
+                catch (IOException)
+                {
+                    line = null; // reset by the relay's close
+                }
+                if (line is null) return message.Length == 0 ? null : throw new EndOfStreamException("A message cut short");
+                if (line.Length == 0) return message.ToString();
+                message.Append(line).Append('\n');
+            }
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Relay.Dispose();
+            _cameraReader.Dispose();
+            _ffmpegReader.Dispose();
+            _cameraSide.Dispose();
+            _ffmpegSide.Dispose();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// <summary>A header's value in a message <see cref="RelayRig"/> read, or null.</summary>
+    private static string? HeaderOf(string? message, string name) =>
+        message?.Split('\n').Skip(1)
+            .Where(l => l.StartsWith(name + ":", StringComparison.OrdinalIgnoreCase))
+            .Select(l => l[(name.Length + 1)..].Trim())
+            .FirstOrDefault();
+
+    [Fact]
+    public async Task AfterFifteenAnswered_ACSeqlessAnswer_IsTheRequestStillWaitings()
+    {
+        // Fifteen requests answered, then A (CSeq 16) and B (CSeq 17): A's answer names A, so B's 401 without CSeq is B's,
+        // and B is the request signed and sent again, never A.
+        await using var rig = await RelayRig.StartAsync("viewer:secret");
+        for (var cseq = 1; cseq <= 15; cseq++)
+        {
+            await rig.Request(cseq);
+            Assert.Equal($"{cseq}", HeaderOf(await rig.CameraReads(), "CSeq"));
+            await rig.CameraAnswers("200 OK", cseq);
+            Assert.Equal($"{cseq}", HeaderOf(await rig.FFmpegReads(), "CSeq"));
+        }
+        await rig.Request(16, "DESCRIBE");
+        Assert.Equal("16", HeaderOf(await rig.CameraReads(), "CSeq"));
+        await rig.Request(17, "SETUP");
+        Assert.Equal("17", HeaderOf(await rig.CameraReads(), "CSeq"));
+
+        await rig.CameraAnswers("200 OK", 16);
+        Assert.Equal("16", HeaderOf(await rig.FFmpegReads(), "CSeq"));
+        await rig.CameraAnswers("401 Unauthorized", null, Basic);
+
+        var again = await rig.CameraReads();
+        Assert.StartsWith("SETUP ", again);
+        Assert.Equal("17", HeaderOf(again, "CSeq"));
+        Assert.NotNull(HeaderOf(again, "Authorization"));
+    }
+
+    [Fact]
+    public async Task SeventeenRequestsUnanswered_EndTheRelay_AndNoneIsLetGo()
+    {
+        // Sixteen requests wait for an answer: a seventeenth isn't sent, and the relay ends saying why, rather than let the
+        // oldest go and pair the camera's answers without CSeq with the requests after the ones they answer.
+        await using var rig = await RelayRig.StartAsync();
+        for (var cseq = 1; cseq <= 16; cseq++)
+        {
+            await rig.Request(cseq);
+            Assert.Equal($"{cseq}", HeaderOf(await rig.CameraReads(), "CSeq"));
+        }
+        await rig.Request(17);
+
+        Assert.Null(await rig.CameraReads());
+        Assert.Equal(RtspRelay.TooManyWaiting, rig.Relay.Problem);
+    }
+
+    [Fact]
+    public async Task ARequestHeldBeforeItsSend_WaitsBehindARetrySentMeanwhile()
+    {
+        // A waits for its answer; B is read from FFmpeg and held just before it is sent. A's 401 without CSeq sends A again
+        // meanwhile, so the camera has A's retry before B: the camera's next 401 without CSeq is the retry's. A was signed
+        // once already, so it ends the relay, and B is never signed and sent again for it.
+        var sends = 0;
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var go = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var rig = await RelayRig.StartAsync("viewer:secret", async () =>
+        {
+            if (Interlocked.Increment(ref sends) != 2) return;
+            held.TrySetResult();
+            await go.Task;
+        });
+        await rig.Request(1, "DESCRIBE");
+        Assert.Equal("1", HeaderOf(await rig.CameraReads(), "CSeq"));
+        await rig.Request(2, "OPTIONS");
+        await held.Task.WaitAsync(Wait, Ct);
+
+        await rig.CameraAnswers("401 Unauthorized", null, Basic);
+        var retry = await rig.CameraReads();
+        Assert.StartsWith("DESCRIBE ", retry);
+        Assert.NotNull(HeaderOf(retry, "Authorization"));
+        go.SetResult();
+        Assert.StartsWith("OPTIONS ", await rig.CameraReads());
+
+        await rig.CameraAnswers("401 Unauthorized", null, Basic);
+        Assert.Null(await rig.CameraReads());
+        Assert.Equal(RtspRelay.SignInRefused, rig.Relay.Problem);
+    }
 }

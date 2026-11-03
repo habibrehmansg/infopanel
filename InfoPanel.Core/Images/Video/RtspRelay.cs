@@ -37,6 +37,14 @@ namespace InfoPanel.Images.Video;
 /// <c>rtsp</c> to a camera that offered a Digest it can't answer, and never sends credentials with control characters.
 /// </para>
 /// <para>
+/// An answer is matched to its request by its <c>CSeq</c>; one without a <c>CSeq</c> answers the oldest request not yet
+/// answered, as FFmpeg's own client takes it (<c>ff_rtsp_read_reply</c> in <c>libavformat/rtsp.c</c> only warns when the
+/// <c>CSeq</c> is missing or another, and reads the answer as its request's). An answer whose <c>CSeq</c> names no request
+/// waiting answers none: it agrees no channels, and a 401 with it ends the relay. A request is counted as waiting and
+/// written to the camera in one step, under the write lock, so the requests waiting are in the order the camera received
+/// them; at most 16 wait, and one more ends the relay rather than let one go unanswered.
+/// </para>
+/// <para>
 /// Interleaved packets pass only on the channels a SETUP agreed, and only when at least 8 bytes long (FFmpeg reads a
 /// shorter one's bytes as the next message); between two decoded frames (<see cref="Decoded"/>) the packets passed are
 /// held to <c>mediaBytes</c> together, whatever their marker bits say, which bounds what FFmpeg's parser and decoder can
@@ -50,6 +58,7 @@ internal sealed class RtspRelay : IDisposable
     private const int MaxHeader = 64 * 1024;
     private const int MaxBody = 1024 * 1024;
     private const int MaxLine = 4000;
+    private const int MaxWaiting = 16;
 
     internal static readonly MediaStatus Malformed = new("media.provider", "The camera's answer isn't valid RTSP.");
     internal static readonly MediaStatus Redirected = new("media.provider", "The camera redirects to another address, which isn't followed.");
@@ -58,6 +67,7 @@ internal sealed class RtspRelay : IDisposable
     internal static readonly MediaStatus SignInRefused = new("media.provider", "The camera refused the user name and password.");
     internal static readonly MediaStatus SignInUnknown = new("media.provider", "The camera asks for a kind of sign-in the engine doesn't have.");
     internal static readonly MediaStatus SignInUnsendable = new("media.provider", "The address's user name or password has control characters, which aren't sent.");
+    internal static readonly MediaStatus TooManyWaiting = new("media.provider", "The camera left too many requests unanswered.");
 
     private readonly Socket _listener;
     private readonly Stream _camera;
@@ -68,7 +78,9 @@ internal sealed class RtspRelay : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly SemaphoreSlim _write = new(1, 1);
     private readonly Lock _lock = new();
-    private readonly Dictionary<string, Message> _pending = new(StringComparer.Ordinal);
+    // The requests sent to the camera and not answered yet, in the order it received them (each counted as it is
+    // written, under the write lock): what an answer's CSeq names, and the oldest what an answer without one answers.
+    private readonly List<Message> _waiting = [];
     private readonly bool[] _channels = new bool[256];
     private readonly Action? _closed;
     private Challenge? _challenge;
@@ -99,6 +111,9 @@ internal sealed class RtspRelay : IDisposable
 
     /// <summary>The address FFmpeg is given, without a path: <c>rtsp://127.0.0.1:{port}</c>.</summary>
     public string RelayBase => "rtsp://127.0.0.1:" + Port.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Tests only: awaited as a request is about to be sent to the camera, before the write lock is taken.</summary>
+    internal Func<Task>? Sending { get; set; }
 
     /// <summary>Why the relay ended the connection itself, when it did.</summary>
     public MediaStatus? Problem => _problem;
@@ -175,21 +190,14 @@ internal sealed class RtspRelay : IDisposable
                     continue;
                 }
                 var message = await ReadMessageAsync(input, one[0], token).ConfigureAwait(false);
-                if (message.Method is not null)
+                if (message.Method is null)
                 {
-                    message.SetTarget(ToCamera(message.Target!));
-                    message.Remove("Authorization");
-                    lock (_lock)
-                    {
-                        if (message.Header("CSeq") is { } cseq)
-                        {
-                            if (_pending.Count >= 16) _pending.Clear();
-                            _pending[cseq] = message;
-                        }
-                        Sign(message);
-                    }
+                    await WriteCameraAsync(message.Serialize(), token).ConfigureAwait(false); // an answer to the camera's request
+                    continue;
                 }
-                await WriteCameraAsync(message.Serialize(), token).ConfigureAwait(false);
+                message.SetTarget(ToCamera(message.Target!));
+                message.Remove("Authorization");
+                await SendAsync(message, token).ConfigureAwait(false);
             }
         }
         catch (RefusedException e)
@@ -230,12 +238,13 @@ internal sealed class RtspRelay : IDisposable
                 else
                 {
                     if (message.Status is >= 300 and < 400) throw new RefusedException(Redirected);
+                    var request = Answered(message);
                     if (message.Status == 401)
                     {
-                        await SignInAsync(message, token).ConfigureAwait(false);
+                        await SignInAsync(message, request, token).ConfigureAwait(false);
                         continue;
                     }
-                    if (message.Status is >= 200 and < 300) Agreed(message);
+                    if (message.Status is >= 200 and < 300) Agreed(message, request);
                     foreach (var name in (string[])["Content-Base", "Content-Location"])
                         if (message.Header(name) is { } value) message.Set(name, ToRelay(value));
                 }
@@ -259,6 +268,34 @@ internal sealed class RtspRelay : IDisposable
         header.CopyTo(packet, 1);
         await input.ReadExactlyAsync(packet.AsMemory(4), token).ConfigureAwait(false);
         return packet;
+    }
+
+    /// <summary>
+    /// Sends <paramref name="request"/> to the camera (again): signed for the last challenge, counted as waiting and
+    /// written in one step under the write lock, so <see cref="_waiting"/> is in the order the camera receives requests.
+    /// Past <see cref="MaxWaiting"/> waiting, the relay ends.
+    /// </summary>
+    private async Task SendAsync(Message request, CancellationToken token)
+    {
+        if (Sending is { } sending) await sending().ConfigureAwait(false);
+        await _write.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            byte[] bytes;
+            lock (_lock)
+            {
+                if (_waiting.Count >= MaxWaiting) throw new RefusedException(TooManyWaiting);
+                Sign(request);
+                _waiting.Add(request);
+                bytes = request.Serialize();
+            }
+            await _camera.WriteAsync(bytes, token).ConfigureAwait(false);
+            await _camera.FlushAsync(token).ConfigureAwait(false);
+        }
+        finally
+        {
+            _write.Release();
+        }
     }
 
     private async Task WriteCameraAsync(byte[] bytes, CancellationToken token)
@@ -447,12 +484,30 @@ internal sealed class RtspRelay : IDisposable
             ? to + value[from.Length..]
             : value;
 
-    /// <summary>A SETUP's answer: the interleaved channels it agreed (the camera's, else those FFmpeg asked for).</summary>
-    private void Agreed(Message answer)
+    /// <summary>
+    /// The request <paramref name="answer"/> answers, no longer waiting: the oldest waiting with the <c>CSeq</c> it names, or
+    /// with no <c>CSeq</c> the oldest waiting; null when its <c>CSeq</c> names none waiting, or none waits.
+    /// </summary>
+    private Message? Answered(Message answer)
     {
         lock (_lock)
         {
-            var request = answer.Header("CSeq") is { } cseq && _pending.TryGetValue(cseq, out var r) ? r : null;
+            var cseq = answer.Header("CSeq");
+            var i = cseq is null
+                ? (_waiting.Count > 0 ? 0 : -1)
+                : _waiting.FindIndex(r => string.Equals(r.Header("CSeq"), cseq, StringComparison.Ordinal));
+            if (i < 0) return null;
+            var request = _waiting[i];
+            _waiting.RemoveAt(i);
+            return request;
+        }
+    }
+
+    /// <summary>A SETUP's answer: the interleaved channels it agreed (the camera's, else those FFmpeg asked for).</summary>
+    private void Agreed(Message answer, Message? request)
+    {
+        lock (_lock)
+        {
             if (request?.Method?.Equals("SETUP", StringComparison.OrdinalIgnoreCase) is not true) return;
             var range = Interleaved(answer.Header("Transport")) ?? Interleaved(request.Header("Transport"));
             if (range is not var (low, high)) return;
@@ -481,14 +536,13 @@ internal sealed class RtspRelay : IDisposable
     // ---- signing in ---------------------------------------------------------------------------------------------
 
     /// <summary>A 401: the request it answers is signed with the address's credentials and sent again, else the relay ends.</summary>
-    private async Task SignInAsync(Message answer, CancellationToken token)
+    private async Task SignInAsync(Message answer, Message? request, CancellationToken token)
     {
-        byte[] again;
         lock (_lock)
         {
             if (_credentials is not var (user, password)) throw new RefusedException(SignInNeeded);
             if (user.Any(char.IsControl) || password.Any(char.IsControl)) throw new RefusedException(SignInUnsendable);
-            if (answer.Header("CSeq") is not { } cseq || !_pending.TryGetValue(cseq, out var request)) throw new RefusedException(Malformed);
+            if (request is null) throw new RefusedException(Malformed);
             var challenge = Challenge.Choose(answer.Headers("WWW-Authenticate"), out var digestOffered) ?? throw new RefusedException(SignInUnknown);
             // Basic sends the password itself: not in the clear to a camera that offered a Digest (FFmpeg would fail too).
             if (!challenge.Digest && digestOffered && !_secure) throw new RefusedException(SignInUnknown);
@@ -496,10 +550,8 @@ internal sealed class RtspRelay : IDisposable
             if (request.Retries >= 2 || (request.Retries == 1 && !challenge.Stale)) throw new RefusedException(SignInRefused);
             request.Retries++;
             _challenge = challenge;
-            Sign(request);
-            again = request.Serialize();
         }
-        await WriteCameraAsync(again, token).ConfigureAwait(false);
+        await SendAsync(request, token).ConfigureAwait(false);
     }
 
     /// <summary>Signs <paramref name="request"/> for the camera's last challenge, when it made one. Under the lock.</summary>

@@ -20,8 +20,8 @@ namespace InfoPanel.Core.Tests.Images;
 /// or have each connection alternate between the two, hold back the first frame on some paths (<see cref="Slow"/>),
 /// check that each request names the camera's own address (<see cref="Authority"/>) and ask for Digest
 /// (<see cref="Digest"/>, with MD5 or another <see cref="DigestAlgorithm"/>, beside any <see cref="OtherChallenge"/>, in
-/// headers of their own or in one, <see cref="OneHeader"/>), as a camera that validates its requests does, or describe
-/// its track as H.265 (<see cref="Hevc"/>).
+/// headers of their own or in one, <see cref="OneHeader"/>), as a camera that validates its requests does, describe
+/// its track as H.265 (<see cref="Hevc"/>), or answer with another CSeq than the request's, or none (<see cref="EchoCSeq"/>).
 /// </para>
 /// </summary>
 internal sealed class RtspTestServer : IAsyncDisposable
@@ -101,6 +101,12 @@ internal sealed class RtspTestServer : IAsyncDisposable
 
     /// <summary>The track described as H.265 (<c>H265/90000</c>) instead of H.264.</summary>
     public bool Hevc { get; set; }
+
+    /// <summary>
+    /// The CSeq its own answers carry, told the request's: null leaves the header out, as some cameras do. Unset, the
+    /// request's own.
+    /// </summary>
+    public Func<string, string?>? EchoCSeq { get; set; }
 
     /// <summary>Every <c>Authorization</c> header a request carried, as it came.</summary>
     public IReadOnlyList<string> Authorizations
@@ -325,8 +331,11 @@ internal sealed class RtspTestServer : IAsyncDisposable
         return fields.GetValueOrDefault("response") == expected;
     }
 
-    private static string Reply(string? cseq, string status, string headers) =>
-        $"RTSP/1.0 {status}\r\nCSeq: {cseq ?? "0"}\r\n{headers}\r\n";
+    private string Reply(string? cseq, string status, string headers)
+    {
+        var echoed = EchoCSeq is { } echo ? echo(cseq ?? "0") : cseq ?? "0";
+        return echoed is null ? $"RTSP/1.0 {status}\r\n{headers}\r\n" : $"RTSP/1.0 {status}\r\nCSeq: {echoed}\r\n{headers}\r\n";
+    }
 
     private string Sdp()
     {
