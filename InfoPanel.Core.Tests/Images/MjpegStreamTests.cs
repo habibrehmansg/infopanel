@@ -484,6 +484,144 @@ public sealed class MjpegStreamTests
     }
 
     [Fact]
+    public async Task An_item_joining_streams_other_items_opened_counts_them_among_its_limit()
+    {
+        await using var rig = new Rig(OnePartThenWait);
+        using var provider = Limited(rig, perItem: 2);
+        string c1 = rig.Url("/cam1.mjpg"), c2 = rig.Url("/cam2.mjpg"), c3 = rig.Url("/cam3.mjpg");
+        object item = new(), o1 = new(), o2 = new(), o3 = new();
+        ProvidedMedia Ask(string c, object who) => provider.Get(new MediaRequest(c, 0, MediaPlayback.Loop), new MediaAsk(new MediaTick(), who));
+
+        // Three other items open a stream each.
+        var opened = Task.WhenAll(PartsOf(provider, c1), PartsOf(provider, c2), PartsOf(provider, c3));
+        Rig.Release(Ask(c1, o1));
+        Rig.Release(Ask(c2, o2));
+        Rig.Release(Ask(c3, o3));
+        await opened.WaitAsync(Wait, Ct);
+
+        // The item joins c1 and c2, its limit of 2. With every stream asked for (none idle), its join of c3 is refused for
+        // it alone: c3 stays open, and shows its picture, for the item that opened it.
+        Rig.Release(Ask(c1, item));
+        Rig.Release(Ask(c2, item));
+        var refused = Ask(c3, item);
+        Assert.Null(refused.Sample);
+        Assert.Equal(new MediaStatus("media.budget", "Too many streams for one item: 2 are open."), refused.Status);
+        var others = Ask(c3, o3);
+        Assert.Equal("red", Colour(others.Sample));
+        Assert.Null(others.Status);
+        Rig.Release(others);
+
+        // Once c1 is idle (no tick asked for it in 2 s), the item's join of c3 closes c1, the one it asked for longest ago.
+        rig.Time.Advance(TimeSpan.FromSeconds(3));
+        Rig.Release(Ask(c2, o2));
+        Rig.Release(Ask(c3, o3));
+        Rig.Release(Ask(c2, item));
+        var closed = AnswerOf(provider, c1);
+        var joined = Ask(c3, item);
+        await closed.WaitAsync(Wait, Ct);
+        Assert.Equal("red", Colour(joined.Sample));
+        Assert.Null(joined.Status);
+        Rig.Release(joined);
+        Assert.Equal(1, RequestsFor(rig, "/cam3.mjpg"));
+    }
+
+    [Fact]
+    public async Task Two_thousand_items_on_one_camera_cost_a_tick_work_in_proportion_to_them_and_items_that_stop_asking_are_forgotten()
+    {
+        await using var rig = new Rig(OnePartThenWait);
+        using var provider = Limited(rig);
+        var camera = rig.Url("/cam.mjpg");
+        var items = Enumerable.Range(0, 2000).Select(_ => new object()).ToArray();
+        void Tick(IEnumerable<object> asking)
+        {
+            var tick = new MediaTick();
+            foreach (var item in asking) Rig.Release(provider.Get(new MediaRequest(camera, 0, MediaPlayback.Loop), new MediaAsk(tick, item)));
+        }
+
+        // The cold tick, at the clock's start (zero): registering the items is no quadratic either.
+        var opened = PartsOf(provider, camera);
+        Tick(items);
+        await opened.WaitAsync(Wait, Ct);
+        var cold = provider.AskerVisits;
+        Assert.True(cold <= 2 * items.Length, $"The first tick of {items.Length} items visited {cold} askers.");
+
+        // Each tick, a second apart: every item noted once, and the sweep (once a second) looks at each once. Noting an
+        // item looks at no other (2,000 items each looking at all 2,000 would be 4 million a tick, under the provider's lock).
+        for (var t = 0; t < 3; t++)
+        {
+            rig.Time.Advance(TimeSpan.FromSeconds(1));
+            var before = provider.AskerVisits;
+            Tick(items);
+            var visits = provider.AskerVisits - before;
+            Assert.True(visits <= 2 * items.Length, $"A tick of {items.Length} items visited {visits} askers.");
+        }
+        Assert.Equal(items.Length, provider.AskersOf(camera));
+
+        // One item goes on asking; the others, asked 30 s ago and more, are forgotten by the sweep.
+        for (var t = 0; t < 31; t++)
+        {
+            rig.Time.Advance(TimeSpan.FromSeconds(1));
+            Tick([items[0]]);
+        }
+        Assert.Equal(1, provider.AskersOf(camera));
+    }
+
+    [Fact]
+    public async Task A_stream_an_item_at_its_limit_asks_for_too_opens_for_the_items_with_room_and_is_refused_only_to_that_item()
+    {
+        var arrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var headers = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var rig = new Rig(async (r, s, t) =>
+        {
+            if (r.Path == "/camE.mjpg")
+            {
+                // E's answer waits until the test lets it go.
+                arrived.TrySetResult();
+                await headers.Task.WaitAsync(t);
+            }
+            await OnePartThenWait(r, s, t);
+        });
+        using var provider = Limited(rig, perItem: 2);
+        string c1 = rig.Url("/cam1.mjpg"), c2 = rig.Url("/cam2.mjpg"), e = rig.Url("/camE.mjpg");
+        object a = new(), b = new();
+        ProvidedMedia Ask(string c, object who, MediaTick? tick = null) =>
+            provider.Get(new MediaRequest(c, 0, MediaPlayback.Loop), new MediaAsk(tick ?? new MediaTick(), who));
+
+        // A keeps two streams open, its limit; neither is idle.
+        var two = Task.WhenAll(PartsOf(provider, c1), PartsOf(provider, c2));
+        Rig.Release(Ask(c1, a));
+        Rig.Release(Ask(c2, a));
+        await two.WaitAsync(Wait, Ct);
+
+        // In one tick B, with room, asks for E, and A asks for E too before E's answer comes.
+        var tick = new MediaTick();
+        Rig.Release(Ask(e, b, tick));
+        await arrived.Task.WaitAsync(Wait, Ct);
+        Rig.Release(Ask(e, a, tick));
+        var part = PartsOf(provider, e);
+        var ended = AnswerOf(provider, e);
+        headers.SetResult();
+        await Task.WhenAny(part, ended).WaitAsync(Wait, Ct);
+
+        // E opens for B, and shows its picture to it. A is refused E alone; its own two streams stay open.
+        Assert.True(part.IsCompleted, "E didn't open.");
+        var shown = Ask(e, b);
+        Assert.Equal("red", Colour(shown.Sample));
+        Assert.Null(shown.Status);
+        Rig.Release(shown);
+        var refused = Ask(e, a);
+        Assert.Null(refused.Sample);
+        Assert.Equal(new MediaStatus("media.budget", "Too many streams for one item: 2 are open."), refused.Status);
+        var again = Ask(e, b);
+        Assert.Equal("red", Colour(again.Sample));
+        Assert.Null(again.Status);
+        Rig.Release(again);
+        Assert.Equal(1, RequestsFor(rig, "/camE.mjpg"));
+        Assert.Equal(1, RequestsFor(rig, "/cam1.mjpg"));
+        Assert.Equal(1, RequestsFor(rig, "/cam2.mjpg"));
+    }
+
+    [Fact]
     public async Task Parts_held_and_being_read_count_against_the_streams_budget_and_past_it_the_idle_stream_closes_first()
     {
         // Parts' bytes count as they are read, not only once whole: these aren't JPEGs, and no tick takes them.

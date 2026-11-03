@@ -48,7 +48,7 @@ namespace InfoPanel.Images
 
         /// <summary>
         /// Another ask in the same tick that shares an answer <see cref="Get"/> already gave (the same reference, time and
-        /// playback), told for its refresh, which counts as asked (the shortest applies): it answers nothing and fetches
+        /// playback, and in a live tick the same item: each item asks for itself), told for its refresh, which counts as asked (the shortest applies): it answers nothing and fetches
         /// nothing. Told once per refresh per tick, and only by a live tick.
         /// </summary>
         void Asked(in MediaRequest request)

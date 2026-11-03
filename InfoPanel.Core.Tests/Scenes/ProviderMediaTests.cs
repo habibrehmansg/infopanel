@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using InfoPanel.Core.Tests.Images;
 using InfoPanel.Images;
 using InfoPanel.Scenes;
@@ -88,6 +90,52 @@ public sealed class ProviderMediaTests
         runtime.Snapshot(SceneKit.Now).Dispose();
         Assert.Equal(4, provider.Asks.Count);
         Assert.Equal(2, provider.Also.Count);
+    }
+
+    /// <summary>A provider that answers each item what the test set for it, and records who asked.</summary>
+    private sealed class PerItem : IMediaProvider
+    {
+        public readonly List<object> Items = [];
+        public Func<object, ProvidedMedia> Answer = _ => default;
+
+        public ProvidedMedia Get(in MediaRequest request) => default;
+
+        public ProvidedMedia Get(in MediaRequest request, in MediaAsk ask)
+        {
+            if (!request.Live) return default;
+            lock (Items) Items.Add(ask.Item);
+            return Answer(ask.Item);
+        }
+    }
+
+    [Fact]
+    public void Every_item_sharing_a_reference_in_a_live_tick_is_heard_and_gets_its_own_answer()
+    {
+        // Two items, one node each, on one reference, time and playback: each item asks once, so the provider counts
+        // both among those asking (the streams one item may keep), and may answer one apart (media.budget).
+        var provider = new PerItem();
+        var doc = JsonNode.Parse(SceneKit.Doc(SceneKit.Json(Scene("{'provider':'http','ref':'http://camera.test/video.mjpg'}")), 60, 40).GetRawText())!;
+        var second = doc["items"]![0]!.DeepClone();
+        second["id"] = "second";
+        doc["items"]!.AsArray().Add(second);
+        using var runtime = new SceneRuntime(SceneKit.Options(providers: new Dictionary<string, IMediaProvider> { ["http"] = provider }));
+        runtime.Load(JsonSerializer.SerializeToElement(doc));
+        object? first = null;
+        provider.Answer = who => (first ??= who) == who
+            ? new ProvidedMedia(null, new MediaStatus("media.loading", "Loading."))
+            : new ProvidedMedia(null, new MediaStatus("media.budget", "Too many streams for one item: 4 are open."));
+
+        using (var s = runtime.Tick(0, SceneKit.Now))
+        {
+            Assert.Equal(2, provider.Items.Count);
+            Assert.NotSame(provider.Items[0], provider.Items[1]);
+            Assert.Equal("media.loading", s.Bounds.Single(b => b.Id == "item").Media?.Code);
+            Assert.Equal("media.budget", s.Bounds.Single(b => b.Id == "second").Media?.Code);
+        }
+
+        // A one-off render asks once for them all: it counts no item.
+        runtime.Snapshot(SceneKit.Now).Dispose();
+        Assert.Equal(2, provider.Items.Count);
     }
 
     [Fact]

@@ -135,7 +135,11 @@ internal sealed class TickServices
     /// <summary>This tick's media lookups, so every node that shows the same source at the same time shows the same frame.</summary>
     public readonly Dictionary<(string Hash, double Seconds, MediaPlayback Playback), MediaLookup> Assets = new();
 
-    public readonly Dictionary<(string Provider, string Reference, double Seconds, MediaPlayback Playback), ProvidedMedia> Provided = new();
+    /// <summary>
+    /// This tick's provider answers, by reference, time and playback, and in a live tick by item: each item asks for itself,
+    /// so the provider counts every item showing a reference (the provider's tick keeps their answers the same).
+    /// </summary>
+    public readonly Dictionary<(string Provider, string Reference, double Seconds, MediaPlayback Playback, ItemRuntime? Item), ProvidedMedia> Provided = new();
 
     /// <summary>This tick's refreshes each provider was told of, by reference: each told once.</summary>
     public readonly HashSet<(string Provider, string Reference, int Refresh)> Refreshes = new();
@@ -1232,12 +1236,13 @@ internal sealed class SceneEvaluator
 
     /// <summary>
     /// The provider's answer for <paramref name="reference"/>: asked once per tick for each reference, time and playback,
-    /// so every item showing it shows the same answer. An item sharing it with another refresh tells the provider of that
-    /// refresh (the shortest applies), and only that.
+    /// by each item in a live tick (so the provider hears every item that shows it, and keeps their answers the same through
+    /// the tick's <see cref="MediaTick"/>) and once for them all in a one-off render. A node sharing an answer with another
+    /// refresh tells the provider of that refresh (the shortest applies), and only that.
     /// </summary>
     private ProvidedMedia Ask(IMediaProvider provider, string name, string reference, int refresh, double seconds, MediaPlayback playback)
     {
-        var key = (name, reference, seconds, playback);
+        var key = (name, reference, seconds, playback, _services.Live ? _rt : null);
         var request = new MediaRequest(reference, seconds, playback, refresh, _services.Live);
         if (!_services.Provided.TryGetValue(key, out var provided))
         {

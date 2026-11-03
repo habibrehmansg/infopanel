@@ -194,7 +194,7 @@ public sealed class HttpMediaProviderTests
     [Fact]
     public async Task A_refresh_told_by_an_item_sharing_the_answer_counts_as_asked()
     {
-        // Each tick asks with refresh 0 and is told of another item's 10 (the scene shares one answer per tick): the
+        // Each tick asks with refresh 0 and is told of another node's 10 (a node of the same item sharing its answer): the
         // reference is fetched again 10 s after its answer, as the shortest refresh says.
         await using var rig = new Rig((r, s, t) => LocalHttpServer.Answer(s, 200, Red));
         var url = rig.Url("/radar.png");

@@ -92,7 +92,11 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     private readonly HttpClient _client;
     private readonly ITimer _expiry;
     private readonly long _start;
-    private long _lastSweep;
+    /// <summary>When the sweep last ran; null until it has (a clock at zero is a time like any other).</summary>
+    private long? _lastSweep;
+
+    /// <summary>Tests: <see cref="Fetcher.Visits"/> of the fetchers dropped.</summary>
+    private long _askerVisits;
 
     /// <summary>The bytes the streams hold: each fetcher's part waiting for a tick and each open stream's part being read.</summary>
     private long _streamBytes;
@@ -155,6 +159,22 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         }
     }
 
+    /// <summary>Tests: the entries of the items asking for each address visited, dropped fetchers' included.</summary>
+    internal long AskerVisits
+    {
+        get
+        {
+            lock (_lock) return _askerVisits + _fetchers.Values.Sum(f => f.Visits);
+        }
+    }
+
+    /// <summary>Tests: the items noted as asking for <paramref name="reference"/>, asked lately or not.</summary>
+    internal int AskersOf(string reference)
+    {
+        if (!TryAddress(reference, _options.MaxAddressLength, out var address, out _, out _)) return 0;
+        lock (_lock) return _fetchers.TryGetValue(address, out var f) ? f.AskerCount : 0;
+    }
+
     /// <summary>The bytes the streams hold between them (<see cref="HttpMediaProviderOptions.StreamBytes"/>).</summary>
     internal long StreamBytesHeld
     {
@@ -201,6 +221,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         var chose = false;
         string? chosen = null;
         List<Fetcher>? dropped = null;
+        List<OpenStream>? closed = null;
         try
         {
             lock (_lock)
@@ -214,12 +235,15 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
                     fetcher = new Fetcher(address, uri, credential, now);
                     _fetchers[address] = fetcher;
                 }
+                // An item joining a stream other items opened: it counts among the item's streams.
+                if (request.Live && item is not null && Joining(fetcher, item, now, ref closed) is { } over)
+                    return new ProvidedMedia(null, over);
                 // What the tick's first live ask for the address chose, which every later ask in the tick shows.
                 chose = tick is not null && tick.TryShown(fetcher, out chosen);
                 if (request.Live)
                 {
                     fetcher.LastAsked = now;
-                    if (item is not null) fetcher.Asker(item, now, _options.IdleAfter);
+                    if (item is not null) fetcher.Asker(item, now);
                     fetcher.Asked(request.Refresh, now, _options.IdleAfter);
                     if (!fetcher.Busy && now >= fetcher.DueAt(now, _options.IdleAfter))
                     {
@@ -239,6 +263,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         {
             // Outside the lock: stopping a fetch may run what waits on it.
             if (dropped is not null) foreach (var f in dropped) f.Stop();
+            CancelClosed(closed);
         }
 
         if (chose) return Chosen(fetcher, chosen, request);
@@ -379,8 +404,8 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     }
 
     /// <summary>
-    /// Another item's ask sharing this tick's answer for the reference: its refresh counts as asked, so the shortest among
-    /// the items applies from the next tick's ask. Starts nothing.
+    /// Another ask sharing this tick's answer for the reference (another node of the item): its refresh counts as asked, so
+    /// the shortest among them applies from the next tick's ask. Starts nothing.
     /// </summary>
     public void Asked(in MediaRequest request)
     {
@@ -424,6 +449,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     private void Drop(Fetcher f)
     {
         f.Dropped = true;
+        _askerVisits += f.Visits;
         _streamBytes -= f.PartBytes;
         f.PartBytes = 0;
         f.Part = null;
@@ -439,17 +465,23 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     }
 
     /// <summary>
-    /// Drops fetchers no tick asked for in <see cref="HttpMediaProviderOptions.IdleAfter"/>; at most once a second. Under
-    /// the lock: the caller stops what it answers (<see cref="Fetcher.Stop"/>) once it has let the lock go.
+    /// Drops fetchers no tick asked for in <see cref="HttpMediaProviderOptions.IdleAfter"/>, and forgets the items that
+    /// didn't ask for those kept in that time; at most once a second. Under the lock: the caller stops what it answers
+    /// (<see cref="Fetcher.Stop"/>) once it has let the lock go.
     /// </summary>
     private List<Fetcher>? Sweep(long now)
     {
-        if (now - _lastSweep < 1000 && _lastSweep != 0) return null;
+        if (_lastSweep is { } last && now - last < 1000) return null;
         _lastSweep = now;
         var idle = (long)_options.IdleAfter.TotalMilliseconds;
         List<Fetcher>? dropped = null;
-        foreach (var (address, f) in _fetchers.Where(p => now - p.Value.LastAsked >= idle).ToList())
+        foreach (var (address, f) in _fetchers.ToList())
         {
+            if (now - f.LastAsked < idle)
+            {
+                f.ForgetAskers(now - idle);
+                continue;
+            }
             Drop(f);
             _fetchers.Remove(address);
             (dropped ??= []).Add(f);
@@ -730,24 +762,28 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     /// <summary>
     /// Whether a new stream of <paramref name="fetcher"/> may open (spec/docs/providers.md, "Streams"): within the streams
     /// open at once among those each item asking for it asked for, then across the engine. Past a limit, the idle stream
-    /// asked for longest ago closes (into <paramref name="closed"/>, cancelled once the lock is let go); with none idle,
-    /// the new one is refused. Under the lock.
+    /// asked for longest ago closes (into <paramref name="closed"/>, cancelled once the lock is let go). An item with
+    /// none idle is refused the stream alone: it is no longer among those asking, so its next ask joins as any other
+    /// item's does (<see cref="Joining"/>), while the stream opens for the items with room. Refused for every item, or
+    /// with none idle across the engine, the new one is refused. Under the lock.
     /// </summary>
     private Outcome? Admit(Fetcher fetcher, long now, ref List<OpenStream>? closed)
     {
         var open = _fetchers.Values.Where(f => f != fetcher && f.Open is { Released: false }).ToList();
         var recent = now - (long)_options.IdleAfter.TotalMilliseconds;
-        foreach (var item in fetcher.AskersSince(recent))
+        var askers = fetcher.AskersSince(recent);
+        List<object>? full = null;
+        string? over = null;
+        foreach (var item in askers)
         {
-            var its = open.Where(f => f.AskedBy(item, recent)).ToList();
-            while (its.Count + 1 > Math.Max(1, _options.MaxStreamsPerItem))
-            {
-                if (Idlest(its, now) is not { } idle)
-                    return Outcome.Failed("media.budget", $"Too many streams for one item: {_options.MaxStreamsPerItem} are open.");
-                CloseStream(idle, ref closed);
-                its.Remove(idle);
-                open.Remove(idle);
-            }
+            if (RoomFor(item, open, now, ref closed) is not { } why) continue;
+            (full ??= []).Add(item);
+            over = why;
+        }
+        if (full is not null)
+        {
+            if (full.Count == askers.Count) return Outcome.Failed("media.budget", over!);
+            foreach (var item in full) fetcher.ForgetAsker(item);
         }
         while (open.Count + 1 > Math.Max(1, _options.MaxStreams))
         {
@@ -757,6 +793,37 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
             open.Remove(idle);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Room for one more stream among those <paramref name="item"/> asked for (in <see cref="HttpMediaProviderOptions.IdleAfter"/>),
+    /// of the other <paramref name="open"/> streams: past the limit, its idle stream asked for longest ago closes (into
+    /// <paramref name="closed"/>, and out of <paramref name="open"/>); with none idle, why there is no room. Under the lock.
+    /// </summary>
+    private string? RoomFor(object item, List<Fetcher> open, long now, ref List<OpenStream>? closed)
+    {
+        var recent = now - (long)_options.IdleAfter.TotalMilliseconds;
+        var its = open.Where(f => f.AskedBy(item, recent)).ToList();
+        while (its.Count + 1 > Math.Max(1, _options.MaxStreamsPerItem))
+        {
+            if (Idlest(its, now) is not { } idle) return $"Too many streams for one item: {_options.MaxStreamsPerItem} are open.";
+            CloseStream(idle, ref closed);
+            its.Remove(idle);
+            open.Remove(idle);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// When <paramref name="item"/> asks for an open stream it hasn't asked for lately (one other items opened): the stream
+    /// counts among its own, so room is made for it as for one it opens (<see cref="Admit"/>); with none, its ask is
+    /// answered <c>media.budget</c> and the stream stays open for the others. Null when it may join. Under the lock.
+    /// </summary>
+    private MediaStatus? Joining(Fetcher fetcher, object item, long now, ref List<OpenStream>? closed)
+    {
+        if (fetcher.Open is not { Released: false } || fetcher.AskedBy(item, now - (long)_options.IdleAfter.TotalMilliseconds)) return null;
+        var open = _fetchers.Values.Where(f => f != fetcher && f.Open is { Released: false }).ToList();
+        return RoomFor(item, open, now, ref closed) is { } over ? new MediaStatus("media.budget", over) : null;
     }
 
     /// <summary>The fetcher among <paramref name="candidates"/> no live tick asked for in the streams' idle time, asked for longest ago.</summary>
@@ -1091,17 +1158,45 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         // The items that asked for the address in live ticks (MediaAsk), each with when it last did.
         private readonly Dictionary<object, long> _askers = new(ReferenceEqualityComparer.Instance);
 
-        /// <summary>Notes <paramref name="item"/>'s live ask, and forgets the items that asked longer than <paramref name="idle"/> ago.</summary>
-        public void Asker(object item, long now, TimeSpan idle)
+        /// <summary>Tests: the entries of <see cref="_askers"/> visited, each noted or looked at.</summary>
+        public long Visits;
+
+        /// <summary>The items noted, asked lately or not.</summary>
+        public int AskerCount => _askers.Count;
+
+        private IEnumerable<KeyValuePair<object, long>> Visit()
+        {
+            foreach (var p in _askers)
+            {
+                Visits++;
+                yield return p;
+            }
+        }
+
+        /// <summary>
+        /// Notes <paramref name="item"/>'s live ask, looking at no other item: every item of a tick notes itself, so the
+        /// items gone are forgotten by the sweep (<see cref="ForgetAskers"/>), not here.
+        /// </summary>
+        public void Asker(object item, long now)
         {
             _askers[item] = now;
-            if (_askers.Count <= 1) return;
-            var since = now - (long)idle.TotalMilliseconds;
-            foreach (var old in _askers.Where(p => p.Value < since).Select(p => p.Key).ToList()) _askers.Remove(old);
+            Visits++;
+        }
+
+        /// <summary>Forgets <paramref name="item"/>'s asks: its next ask is the first.</summary>
+        public void ForgetAsker(object item) => _askers.Remove(item);
+
+        /// <summary>Forgets the items that last asked before <paramref name="since"/>.</summary>
+        public void ForgetAskers(long since)
+        {
+            List<object>? gone = null;
+            foreach (var p in Visit())
+                if (p.Value < since) (gone ??= []).Add(p.Key);
+            if (gone is not null) foreach (var item in gone) _askers.Remove(item);
         }
 
         /// <summary>The items that asked for the address since <paramref name="since"/>.</summary>
-        public List<object> AskersSince(long since) => [.. _askers.Where(p => p.Value >= since).Select(p => p.Key)];
+        public List<object> AskersSince(long since) => [.. Visit().Where(p => p.Value >= since).Select(p => p.Key)];
 
         /// <summary>Whether <paramref name="item"/> asked for the address since <paramref name="since"/>.</summary>
         public bool AskedBy(object item, long since) => _askers.TryGetValue(item, out var at) && at >= since;
