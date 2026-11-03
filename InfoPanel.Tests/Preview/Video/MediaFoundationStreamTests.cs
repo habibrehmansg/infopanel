@@ -24,11 +24,12 @@ public class MediaFoundationStreamTests
     private sealed class Chain : IDisposable
     {
         /// <param name="held">A log line that waits for the gate before it is recorded (<see cref="HeldLogger"/>).</param>
-        public Chain(bool deviceKey = true, (string Text, ManualResetEventSlim Gate)? held = null)
+        /// <param name="reuse">False: every session shuts its own activation down (a refused re-use's path).</param>
+        public Chain(bool deviceKey = true, (string Text, ManualResetEventSlim Gate)? held = null, bool reuse = true)
         {
             Logger = held is var (text, gate) ? new HeldLogger(Log, text, gate) : Log;
             Entry = Catalog.Add("Encoder", deviceKey: deviceKey ? K : null);
-            Backend = new MediaFoundationH264(Catalog, Logger, BackendTime);
+            Backend = new MediaFoundationH264(Catalog, Logger, BackendTime, reuse);
             Backends = new H264Backends([Backend], Logger);
         }
 
@@ -279,9 +280,36 @@ public class MediaFoundationStreamTests
     }
 
     [Fact]
-    public async Task AWedgedShutdown_GivesMediaFoundationUpForTheStream_AndThreeGiveItUpForTheRun()
+    public async Task AStreamsSizeChanges_KeepItsOneActivation_EachNewSizeStartingWithAKeyframe()
     {
         using var chain = new Chain();
+        using var feed = new Feed(chain);
+        feed.Frame();
+        Assert.True((await feed.Next("the first keyframe")).Header.Keyframe);
+        var activations = chain.Backend.Activations;
+        var port = chain.Catalog.Ports[^1];
+
+        // Six size changes, each a retirement and a new session, all on the first session's activation.
+        foreach (var (w, h) in new[] { (80, 48), (64, 48), (96, 64), (80, 48), (64, 48), (96, 64) })
+        {
+            feed.Frame(w, h);
+            var frame = await feed.Next($"the keyframe at {w}x{h}", w, h);
+            Assert.True(frame.Header.Keyframe, $"{w}x{h}'s first frame");
+            Assert.Equal(("hardware", w, h), (frame.Header.Encoder, frame.Header.PixelWidth, frame.Header.PixelHeight));
+        }
+
+        Assert.Equal(activations, chain.Backend.Activations);
+        Assert.Same(port, chain.Catalog.Ports[^1]);
+        Assert.False(port.ShutDown);
+        Assert.DoesNotContain(chain.Log.Messages, m => m.Contains("failed", StringComparison.Ordinal) || m.Contains("refused", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AWedgedShutdown_GivesMediaFoundationUpForTheStream_AndThreeGiveItUpForTheRun()
+    {
+        // A healthy session's activation is kept for the next start, never shut down: the shutdown a size change waits
+        // for is the one without re-use (a refused renegotiation's).
+        using var chain = new Chain(reuse: false);
         var hold = new ManualResetEventSlim();
         try
         {

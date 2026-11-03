@@ -10,6 +10,7 @@ using InfoPanel.Tests.Preview;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
+using static InfoPanel.Tests.Preview.Video.MediaFoundationRestartChecks;
 
 namespace InfoPanel.Tests.Preview.Video;
 
@@ -40,20 +41,28 @@ public class MediaFoundationTests
 
     private static void Note(string line) => TestContext.Current.TestOutputHelper?.WriteLine(line);
 
-    /// <summary>A backend over the real catalog whose probe has passed (the run's first probe of each test).</summary>
-    private static MediaFoundationH264 Backend(ILogger? logger = null)
+    private static readonly List<MediaFoundationH264> Made = [];
+
+    /// <summary>
+    /// A backend over the real catalog whose probe has passed (the run's first probe of each test). The backends made
+    /// before it are stopped first, as the engine's stop does (the activation each keeps shut down): one backend at a
+    /// time, as in a run. <paramref name="refuseReuse"/>: every re-use's renegotiation is refused (<see cref="RefusingCatalog"/>).
+    /// </summary>
+    private static MediaFoundationH264 Backend(ILogger? logger = null, bool refuseReuse = false)
     {
-        var backend = new MediaFoundationH264(new MfComCatalog(), logger ?? NullLogger.Instance);
+        lock (Made)
+        {
+            foreach (var made in Made)
+                made.ReapAsync(TimeSpan.FromSeconds(2), CancellationToken.None).GetAwaiter().GetResult();
+            Made.Clear();
+        }
+
+        IMfCatalog catalog = refuseReuse ? new RefusingCatalog(new MfComCatalog()) : new MfComCatalog();
+        var backend = new MediaFoundationH264(catalog, logger ?? NullLogger.Instance);
+        lock (Made)
+            Made.Add(backend);
         Assert.True(backend.Probe() == H264Probe.Available, $"no hardware H.264 encoder passed the probe; on a PC without one, set {NoHardwareEncoder}=1.");
         return backend;
-    }
-
-    private static byte[] Solid(int width, int height, (byte R, byte G, byte B) colour)
-    {
-        var pixels = new byte[width * height * 4];
-        for (var i = 0; i < pixels.Length; i += 4)
-            (pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]) = (colour.R, colour.G, colour.B, 255);
-        return pixels;
     }
 
     /// <summary>Moving noise: the hardest content to encode.</summary>
@@ -64,38 +73,6 @@ public class MediaFoundationTests
         for (var i = 3; i < pixels.Length; i += 4)
             pixels[i] = 255;
         return pixels;
-    }
-
-    /// <summary>Each frame in turn on one session (the first forced), each outcome awaited before the next: a held frame fails.</summary>
-    private static List<H264Outcome> Encode(IH264Backend backend, int width, int height, IReadOnlyList<byte[]> frames, Func<int, TimeSpan>? gapBefore = null,
-        Func<int, bool>? forced = null)
-    {
-        var outcomes = new List<H264Outcome>();
-        var arrived = new SemaphoreSlim(0);
-        var session = backend.Start(new H264Config(width, height, 30, VideoStream.HardwareBitrate), outcome =>
-        {
-            lock (outcomes)
-                outcomes.Add(outcome);
-            arrived.Release();
-        });
-        try
-        {
-            for (var i = 0; i < frames.Count; i++)
-            {
-                if (gapBefore?.Invoke(i) is { } gap && gap > TimeSpan.Zero)
-                    Thread.Sleep(gap);
-                Assert.Equal(H264Submit.Accepted, session.Submit(frames[i], width, height, i, forced?.Invoke(i) ?? i == 0, out var problem));
-                Assert.Null(problem);
-                Assert.True(arrived.Wait(TimeSpan.FromSeconds(5)), $"frame {i}'s outcome arrived without another frame");
-            }
-        }
-        finally
-        {
-            Assert.True(session.Abort().Wait(Quarantine.Bound, Ct), "the session tears down");
-        }
-
-        lock (outcomes)
-            return [.. outcomes];
     }
 
     /// <summary>Annex B for ffmpeg: the avcC's parameter sets, then each access unit's NAL units, with start codes.</summary>
@@ -882,76 +859,60 @@ public class MediaFoundationTests
 
     // ---- 10: restarts and references ----
 
+    /// <summary>200 restarts on one activation over the real encoder (<see cref="MediaFoundationRestartChecks.OnOneActivation"/>).</summary>
+    [Fact]
+    public void TwoHundredRestarts_OnOneActivation_KeepHandlesAndBytesFlat()
+    {
+        SkipWithoutMediaFoundation();
+        MediaFoundationRestartChecks.OnOneActivation(Hardware);
+    }
+
     /// <summary>
-    /// 200 restarts give back every wrapper, thread and handle within what the encoder itself keeps, and the managed
-    /// heap: an encoder may keep a few handles per activation after its transform and activation object are released
-    /// (seen on a real one: a registry key, an event and a wait packet per activation, with nothing of the engine's
-    /// involved). So the 200 restarts and 200 bare cycles of the port's raw calls (activate, the types, three frames,
-    /// shut down, release; no session code) interleave, restart then bare cycle, each step's handle change summed into
-    /// its own total, so both totals sample the same period. A GC settle (collect, wait for the finalisers, collect)
-    /// comes before every read, since handles that finalisers free land in whichever step runs. The restarts' handles may
-    /// grow by no more than the bare total (negative as 0) plus 50, a quarter of a handle a restart: one handle a session
-    /// keeps per restart (+200) still fails by four times, while two settled windows of identical work differ by up to
-    /// about 22 on a real encoder. The memory check is the managed heap, which holds none of the
-    /// encoder's native memory: after the settle it grows by at most 5 MB over the 400 steps. Private bytes are printed,
-    /// not asserted: they measure the encoder's and the allocator's memory more than the engine's (a native object the
-    /// engine kept is caught by the wrapper count, the native-reference test and the handle check).
+    /// The fallback's 200 restarts over the real encoder, refusing every renegotiation (<see cref="RefusingCatalog"/>;
+    /// <see cref="MediaFoundationRestartChecks.Fallback"/>).
     /// </summary>
     [Fact]
     public void TwoHundredRestarts_GiveBackEveryWrapperThreadHandleAndByte()
     {
         SkipWithoutMediaFoundation();
-        var backend = Backend();
-        // Sizes every hardware encoder takes: 128 a side is the smallest some accept (AMD's).
-        Encode(backend, 128, 128, [Solid(128, 128, (1, 2, 3))]);
-        Settle();
-        using var process = Process.GetCurrentProcess();
-        var (threads, live) = (process.Threads.Count, MfWrappers.Live);
-        long restartHandles = 0, restartBytes = 0, bareHandles = 0, bareBytes = 0;
-        long managedBefore;
-        using (var bare = new BareCycles(backend.Trusted!))
-        {
-            bare.Cycle(128);
-            managedBefore = GC.GetTotalMemory(forceFullCollection: true);
-            for (var i = 0; i < 200; i++)
-            {
-                var side = 128 + (i % 3) * 2;
-                var (h, b) = Resources(process);
-                Encode(backend, side, side, [Solid(side, side, (1, 2, 3))]);
-                var (h2, b2) = Resources(process);
-                restartHandles += h2 - h;
-                restartBytes += b2 - b;
-
-                (h, b) = Resources(process);
-                bare.Cycle(side);
-                (h2, b2) = Resources(process);
-                bareHandles += h2 - h;
-                bareBytes += b2 - b;
-            }
-        }
-
-        var watch = Stopwatch.StartNew();
-        while (MfWrappers.Live > live && watch.Elapsed < TimeSpan.FromSeconds(5))
-            Thread.Sleep(20);
-        Assert.Equal(live, MfWrappers.Live);
-        Settle();
-        var managedAfter = GC.GetTotalMemory(forceFullCollection: true);
-        process.Refresh();
-        var threadsAfter = process.Threads.Count;
-        Note($"threads {threads} -> {threadsAfter}");
-        Note($"200 restarts interleaved with 200 bare cycles of the port's raw calls: handles restarts {restartHandles:+#;-#;0}, bare {bareHandles:+#;-#;0} (the restarts' are held to max(bare, 0) + 50 = {Math.Max(bareHandles, 0) + 50})");
-        Note($"private bytes (printed, not asserted) restarts {restartBytes:+#;-#;0} ({restartBytes / 200.0:+#.0;-#.0;0} per activation), bare {bareBytes:+#;-#;0} ({bareBytes / 200.0:+#.0;-#.0;0} per activation)");
-        Note($"managed heap {managedBefore} -> {managedAfter} ({managedAfter - managedBefore:+#;-#;0}, held to 5 MB)");
-        Assert.InRange(threadsAfter - threads, int.MinValue, 10);
-        Assert.InRange(restartHandles, long.MinValue, Math.Max(bareHandles, 0) + 50);
-        Assert.InRange(managedAfter - managedBefore, long.MinValue, 5L << 20);
+        MediaFoundationRestartChecks.Fallback(Hardware);
     }
 
-    private static void Settle()
+    /// <summary>The restart checks' bed on the real encoder: the process's handles, bytes, threads and wrappers.</summary>
+    private static RestartBed Hardware => new()
     {
-        GC.Collect();
+        Backend = (log, refuseReuse) => Backend(log, refuseReuse),
+        Compacted = () =>
+        {
+            using var process = Process.GetCurrentProcess();
+            return Compacted(process);
+        },
+        Resources = () =>
+        {
+            using var process = Process.GetCurrentProcess();
+            return Resources(process);
+        },
+        Wrappers = () => MfWrappers.Live,
+        Threads = () =>
+        {
+            using var process = Process.GetCurrentProcess();
+            return process.Threads.Count;
+        },
+        Managed = () => GC.GetTotalMemory(forceFullCollection: true),
+        Catalog = () => new MfComCatalog(),
+    };
+
+    /// <summary>
+    /// <see cref="Resources"/> after an aggressive, compacting collection, which gives the GC's free memory back to the
+    /// OS: private bytes then move with what is kept, not with how much the GC holds on to.
+    /// </summary>
+    private static (long Handles, long Bytes) Compacted(Process process)
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
-        GC.Collect();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        process.Refresh();
+        return (process.HandleCount, process.PrivateMemorySize64);
     }
 
     private static (long Handles, long Bytes) Resources(Process process)
@@ -961,108 +922,332 @@ public class MediaFoundationTests
         return (process.HandleCount, process.PrivateMemorySize64);
     }
 
+    // ---- 10b: renegotiation on one activation (opt-in proof, INFOPANEL_MF_RENEGOTIATION=1) ----
+
+    private const string RenegotiationProof = "INFOPANEL_MF_RENEGOTIATION";
+
     /// <summary>
-    /// Bare cycles on the trusted entry, built from the port's raw calls on this thread (events on a thread of their
-    /// own): activate, the types, three frames in and out, shut down, release. Each cycle must encode its three frames.
+    /// The proof re-use rests on, from the port's raw calls (no session code): one activation encodes at one size, is
+    /// flushed, its streaming ended, given the output then the input type of another size, streaming begun and the stream
+    /// started again, and encodes at the new size; its first output there must be an IDR whose own SPS describes the new
+    /// size, and the segment must decode. Then the same at the same size with no forced frame (a keyframe restart), and
+    /// 60 renegotiations over three sizes with the process's handles counted. Every call's answer and the events between
+    /// the phases are written to the output.
     /// </summary>
-    private sealed class BareCycles : IDisposable
+    [Fact]
+    public async Task OneActivation_RenegotiatesItsTypes_AndItsFirstFrameAtTheNewSizeIsAnIdr()
     {
-        private readonly MfComCatalog _catalog = new();
-        private readonly IReadOnlyList<IMfEntry> _entries;
-        private readonly IMfEntry _entry;
-
-        public BareCycles(MfIdentity trusted)
-        {
-            Assert.True(_catalog.EnterThread("test") >= 0);
-            try
-            {
-                Assert.True(_catalog.Startup() >= 0);
-                Assert.True(_catalog.Enumerate(MediaFoundationH264.EnumFlags, out var entries) >= 0);
-                _entries = entries;
-                _entry = entries.First(e => e.GetString(Mf.HardwareUrl) == trusted.HardwareUrl);
-            }
-            catch
-            {
-                _catalog.LeaveThread();
-                throw;
-            }
-        }
-
-        public void Cycle(int side) => BareCycle(_catalog, _entry, side);
-
-        public void Dispose()
-        {
-            foreach (var e in _entries)
-                e.Dispose();
-            _catalog.LeaveThread();
-        }
-    }
-
-    private static void BareCycle(MfComCatalog catalog, IMfEntry entry, int side)
-    {
-        const int frames = 3;
-        var port = entry.CreatePort();
-        Thread? reader = null;
+        SkipWithoutMediaFoundation();
+        Assert.SkipUnless(Environment.GetEnvironmentVariable(RenegotiationProof) == "1", $"opt-in: {RenegotiationProof}=1");
+        TestFfmpeg.SkipWithoutDecoder();
+        var trusted = Backend().Trusted!;
+        var catalog = new MfComCatalog();
+        Assert.True(catalog.EnterThread("test") >= 0);
         try
         {
-            Assert.Equal(0, port.Activate());
-            Assert.True(port.SetUInt32(Mf.TransformAsyncUnlock, 1) >= 0);
-            Assert.True(port.SetOutputType(new MfVideoType(Mf.H264, side, side)
-            {
-                FrameRate = 30, Bitrate = 2_000_000, Profile = Mf.ProfileBaseline, InterlaceMode = Mf.InterlaceProgressive,
-            }) >= 0, "the output type");
-            Assert.True(port.SetInputType(new MfVideoType(Mf.Nv12, side, side) { FrameRate = 30, DefaultStride = side, InterlaceMode = Mf.InterlaceProgressive }) >= 0, "the input type");
-            Assert.True(port.GetInputStreamInfo(out var input) >= 0);
-            Assert.True(port.GetOutputStreamInfo(out var outputInfo) >= 0);
-            Assert.True(port.ProcessMessage(Mf.MessageNotifyBeginStreaming) >= 0);
-            Assert.True(port.ProcessMessage(Mf.MessageNotifyStartOfStream) >= 0);
+            Assert.True(catalog.Startup() >= 0);
+            Assert.True(catalog.Enumerate(MediaFoundationH264.EnumFlags, out var entries) >= 0);
+            var entry = entries.First(e => e.GetString(Mf.HardwareUrl) == trusted.HardwareUrl);
+            using var raw = new RawEncoder(catalog, entry.CreatePort());
+            foreach (var e in entries)
+                e.Dispose();
 
-            var events = new System.Collections.Concurrent.BlockingCollection<MfEvent>();
-            reader = new Thread(() =>
-            {
-                catalog.EnterThread("events");
-                try
-                {
-                    while (port.NextEvent(out var e) >= 0)
-                        events.Add(e);
-                }
-                finally
-                {
-                    catalog.LeaveThread();
-                    events.CompleteAdding();
-                }
-            }) { IsBackground = true };
-            reader.Start();
-            var nv12 = new byte[side * side * 3 / 2];
-            int inputs = 0, outputs = 0;
-            while (outputs < frames)
-            {
-                Assert.True(events.TryTake(out var e, TimeSpan.FromSeconds(5)), $"an event within 5 s ({inputs} in, {outputs} out)");
-                if (e.Type == Mf.EventNeedInput && inputs < frames)
-                {
-                    Assert.True(port.CreateInputBuffer(Math.Max(nv12.Length, input.Size), Math.Max(input.Alignment, 1), out var buffer) >= 0);
-                    using (buffer)
-                    {
-                        Assert.True(buffer!.Write(nv12) >= 0);
-                        Assert.True(port.ProcessInput(buffer, inputs * 333_333L, 333_333) >= 0);
-                    }
+            raw.Start(128);
+            var first = raw.Pump(128, 3, forceFirst: true);
+            Note($"128x128: {Describe(first)}");
 
-                    inputs++;
-                }
-                else if (e.Type == Mf.EventHaveOutput)
-                {
-                    var hr = port.ProcessOutput(MfOutputAllocation.Of(outputInfo), out var output);
-                    Assert.True(hr >= 0 || hr == Mf.TransformNeedMoreInput, $"ProcessOutput {Mf.Hr(hr)}");
-                    if (output != null)
-                        outputs++;
-                }
+            raw.Renegotiate(160);
+            var bigger = raw.Pump(160, 3, forceFirst: false);
+            Note($"160x160 after the renegotiation: {Describe(bigger)}");
+            var unit = new AnnexB().Normalise(bigger[0].Data);
+            Assert.True(unit.Problem == null, unit.Problem);
+            Assert.True(unit.Keyframe && unit.NewSps != null, "the first output at the new size is an IDR with its SPS");
+            Assert.Equal((160, 160), H264Sps.PictureSize(unit.NewSps!));
+            var decoded = await Decode(AnnexB(H264Sps.RewriteForStream(unit.Avcc!, out _)!, Units(bigger)), 160, 160);
+            Assert.Equal(3, decoded.Count);
+            Note($"decoded {decoded.Count} frames at 160x160; centre of the last {Centre(decoded[^1], 160, 160)}");
+
+            raw.Renegotiate(160);
+            var same = raw.Pump(160, 3, forceFirst: false);
+            Note($"160x160 again (a keyframe restart, nothing forced): {Describe(same)}");
+            var sameUnit = new AnnexB().Normalise(same[0].Data);
+            Note($"its first output: keyframe {sameUnit.Keyframe}, SPS {(sameUnit.NewSps != null ? "in band" : "absent")}");
+
+            using var process = Process.GetCurrentProcess();
+            Settle();
+            process.Refresh();
+            var handles = process.HandleCount;
+            var bytes = process.PrivateMemorySize64;
+            var idrs = 0;
+            for (var i = 0; i < 60; i++)
+            {
+                var side = 128 + (i % 3) * 2;
+                raw.Renegotiate(side);
+                var outputs = raw.Pump(side, 1, forceFirst: true);
+                if (new AnnexB().Normalise(outputs[0].Data).Keyframe)
+                    idrs++;
             }
+
+            Settle();
+            process.Refresh();
+            Note($"60 renegotiations over 128/130/132: {idrs} first frames IDR; handles {process.HandleCount - handles:+#;-#;0}, private bytes {process.PrivateMemorySize64 - bytes:+#;-#;0}");
+            Note("calls: " + string.Join("; ", raw.Log.Take(60)));
+            Assert.Equal(60, idrs);
         }
         finally
         {
-            port.Shutdown();
-            Assert.True(reader?.Join(TimeSpan.FromSeconds(2)) ?? true, "GetEvent ends with the shutdown");
-            port.Release();
+            catalog.LeaveThread();
+        }
+
+        static string Describe(List<MfOutput> outputs) =>
+            string.Join(", ", outputs.Select(o => $"{o.Data.Length} B at {o.SampleTime}{(new AnnexB().Normalise(o.Data).Keyframe ? " IDR" : "")}"));
+
+        static IEnumerable<byte[]> Units(List<MfOutput> outputs)
+        {
+            var annexB = new AnnexB();
+            foreach (var o in outputs)
+                yield return annexB.Normalise(o.Data).Data!;
+        }
+    }
+
+    /// <summary>One activation over the port's raw calls, its events read on a thread of their own, for the renegotiation proof.</summary>
+    private sealed class RawEncoder : IDisposable
+    {
+        private readonly MfComCatalog _catalog;
+        private readonly IMfEncoderPort _port;
+        private readonly System.Collections.Concurrent.BlockingCollection<MfEvent> _events = new();
+        private readonly Thread _reader;
+        private MfStreamInfo _input;
+        private MfStreamInfo _output;
+        private long _time;
+        private int _banked;
+
+        public readonly List<string> Log = [];
+
+        public RawEncoder(MfComCatalog catalog, IMfEncoderPort port)
+        {
+            _catalog = catalog;
+            _port = port;
+            Assert.Equal(0, _port.Activate());
+            _reader = new Thread(() =>
+            {
+                _catalog.EnterThread("events");
+                try
+                {
+                    while (_port.NextEvent(out var e) >= 0)
+                        _events.Add(e);
+                }
+                finally
+                {
+                    _catalog.LeaveThread();
+                    _events.CompleteAdding();
+                }
+            }) { IsBackground = true };
+        }
+
+        private int Call(string what, int hr)
+        {
+            Log.Add($"{what} {Mf.Hr(hr)}");
+            return hr;
+        }
+
+        private void Types(int side)
+        {
+            Assert.True(Call($"output {side}", _port.SetOutputType(new MfVideoType(Mf.H264, side, side)
+            {
+                FrameRate = 30, Bitrate = 2_000_000, Profile = Mf.ProfileBaseline, InterlaceMode = Mf.InterlaceProgressive,
+                Matrix = Mf.MatrixBt709, Primaries = Mf.PrimariesBt709, Transfer = Mf.TransferBt709, NominalRange = Mf.NominalRange16To235,
+            })) >= 0, $"the output type at {side}: {Log[^1]}");
+            Assert.True(Call($"input {side}", _port.SetInputType(new MfVideoType(Mf.Nv12, side, side)
+            {
+                FrameRate = 30, DefaultStride = side, InterlaceMode = Mf.InterlaceProgressive,
+                Matrix = Mf.MatrixBt709, Primaries = Mf.PrimariesBt709, Transfer = Mf.TransferBt709, NominalRange = Mf.NominalRange16To235,
+            })) >= 0, $"the input type at {side}: {Log[^1]}");
+            Assert.True(_port.GetInputStreamInfo(out _input) >= 0);
+            Assert.True(_port.GetOutputStreamInfo(out _output) >= 0);
+            Assert.True(Call("begin streaming", _port.ProcessMessage(Mf.MessageNotifyBeginStreaming)) >= 0);
+            Assert.True(Call("start of stream", _port.ProcessMessage(Mf.MessageNotifyStartOfStream)) >= 0);
+        }
+
+        public void Start(int side)
+        {
+            Assert.True(Call("unlock", _port.SetUInt32(Mf.TransformAsyncUnlock, 1)) >= 0);
+            Call("low latency", _port.SetCodecValue(Mf.CodecLowLatencyMode, 1));
+            Call("CBR", _port.SetCodecValue(Mf.CodecRateControlMode, Mf.RateControlCbr));
+            Call("GOP", _port.SetCodecValue(Mf.CodecGopSize, 600));
+            Call("B-frames", _port.SetCodecValue(Mf.CodecBFrames, 0));
+            Types(side);
+            _reader.Start();
+        }
+
+        /// <summary>Flush, end streaming, the output type then the input type at <paramref name="side"/>, begin streaming, start of stream; events in between logged.</summary>
+        public void Renegotiate(int side)
+        {
+            Assert.True(Call("flush", _port.ProcessMessage(Mf.MessageCommandFlush)) >= 0, Log[^1]);
+            Assert.True(Call("end streaming", _port.ProcessMessage(Mf.MessageNotifyEndStreaming)) >= 0, Log[^1]);
+            var before = Drain();
+            Types(side);
+            Log.Add($"banked {_banked} before; events after the flush: {before}");
+            _banked = 0;
+        }
+
+        private string Drain()
+        {
+            var seen = new List<string>();
+            while (_events.TryTake(out var e, TimeSpan.FromMilliseconds(50)))
+                seen.Add(e.Type.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return seen.Count == 0 ? "none" : string.Join(",", seen);
+        }
+
+        /// <summary>Frames in one at a time, each on a NeedInput (one banked before counts), each output awaited before the next input.</summary>
+        public List<MfOutput> Pump(int side, int frames, bool forceFirst)
+        {
+            var nv12Layout = Nv12Layout.Packed(side, side);
+            var outputs = new List<MfOutput>();
+            var inputs = 0;
+            var needInputs = 0;
+            while (outputs.Count < frames)
+            {
+                if (inputs == outputs.Count && inputs < frames && _banked > 0)
+                {
+                    _banked--;
+                    Input(side, nv12Layout, inputs++, forceFirst && inputs == 1);
+                    continue;
+                }
+
+                Assert.True(_events.TryTake(out var e, TimeSpan.FromSeconds(5)), $"an event within 5 s at {side} ({inputs} in, {outputs.Count} out, {needInputs} NeedInput)");
+                Assert.True(e.Status >= 0 && e.Type != Mf.EventError, $"event {e.Type} {Mf.Hr(e.Status)}");
+                if (e.Type == Mf.EventNeedInput)
+                {
+                    needInputs++;
+                    if (inputs == outputs.Count && inputs < frames)
+                        Input(side, nv12Layout, inputs++, forceFirst && inputs == 1);
+                    else
+                        _banked++;
+                }
+                else if (e.Type == Mf.EventHaveOutput)
+                {
+                    var hr = _port.ProcessOutput(MfOutputAllocation.Of(_output), out var output);
+                    Assert.True(hr >= 0 || hr == Mf.TransformNeedMoreInput, $"ProcessOutput {Mf.Hr(hr)}");
+                    if (output != null)
+                        outputs.Add(output);
+                }
+            }
+
+            Log.Add($"pumped {frames} at {side}: {needInputs} NeedInput, banked {_banked}");
+            return outputs;
+        }
+
+        private void Input(int side, Nv12Layout layout, int index, bool force)
+        {
+            if (force)
+                Call("force", _port.SetCodecValue(Mf.CodecForceKeyFrame, 1));
+            var nv12 = new byte[layout.Size];
+            Nv12.Write(Solid(side, side, ((byte)(40 + 50 * index), 120, 200)), side, side, nv12, layout);
+            Assert.True(_port.CreateInputBuffer(Math.Max(nv12.Length, _input.Size), Math.Max(_input.Alignment, 1), out var buffer) >= 0);
+            using (buffer)
+            {
+                Assert.True(buffer!.Write(nv12) >= 0);
+                var hr = _port.ProcessInput(buffer, _time, 333_333, discontinuity: false);
+                Assert.True(hr >= 0, $"ProcessInput {Mf.Hr(hr)}");
+            }
+
+            _time += 333_333;
+        }
+
+        public void Dispose()
+        {
+            _port.Shutdown();
+            if (_reader.IsAlive)
+                Assert.True(_reader.Join(TimeSpan.FromSeconds(2)), "GetEvent ends with the shutdown");
+            _port.Release();
+        }
+    }
+
+    /// <summary>
+    /// The real catalog, whose ports refuse both media types (<c>MF_E_INVALIDMEDIATYPE</c>) once their streaming has
+    /// ended, which only a re-use's renegotiation does: every restart takes the fallback, a new activation. Every other
+    /// call is the real port's.
+    /// </summary>
+    private sealed class RefusingCatalog(IMfCatalog real) : IMfCatalog
+    {
+        public int EnterThread(string role) => real.EnterThread(role);
+
+        public void LeaveThread() => real.LeaveThread();
+
+        public int Startup() => real.Startup();
+
+        public int Enumerate(uint flags, out IReadOnlyList<IMfEntry> entries)
+        {
+            var hr = real.Enumerate(flags, out var found);
+            entries = [.. (found ?? []).Select(e => (IMfEntry)new Entry(e))];
+            return hr;
+        }
+
+        private sealed class Entry(IMfEntry real) : IMfEntry
+        {
+            public string? GetString(Guid key) => real.GetString(key);
+
+            public Guid? GetGuid(Guid key) => real.GetGuid(key);
+
+            public ulong? GetUInt64(Guid key) => real.GetUInt64(key);
+
+            public IMfEncoderPort CreatePort() => new Port(real.CreatePort());
+
+            public void Dispose() => real.Dispose();
+        }
+
+        private sealed class Port(IMfEncoderPort real) : IMfEncoderPort
+        {
+            private volatile bool _ended;
+
+            public int Activate() => real.Activate();
+
+            public int GetUInt32(Guid key, out uint value) => real.GetUInt32(key, out value);
+
+            public int GetUInt64(Guid key, out ulong value) => real.GetUInt64(key, out value);
+
+            public int GetString(Guid key, out string? value) => real.GetString(key, out value);
+
+            public int SetUInt32(Guid key, uint value) => real.SetUInt32(key, value);
+
+            public int SetCodecValue(Guid api, uint value) => real.SetCodecValue(api, value);
+
+            public int GetCodecValue(Guid api, out uint value) => real.GetCodecValue(api, out value);
+
+            public int SetOutputType(MfVideoType type) => _ended ? Mf.InvalidMediaType : real.SetOutputType(type);
+
+            public int SetInputType(MfVideoType type) => _ended ? Mf.InvalidMediaType : real.SetInputType(type);
+
+            public int GetOutputCurrentType(out MfVideoType? type) => real.GetOutputCurrentType(out type);
+
+            public int GetOutputAvailableType(int index, out MfVideoType? type) => real.GetOutputAvailableType(index, out type);
+
+            public int GetInputCurrentLayout(out MfInputLayout layout) => real.GetInputCurrentLayout(out layout);
+
+            public int GetInputStreamInfo(out MfStreamInfo info) => real.GetInputStreamInfo(out info);
+
+            public int GetOutputStreamInfo(out MfStreamInfo info) => real.GetOutputStreamInfo(out info);
+
+            public int ProcessMessage(uint message)
+            {
+                if (message == Mf.MessageNotifyEndStreaming)
+                    _ended = true;
+                return real.ProcessMessage(message);
+            }
+
+            public int NextEvent(out MfEvent e) => real.NextEvent(out e);
+
+            public int CreateInputBuffer(int size, int alignment, out IMfInputBuffer? buffer) => real.CreateInputBuffer(size, alignment, out buffer);
+
+            public int ProcessInput(IMfInputBuffer buffer, long sampleTime, long duration, bool discontinuity) =>
+                real.ProcessInput(buffer, sampleTime, duration, discontinuity);
+
+            public int ProcessOutput(MfOutputAllocation allocation, out MfOutput? output) => real.ProcessOutput(allocation, out output);
+
+            public int Shutdown() => real.Shutdown();
+
+            public void Release() => real.Release();
         }
     }
 
@@ -1171,7 +1356,7 @@ public class MediaFoundationTests
             Next(Mf.EventNeedInput);
             Assert.True(port.CreateInputBuffer(Math.Max(w * h * 3 / 2, input.Size), Math.Max(input.Alignment, 1), out var buffer) >= 0);
             Assert.True(buffer!.Write(new byte[w * h * 3 / 2]) >= 0);
-            Assert.True(port.ProcessInput(buffer, 0, 333_333) >= 0);
+            Assert.True(port.ProcessInput(buffer, 0, 333_333, discontinuity: false) >= 0);
             buffer.Dispose();
             Next(Mf.EventHaveOutput);
             Assert.True(port.ProcessOutput(MfOutputAllocation.Of(outputInfo), out var output) >= 0);

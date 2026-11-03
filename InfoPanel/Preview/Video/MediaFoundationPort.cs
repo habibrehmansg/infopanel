@@ -40,6 +40,7 @@ internal static class Mf
     public const uint EventError = 1; // MEError
     public const uint EventNeedInput = 601; // METransformNeedInput
     public const uint EventHaveOutput = 602; // METransformHaveOutput
+    public const uint EventDrainComplete = 603; // METransformDrainComplete
 
     // ---- MFT_OUTPUT_STREAM_INFO flags ----
     public const uint OutputStreamProvidesSamples = 0x100;
@@ -217,8 +218,12 @@ internal interface IMfEncoderPort
     /// <summary>A system-memory buffer of at least <paramref name="size"/> bytes aligned to <paramref name="alignment"/> (1: none).</summary>
     int CreateInputBuffer(int size, int alignment, out IMfInputBuffer? buffer);
 
-    /// <summary>A sample of <paramref name="buffer"/> at <paramref name="sampleTime"/> (100 ns units) into the transform.</summary>
-    int ProcessInput(IMfInputBuffer buffer, long sampleTime, long duration);
+    /// <summary>
+    /// A sample of <paramref name="buffer"/> at <paramref name="sampleTime"/> (100 ns units) into the transform;
+    /// <paramref name="discontinuity"/> marks it the first after a break in the stream (<c>MFSampleExtension_Discontinuity</c>
+    /// TRUE), which the first input after a drain must carry.
+    /// </summary>
+    int ProcessInput(IMfInputBuffer buffer, long sampleTime, long duration, bool discontinuity);
 
     /// <summary>
     /// <c>ProcessOutput</c> into the encoder's sample, or one of ours as <paramref name="allocation"/> says (made and

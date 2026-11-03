@@ -128,6 +128,18 @@ public class AnnexBTests
     }
 
     [Fact]
+    public void IsDelta_ReadsTheSlicesTypes_WhateverTheNormaliserWouldMakeOfTheUnit()
+    {
+        Assert.True(AnnexB.IsDelta(Unit(Aud, Delta)));
+        Assert.True(AnnexB.IsDelta([0, 0, 1, .. Aud, 0, 0, 1, .. Delta]));
+        Assert.False(AnnexB.IsDelta(Unit(Aud, Sps, Pps, Idr)));
+        Assert.False(AnnexB.IsDelta(Unit(Aud, Idr, Delta)));
+        Assert.False(AnnexB.IsDelta(Unit(Aud, Sei)));
+        Assert.False(AnnexB.IsDelta([]));
+        Assert.False(AnnexB.IsDelta([0, 0, 1]));
+    }
+
+    [Fact]
     public void ASessionsFirstUnit_ThatIsADelta_OrAnIdrWithoutItsParameterSets_IsAProblem()
     {
         AssertProblem(new AnnexB().Normalise(Unit(Aud, Delta)), "the session's first frame isn't an IDR with its parameter sets");

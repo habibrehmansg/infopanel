@@ -157,6 +157,35 @@ internal sealed class AnnexB
 
     private static AnnexBUnit Fail(string problem) => new(null, false, null, null, problem);
 
+    /// <summary>
+    /// Whether an access unit holds a non-IDR slice and no IDR slice (a delta), read from its NAL unit headers alone,
+    /// whatever <see cref="Normalise"/> would make of it; stateless.
+    /// </summary>
+    public static bool IsDelta(ReadOnlySpan<byte> annexB)
+    {
+        bool slice = false, idr = false;
+        for (var at = annexB.IndexOf(StartCode); at >= 0;)
+        {
+            var header = at + StartCode.Length;
+            if (header >= annexB.Length)
+                break;
+            switch (annexB[header] & 0x1f)
+            {
+                case SliceType:
+                    slice = true;
+                    break;
+                case IdrType:
+                    idr = true;
+                    break;
+            }
+
+            var next = annexB[header..].IndexOf(StartCode);
+            at = next < 0 ? -1 : header + next;
+        }
+
+        return slice && !idr;
+    }
+
     private ReadOnlySpan<byte> Nal(ReadOnlySpan<byte> annexB, int index) => annexB[_nals[index].Start.._nals[index].End];
 
     /// <summary>

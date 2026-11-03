@@ -144,6 +144,7 @@ public sealed unsafe class MediaFoundationAbiTests
         { "MFT_ENUM_FLAG_HARDWARE", "mfapi.h", $"{Mf.EnumHardware:X}=4" },
         { "MFT_ENUM_FLAG_SORTANDFILTER", "mfapi.h", $"{Mf.EnumSortAndFilter:X}=40" },
         { "MFT_MESSAGE_COMMAND_FLUSH", "mftransform.h", $"{Mf.MessageCommandFlush:X}=0" },
+        { "MFT_MESSAGE_COMMAND_DRAIN", "mftransform.h", $"{Mf.MessageCommandDrain:X}=1" },
         { "MFT_MESSAGE_SET_D3D_MANAGER", "mftransform.h", $"{Mf.MessageSetD3DManager:X}=2" },
         { "MFT_MESSAGE_NOTIFY_BEGIN_STREAMING", "mftransform.h", $"{Mf.MessageNotifyBeginStreaming:X}=10000000" },
         { "MFT_MESSAGE_NOTIFY_END_STREAMING", "mftransform.h", $"{Mf.MessageNotifyEndStreaming:X}=10000001" },
@@ -152,6 +153,7 @@ public sealed unsafe class MediaFoundationAbiTests
         { "MEError", "mfobjects.h", $"{Mf.EventError}=1" },
         { "METransformNeedInput", "mfobjects.h", $"{Mf.EventNeedInput}=601" },
         { "METransformHaveOutput", "mfobjects.h", $"{Mf.EventHaveOutput}=602" },
+        { "METransformDrainComplete", "mfobjects.h", $"{Mf.EventDrainComplete}=603" },
         { "MFT_OUTPUT_STREAM_PROVIDES_SAMPLES", "mftransform.h", $"{Mf.OutputStreamProvidesSamples:X}=100" },
         { "MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES", "mftransform.h", $"{Mf.OutputStreamCanProvideSamples:X}=200" },
         { "MFT_OUTPUT_DATA_BUFFER_NO_SAMPLE", "mftransform.h", $"{MfCom.OutputDataBufferNoSample:X}=300" },
@@ -190,6 +192,7 @@ public sealed unsafe class MediaFoundationAbiTests
         { "MF_MT_TRANSFER_FUNCTION", "mfapi.h", $"{MfCom.TransferFunction}=5fb0fce9-be5c-4935-a811-ec838f8eed93" },
         { "MF_MT_VIDEO_NOMINAL_RANGE", "mfapi.h", $"{MfCom.NominalRange}=c21b8ee5-b956-4071-8daf-325edf5cab11" },
         { "MFSampleExtension_CleanPoint", "mfapi.h", $"{MfCom.CleanPoint}=9cdf01d8-a0f0-43ba-b077-eaa06cbd728a" },
+        { "MFSampleExtension_Discontinuity", "mfapi.h", $"{MfCom.Discontinuity}=9cdf01d9-a0f0-43ba-b077-eaa06cbd728a" },
         { "MF_VERSION", "mfapi.h", $"{MfNative.MfVersion:X8}=00020070" },
         { "eAVEncH264VProfile_Base", "codecapi.h", $"{Mf.ProfileBaseline}=66" },
         { "MFVideoInterlace_Progressive", "mfobjects.h", $"{Mf.InterlaceProgressive}=2" },
@@ -430,13 +433,13 @@ public sealed unsafe class MediaFoundationAbiTests
         Assert.Equal(0, buffer.Address % 64);
         Assert.Equal(0, input!.Write([1, 2, 3, 4, 5]));
         Assert.Equal([1, 2, 3, 4, 5], buffer.Bytes);
-        Assert.Equal(0, rig.Port.ProcessInput(input, 3_333_333, 333_333));
+        Assert.Equal(0, rig.Port.ProcessInput(input, 3_333_333, 333_333, discontinuity: false));
         Assert.Contains("ProcessInput 0 3333333 333333 0 1", rig.Transform.Calls);
         var sample = rig.Objects.Samples[0];
         // The test's reference, and the transform's while it holds the sample.
         Assert.Equal(keeps ? 2 : 1, sample.Refs);
         rig.Transform.ProcessInputHr = Mf.NotAccepting;
-        Assert.Equal(Mf.NotAccepting, rig.Port.ProcessInput(input, 6_666_666, 333_333));
+        Assert.Equal(Mf.NotAccepting, rig.Port.ProcessInput(input, 6_666_666, 333_333, discontinuity: false));
         Assert.Equal(1, rig.Objects.Samples[1].Refs);
         input.Dispose();
         // The buffer: the test's reference and one per sample the test still holds.
@@ -444,6 +447,33 @@ public sealed unsafe class MediaFoundationAbiTests
 
         rig.Dispose();
         Assert.All(rig.Objects.Samples, s => Assert.Equal(1, s.Refs));
+        rig.Objects.DropTestReferences();
+        Assert.All(rig.Objects.Samples.Cast<SyntheticObject>().Concat(rig.Objects.Buffers), o => Balanced(o, 0));
+        rig.AssertAllGivenBack();
+    }
+
+    [Fact]
+    public void ProcessInput_MarksTheSampleADiscontinuity_OnlyWhenAsked_AndARefusedMarkFailsTheCall()
+    {
+        var rig = new Rig(keeps: false);
+        Assert.Equal(0, rig.Port.CreateInputBuffer(4096, 1, out var input));
+        Assert.Equal(0, input!.Write([1, 2, 3]));
+        Assert.Equal(0, rig.Port.ProcessInput(input, 0, 333_333, discontinuity: false));
+        Assert.Equal(0, rig.Port.ProcessInput(input, 333_333, 333_333, discontinuity: true));
+        var (plain, marked) = (rig.Objects.Samples[0], rig.Objects.Samples[1]);
+        Assert.False(plain.Values.ContainsKey(MfCom.Discontinuity));
+        Assert.DoesNotContain(plain.Log, l => l.StartsWith("SetUINT32", StringComparison.Ordinal));
+        Assert.Equal(1u, marked.Values[MfCom.Discontinuity]);
+        Assert.Equal([$"SetUINT32 {MfCom.Discontinuity} 1"], marked.Log.Where(l => l.StartsWith("Set", StringComparison.Ordinal)));
+        Assert.Equal(["ProcessInput 0 0 333333 0 1", "ProcessInput 0 333333 333333 0 1"], rig.Transform.Calls.Where(c => c.StartsWith("ProcessInput", StringComparison.Ordinal)));
+
+        // The mark refused: the call fails with its HRESULT, and the sample never reaches the transform.
+        rig.Objects.SampleSetHr = Mf.EInvalidArg;
+        Assert.Equal(Mf.EInvalidArg, rig.Port.ProcessInput(input, 666_666, 333_333, discontinuity: true));
+        Assert.Equal(2, rig.Transform.Calls.Count(c => c.StartsWith("ProcessInput", StringComparison.Ordinal)));
+        input.Dispose();
+
+        rig.Dispose();
         rig.Objects.DropTestReferences();
         Assert.All(rig.Objects.Samples.Cast<SyntheticObject>().Concat(rig.Objects.Buffers), o => Balanced(o, 0));
         rig.AssertAllGivenBack();

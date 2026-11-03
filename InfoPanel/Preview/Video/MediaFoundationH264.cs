@@ -38,6 +38,20 @@ internal sealed record MfIdentity(Guid? Clsid, string? HardwareUrl, string? Devi
 /// a start on anything else probes it first. A session (<see cref="MfSession"/>) runs on two threads of its own, so
 /// <see cref="IH264Session.Submit"/> only converts and queues. Everything native goes through two seams
 /// (<see cref="IMfCatalog"/>, <see cref="IMfEncoderPort"/>), so all of it runs over a fake on any OS.
+/// <para>
+/// An activation outlives its session (<see cref="MfActivation"/>): a healthy session's teardown flushes the transform
+/// and parks it here instead of shutting it down, for at most <see cref="ParkedFor"/>; the next start takes it and
+/// renegotiates it at its own size (flush, a drain whose end the event thread reads, end of streaming, the whole setup
+/// again, output type first), so a stream's
+/// restarts (a new size, a keyframe restart) use one activation: an encoder may keep a few handles and some memory per
+/// activation that nothing releases. A transform that reported an error, a session that failed, a probe's, or one whose
+/// flush didn't happen is never parked; a renegotiation refused at any step shuts the activation down and the start
+/// activates a new one, as without re-use (logged once); when that new one starts at the size the renegotiation was
+/// refused at, the refusal was the re-use's, and nothing is parked for the rest of the run (a refused re-use costs more
+/// than none: the kept activation outlives the others between the restarts). Only while forced keyframes work: a
+/// re-used session forces its first frame, since the encoder's picture sequence goes on across a renegotiation at the
+/// same size.
+/// </para>
 /// </summary>
 internal sealed class MediaFoundationH264 : IH264Backend
 {
@@ -66,18 +80,40 @@ internal sealed class MediaFoundationH264 : IH264Backend
     /// <summary>What the catalog is asked for: hardware encoders, in Windows' order.</summary>
     public const uint EnumFlags = Mf.EnumHardware | Mf.EnumSortAndFilter;
 
+    /// <summary>How long a parked activation waits for the next start before it is shut down.</summary>
+    public static readonly TimeSpan ParkedFor = TimeSpan.FromSeconds(10);
+
+    /// <summary>How long a re-use waits for its drain's end, read by the event thread; past it, the re-use is refused.</summary>
+    public static readonly TimeSpan DrainWait = TimeSpan.FromMilliseconds(500);
+
     private readonly IMfCatalog _catalog;
     private readonly ILogger _logger;
     private readonly TimeProvider _time;
+    private readonly bool _reuse;
     private readonly Lock _lock = new();
     private MfIdentity? _trusted;
     private bool _forces;
+    private MfActivation? _parked;
+    private ITimer? _parkedTimer;
+    private bool _stopped;
+    private bool _refusalLogged;
+    private bool _reuseOff;
+    private int _activations;
 
-    public MediaFoundationH264(IMfCatalog catalog, ILogger logger, TimeProvider? time = null)
+    // The run's quarantine (the chain's probe hands it over): a kept activation's shutdown past its bound is counted there.
+    private Action<Task> _abandoned = _ => { };
+
+    // Kept activations' shutdowns after their time, until each ends: the engine's stop waits for them.
+    private readonly HashSet<Task> _closing = [];
+
+    /// <param name="reuse">Whether a session's activation is parked for the next start (<see cref="MfActivation"/>);
+    /// false: every session activates its own and shuts it down.</param>
+    public MediaFoundationH264(IMfCatalog catalog, ILogger logger, TimeProvider? time = null, bool reuse = true)
     {
         _catalog = catalog;
         _logger = logger;
         _time = time ?? TimeProvider.System;
+        _reuse = reuse;
     }
 
     public string Name => "Media Foundation";
@@ -113,6 +149,182 @@ internal sealed class MediaFoundationH264 : IH264Backend
 
     internal IMfCatalog Catalog => _catalog;
 
+    /// <summary>Successful activations so far, probes' included (tests, logs).</summary>
+    internal int Activations => Volatile.Read(ref _activations);
+
+    internal void Activated() => Interlocked.Increment(ref _activations);
+
+    /// <summary>
+    /// Whether a healthy session's activation is kept for the next start now: re-use on and not turned off, the engine
+    /// not stopping, forced keyframes working and the trusted whole identity known (tests, logs).
+    /// </summary>
+    internal bool ReuseEligible
+    {
+        get
+        {
+            lock (_lock)
+                return _reuse && !_reuseOff && !_stopped && _forces && _trusted is { Complete: true };
+        }
+    }
+
+    /// <summary>The activation parked now; null: none (tests).</summary>
+    internal MfActivation? Parked
+    {
+        get
+        {
+            lock (_lock)
+                return _parked;
+        }
+    }
+
+    /// <summary>
+    /// Parks a healthy session's flushed activation for the next start; false when it isn't kept (re-use off, the engine
+    /// stopping, one already parked, forced keyframes not working, not the trusted whole identity, or a reported error): the
+    /// caller then shuts it down.
+    /// </summary>
+    internal bool Park(MfActivation activation)
+    {
+        lock (_lock)
+        {
+            if (!_reuse || _reuseOff || _stopped || _parked != null || !_forces || _trusted is not { Complete: true } || activation.Identity != _trusted
+                || activation.Failed != null)
+                return false;
+            _parked = activation;
+            _parkedTimer = _time.CreateTimer(_ => Expire(activation), null, ParkedFor, Timeout.InfiniteTimeSpan);
+        }
+
+        _logger.LogDebug("Media Foundation: the encoder's activation is kept for the next start");
+        return true;
+    }
+
+    /// <summary>The parked activation, taken (null: none).</summary>
+    private MfActivation? Unpark()
+    {
+        lock (_lock)
+        {
+            var parked = _parked;
+            _parked = null;
+            _parkedTimer?.Dispose();
+            _parkedTimer = null;
+            return parked;
+        }
+    }
+
+    /// <summary>
+    /// A kept activation not taken within <see cref="ParkedFor"/>: shut down on a thread of its own, as a session's
+    /// teardown is, and watched for <see cref="Quarantine.Bound"/>: past it, it is left behind and counted as a
+    /// quarantined session (three give Media Foundation up for the run), and the engine's stop waits for it
+    /// (<see cref="ReapAsync"/>).
+    /// </summary>
+    private void Expire(MfActivation activation)
+    {
+        Task closing;
+        Action<Task> abandoned;
+        lock (_lock)
+        {
+            if (_parked != activation)
+                return;
+            _parked = null;
+            _parkedTimer?.Dispose();
+            _parkedTimer = null;
+            closing = activation.CloseOnThread();
+            _closing.Add(closing);
+            abandoned = _abandoned;
+        }
+
+        _logger.LogDebug("Media Foundation: the kept activation wasn't taken within {Seconds} s; shut down", Seconds(ParkedFor));
+        _ = WatchAsync(closing, abandoned);
+    }
+
+    private async Task WatchAsync(Task closing, Action<Task> abandoned)
+    {
+        try
+        {
+            await closing.WaitAsync(Quarantine.Bound, _time).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            abandoned(closing);
+        }
+        catch (Exception)
+        {
+            // A shutdown that failed has ended.
+        }
+
+        try
+        {
+            await closing.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
+
+        lock (_lock)
+            _closing.Remove(closing);
+    }
+
+    /// <summary>A re-use the encoder refused: logged once a run, with its step and HRESULT.</summary>
+    internal void ReuseRefused(string problem)
+    {
+        lock (_lock)
+        {
+            if (_refusalLogged)
+                return;
+            _refusalLogged = true;
+        }
+
+        _logger.LogInformation("Media Foundation: re-using the encoder's activation was refused: {Problem}; a new activation instead (logged once)", problem);
+    }
+
+    /// <summary>A new activation started at the size a re-use was refused at: nothing is parked for the rest of the run.</summary>
+    internal void ReuseOff()
+    {
+        lock (_lock)
+        {
+            if (_reuseOff)
+                return;
+            _reuseOff = true;
+        }
+
+        _logger.LogInformation("Media Foundation: a new activation started where re-using one was refused; activations aren't kept for the rest of the run");
+    }
+
+    /// <summary>
+    /// The engine's stop: nothing is parked from now on, and a parked activation is shut down; that shutdown and every
+    /// expired activation's still running are waited for within <paramref name="bound"/>.
+    /// </summary>
+    public async Task ReapAsync(TimeSpan bound, CancellationToken ct)
+    {
+        Task[] closing;
+        lock (_lock)
+        {
+            _stopped = true;
+            var parked = _parked;
+            _parked = null;
+            _parkedTimer?.Dispose();
+            _parkedTimer = null;
+            closing = parked == null ? [.. _closing] : [.. _closing, parked.CloseOnThread()];
+        }
+
+        if (closing.Length == 0)
+            return;
+        try
+        {
+            await Task.WhenAll(closing).WaitAsync(bound, _time, ct).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            _logger.LogWarning("Media Foundation: a kept activation's shutdown didn't end within {Seconds} s", Seconds(bound));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning("Media Foundation: a kept activation's shutdown failed: {Message}", ex.Message);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     /// <summary>A session's forced frame came out a delta: keyframe requests restart sessions for the rest of the run.</summary>
     internal void ForcingIgnored()
     {
@@ -128,7 +340,7 @@ internal sealed class MediaFoundationH264 : IH264Backend
 
     // ---- the probe ----
 
-    public H264Probe Probe() => Probe(CancellationToken.None, _ => { });
+    public H264Probe Probe() => Walk(CancellationToken.None, _ => { });
 
     /// <summary>
     /// The walk over the hardware entries, on a thread of its own. <paramref name="stopping"/> ends it at once with the
@@ -137,7 +349,15 @@ internal sealed class MediaFoundationH264 : IH264Backend
     /// </summary>
     public H264Probe Probe(CancellationToken stopping, Action<Task> abandoned)
     {
-        var walk = RunOnThread("Media Foundation probe", () => Walk(stopping, abandoned));
+        // The run's chain hands over its quarantine with its probe: a kept activation's shutdown is counted there too.
+        lock (_lock)
+            _abandoned = abandoned;
+        return Walk(stopping, abandoned);
+    }
+
+    private H264Probe Walk(CancellationToken stopping, Action<Task> abandoned)
+    {
+        var walk = RunOnThread("Media Foundation probe", () => WalkEntries(stopping, abandoned));
         // The walk bounds its own waits and ends at once at a stop, its attempt torn down; this one only stops waiting
         // for a native call outside an attempt (the listing) that never returns.
         if (Ended(walk, ProbeBound + Quarantine.Bound + TimeSpan.FromSeconds(1)) && walk.IsCompletedSuccessfully)
@@ -146,7 +366,7 @@ internal sealed class MediaFoundationH264 : IH264Backend
         return H264Probe.Unavailable;
     }
 
-    private H264Probe Walk(CancellationToken stopping, Action<Task> abandoned)
+    private H264Probe WalkEntries(CancellationToken stopping, Action<Task> abandoned)
     {
         var started = _time.GetTimestamp();
         if (Enter("probe", out var enterBusy) is { } enterProblem)
@@ -367,6 +587,25 @@ internal sealed class MediaFoundationH264 : IH264Backend
     private void Choose(MfSession session)
     {
         var deadline = _time.GetTimestamp() + Ticks(StartBound);
+        // The parked activation first, renegotiated at this start's size; refused at any step, it is shut down and the
+        // choice goes on as without one (once: nothing is parked meanwhile).
+        if (Unpark() is { } parked)
+        {
+            MfIdentity? trust;
+            bool forces;
+            lock (_lock)
+                (trust, forces) = (_trusted, _forces);
+            if (trust is { Complete: true } && parked.Identity == trust && forces && parked.Failed == null)
+            {
+                if (session.TryReuse(parked))
+                    return;
+            }
+            else
+            {
+                parked.Close();
+            }
+        }
+
         if (List(out var entries, out var listBusy) is { } listProblem)
             throw new H264StartException(listBusy ? H264StartProblem.Busy : H264StartProblem.Fault, listProblem);
         try
@@ -592,6 +831,9 @@ internal sealed class MediaFoundationH264 : IH264Backend
 /// its parameter sets, every new SPS must describe the session's size, and a forced frame that comes out a delta is a
 /// failure. <see cref="Abort"/> reports every outstanding frame aborted, wakes both threads and returns; its one teardown
 /// (flush if the lock is free, shut down, join both threads, release) runs on a thread of its own and is never a drain.
+/// The event thread is the activation's (<see cref="MfActivation"/>): a healthy session's teardown flushes, lets go of
+/// the activation and parks it with the backend instead of shutting it down; a start that takes it
+/// (<see cref="TryReuse"/>) flushes and drains it again, ends its streaming and runs the whole setup at its own size.
 /// </summary>
 internal sealed class MfSession : IH264Session
 {
@@ -618,10 +860,10 @@ internal sealed class MfSession : IH264Session
     private readonly Queue<Outstanding> _outstanding = new();
     private readonly Queue<Queued> _queue = new();
     private IMfEncoderPort? _port;
+    private MfActivation? _activation;
     private bool _activated;
     private bool _streaming;
     private Thread? _thread;
-    private Thread? _events;
     private int _credits;
     private bool _aborted;
     private string? _broken;
@@ -647,6 +889,14 @@ internal sealed class MfSession : IH264Session
     private bool _cleanPointLogged;
     private long _progress;
     private bool _forceUnsupported;
+
+    // A re-used activation (set up by TryReuse): its first frame is forced, and its first sample after the drain carries
+    // the discontinuity the drain asks for (1 until that sample goes in).
+    private bool _reused;
+    private int _discontinuity;
+    private bool _reuseRefused;
+    private bool _configured;
+    private int _firstForced;
 
     public MfSession(MediaFoundationH264 backend, H264Config config, Action<H264Outcome> output, bool probing)
     {
@@ -753,7 +1003,14 @@ internal sealed class MfSession : IH264Session
             CheckAlive();
             if (_port == null)
                 throw new H264StartException(H264StartProblem.Fault, "no encoder was activated");
-            Configure(_port);
+            if (!_configured)
+            {
+                Configure(_port);
+                // A new activation took the size a re-use was refused at: the refusal was the re-use's.
+                if (_reuseRefused)
+                    _backend.ReuseOff();
+            }
+
             live = StartEvents();
         }
         catch (Aborted)
@@ -808,6 +1065,7 @@ internal sealed class MfSession : IH264Session
         var hr = port.Activate();
         if (hr >= 0)
         {
+            _backend.Activated();
             lock (_state)
                 _activated = true;
         }
@@ -843,16 +1101,25 @@ internal sealed class MfSession : IH264Session
         : port.GetString(Mf.DriverVersion, out var text) >= 0 && !string.IsNullOrEmpty(text) ? text
         : null;
 
-    /// <summary>Shuts down and releases the session's port during the setup (an activation not used).</summary>
+    /// <summary>Shuts down and releases the session's port during the setup (an activation not used), its event thread joined when it has one.</summary>
     internal void DropPort()
     {
         IMfEncoderPort? port;
+        MfActivation? activation;
         bool activated;
         lock (_state)
         {
-            (port, activated) = (_port, _activated);
+            (port, activation, activated) = (_port, _activation, _activated);
             _port = null;
+            _activation = null;
             _activated = false;
+            _streaming = false;
+        }
+
+        if (activation != null)
+        {
+            activation.Close();
+            return;
         }
 
         if (port == null)
@@ -860,6 +1127,69 @@ internal sealed class MfSession : IH264Session
         if (activated)
             port.Shutdown();
         port.Release();
+    }
+
+    /// <summary>
+    /// The start's re-use of a parked activation, on the session's thread: flushed again and drained, its streaming
+    /// ended, then the whole setup at this session's size (<see cref="Configure"/>, output type first), this session given
+    /// its events just before the stream starts. The drain's end, which the event thread reads after every event the
+    /// transform queued before it, is waited for (within <see cref="MediaFoundationH264.DrainWait"/>): no event from
+    /// before the flush, one the thread had already taken included, reaches this session. The first sample after the drain
+    /// carries <c>MFSampleExtension_Discontinuity</c>, as the drain's contract asks; no other does. True when it runs; false when
+    /// a step was refused: the activation is shut down (logged once a run, with the step and its HRESULT) and the start
+    /// activates a new one. The session owns the activation from the first line, so an abort (a start that gave up)
+    /// goes on as one and its teardown shuts the activation down.
+    /// </summary>
+    internal bool TryReuse(MfActivation activation)
+    {
+        lock (_state)
+        {
+            _port = activation.Port;
+            _activation = activation;
+            _activated = true;
+            _streaming = true;
+        }
+
+        Identity = activation.Identity;
+        _reused = true;
+        var port = activation.Port;
+        try
+        {
+            var hr = Call(() => port.ProcessMessage(Mf.MessageCommandFlush));
+            if (hr < 0)
+                throw Refused(hr, H264StartProblem.Fault, "it refused the flush");
+            var drained = activation.Drain();
+            hr = Call(() => port.ProcessMessage(Mf.MessageCommandDrain));
+            if (hr < 0)
+                throw Refused(hr, H264StartProblem.Fault, "it refused the drain");
+            if (!_backend.Ended(drained, MediaFoundationH264.DrainWait, Token))
+            {
+                CheckAlive();
+                throw new H264StartException(H264StartProblem.Fault, $"its drain didn't end within {(int)MediaFoundationH264.DrainWait.TotalMilliseconds} ms");
+            }
+
+            if (!drained.IsCompletedSuccessfully || !drained.Result)
+                throw new H264StartException(H264StartProblem.Fault, "its events ended during the drain");
+            hr = Call(() => port.ProcessMessage(Mf.MessageNotifyEndStreaming));
+            lock (_state)
+                _streaming = false;
+            if (hr < 0)
+                throw Refused(hr, H264StartProblem.Fault, "it refused the end of streaming");
+            Configure(port);
+            _configured = true;
+            Volatile.Write(ref _discontinuity, 1);
+            _logger.LogDebug("Media Foundation re-used the encoder's activation at {Width}x{Height}", Width, Height);
+            return true;
+        }
+        catch (Exception ex) when (ex is not Aborted)
+        {
+            _backend.ReuseRefused(ex.Message);
+            DropPort();
+            Identity = null;
+            _reused = false;
+            _reuseRefused = true;
+            return false;
+        }
     }
 
     /// <summary>A native step of the setup, only while the session isn't aborted.</summary>
@@ -950,6 +1280,9 @@ internal sealed class MfSession : IH264Session
             throw Refused(hr, hr == Mf.HwMftFailedStartStreaming ? H264StartProblem.Busy : H264StartProblem.Fault, "it refused to begin streaming");
         lock (_state)
             _streaming = true;
+        // A re-used activation's events go on: from here they are this session's (the requests the start of the stream
+        // brings), and none from before the flush is.
+        _activation?.Attach(this);
         hr = Call(() => port.ProcessMessage(Mf.MessageNotifyStartOfStream));
         if (hr < 0)
             throw Refused(hr, H264StartProblem.Fault, "it refused the start of the stream");
@@ -1041,16 +1374,25 @@ internal sealed class MfSession : IH264Session
         _ => H264StartProblem.Fault,
     };
 
-    /// <summary>Starts the event thread, unless the session was aborted (a start that gave up never gets one).</summary>
+    /// <summary>
+    /// Starts the activation's event thread, unless the session was aborted (a start that gave up never gets one); a
+    /// re-used activation's runs already, and the session is ready.
+    /// </summary>
     private bool StartEvents()
     {
-        var thread = new Thread(Events) { IsBackground = true, Name = "Media Foundation events" };
         lock (_state)
         {
             if (_aborted)
                 return false;
-            _events = thread;
-            thread.Start();
+            if (_activation != null)
+            {
+                _ready.TrySetResult();
+                return true;
+            }
+
+            _activation = new MfActivation(_backend, _port!, Identity);
+            _activation.Attach(this);
+            _activation.StartEvents();
         }
 
         return true;
@@ -1148,7 +1490,8 @@ internal sealed class MfSession : IH264Session
                     return $"the input buffer couldn't be written ({Mf.Hr(hr)})";
                 if (IsAborted)
                     return null;
-                hr = port.ProcessInput(buffer, item.Time, _duration);
+                // The first sample after a re-use's drain is a discontinuity; only it.
+                hr = port.ProcessInput(buffer, item.Time, _duration, Interlocked.Exchange(ref _discontinuity, 0) == 1);
                 return hr < 0 ? $"ProcessInput failed ({Mf.Hr(hr)})" : null;
             }
         }
@@ -1158,70 +1501,46 @@ internal sealed class MfSession : IH264Session
         }
     }
 
-    // ---- events and output, on the event thread ----
+    // ---- events and output, on the activation's event thread ----
 
-    private void Events()
+    /// <summary>The event thread is up (its COM init passed): the session is ready.</summary>
+    internal void EventsReady() => _ready.TrySetResult();
+
+    /// <summary>The event thread's COM init failed: the start's refusal.</summary>
+    internal void EventsFailed(string problem, bool busy) =>
+        _ready.TrySetException(new H264StartException(busy ? H264StartProblem.Busy : H264StartProblem.Fault, problem));
+
+    /// <summary>One of the encoder's events, while this session has the activation.</summary>
+    internal void OnEvent(MfEvent e)
     {
-        if (_backend.Enter("events", out var busy) is { } problem)
+        if (IsAborted)
+            return;
+        // A failing status fails the session whatever the event's type, before any dispatch by type.
+        if (e.Status < 0 || e.Type == Mf.EventError)
         {
-            _ready.TrySetException(new H264StartException(busy ? H264StartProblem.Busy : H264StartProblem.Fault, problem));
+            Fail($"the encoder reported an error (event {e.Type}, {Mf.Hr(e.Status)})");
             return;
         }
 
-        try
+        switch (e.Type)
         {
-            _ready.TrySetResult();
-            EventLoop(_port!);
-        }
-        catch (Exception ex)
-        {
-            Fail("reading the encoder's events failed: " + ex.Message);
-        }
-        finally
-        {
-            _catalog.LeaveThread();
-        }
-    }
-
-    private void EventLoop(IMfEncoderPort port)
-    {
-        while (true)
-        {
-            var hr = port.NextEvent(out var e);
-            if (hr == Mf.Shutdown)
-                return;
-            if (hr < 0)
-            {
-                Fail($"GetEvent failed ({Mf.Hr(hr)})");
-                return;
-            }
-
-            if (IsAborted)
-                continue;
-            // A failing status fails the session whatever the event's type, before any dispatch by type.
-            if (e.Status < 0 || e.Type == Mf.EventError)
-            {
-                Fail($"the encoder reported an error (event {e.Type}, {Mf.Hr(e.Status)})");
-                continue;
-            }
-
-            switch (e.Type)
-            {
-                case Mf.EventNeedInput:
-                    lock (_state)
-                        _credits++;
-                    _signal.Release();
-                    break;
-                case Mf.EventHaveOutput:
-                    Output(port);
-                    break;
-                default:
-                    if (_unknownEvents.Add(e.Type))
-                        _logger.LogInformation("Media Foundation sent event {Type} ({Status}); ignored", e.Type, Mf.Hr(e.Status));
-                    break;
-            }
+            case Mf.EventNeedInput:
+                lock (_state)
+                    _credits++;
+                _signal.Release();
+                break;
+            case Mf.EventHaveOutput:
+                Output(_activation!.Port);
+                break;
+            default:
+                if (_unknownEvents.Add(e.Type))
+                    _logger.LogInformation("Media Foundation sent event {Type} ({Status}); ignored", e.Type, Mf.Hr(e.Status));
+                break;
         }
     }
+
+    /// <summary>The event thread ended on a failure (<c>GetEvent</c>'s, or reading an event's).</summary>
+    internal void EventsEnded(string problem) => Fail(problem);
 
     /// <summary>
     /// <c>ProcessOutput</c> under the MFT lock, into the session's output allocation; a stream change is renegotiated
@@ -1365,6 +1684,14 @@ internal sealed class MfSession : IH264Session
     private H264Outcome Build(Outstanding head, MfOutput output)
     {
         var unit = _annexB.Normalise(output.Data);
+        // A forced frame that came out a delta, read before the normaliser's checks: a re-used session's first frame is
+        // forced, and a delta there is also a first frame that isn't an IDR. Forcing is off from then on, and with it re-use.
+        if (head.Forced && !_probing && (unit.Problem == null ? !unit.Keyframe : AnnexB.IsDelta(output.Data)))
+        {
+            _backend.ForcingIgnored();
+            return new H264Outcome(head.Id, H264OutcomeKind.Failed, Problem: "the encoder ignored a forced keyframe");
+        }
+
         if (unit.Problem != null)
             return new H264Outcome(head.Id, H264OutcomeKind.Failed, Problem: unit.Problem);
         if (unit.NewSps is { } sps)
@@ -1373,12 +1700,6 @@ internal sealed class MfSession : IH264Session
             if (size != (Width, Height))
                 return new H264Outcome(head.Id, H264OutcomeKind.Failed,
                     Problem: "the encoder's picture isn't the frame's size: " + (size is { } s ? $"{s.Width}x{s.Height} for {Width}x{Height}" : "its SPS can't be read"));
-        }
-
-        if (head.Forced && !unit.Keyframe && !_probing)
-        {
-            _backend.ForcingIgnored();
-            return new H264Outcome(head.Id, H264OutcomeKind.Failed, Problem: "the encoder ignored a forced keyframe");
         }
 
         if (output.CleanPoint is { } clean && clean != unit.Keyframe && !_cleanPointLogged)
@@ -1456,8 +1777,9 @@ internal sealed class MfSession : IH264Session
             return H264Submit.Refused;
         }
 
-        // The forced keyframe only where the probe proved it (a probe always forces its third frame).
-        var force = forceKeyframe && (_probing || _backend.ChangesLive);
+        // The forced keyframe only where the probe proved it (a probe always forces its third frame); a re-used
+        // activation's first frame always, since its picture sequence goes on across the renegotiation.
+        var force = (forceKeyframe && (_probing || _backend.ChangesLive)) || (_reused && Interlocked.Exchange(ref _firstForced, 1) == 0);
         lock (_state)
         {
             problem = _aborted ? "the session was aborted" : _broken;
@@ -1563,23 +1885,38 @@ internal sealed class MfSession : IH264Session
             // A setup still inside a native call (a slow activation) goes no further once it returns.
             _setupLeft.Task.Wait(CancellationToken.None);
             IMfEncoderPort? port;
+            MfActivation? activation;
             bool activated, streaming;
-            Thread? thread, events;
+            Thread? thread;
             lock (_state)
-                (port, activated, streaming, thread, events) = (_port, _activated, _streaming, _thread, _events);
+                (port, activation, activated, streaming, thread) = (_port, _activation, _activated, _streaming, _thread);
 
+            int? flushed = null;
             if (port != null && streaming)
-                Flush(port);
+                flushed = Flush(port);
+            if (activation != null && flushed >= 0 && Park(activation, thread))
+            {
+                lock (_state)
+                {
+                    _port = null;
+                    _activation = null;
+                    _activated = false;
+                }
+
+                return;
+            }
+
             if (port != null && activated)
                 port.Shutdown();
             thread?.Join();
-            events?.Join();
+            activation?.Join();
             if (port != null)
             {
                 port.Release();
                 lock (_state)
                 {
                     _port = null;
+                    _activation = null;
                     _activated = false;
                 }
             }
@@ -1591,8 +1928,43 @@ internal sealed class MfSession : IH264Session
         }
     }
 
-    /// <summary><c>MFT_MESSAGE_COMMAND_FLUSH</c> when the MFT lock is free within its wait; otherwise none (a call holds it, which the shutdown ends).</summary>
-    private void Flush(IMfEncoderPort port)
+    /// <summary>
+    /// After a successful flush: a healthy session's activation (set up, never failed, no error reported, not a probe's)
+    /// let go of and parked with the backend, once the session's thread has ended and no event of the activation's is
+    /// still with this session, each within <see cref="MediaFoundationH264.FlushLockWait"/>. False: shut down as without
+    /// re-use.
+    /// </summary>
+    private bool Park(MfActivation activation, Thread? thread)
+    {
+        if (_probing || !_ready.Task.IsCompletedSuccessfully)
+            return false;
+        lock (_state)
+        {
+            if (_broken != null)
+                return false;
+        }
+
+        if (activation.Failed != null)
+            return false;
+        if (thread != null && thread != Thread.CurrentThread && !thread.Join(MediaFoundationH264.FlushLockWait))
+            return false;
+        if (!activation.Detach(this, MediaFoundationH264.FlushLockWait))
+            return false;
+        lock (_state)
+        {
+            // A failure reported while the session's last event was handled.
+            if (_broken != null)
+                return false;
+        }
+
+        return _backend.Park(activation);
+    }
+
+    /// <summary>
+    /// <c>MFT_MESSAGE_COMMAND_FLUSH</c> when the MFT lock is free within its wait, its HRESULT; otherwise none, null (a
+    /// call holds it, which the shutdown ends).
+    /// </summary>
+    private int? Flush(IMfEncoderPort port)
     {
         using var wait = new CancellationTokenSource(MediaFoundationH264.FlushLockWait, _time);
         try
@@ -1602,16 +1974,247 @@ internal sealed class MfSession : IH264Session
         catch (OperationCanceledException)
         {
             _logger.LogDebug("Media Foundation's session was shut down without a flush: a call held the encoder");
+            return null;
+        }
+
+        try
+        {
+            return port.ProcessMessage(Mf.MessageCommandFlush);
+        }
+        finally
+        {
+            _mft.Release();
+        }
+    }
+}
+
+/// <summary>
+/// One activated encoder transform and its event thread, which outlive a session when the backend parks the activation
+/// for the next start (<see cref="MediaFoundationH264.Park"/>). The thread reads the transform's events from its first
+/// session's start until the shutdown and hands each to the session that has the activation; with none (parked, or
+/// between a re-use's flush and its start of stream) an event is dropped, and a request for input from before a flush
+/// with it. A re-use's drain (<see cref="Drain"/>) ends only once this thread has read <c>METransformDrainComplete</c>,
+/// so every event the transform queued before it, and one the thread had taken, is dropped before the next session
+/// has the activation. An error the transform reports, whoever has it, marks the activation failed: it is never parked
+/// again.
+/// </summary>
+internal sealed class MfActivation
+{
+    private readonly MediaFoundationH264 _backend;
+    private readonly Lock _gate = new();
+
+    // Held while an event is handed to a session: a session lets go only once no event is with it.
+    private readonly SemaphoreSlim _dispatch = new(1, 1);
+    private MfSession? _sink;
+    private Thread? _events;
+    private string? _failed;
+    private Task? _closing;
+
+    // A re-use's drain: its end, once the event thread has read METransformDrainComplete (false: the thread ended first).
+    private TaskCompletionSource<bool>? _drained;
+
+    public MfActivation(MediaFoundationH264 backend, IMfEncoderPort port, MfIdentity? identity)
+    {
+        _backend = backend;
+        Port = port;
+        Identity = identity;
+    }
+
+    public IMfEncoderPort Port { get; }
+
+    /// <summary>The identity it was activated as (its entry's, its transform's driver version).</summary>
+    public MfIdentity? Identity { get; }
+
+    /// <summary>Why it can't be re-used: an error event, a failing status, or its event thread's end on a failure; null while it can.</summary>
+    public string? Failed
+    {
+        get
+        {
+            lock (_gate)
+                return _failed;
+        }
+    }
+
+    /// <summary>Its events go to <paramref name="session"/> from now.</summary>
+    public void Attach(MfSession session)
+    {
+        lock (_gate)
+            _sink = session;
+    }
+
+    /// <summary>
+    /// <paramref name="session"/> lets go: no event reaches it once this returns true, which waits at most
+    /// <paramref name="bound"/> for one being handed to it (false: still with it).
+    /// </summary>
+    public bool Detach(MfSession session, TimeSpan bound)
+    {
+        lock (_gate)
+        {
+            if (_sink == session)
+                _sink = null;
+        }
+
+        if (Thread.CurrentThread == _events)
+            return true;
+        if (!_dispatch.Wait(bound))
+            return false;
+        _dispatch.Release();
+        return true;
+    }
+
+    /// <summary>
+    /// A drain about to be asked for, while no session has the activation: the task ends true once the event thread has
+    /// read <c>METransformDrainComplete</c>, every event before it dropped, or false when the thread ends first.
+    /// </summary>
+    public Task<bool> Drain()
+    {
+        var drained = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_gate)
+        {
+            _drained?.TrySetResult(false);
+            _drained = drained;
+            if (_events is { IsAlive: false })
+                drained.TrySetResult(false);
+        }
+
+        return drained.Task;
+    }
+
+    /// <summary>Starts the event thread (once), for the session attached.</summary>
+    public void StartEvents()
+    {
+        var thread = new Thread(Read) { IsBackground = true, Name = "Media Foundation events" };
+        lock (_gate)
+        {
+            if (_events != null)
+                return;
+            _events = thread;
+        }
+
+        thread.Start();
+    }
+
+    private MfSession? Sink
+    {
+        get
+        {
+            lock (_gate)
+                return _sink;
+        }
+    }
+
+    private void Read()
+    {
+        if (_backend.Enter("events", out var busy) is { } problem)
+        {
+            lock (_gate)
+                _failed ??= problem;
+            Sink?.EventsFailed(problem, busy);
             return;
         }
 
         try
         {
-            port.ProcessMessage(Mf.MessageCommandFlush);
+            Sink?.EventsReady();
+            while (true)
+            {
+                var hr = Port.NextEvent(out var e);
+                if (hr == Mf.Shutdown)
+                    return;
+                _dispatch.Wait();
+                try
+                {
+                    MfSession? sink;
+                    TaskCompletionSource<bool>? drained = null;
+                    lock (_gate)
+                    {
+                        if (hr < 0)
+                            _failed ??= $"GetEvent failed ({Mf.Hr(hr)})";
+                        else if (e.Status < 0 || e.Type == Mf.EventError)
+                            _failed ??= $"the encoder reported an error (event {e.Type}, {Mf.Hr(e.Status)})";
+                        sink = _sink;
+                        // A re-use's drain ended: every event before it was read (and dropped, no session having it).
+                        if (hr >= 0 && e.Type == Mf.EventDrainComplete && _drained != null)
+                        {
+                            (drained, _drained, sink) = (_drained, null, null);
+                        }
+                    }
+
+                    drained?.TrySetResult(e.Status >= 0);
+
+                    if (hr < 0)
+                    {
+                        sink?.EventsEnded($"GetEvent failed ({Mf.Hr(hr)})");
+                        return;
+                    }
+
+                    sink?.OnEvent(e);
+                }
+                catch (Exception ex)
+                {
+                    lock (_gate)
+                        _failed ??= "reading the encoder's events failed: " + ex.Message;
+                    Sink?.EventsEnded("reading the encoder's events failed: " + ex.Message);
+                    return;
+                }
+                finally
+                {
+                    _dispatch.Release();
+                }
+            }
         }
         finally
         {
-            _mft.Release();
+            lock (_gate)
+            {
+                _drained?.TrySetResult(false);
+                _drained = null;
+            }
+
+            _backend.Catalog.LeaveThread();
+        }
+    }
+
+    /// <summary>Waits for the event thread, which the shutdown ends.</summary>
+    public void Join()
+    {
+        Thread? events;
+        lock (_gate)
+            events = _events;
+        if (events != null && events != Thread.CurrentThread)
+            events.Join();
+    }
+
+    /// <summary>Shut down, its event thread joined, released; on the caller's thread (an activation no session has).</summary>
+    public void Close()
+    {
+        lock (_gate)
+            _sink = null;
+        Port.Shutdown();
+        Join();
+        Port.Release();
+    }
+
+    /// <summary><see cref="Close"/> on a thread of its own with its COM init (a parked activation's end); idempotent.</summary>
+    public Task CloseOnThread()
+    {
+        lock (_gate)
+        {
+            return _closing ??= MediaFoundationH264.RunOnThread("Media Foundation shutdown", () =>
+            {
+                var entered = _backend.Enter("teardown", out _) == null;
+                try
+                {
+                    Close();
+                }
+                finally
+                {
+                    if (entered)
+                        _backend.Catalog.LeaveThread();
+                }
+
+                return true;
+            });
         }
     }
 }

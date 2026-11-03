@@ -38,6 +38,9 @@ internal static class MfCom
 
     /// <summary>MFSampleExtension_CleanPoint (mfapi.h).</summary>
     public static readonly Guid CleanPoint = new("9cdf01d8-a0f0-43ba-b077-eaa06cbd728a");
+
+    /// <summary>MFSampleExtension_Discontinuity (mfapi.h).</summary>
+    public static readonly Guid Discontinuity = new("9cdf01d9-a0f0-43ba-b077-eaa06cbd728a");
 }
 
 /// <summary>
@@ -633,8 +636,11 @@ internal sealed unsafe class MfComPort(IMFActivate activate, IMfObjects objects)
         return hr;
     }
 
-    /// <summary>A sample of the buffer, made and freed within the call (the transform keeps its own reference if it holds it).</summary>
-    public int ProcessInput(IMfInputBuffer buffer, long sampleTime, long duration)
+    /// <summary>
+    /// A sample of the buffer, made and freed within the call (the transform keeps its own reference if it holds it); a
+    /// discontinuity is the sample's <c>MFSampleExtension_Discontinuity</c> set TRUE, and absent otherwise.
+    /// </summary>
+    public int ProcessInput(IMfInputBuffer buffer, long sampleTime, long duration, bool discontinuity)
     {
         if (_mft == null)
             return MfCom.EPointer;
@@ -650,7 +656,8 @@ internal sealed unsafe class MfComPort(IMFActivate activate, IMfObjects objects)
         var sample = MfWrappers.Wrap<IMFSample>(p);
         try
         {
-            if ((hr = sample.AddBuffer(media)) < 0 || (hr = sample.SetSampleTime(sampleTime)) < 0 || (hr = sample.SetSampleDuration(duration)) < 0)
+            if ((hr = sample.AddBuffer(media)) < 0 || (hr = sample.SetSampleTime(sampleTime)) < 0 || (hr = sample.SetSampleDuration(duration)) < 0
+                || (discontinuity && (hr = sample.SetUINT32(MfCom.Discontinuity, 1)) < 0))
                 return hr;
             return _mft.ProcessInput(0, sample, 0);
         }

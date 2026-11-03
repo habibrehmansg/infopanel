@@ -726,9 +726,12 @@ internal sealed class SyntheticObjects : IMfObjects
         return 0;
     }
 
+    /// <summary>What every attribute Set on the samples made from now on answers.</summary>
+    public int SampleSetHr { get; set; }
+
     public int CreateSample(out nint sample)
     {
-        var made = new SyntheticSample();
+        var made = new SyntheticSample { SetHr = SampleSetHr };
         made.AddRef();
         lock (Samples)
             Samples.Add(made);

@@ -254,6 +254,9 @@ internal sealed class FakeEncoder
 
     public int BeginHr;
 
+    /// <summary>Both media types refused with this HRESULT once the port's streaming has ended (a re-use's renegotiation); 0: taken.</summary>
+    public int TypesAfterEndStreamingHr;
+
     /// <summary>
     /// A failing HRESULT for a call by name: <c>Activate</c>, <c>GetOutputCurrentType</c>, <c>GetInputCurrentLayout</c>,
     /// <c>GetInputStreamInfo</c>, <c>GetOutputStreamInfo</c>, <c>START_OF_STREAM</c>.
@@ -328,6 +331,9 @@ internal sealed class FakeEncoder
     /// <summary>Events of other types sent at the start of the stream.</summary>
     public List<uint> ExtraEvents { get; } = [];
 
+    /// <summary>A drain's <c>METransformDrainComplete</c> is never sent (a drain that doesn't end).</summary>
+    public bool NoDrainComplete;
+
     /// <summary>The first ProcessOutput calls answer a stream change, this many in a row.</summary>
     public int StreamChanges;
 
@@ -340,6 +346,9 @@ internal sealed class FakeEncoder
 
 internal sealed class FakeMfPort : IMfEncoderPort
 {
+    /// <summary><c>E_UNEXPECTED</c>: an asynchronous MFT's answer to a <c>ProcessOutput</c> no <c>METransformHaveOutput</c> asked for.</summary>
+    public const int EUnexpected = unchecked((int)0x8000FFFF);
+
     private static readonly byte[] Aud = [0x09, 0xF0];
 
     private readonly FakeMfCatalog _catalog;
@@ -356,6 +365,9 @@ internal sealed class FakeMfPort : IMfEncoderPort
     private bool _forcePending;
     private bool _deviceSlot;
     private bool _awaitingType;
+    private bool _streamingEnded;
+    private bool _drained;
+    private int _owed;
     private int _changesLeft;
     private int _noSampleLeft;
     private MfStreamInfo _outputInfo;
@@ -393,12 +405,35 @@ internal sealed class FakeMfPort : IMfEncoderPort
     /// <summary>ProcessOutput calls made with an allocation other than the current stream info's, or before the new type after a change.</summary>
     public int StaleAllocations;
 
+    /// <summary>
+    /// ProcessOutput calls with no <c>METransformHaveOutput</c> owed (none sent since the last flush that one hadn't
+    /// answered), refused with <c>E_UNEXPECTED</c> as the asynchronous MFT contract says.
+    /// </summary>
+    public int Unexpected;
+
+    /// <summary>The next event of this type the reader takes is held, before <see cref="NextEvent"/> returns it, until <see cref="EventHold"/> is set (or the shutdown).</summary>
+    public uint? HoldEventType;
+
+    public ManualResetEventSlim? EventHold;
+
+    /// <summary>Set once an event is held (<see cref="HoldEventType"/>).</summary>
+    public ManualResetEventSlim EventHeld { get; } = new();
+
     public List<(int Size, int Alignment)> InputBuffers { get; } = [];
 
     /// <summary>What each input sample's buffer held, and its current length.</summary>
     public List<byte[]> InputBytes { get; } = [];
 
     public List<long> InputTimes { get; } = [];
+
+    /// <summary>Each input sample's <c>MFSampleExtension_Discontinuity</c>, in order (refused ones included).</summary>
+    public List<bool> InputDiscontinuities { get; } = [];
+
+    /// <summary>
+    /// The first inputs after a drain without the discontinuity the drain's contract asks for, refused with
+    /// <c>E_UNEXPECTED</c> (an encoder that enforces it).
+    /// </summary>
+    public int MissingDiscontinuity;
 
     /// <summary>Our output samples ProcessOutput was handed: their size and alignment.</summary>
     public List<(int Size, int Alignment)> OursMade { get; } = [];
@@ -417,6 +452,8 @@ internal sealed class FakeMfPort : IMfEncoderPort
         {
             try
             {
+                if (e.Type == Mf.EventHaveOutput)
+                    Interlocked.Increment(ref _owed);
                 _events.Add(e);
             }
             catch (InvalidOperationException)
@@ -542,6 +579,8 @@ internal sealed class FakeMfPort : IMfEncoderPort
     {
         Record("SetOutputType", type.ToString());
         Configured = true;
+        if (_streamingEnded && _e.TypesAfterEndStreamingHr < 0)
+            return _e.TypesAfterEndStreamingHr;
         var hr = _e.OutputTypeHr(type);
         if (hr < 0)
             return hr;
@@ -557,6 +596,8 @@ internal sealed class FakeMfPort : IMfEncoderPort
         // An encoder takes its input type only after its output type.
         if (Output == null)
             return Mf.TransformTypeNotSet;
+        if (_streamingEnded && _e.TypesAfterEndStreamingHr < 0)
+            return _e.TypesAfterEndStreamingHr;
         var hr = _e.InputTypeHr(type);
         if (hr < 0)
             return hr;
@@ -632,6 +673,38 @@ internal sealed class FakeMfPort : IMfEncoderPort
                 together.SignalAndWait();
             return hr;
         }
+        else if (message == Mf.MessageCommandFlush)
+        {
+            // Everything in the transform is dropped, its requests for input with it (events already sent stay sent).
+            if (_e.CallHr.GetValueOrDefault("FLUSH") is var refused and < 0)
+                return refused;
+            lock (_lock)
+            {
+                _held.Clear();
+                _ready.Clear();
+                _forcePending = false;
+            }
+
+            Interlocked.Exchange(ref _credits, 0);
+            // The outputs the events already sent announced are gone: ProcessOutput for one of them is unsolicited.
+            Interlocked.Exchange(ref _owed, 0);
+        }
+        else if (message == Mf.MessageCommandDrain)
+        {
+            // Nothing is held after a flush: the drain completes at once, its event after every event sent before it.
+            if (_e.CallHr.GetValueOrDefault("DRAIN") is var refused and < 0)
+                return refused;
+            lock (_lock)
+                _drained = true;
+            if (!_e.NoDrainComplete)
+                Send(new MfEvent(Mf.EventDrainComplete, 0));
+        }
+        else if (message == Mf.MessageNotifyEndStreaming)
+        {
+            if (_e.CallHr.GetValueOrDefault("END_STREAMING") is var refused and < 0)
+                return refused;
+            _streamingEnded = true;
+        }
         else if (message == Mf.MessageNotifyStartOfStream)
         {
             if (_e.CallHr.GetValueOrDefault("START_OF_STREAM") is var refused and < 0)
@@ -650,6 +723,15 @@ internal sealed class FakeMfPort : IMfEncoderPort
         try
         {
             e = _events.Take();
+            if (HoldEventType == e.Type && EventHold is { } hold)
+            {
+                // Taken, not yet handed back: the reader's pause between GetEvent and its dispatch.
+                HoldEventType = null;
+                Record("EventHeld", e.Type.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                EventHeld.Set();
+                WaitHandle.WaitAny([hold.WaitHandle, _shut.WaitHandle]);
+            }
+
             return Mf.SOk;
         }
         catch (InvalidOperationException)
@@ -669,11 +751,24 @@ internal sealed class FakeMfPort : IMfEncoderPort
         return Mf.SOk;
     }
 
-    public int ProcessInput(IMfInputBuffer buffer, long sampleTime, long duration)
+    public int ProcessInput(IMfInputBuffer buffer, long sampleTime, long duration, bool discontinuity)
     {
         Record("ProcessInput", sampleTime.ToString(System.Globalization.CultureInfo.InvariantCulture));
         if (ShutDown)
             return Mf.Shutdown;
+        lock (_lock)
+        {
+            InputDiscontinuities.Add(discontinuity);
+            // The first input after a drain must carry the discontinuity.
+            if (_drained && !discontinuity)
+            {
+                MissingDiscontinuity++;
+                return EUnexpected;
+            }
+
+            _drained = false;
+        }
+
         if (Interlocked.Decrement(ref _credits) < 0)
         {
             Interlocked.Increment(ref _credits);
@@ -737,6 +832,12 @@ internal sealed class FakeMfPort : IMfEncoderPort
             WaitHandle.WaitAny([hold.WaitHandle, _shut.WaitHandle]);
         if (ShutDown)
             return Mf.Shutdown;
+        if (Volatile.Read(ref _owed) <= 0)
+        {
+            Interlocked.Increment(ref Unexpected);
+            return EUnexpected;
+        }
+
         lock (_lock)
         {
             if (_awaitingType)
@@ -766,6 +867,7 @@ internal sealed class FakeMfPort : IMfEncoderPort
             }
             else if (!_ready.TryDequeue(out var ready))
             {
+                Interlocked.Decrement(ref _owed);
                 return Mf.TransformNeedMoreInput;
             }
             else
@@ -773,6 +875,9 @@ internal sealed class FakeMfPort : IMfEncoderPort
                 output = ready;
                 _outputs++;
             }
+
+            // This call answered one HaveOutput (a no-sample answer sends another).
+            Interlocked.Decrement(ref _owed);
         }
 
         if (noSample)

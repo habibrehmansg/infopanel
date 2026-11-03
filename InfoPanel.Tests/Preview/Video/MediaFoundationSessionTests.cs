@@ -35,7 +35,9 @@ public class MediaFoundationSessionTests
     {
         private readonly List<Run> _runs = [];
 
-        public Rig() => Backend = new MediaFoundationH264(Catalog, Log, Time);
+        /// <param name="reuse">False pins the path where every session shuts its own activation down (a refused
+        /// re-use's, a failed session's): its teardown's order and nothing left live.</param>
+        public Rig(bool reuse = true) => Backend = new MediaFoundationH264(Catalog, Log, Time, reuse);
 
         public FakeMfCatalog Catalog { get; } = new();
 
@@ -86,13 +88,19 @@ public class MediaFoundationSessionTests
             return task.GetAwaiter().GetResult();
         }
 
+        /// <summary>
+        /// Aborts every run and waits for their teardowns, then stops the backend as the engine's stop does: the
+        /// activation a healthy session kept is shut down (the clock never moves it out), so no event thread outlives
+        /// the test. Waits are capped in real time; a teardown a test wedged on purpose is left as it is.
+        /// </summary>
         public void Dispose()
         {
+            Task[] teardowns;
             lock (_runs)
-            {
-                foreach (var run in _runs)
-                    _ = run.Session.Abort();
-            }
+                teardowns = [.. _runs.Select(r => r.Session.Abort())];
+            Task.WhenAny(Task.WhenAll(teardowns), Task.Delay(TimeSpan.FromSeconds(5))).GetAwaiter().GetResult();
+            var reap = Backend.ReapAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+            Task.WhenAny(reap, Task.Delay(TimeSpan.FromSeconds(5))).GetAwaiter().GetResult();
         }
     }
 
@@ -1018,7 +1026,7 @@ public class MediaFoundationSessionTests
     [Fact]
     public async Task AWedgedShutdown_NeverEndsTheTeardown()
     {
-        using var rig = new Rig();
+        using var rig = new Rig(reuse: false);
         var hold = new ManualResetEventSlim();
         rig.Trusted().Encoder.HoldShutdown = hold;
         var run = rig.Start();
@@ -1033,7 +1041,7 @@ public class MediaFoundationSessionTests
     [Fact]
     public async Task TheTeardown_FlushesWhenTheLockIsFree_ThenShutsDownJoinsAndReleases_NeverDraining()
     {
-        using var rig = new Rig();
+        using var rig = new Rig(reuse: false);
         rig.Trusted();
         var run = rig.Start();
         await run.Encode(0, force: true);
@@ -1052,7 +1060,7 @@ public class MediaFoundationSessionTests
     [InlineData(true)]
     public async Task AbortWakesTheInputThread_IdleOrWithASampleAndNoCredit(bool queuedWithoutCredit)
     {
-        using var rig = new Rig();
+        using var rig = new Rig(reuse: false);
         var entry = rig.Trusted();
         var run = rig.Start();
         await run.Encode(0, force: true);
@@ -1736,7 +1744,7 @@ public class MediaFoundationSessionTests
     [Fact]
     public async Task AnEncoderError_IsAFailure_AndEverySessionLeavesNothingLive()
     {
-        using var rig = new Rig();
+        using var rig = new Rig(reuse: false);
         var entry = rig.Trusted();
         entry.Encoder.ErrorAfter = 1;
         entry.Encoder.HoldOutputs = false;
@@ -1755,6 +1763,428 @@ public class MediaFoundationSessionTests
             await next.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
             Assert.Equal(0, rig.Catalog.Live);
         }
+    }
+
+    // ---- one activation across restarts ----
+
+    /// <summary>The port's calls after <paramref name="mark"/>, as "name detail".</summary>
+    private static List<string> CallsAfter(FakeMfCatalog catalog, FakeMfPort port, long mark) =>
+        [.. catalog.After(mark).Where(c => c.Port == port.Id).Select(c => $"{c.Name} {c.Detail}".TrimEnd())];
+
+    [Fact]
+    public async Task ARestart_TakesTheKeptActivation_FlushedAndRenegotiatedAtItsSize_ItsFirstFrameForced()
+    {
+        using var rig = new Rig();
+        rig.Trusted();
+        var run = rig.Start();
+        Assert.True((await run.Encode(0, force: true)).Keyframe);
+        var setup = CallsAfter(rig.Catalog, run.Port, 0).Where(c => c.StartsWith("SetCodecValue", StringComparison.Ordinal) || c.StartsWith("SetUInt32", StringComparison.Ordinal))
+            .Where(c => c != "SetCodecValue FORCE=1").ToList();
+        await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.False(run.Port.ShutDown || run.Port.Released, "a healthy session's activation is kept, not shut down");
+        Assert.NotNull(rig.Backend.Parked);
+        var activations = rig.Backend.Activations;
+
+        var mark = rig.Catalog.Mark("restart");
+        var next = rig.Start(80, 48);
+        Assert.Same(run.Port, next.Port);
+        Assert.Equal(activations, rig.Backend.Activations);
+        Assert.Null(rig.Backend.Parked);
+        var calls = CallsAfter(rig.Catalog, run.Port, mark);
+        Assert.DoesNotContain(calls, c => c.StartsWith("Activate", StringComparison.Ordinal));
+        // Flushed, its streaming ended, then the whole setup at the new size, output type first; the stream started last.
+        string[] order = ["ProcessMessage FLUSH", "ProcessMessage END_STREAMING", "SetOutputType H.264 80x48 profile 66", "SetInputType NV12 80x48",
+            "ProcessMessage BEGIN_STREAMING", "ProcessMessage START_OF_STREAM"];
+        Assert.Equal(order, calls.Where(c => order.Contains(c)));
+        // What the encoder is told is what a new activation is told.
+        Assert.Equal(setup, calls.Where(c => c.StartsWith("SetCodecValue", StringComparison.Ordinal) || c.StartsWith("SetUInt32", StringComparison.Ordinal)).ToList());
+
+        // Its first frame is forced, though not asked to be: the picture sequence goes on across a renegotiation.
+        var frame = rig.Catalog.Mark("frame");
+        var outcome = await next.Encode(0, force: false);
+        Assert.Equal(H264OutcomeKind.Encoded, outcome.Kind);
+        Assert.True(outcome.Keyframe && outcome.Avcc != null);
+        Assert.Equal(["SetCodecValue FORCE=1", "ProcessInput"], CallsAfter(rig.Catalog, run.Port, frame).Where(c => c is "SetCodecValue FORCE=1" || c.StartsWith("ProcessInput", StringComparison.Ordinal))
+            .Select(c => c.Split(' ')[0] == "ProcessInput" ? "ProcessInput" : c));
+        Assert.False((await next.Encode(1, force: false)).Keyframe);
+        Assert.Equal(0, run.Port.InputsWithoutCredit);
+
+        // Ten more restarts over three sizes: still the one activation.
+        for (var i = 0; i < 10; i++)
+        {
+            await next.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            next = rig.Start(64 + (i % 3) * 16, 48);
+            Assert.True((await next.Encode(0)).Keyframe, $"restart {i + 1}'s first frame");
+        }
+
+        Assert.Same(run.Port, next.Port);
+        Assert.Equal(activations, rig.Backend.Activations);
+        Assert.Equal(0, run.Port.InputsWithoutCredit);
+    }
+
+    /// <summary>
+    /// The drain's contract: the first input after it carries <c>MFSampleExtension_Discontinuity</c>, and the fake, as an
+    /// encoder that enforces it, refuses one without. A fresh activation's first sample comes after no drain, so it, like
+    /// every later sample, carries none.
+    /// </summary>
+    [Fact]
+    public async Task TheFirstSampleAfterAReusesDrain_IsADiscontinuity_AndNoOtherSampleIs()
+    {
+        using var rig = new Rig();
+        rig.Trusted();
+        var run = rig.Start();
+        Assert.Equal(H264OutcomeKind.Encoded, (await run.Encode(0, force: true)).Kind);
+        Assert.Equal(H264OutcomeKind.Encoded, (await run.Encode(1)).Kind);
+        Assert.Equal([false, false], run.Port.InputDiscontinuities);
+        await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        for (var restart = 1; restart <= 3; restart++)
+        {
+            var next = rig.Start(64 + restart * 16, 48);
+            Assert.Same(run.Port, next.Port);
+            Assert.Equal(H264OutcomeKind.Encoded, (await next.Encode(0)).Kind);
+            Assert.Equal(H264OutcomeKind.Encoded, (await next.Encode(1)).Kind);
+            Assert.Equal(H264OutcomeKind.Encoded, (await next.Encode(2)).Kind);
+            Assert.Equal([true, false, false], run.Port.InputDiscontinuities.TakeLast(3));
+            await next.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(0, run.Port.MissingDiscontinuity);
+        Assert.Equal(2 + 3 * 3, run.Port.InputDiscontinuities.Count);
+        Assert.Equal(3, run.Port.InputDiscontinuities.Count(d => d));
+    }
+
+    [Fact]
+    public async Task ARefusedRenegotiation_ShutsTheKeptActivationDown_TheStartActivatesANewOne_AndNothingIsKeptAfter_LoggedOnce()
+    {
+        using var rig = new Rig();
+        var entry = rig.Trusted();
+        entry.Encoder.TypesAfterEndStreamingHr = Mf.InvalidMediaType;
+        var run = rig.Start();
+        await run.Encode(0, force: true);
+        await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.NotNull(rig.Backend.Parked);
+        var activations = rig.Backend.Activations;
+
+        // Tried once, refused, shut down and released before the new activation, which runs.
+        var next = rig.Start(80, 48);
+        Assert.NotSame(run.Port, next.Port);
+        Assert.True(run.Port.ShutDown && run.Port.Released);
+        Assert.Equal(1, PortCalls(rig.Catalog, run.Port).Count(c => c.Detail == "END_STREAMING"));
+        Assert.True(SeqOf(rig.Catalog, run.Port, "Release") < SeqOf(rig.Catalog, next.Port, "Activate"));
+        Assert.Equal(activations + 1, rig.Backend.Activations);
+        Assert.Equal(H264OutcomeKind.Encoded, (await next.Encode(0, force: true)).Kind);
+
+        // The new one took that size: the refusal was the re-use's, so nothing is kept for the rest of the run.
+        for (var i = 0; i < 3; i++)
+        {
+            await next.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.True(next.Port.ShutDown && next.Port.Released);
+            Assert.Null(rig.Backend.Parked);
+            next = rig.Start(64 + 16 * (i % 2), 48);
+            Assert.Equal(H264OutcomeKind.Encoded, (await next.Encode(0, force: true)).Kind);
+        }
+
+        Assert.Equal(activations + 4, rig.Backend.Activations);
+        Assert.Equal(1, rig.Catalog.Calls.Count(c => c.Detail == "END_STREAMING"));
+        var said = rig.Log.Messages.Where(m => m.Contains("re-using the encoder's activation was refused", StringComparison.Ordinal)).ToList();
+        Assert.Equal($"Media Foundation: re-using the encoder's activation was refused: it refused the output type H.264 80x48 profile 66 ({Mf.Hr(Mf.InvalidMediaType)}); a new activation instead (logged once)",
+            Assert.Single(said));
+    }
+
+    [Fact]
+    public async Task ARenegotiationRefusedAtASizeNoActivationTakes_IsUnsupported_ActivationsAreStillKept_AndTheRefusalIsLoggedOnce()
+    {
+        using var rig = new Rig();
+        var entry = rig.Trusted();
+        entry.Encoder.OutputTypeHr = t => t.Width == 4000 ? Mf.InvalidMediaType : Mf.SOk;
+        var run = rig.Start();
+        await run.Encode(0, force: true);
+        for (var i = 0; i < 2; i++)
+        {
+            await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.NotNull(rig.Backend.Parked);
+
+            // The kept one refuses the size, and so does a new one: unsupported, as without re-use.
+            Assert.Equal(H264StartProblem.Unsupported, rig.Refused(4000, 48).Problem);
+            Assert.True(run.Port.ShutDown && run.Port.Released);
+
+            // Re-use stays on: the next session's activation is kept and taken again.
+            var next = rig.Start(80, 48);
+            await next.Encode(0, force: true);
+            await next.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.NotNull(rig.Backend.Parked);
+            run = rig.Start();
+            Assert.Same(next.Port, run.Port);
+            Assert.True((await run.Encode(0)).Keyframe);
+        }
+
+        Assert.Single(rig.Log.Messages, m => m.Contains("re-using the encoder's activation was refused", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("in its session")]
+    [InlineData("while kept")]
+    public async Task AnErroredTransform_IsNeverReused(string when)
+    {
+        using var rig = new Rig();
+        var entry = rig.Trusted();
+        var run = rig.Start();
+        if (when == "in its session")
+        {
+            entry.Encoder.ErrorAfter = 1;
+            await run.Encode(0, force: true);
+            await Eventually(() => run.Submit(1) == H264Submit.Refused, "the session is broken");
+            await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.True(run.Port.ShutDown && run.Port.Released, "an errored session's activation is shut down");
+            Assert.Null(rig.Backend.Parked);
+            entry.Encoder.ErrorAfter = -1;
+        }
+        else
+        {
+            await run.Encode(0, force: true);
+            await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            var kept = rig.Backend.Parked;
+            Assert.NotNull(kept);
+            run.Port.Send(new MfEvent(Mf.EventError, Mf.EFail));
+            await Eventually(() => kept.Failed != null, "the kept activation's error is read");
+        }
+
+        var activations = rig.Backend.Activations;
+        var next = rig.Start(80, 48);
+        Assert.NotSame(run.Port, next.Port);
+        Assert.True(run.Port.ShutDown && run.Port.Released);
+        Assert.DoesNotContain(PortCalls(rig.Catalog, run.Port), c => c.Detail == "END_STREAMING");
+        Assert.Equal(activations + 1, rig.Backend.Activations);
+        Assert.Equal(H264OutcomeKind.Encoded, (await next.Encode(0, force: true)).Kind);
+    }
+
+    [Fact]
+    public async Task AKeptActivation_IsShutDownAfterItsTime_AndAtTheEnginesStop_AfterWhichNoneIsKept()
+    {
+        using var rig = new Rig();
+        rig.Trusted();
+        var run = rig.Start();
+        await run.Encode(0, force: true);
+        await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.NotNull(rig.Backend.Parked);
+        await AdvanceTo(rig.Time, MediaFoundationH264.ParkedFor);
+        await Eventually(() => run.Port.ShutDown && run.Port.Released, "the kept activation's shutdown");
+        Assert.Null(rig.Backend.Parked);
+        Assert.Equal(0, rig.Catalog.Live);
+
+        var second = rig.Start();
+        await second.Encode(0, force: true);
+        await second.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.NotNull(rig.Backend.Parked);
+        await rig.Backend.ReapAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.True(second.Port.ShutDown && second.Port.Released);
+        Assert.Equal(0, rig.Catalog.Live);
+
+        var third = rig.Start();
+        await third.Encode(0, force: true);
+        await third.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.True(third.Port.ShutDown && third.Port.Released, "after the stop, nothing is kept");
+        Assert.Equal(0, rig.Catalog.Live);
+    }
+
+    [Fact]
+    public async Task AKeptActivationsWedgedShutdownAtItsExpiry_IsQuarantined_AndTheEnginesStopWaitsForIt()
+    {
+        using var rig = new Rig();
+        var entry = rig.Entry();
+        // The run's chain probes it, as the engine does: a teardown left behind past its bound counts as quarantined.
+        var backends = new H264Backends([rig.Backend], NullLogger.Instance);
+        Assert.Equal(H264Probe.Available, await backends.ProbeAsync(rig.Backend).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        var run = rig.Start();
+        await run.Encode(0, force: true);
+        await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.NotNull(rig.Backend.Parked);
+        var hold = new ManualResetEventSlim();
+        entry.Encoder.HoldShutdown = hold;
+        try
+        {
+            await AdvanceTo(rig.Time, MediaFoundationH264.ParkedFor);
+            await Eventually(() => PortCalls(rig.Catalog, run.Port).Any(c => c.Name == "Shutdown"), "the expired activation's shutdown");
+            Assert.Null(rig.Backend.Parked);
+            Assert.Equal(0, backends.Quarantines(rig.Backend));
+
+            // Past the quarantine bound, the shutdown that never returns is counted, as a session's is.
+            await AdvanceTo(rig.Time, MediaFoundationH264.ParkedFor + Quarantine.Bound);
+            await Eventually(() => backends.Quarantines(rig.Backend) == 1, "the wedged shutdown is quarantined");
+
+            // The engine's stop waits for it (within its reap bound), and it is collected once it returns.
+            var stop = backends.StopAsync(TestContext.Current.CancellationToken);
+            await Settle();
+            Assert.False(stop.IsCompleted, "the stop waits for the expired activation's shutdown");
+            hold.Set();
+            await stop.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.True(run.Port.ShutDown && run.Port.Released);
+            Assert.Equal(0, rig.Catalog.Live);
+        }
+        finally
+        {
+            hold.Set();
+        }
+    }
+
+    [Theory]
+    [InlineData(Mf.EventHaveOutput)]
+    [InlineData(Mf.EventNeedInput)]
+    public async Task AnEventTheReaderTookBeforeARestart_NeverReachesTheSessionThatReusesTheActivation(uint type)
+    {
+        using var rig = new Rig();
+        rig.Trusted();
+        var run = rig.Start();
+        await run.Encode(0, force: true);
+        var hold = new ManualResetEventSlim();
+        run.Port.EventHold = hold;
+        run.Port.HoldEventType = type;
+        try
+        {
+            // The reader takes the event (an output's, or a credit) and pauses before handing it on. Frame 0's own
+            // replacement credit may still be queued when its outcome shows (the reader hands the outcome on before it
+            // reads the next event), so a credit is injected after the hold is armed: the reader holds whichever of the
+            // two it reads next, and the other reaches the session.
+            if (type == Mf.EventHaveOutput)
+                Assert.Equal(H264Submit.Accepted, run.Submit(1));
+            else
+                run.Port.SendNeedInput();
+            await Eventually(() => run.Port.EventHeld.IsSet, "the reader holds the event");
+            await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.NotNull(rig.Backend.Parked);
+
+            // The restart takes the kept activation; the reader goes on once the restart has flushed it and asked for
+            // the drain (or, with no drain, once the start is done).
+            var mark = rig.Catalog.Mark("restart");
+            var start = Task.Run(() => rig.Start(80, 48), TestContext.Current.CancellationToken);
+            await Eventually(() => start.IsCompleted || CallsAfter(rig.Catalog, run.Port, mark).Contains("ProcessMessage DRAIN"), "the restart's drain");
+            hold.Set();
+            var next = await start.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.Same(run.Port, next.Port);
+
+            // Two frames at once: a stale credit would feed the second without the transform's; a stale HaveOutput would
+            // ask for an output the flush dropped.
+            Assert.Equal(H264Submit.Accepted, next.Submit(0));
+            Assert.Equal(H264Submit.Accepted, next.Submit(1));
+            await Eventually(() => next.Outcomes.Count == 2 || next.Outcomes.Any(o => o.Kind != H264OutcomeKind.Encoded), "both frames' outcomes, or a failure");
+            Assert.Equal(0, run.Port.Unexpected);
+            Assert.Equal(0, run.Port.InputsWithoutCredit);
+            Assert.Equal([H264OutcomeKind.Encoded, H264OutcomeKind.Encoded], next.Outcomes.Select(o => o.Kind));
+        }
+        finally
+        {
+            hold.Set();
+        }
+    }
+
+    [Fact]
+    public async Task ADrainThatNeverEnds_RefusesTheReuseAtItsBound_AndTheStartActivatesANewOne()
+    {
+        using var rig = new Rig();
+        var entry = rig.Trusted();
+        var run = rig.Start();
+        await run.Encode(0, force: true);
+        await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.NotNull(rig.Backend.Parked);
+        entry.Encoder.NoDrainComplete = true;
+        var activations = rig.Backend.Activations;
+        var mark = rig.Catalog.Mark("restart");
+        var start = Task.Run(() => rig.Start(80, 48), TestContext.Current.CancellationToken);
+        await Eventually(() => CallsAfter(rig.Catalog, run.Port, mark).Contains("ProcessMessage DRAIN"), "the restart's drain");
+        await AdvanceTo(rig.Time, MediaFoundationH264.DrainWait);
+        var next = await start.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.NotSame(run.Port, next.Port);
+        Assert.True(run.Port.ShutDown && run.Port.Released);
+        Assert.DoesNotContain("ProcessMessage END_STREAMING", CallsAfter(rig.Catalog, run.Port, mark));
+        Assert.Equal(activations + 1, rig.Backend.Activations);
+        Assert.Equal(H264OutcomeKind.Encoded, (await next.Encode(0, force: true)).Kind);
+        Assert.Single(rig.Log.Messages, m => m.Contains("re-using the encoder's activation was refused: its drain didn't end within 500 ms", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AStartThatTimesOutAfterTakingTheKeptActivation_ShutsItDownWithItsTeardown()
+    {
+        using var rig = new Rig();
+        rig.Trusted();
+        var run = rig.Start();
+        await run.Encode(0, force: true);
+        await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.NotNull(rig.Backend.Parked);
+        var enter = new ManualResetEventSlim();
+        var sessions = rig.Catalog.Calls.Count(c => c.Name == "Enter" && c.Detail == "session");
+        rig.Catalog.HoldEnter["session"] = enter;
+        try
+        {
+            var start = Task.Run(() => rig.Backend.Start(new H264Config(80, 48, 30, VideoStream.HardwareBitrate), _ => { }),
+                TestContext.Current.CancellationToken);
+            // The bound passes only once the start's session thread is inside its wedged COM init.
+            await Eventually(() => rig.Catalog.Calls.Count(c => c.Name == "Enter" && c.Detail == "session") == sessions + 1,
+                "the session thread's init is entered");
+            await AdvanceTo(rig.Time, MediaFoundationH264.StartBound);
+            var refusal = await Assert.ThrowsAsync<H264StartException>(() => start.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            Assert.Equal(H264StartProblem.Fault, refusal.Problem);
+
+            // The init returns after the start gave up: the setup takes the kept activation, and its teardown shuts it down.
+            enter.Set();
+            await refusal.Teardown!.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Null(rig.Backend.Parked);
+            Assert.True(run.Port.ShutDown && run.Port.Released, "the kept activation the late setup took is shut down");
+            Assert.NotEqual(long.MaxValue, ThreadEnd(rig.Catalog, "events"));
+            Assert.Equal(0, rig.Catalog.Live);
+        }
+        finally
+        {
+            enter.Set();
+        }
+    }
+
+    [Fact]
+    public async Task AReusedActivationThatIgnoresItsForcedFirstFrame_TurnsForcingAndReuseOff()
+    {
+        using var rig = new Rig();
+        var entry = rig.Trusted();
+        var run = rig.Start();
+        await run.Encode(0, force: true);
+        await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.NotNull(rig.Backend.Parked);
+
+        // After a good probe and session, the encoder stops honouring forced keyframes.
+        entry.Encoder.IgnoreForce = true;
+        var next = rig.Start(80, 48);
+        Assert.Same(run.Port, next.Port);
+        var outcome = await next.Encode(0);
+        Assert.Equal(H264OutcomeKind.Failed, outcome.Kind);
+        Assert.Equal("the encoder ignored a forced keyframe", outcome.Problem);
+        Assert.False(rig.Backend.ChangesLive);
+        await next.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Null(rig.Backend.Parked);
+        Assert.True(run.Port.ShutDown && run.Port.Released, "an activation is no longer kept");
+
+        // The next start activates anew, and its keyframe request isn't a force.
+        var activations = rig.Backend.Activations;
+        var third = rig.Start(80, 48);
+        Assert.NotSame(run.Port, third.Port);
+        Assert.Equal(activations + 1, rig.Backend.Activations);
+        var first = await third.Encode(0, force: true);
+        Assert.Equal(H264OutcomeKind.Encoded, first.Kind);
+        Assert.True(first.Keyframe);
+        Assert.DoesNotContain(PortCalls(rig.Catalog, third.Port), c => c.Detail == "FORCE=1");
+    }
+
+    [Fact]
+    public async Task TheRigsDisposal_StopsTheBackend_SoNoKeptActivationOrEventThreadOutlivesATest()
+    {
+        var rig = new Rig();
+        rig.Trusted();
+        var run = rig.Start();
+        await run.Encode(0, force: true);
+        rig.Dispose();
+        await run.Session.Abort().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Null(rig.Backend.Parked);
+        Assert.True(run.Port.ShutDown && run.Port.Released, "the activation the session kept is shut down by the disposal");
+        Assert.NotEqual(long.MaxValue, ThreadEnd(rig.Catalog, "events"));
+        Assert.Equal(0, rig.Catalog.Live);
     }
 
     // ---- stream changes ----
