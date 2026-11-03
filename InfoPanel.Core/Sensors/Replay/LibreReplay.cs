@@ -22,8 +22,9 @@ namespace InfoPanel.Sensors.Replay;
 /// <c>catalogue</c> of a start, the <c>configure</c> of a settings change, the <c>sample</c>. A round with no answer (the
 /// helper restarting, Libre off) has no file. A round is written under a temporary name and given its own only once it
 /// is whole, so an engine stopped mid-write leaves its complete rounds as they were; the recorder never takes, or
-/// deletes, a file it didn't write: it claims <c>libre/</c> first (<see cref="SensorRecording.LibreClaimName"/>, created
-/// only if absent), and a folder another recorder claimed is left alone (nothing recorded). It stops, and writes its
+/// deletes, a file it didn't write: it claims <c>libre/</c> first (<see cref="SensorRecording.TryClaim"/>, the claim
+/// created only if absent), and a folder another recorder claimed, or one it can't write, is left alone (nothing
+/// recorded, the reason logged, never a throw). It stops, and writes its
 /// rounds into the manifest's <c>libre</c>, as
 /// <see cref="HwInfoRecorder"/> does: after its duration from its first round, at its last round, at what a replay
 /// loads, when writing fails, or when the source stops. With <c>scrub</c>, every hardware and sensor name goes through
@@ -40,7 +41,7 @@ public sealed class LibreRecorder : LibreSampler.IObserver
     private readonly TimeSpan? _duration;
     private readonly TimeProvider _time;
     private readonly SensorRecordingLimits _limits;
-    private readonly ILogger _log = Log.ForContext<LibreRecorder>();
+    private readonly ILogger _log;
     private readonly MemoryStream _pending = new();
     private int _pendingFrames;
     private long? _firstRound;
@@ -52,10 +53,12 @@ public sealed class LibreRecorder : LibreSampler.IObserver
 
     /// <param name="folder">The recording (made when missing); its <c>libre/</c> must hold no frames yet.</param>
     /// <param name="duration">How long it records, from its first round; until <paramref name="maxRounds"/> when null.</param>
+    /// <param name="log">Where it logs; the engine's log when null.</param>
     public LibreRecorder(string folder, int maxRounds, bool scrub, TimeSpan interval, DateTimeOffset started, TimeSpan? duration = null,
-        TimeProvider? time = null, SensorRecordingLimits? limits = null, HwInfoScrubber? scrubber = null)
+        TimeProvider? time = null, SensorRecordingLimits? limits = null, HwInfoScrubber? scrubber = null, ILogger? log = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maxRounds, 1);
+        _log = (log ?? Log.Logger).ForContext<LibreRecorder>();
         _root = folder;
         _folder = Path.Combine(folder, SensorRecording.LibreFolder);
         _limits = limits ?? SensorRecordingLimits.Default;
@@ -65,30 +68,29 @@ public sealed class LibreRecorder : LibreSampler.IObserver
         _started = started;
         _duration = duration;
         _time = time ?? TimeProvider.System;
-        Directory.CreateDirectory(_folder);
-        _claimed = Claim();
+        _claimed = SensorRecording.TryClaim(_folder, out var problem);
         if (!_claimed)
         {
-            // Another recorder (another engine that passed the folder's check at the same time) has it.
+            // Another recorder (another engine that passed the folder's check at the same time) has it, or the folder
+            // can't be written: either way Libre's sensors aren't recorded, and the engine starts and reads on. The log
+            // names the folder, never its path (a user's name).
             _finished = true;
-            _log.Error("Recording sensors: {Folder} is another recording's; Libre's sensors aren't recorded", _folder);
+            if (problem is null)
+                _log.Error("Recording sensors: the recording's {Folder:l}/ is another recording's; Libre's sensors aren't recorded", SensorRecording.LibreFolder);
+            else
+                _log.Error("Recording sensors: the recording's {Folder:l}/ can't be claimed ({Problem:l}); check its permissions; Libre's sensors aren't recorded", SensorRecording.LibreFolder, problem);
             return;
         }
 
-        SensorRecording.WriteLibreManifest(folder, interval, scrub, started);
-    }
-
-    /// <summary>Creates the claim, which fails when it is there already.</summary>
-    private bool Claim()
-    {
         try
         {
-            using var _ = new FileStream(Path.Combine(_folder, SensorRecording.LibreClaimName), FileMode.CreateNew, FileAccess.Write);
-            return true;
+            SensorRecording.WriteLibreManifest(folder, interval, scrub, started);
         }
-        catch (IOException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return false;
+            // The recording's own folder refuses its manifest: nothing is recorded, and the engine starts and reads on.
+            _finished = true;
+            _log.Error("Recording sensors: the recording's manifest can't be written ({Problem:l}); check its permissions; Libre's sensors aren't recorded", e.GetType().Name);
         }
     }
 

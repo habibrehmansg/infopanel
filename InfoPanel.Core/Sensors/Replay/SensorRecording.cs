@@ -62,13 +62,11 @@ public static partial class SensorRecording
     /// </summary>
     public const string ClaimName = "recorder.claim";
 
-    /// <summary>Libre's claim on <c>libre/</c>: <see cref="ClaimName"/>.</summary>
-    public const string LibreClaimName = ClaimName;
-
     /// <summary>
     /// Claims <paramref name="sourceFolder"/> (made when missing) for one recorder: creates <see cref="ClaimName"/> in
     /// it. False, and never a throw, when it can't: <paramref name="problem"/> is then null when the claim is there
-    /// already (another recorder's), else why the folder or the claim couldn't be made (permission or any other I/O error).
+    /// already (another recorder's), else why the folder or the claim couldn't be made (permission or any other I/O error):
+    /// the exception's type, never its message, which names the path (a log must not).
     /// </summary>
     public static bool TryClaim(string sourceFolder, out string? problem)
     {
@@ -82,7 +80,7 @@ public static partial class SensorRecording
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            problem = File.Exists(claim) ? null : e.Message;
+            problem = File.Exists(claim) ? null : e.GetType().Name;
             return false;
         }
     }

@@ -7,6 +7,7 @@ using InfoPanel.Sensors;
 using InfoPanel.Sensors.HwInfo;
 using InfoPanel.Sensors.Libre;
 using InfoPanel.Sensors.Replay;
+using Serilog.Events;
 using Xunit;
 
 namespace InfoPanel.Core.Tests.Sensors.Libre;
@@ -346,7 +347,8 @@ public sealed class LibreRecordingTests : IDisposable
         var time = new TimerTimeProvider(DateTimeOffset.UnixEpoch);
         var first = new LibreRecorder(_root, 1000, false, LibreSource.Interval, time.GetUtcNow(), time: time);
         // Another engine passed the folder's check before either wrote a frame.
-        var second = new LibreRecorder(_root, 1000, false, LibreSource.Interval, time.GetUtcNow(), time: time);
+        var events = new List<LogEvent>();
+        var second = new LibreRecorder(_root, 1000, false, LibreSource.Interval, time.GetUtcNow(), time: time, log: Logger(events));
         first.Answered(HelperCodec.EncodeAnswer(Hello));
         first.RoundEnded();
         var frame = Path.Combine(_root, "libre", SensorRecording.LibreFileName(0));
@@ -358,9 +360,127 @@ public sealed class LibreRecordingTests : IDisposable
         Assert.Equal(bytes, File.ReadAllBytes(frame));
         Assert.True(second.Finished);
         Assert.Equal(0, second.Rounds);
+        Assert.Contains("another recording's", Assert.Single(events, e => e.Level == LogEventLevel.Error).RenderMessage());
+        AssertPathFree(events);
 
         first.Stopped();
         Assert.Equal(1, SensorRecording.LibreRoundsOf(_root));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public void AFolderThatCantBeClaimed_GivesAFinishedRecorder_NeverThrows_AndSaysWhy(bool libreFolderThere)
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes");
+        // A folder that can be read but not written to: libre/ itself (creating the claim is denied), or the recording's
+        // own folder before libre/ is there (creating libre/ is denied).
+        Directory.CreateDirectory(_root);
+        var libre = Path.Combine(_root, "libre");
+        if (libreFolderThere)
+            Directory.CreateDirectory(libre);
+        var refused = libreFolderThere ? libre : _root;
+        File.SetUnixFileMode(refused, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            Assert.SkipWhen(CanWrite(refused), "Running with rights that ignore the folder's mode");
+
+            var events = new List<LogEvent>();
+            var time = new TimerTimeProvider(DateTimeOffset.UnixEpoch);
+            var recorder = new LibreRecorder(_root, 1000, false, LibreSource.Interval, time.GetUtcNow(), time: time, log: Logger(events));
+            recorder.Answered(HelperCodec.EncodeAnswer(Hello));
+            recorder.RoundEnded();
+            recorder.Stopped();
+
+            Assert.True(recorder.Finished);
+            Assert.Equal(0, recorder.Rounds);
+            Assert.Equal(libreFolderThere ? ["libre"] : [], Directory.EnumerateFileSystemEntries(_root).Select(Path.GetFileName));
+            if (libreFolderThere)
+                Assert.Empty(Directory.EnumerateFileSystemEntries(libre));
+            var error = Assert.Single(events, e => e.Level == LogEventLevel.Error);
+            Assert.Contains("can't be claimed", error.RenderMessage());
+            Assert.Contains("Libre's sensors aren't recorded", error.RenderMessage());
+            AssertPathFree(events);
+        }
+        finally
+        {
+            File.SetUnixFileMode(refused, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public void ARecordingFolderThatRefusesItsManifest_GivesAFinishedRecorder_NeverThrows_AndSaysWhy()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes");
+        // libre/ can be written (the claim succeeds), the recording's own folder can't: its manifest is denied.
+        var libre = Path.Combine(_root, "libre");
+        Directory.CreateDirectory(libre);
+        File.SetUnixFileMode(_root, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            Assert.SkipWhen(CanWrite(_root), "Running with rights that ignore the folder's mode");
+
+            var events = new List<LogEvent>();
+            var time = new TimerTimeProvider(DateTimeOffset.UnixEpoch);
+            var recorder = new LibreRecorder(_root, 1000, false, LibreSource.Interval, time.GetUtcNow(), time: time, log: Logger(events));
+            recorder.Answered(HelperCodec.EncodeAnswer(Hello));
+            recorder.RoundEnded();
+            recorder.Stopped();
+
+            Assert.True(recorder.Finished);
+            Assert.Equal(0, recorder.Rounds);
+            Assert.Equal([SensorRecording.ClaimName], Directory.EnumerateFileSystemEntries(libre).Select(Path.GetFileName));
+            Assert.False(File.Exists(Path.Combine(_root, SensorRecording.ManifestName)));
+            var error = Assert.Single(events, e => e.Level == LogEventLevel.Error);
+            Assert.Contains("manifest can't be written", error.RenderMessage());
+            Assert.Contains("Libre's sensors aren't recorded", error.RenderMessage());
+            AssertPathFree(events);
+        }
+        finally
+        {
+            File.SetUnixFileMode(_root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    /// <summary>No logged message names the recording's folder (its own name, in any form of its path): the log reaches clients.</summary>
+    private void AssertPathFree(List<LogEvent> events)
+    {
+        var name = Path.GetFileName(_root);
+        Assert.All(events, e =>
+        {
+            Assert.DoesNotContain(name, e.RenderMessage(), StringComparison.OrdinalIgnoreCase);
+            Assert.All(e.Properties.Values, value => Assert.DoesNotContain(name, value.ToString(), StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(name, e.Exception?.ToString() ?? "", StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    private static bool CanWrite(string folder)
+    {
+        var probe = Path.Combine(folder, "probe");
+        try
+        {
+            File.WriteAllText(probe, "x");
+            File.Delete(probe);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static Serilog.ILogger Logger(List<LogEvent> events) =>
+        new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(events)).CreateLogger();
+
+    private sealed class CollectingSink(List<LogEvent> events) : Serilog.Core.ILogEventSink
+    {
+        public void Emit(LogEvent logEvent)
+        {
+            lock (events)
+                events.Add(logEvent);
+        }
     }
 
     [Fact]

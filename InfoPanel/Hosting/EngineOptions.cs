@@ -127,6 +127,13 @@ public sealed partial class EngineOptions
     /// </summary>
     public string? RecordSensors { get; init; }
 
+    /// <summary>
+    /// Why <c>--record-sensors</c> records nothing this run although it was given (its <c>hwinfo/</c> or <c>libre/</c>
+    /// couldn't be listed; <see cref="RecordSensors"/> is then null), path free; null otherwise. The engine logs it once
+    /// its log is up (<see cref="LogRecordingOff"/>).
+    /// </summary>
+    public string? RecordSensorsOff { get; init; }
+
     /// <summary>How long <see cref="RecordSensors"/> records (<c>--record-seconds</c>, 1–3600, default 60).</summary>
     public int RecordSeconds { get; init; } = 60;
 
@@ -306,6 +313,7 @@ public sealed partial class EngineOptions
         }
 
         var recordSensors = FullPath(section, "RecordSensors", "--record-sensors", problems);
+        string? recordSensorsOff = null;
         var recordSeconds = 60;
         if (Value(section, "RecordSeconds") is { } secondsText
             && (!int.TryParse(secondsText, NumberStyles.None, CultureInfo.InvariantCulture, out recordSeconds) || recordSeconds is < 1 or > 3600))
@@ -329,12 +337,9 @@ public sealed partial class EngineOptions
         {
             problems.Add("--record-sensors records the platform's sensors: it can't be used with --mock, --mock-seed or --replay-sensors.");
         }
-        else if (Directory.Exists(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.HwInfoFolder))
-            && Directory.EnumerateFileSystemEntries(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.HwInfoFolder)).Any()
-            || Directory.Exists(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.LibreFolder))
-            && Directory.EnumerateFileSystemEntries(Path.Combine(recordSensors, InfoPanel.Sensors.Replay.SensorRecording.LibreFolder)).Any())
+        else
         {
-            problems.Add($"--record-sensors '{recordSensors}' already holds a recording: give a new folder.");
+            recordSensors = PreflightRecording(recordSensors, Directory.EnumerateFileSystemEntries, problems, out recordSensorsOff);
         }
 
         var bundledPlugins = Value(section, "BundledPlugins");
@@ -370,10 +375,54 @@ public sealed partial class EngineOptions
             H264 = h264,
             Ffmpeg = fullFfmpeg,
             RecordSensors = recordSensors,
+            RecordSensorsOff = recordSensorsOff,
             RecordSeconds = recordSeconds,
             Scrub = scrub,
             ReplaySensors = replaySensors,
         };
+    }
+
+    /// <summary>
+    /// <c>--record-sensors</c>' check of <paramref name="recording"/> before anything is made there: the folder to record
+    /// into (<paramref name="recording"/>), or null. A <c>hwinfo/</c> or <c>libre/</c> in it that holds anything is a
+    /// recording already: a problem. One whose listing fails (its entries denied while the folder itself can be seen)
+    /// turns recording off for this run instead of stopping the engine's start: <paramref name="off"/> then says why,
+    /// path free, to be logged (<see cref="LogRecordingOff"/>). <paramref name="entries"/> lists a folder
+    /// (<see cref="Directory.EnumerateFileSystemEntries(string)"/>; tests give one that throws).
+    /// </summary>
+    internal static string? PreflightRecording(string recording, Func<string, IEnumerable<string>> entries, List<string> problems, out string? off)
+    {
+        off = null;
+        foreach (var source in new[] { InfoPanel.Sensors.Replay.SensorRecording.HwInfoFolder, InfoPanel.Sensors.Replay.SensorRecording.LibreFolder })
+        {
+            var folder = Path.Combine(recording, source);
+            try
+            {
+                if (Directory.Exists(folder) && entries(folder).Any())
+                {
+                    problems.Add($"--record-sensors '{recording}' already holds a recording: give a new folder.");
+                    return null;
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // The exception's message names the path, which the log must not: its type says enough.
+                off = $"{source}/ can't be listed ({e.GetType().Name})";
+                return null;
+            }
+        }
+
+        return recording;
+    }
+
+    /// <summary>
+    /// Logs <see cref="RecordSensorsOff"/>, when there is one, as an error: no sensors are recorded this run, and the
+    /// engine starts and reads on.
+    /// </summary>
+    public void LogRecordingOff(Serilog.ILogger log)
+    {
+        if (RecordSensorsOff is { } why)
+            log.Error("Recording sensors: the recording's {Why:l}; check its permissions; no sensors are recorded this run", why);
     }
 
     /// <summary>The full path of a folder option, or null when it isn't given or isn't a valid path (a problem then).</summary>

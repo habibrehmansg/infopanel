@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Serilog.Events;
 using Xunit;
 
 namespace InfoPanel.Tests;
@@ -105,6 +106,149 @@ public sealed class SensorReplayTests
         }
 
         Assert.False(Directory.Exists(folder));
+    }
+
+    [Theory]
+    [InlineData("hwinfo", false)]
+    [InlineData("libre", false)]
+    [InlineData("libre", true)]
+    public void RecordSensors_OnAFolderWhoseListingFails_RecordsNothing_AndLogsWhy_WithoutItsPath(string source, bool lazily)
+    {
+        // The preflight's listing throws as Windows' does on a folder that can be seen but not listed (its access list):
+        // when listed, or as it is enumerated.
+        var folder = Path.Combine(Path.GetTempPath(), "infopanel-record-" + Guid.NewGuid().ToString("N"));
+        var denied = Path.Combine(folder, source);
+        Directory.CreateDirectory(denied);
+        try
+        {
+            IEnumerable<string> Entries(string path) =>
+                path != denied ? []
+                : lazily ? Throwing(path)
+                : throw new UnauthorizedAccessException($"Access to the path '{path}' is denied.");
+
+            var problems = new List<string>();
+            Assert.Null(EngineOptions.PreflightRecording(folder, Entries, problems, out var off));
+            Assert.Empty(problems);
+            Assert.NotNull(off);
+            Assert.Contains($"{source}/", off);
+
+            var events = new List<LogEvent>();
+            new EngineOptions { RecordSensorsOff = off }.LogRecordingOff(Logger(events));
+            var error = Assert.Single(events);
+            Assert.Equal(LogEventLevel.Error, error.Level);
+            Assert.Contains("no sensors are recorded", error.RenderMessage());
+            AssertPathFree(error, folder);
+        }
+        finally
+        {
+            Directory.Delete(denied);
+            Directory.Delete(folder);
+        }
+
+        static IEnumerable<string> Throwing(string path)
+        {
+            if (path.Length > 0)
+                throw new IOException($"'{path}' can't be read.");
+            yield break;
+        }
+    }
+
+    [Fact]
+    public void RecordSensors_Preflight_RefusesAFolderHoldingARecording_AndPassesANewOne()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "infopanel-record-" + Guid.NewGuid().ToString("N"));
+        var libre = Path.Combine(folder, "libre");
+        var problems = new List<string>();
+        Assert.Equal(folder, EngineOptions.PreflightRecording(folder, Directory.EnumerateFileSystemEntries, problems, out var off));
+        Assert.Null(off);
+        Assert.Empty(problems);
+
+        Directory.CreateDirectory(libre);
+        try
+        {
+            Assert.Equal(folder, EngineOptions.PreflightRecording(folder, Directory.EnumerateFileSystemEntries, problems, out off));
+            Assert.Empty(problems);
+            Assert.Null(EngineOptions.PreflightRecording(folder, _ => ["000000.frames.gz"], problems, out off));
+            Assert.Null(off);
+            Assert.Contains(problems, p => p.Contains("already holds a recording", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(libre);
+            Directory.Delete(folder);
+        }
+
+        var events = new List<LogEvent>();
+        new EngineOptions().LogRecordingOff(Logger(events));
+        Assert.Empty(events);
+    }
+
+    /// <summary>
+    /// Windows' own refusal, opt-in (<c>INFOPANEL_WINDOWS_TESTS=1</c> on Windows; skipped elsewhere): a <c>libre/</c>
+    /// whose access list denies its listing to this user is seen but can't be listed, so <c>--record-sensors</c> loads
+    /// with recording off and a path-free reason, logged, where it stopped the engine's start.
+    /// </summary>
+    [Fact]
+    public void RecordSensors_OnALibreFolderWhoseListingIsDenied_LoadsWithRecordingOff_OnWindows()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("INFOPANEL_WINDOWS_TESTS") == "1",
+            "Denies a folder's listing through its access list: set INFOPANEL_WINDOWS_TESTS=1 on Windows to run it.");
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var folder = Path.Combine(Path.GetTempPath(), "infopanel-record-" + Guid.NewGuid().ToString("N"));
+        var libre = Path.Combine(folder, "libre");
+        Directory.CreateDirectory(libre);
+        var info = new DirectoryInfo(libre);
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var deny = new System.Security.AccessControl.FileSystemAccessRule(identity.User!, System.Security.AccessControl.FileSystemRights.ListDirectory,
+            System.Security.AccessControl.AccessControlType.Deny);
+        var security = info.GetAccessControl();
+        security.AddAccessRule(deny);
+        info.SetAccessControl(security);
+        try
+        {
+            Assert.True(Directory.Exists(libre));
+            Assert.Throws<UnauthorizedAccessException>(() => Directory.EnumerateFileSystemEntries(libre).Any());
+
+            var options = Load(["--record-sensors", folder], out var errors);
+            Assert.Empty(errors);
+            Assert.Null(options!.RecordSensors);
+            Assert.Contains("libre/", options.RecordSensorsOff);
+            Assert.DoesNotContain(folder, options.RecordSensorsOff, StringComparison.OrdinalIgnoreCase);
+
+            var events = new List<LogEvent>();
+            options.LogRecordingOff(Logger(events));
+            AssertPathFree(Assert.Single(events), folder);
+        }
+        finally
+        {
+            security.RemoveAccessRule(deny);
+            info.SetAccessControl(security);
+            Directory.Delete(libre);
+            Directory.Delete(folder);
+        }
+    }
+
+    /// <summary>Nothing of <paramref name="logEvent"/> names <paramref name="path"/>: its folder's own name, in any form of the path.</summary>
+    private static void AssertPathFree(LogEvent logEvent, string path)
+    {
+        var name = Path.GetFileName(path);
+        Assert.DoesNotContain(name, logEvent.RenderMessage(), StringComparison.OrdinalIgnoreCase);
+        Assert.All(logEvent.Properties.Values, value => Assert.DoesNotContain(name, value.ToString(), StringComparison.OrdinalIgnoreCase));
+        Assert.Null(logEvent.Exception);
+    }
+
+    private static Serilog.ILogger Logger(List<LogEvent> events) =>
+        new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(events)).CreateLogger();
+
+    private sealed class CollectingSink(List<LogEvent> events) : Serilog.Core.ILogEventSink
+    {
+        public void Emit(LogEvent logEvent)
+        {
+            lock (events)
+                events.Add(logEvent);
+        }
     }
 
     [Fact]

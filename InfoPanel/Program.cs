@@ -191,6 +191,8 @@ try
 {
     if (options.Fresh)
         Log.Information("Wiped the data folder {DataDir} (--fresh)", paths.Root);
+    // --record-sensors on a folder whose hwinfo/ or libre/ couldn't be listed: nothing is recorded, and the log says why.
+    options.LogRecordingOff(Log.ForContext<EngineOptions>());
 
     // Video: FFmpeg's decoding libraries, beside the engine, else in INFOPANEL_FFMPEG_DIR (development; a test engine's
     // Engine:FFmpegDir setting replaces both). Without them media.video isn't listed: a video item is unsupported, kept.
