@@ -4,7 +4,9 @@ using InfoPanel.Hosting;
 using InfoPanel.Persistence;
 using InfoPanel.Scenes;
 using InfoPanel.Security;
+using InfoPanel.SensorHelper;
 using InfoPanel.Sensors;
+using InfoPanel.Sensors.Libre;
 using InfoPanel.Spec;
 using SkiaSharp;
 using System.Reflection;
@@ -16,12 +18,30 @@ namespace InfoPanel.Api;
 /// <summary>
 /// The engine's session, fonts and sensors (spec/docs/api.md, "Session", "Fonts and sensors"). Everything here is under
 /// <c>/api</c> and needs a token with the <c>read</c> scope. Bodies are the spec model (<c>session</c>, <c>sensorEntry</c>,
-/// <c>sensorValue</c>), written with the format's JSON options like every other API body.
+/// <c>sensorValue</c>), written with the format's JSON options like every other API body. One action is the session
+/// token's: installing the PawnIO driver (<c>POST /api/sensors/sources/libre/driver</c>, spec/docs/api.md "The PawnIO
+/// driver"), beside the sources' states it changes.
 /// </summary>
 public static partial class ReadEndpoints
 {
     /// <summary>The engine API's version (spec/docs/api.md): 2 since documents are the 2.0 format.</summary>
     public const int Protocol = 2;
+
+    /// <summary>The PawnIO driver as the Libre source and the bundled installer have it now.</summary>
+    private static LibreDriverBody DriverOf(LibreSource? libre, PawnIoInstaller? installer)
+    {
+        var driver = libre?.Driver ?? new PawnIoReading(PawnIoDriver.Unknown, null);
+        return new LibreDriverBody
+        {
+            State = installer?.Installing == true ? "installing" : driver.State,
+            Version = driver.Version,
+            Installer = installer?.Available,
+            LastInstall = installer?.LastInstall is { } last ? new LibreDriverInstall { Outcome = last.Outcome, Code = last.Code } : null,
+        };
+    }
+
+    private static IResult Conflict(string detail) =>
+        TypedResults.Problem(detail: detail, statusCode: StatusCodes.Status409Conflict, title: "Conflict");
 
     public static void MapReadEndpoints(this IEndpointRouteBuilder app)
     {
@@ -68,17 +88,38 @@ public static partial class ReadEndpoints
                 })
                 .ToList())).RequireScope(ApiScope.Read);
 
-        // Every source the engine runs, in the hub's order, listed with no sensors too: its state now and why.
-        api.MapGet("/sensors/sources", (SensorHub hub) => ApiResults.Json(
-            hub.SourceStates()
-                .Select(s => new SensorSourceBody
-                {
-                    Id = s.Id,
-                    State = s.State.Kind,
-                    Reason = s.State.Reason is { } reason ? new SensorSourceReason { Code = reason.Code, Message = reason.Message } : null,
-                    Sensors = s.Sensors,
-                })
-                .ToList())).RequireScope(ApiScope.Read);
+        // Every source the engine runs, in the hub's order, listed with no sensors too: its state now and why; Libre's with
+        // the PawnIO driver.
+        api.MapGet("/sensors/sources", (SensorHub hub, IServiceProvider services) =>
+        {
+            var libre = services.GetService<LibreSource>();
+            var installer = services.GetService<PawnIoInstaller>();
+            return ApiResults.Json(
+                hub.SourceStates()
+                    .Select(s => new SensorSourceBody
+                    {
+                        Id = s.Id,
+                        State = s.State.Kind,
+                        Reason = s.State.Reason is { } reason ? new SensorSourceReason { Code = reason.Code, Message = reason.Message } : null,
+                        Sensors = s.Sensors,
+                        Driver = s.Id == LibreSource.SourceId && libre is not null ? DriverOf(libre, installer) : null,
+                    })
+                    .ToList());
+        }).RequireScope(ApiScope.Read);
+
+        // Installs the PawnIO driver from the engine's own bundled installer (nothing in the request chooses what runs);
+        // one at a time; 409 while one runs or without that installer (not Windows, a replay, no file, another hash).
+        api.MapPost("/sensors/sources/libre/driver", (IServiceProvider services) =>
+        {
+            var libre = services.GetService<LibreSource>();
+            var installer = services.GetService<PawnIoInstaller>();
+            return installer?.Start() switch
+            {
+                PawnIoStart.Started => ApiResults.Json(DriverOf(libre, installer) with { State = "installing" }, StatusCodes.Status202Accepted),
+                PawnIoStart.Busy => Conflict("An install of the PawnIO driver runs already."),
+                _ => Conflict("The engine has no PawnIO installer to run here."),
+            };
+        }).RequireScope(ApiScope.Session);
 
         api.MapGet("/sensors/values", (int? history, SensorHub hub, SensorHistory sensorHistory) =>
         {

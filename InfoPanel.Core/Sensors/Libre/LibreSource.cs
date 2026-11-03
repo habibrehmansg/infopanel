@@ -1,5 +1,6 @@
 using InfoPanel.Enums;
 using InfoPanel.Models;
+using InfoPanel.SensorHelper;
 using InfoPanel.Settings;
 using System;
 using System.Collections.Generic;
@@ -13,8 +14,10 @@ namespace InfoPanel.Sensors.Libre;
 /// (<see cref="LibreSampler"/>), every 2 s as 1.4.x, answering every <c>libre:</c> key (1.4.x's
 /// <c>libre:{Identifier}</c>; one this computer lacks reads unavailable). A <see cref="PolledSensorSource"/> whose stop
 /// first ends any request to the helper in flight, so a helper that hangs never holds up the engine's stop; its sampler
-/// then stops the helper. Its state: <c>running</c>; <c>limited</c> · <c>noDriver</c> while the helper says the driver
-/// is missing; <c>off</c> · <c>disabled</c> while <c>sources.libre.enabled</c> is off; <c>unavailable</c> ·
+/// then stops the helper. Its state: <c>running</c>; <c>limited</c> while the helper says the PawnIO driver is missing
+/// (<c>noDriver</c>), older than LibreHardwareMonitor needs (<c>driverOutdated</c>), or installed but not opened
+/// (<c>driverNotLoaded</c> as administrator, <c>notElevated</c> without); <c>off</c> · <c>disabled</c> while
+/// <c>sources.libre.enabled</c> is off; <c>unavailable</c> ·
 /// <c>helperFailed</c> while the helper restarts or the build doesn't carry it. The engine tells it of each change to
 /// the stored settings (<see cref="SettingsChanged"/>), so Off stops the helper at once, even while a request hangs.
 /// </summary>
@@ -24,13 +27,22 @@ public sealed class LibreSource : ISensorSource, ISensorStatusSource, ISensorSou
 
     public static readonly TimeSpan Interval = TimeSpan.FromSeconds(2);
 
-    /// <summary>The driver state the helper's <c>hello</c> gives when the driver isn't installed.</summary>
-    public const string DriverMissing = "missing";
+    /// <summary>How often the engine reads the PawnIO driver's version itself while the source runs (Windows).</summary>
+    public static readonly TimeSpan DriverCheckInterval = TimeSpan.FromSeconds(10);
 
     public static readonly SourceReason Disabled = new("disabled", "Libre Hardware Monitor is turned off in the settings");
 
     public static readonly SourceReason NoDriver = new("noDriver",
         "The PawnIO driver isn't installed, so the CPU's temperatures, clocks and power and the board's fans and voltages aren't read");
+
+    public static readonly SourceReason DriverOutdated = new("driverOutdated",
+        "The PawnIO driver installed is older than 2.0, so the CPU's temperatures, clocks and power and the board's fans and voltages aren't read");
+
+    public static readonly SourceReason DriverNotLoaded = new("driverNotLoaded",
+        "The PawnIO driver is installed but couldn't be opened: Windows may need a restart, or it blocked the driver");
+
+    public static readonly SourceReason NotElevated = new("notElevated",
+        "The PawnIO driver is installed but couldn't be opened without administrator rights, so the CPU's temperatures, clocks and power and the board's fans and voltages aren't read");
 
     public static readonly SourceReason HelperFailed = new("helperFailed", "The sensor helper stopped; it is started again");
 
@@ -43,16 +55,21 @@ public sealed class LibreSource : ISensorSource, ISensorStatusSource, ISensorSou
 
     /// <param name="launcher">Starts the helper: its process (<see cref="LibreHelperProcess"/>), a recording's, a test's.</param>
     /// <param name="settings">The <c>sources.libre</c> settings now, read each round and on <see cref="SettingsChanged"/>.</param>
+    /// <param name="driverRegistry">Where the engine reads the PawnIO driver's version itself (Windows' registry); none elsewhere.</param>
     public LibreSource(ILibreHelperLauncher launcher, Func<LibreSettings> settings, TimeProvider? time = null, PolledSensorSourceOptions? options = null,
-        LibreSampler.IObserver? observer = null, Serilog.ILogger? log = null)
+        LibreSampler.IObserver? observer = null, Serilog.ILogger? log = null, IPawnIoRegistry? driverRegistry = null)
     {
-        _source = new PolledSensorSource(SourceId, () => _sampler = new LibreSampler(launcher, settings, time, _stopping.Token, observer, log),
+        _source = new PolledSensorSource(SourceId, () => _sampler = new LibreSampler(launcher, settings, time, _stopping.Token, observer, log, driverRegistry),
             options ?? new PolledSensorSourceOptions { Interval = Interval }, time, SensorKeySpace.Of(SensorType.Libre), log);
     }
 
-    /// <summary>The helper's process in the engine's <c>sensor-helper</c> folder (<see cref="LibreHelperProcess.DefaultPath"/>).</summary>
+    /// <summary>
+    /// The helper's process in the engine's <c>sensor-helper</c> folder (<see cref="LibreHelperProcess.DefaultPath"/>), the
+    /// PawnIO driver read from Windows' registry.
+    /// </summary>
     public static LibreSource CreateWindows(Func<LibreSettings> settings, TimeProvider? time = null, LibreSampler.IObserver? observer = null) =>
-        new(new LibreHelperProcess(LibreHelperProcess.DefaultPath, time: time), settings, time, observer: observer);
+        new(new LibreHelperProcess(LibreHelperProcess.DefaultPath, time: time), settings, time, observer: observer,
+            driverRegistry: OperatingSystem.IsWindows() ? new WindowsPawnIoRegistry() : null);
 
     public string Id => SourceId;
 
@@ -66,6 +83,14 @@ public sealed class LibreSource : ISensorSource, ISensorStatusSource, ISensorSou
     public IReadOnlyList<LibreSensor> Catalogue => _sampler?.Catalogue.Sensors ?? [];
 
     public SourceState State => _source.State;
+
+    /// <summary>The PawnIO driver now (<see cref="LibreSampler.Driver"/>); <c>unknown</c> before the source starts.</summary>
+    public PawnIoReading Driver => _sampler?.Driver ?? new PawnIoReading(PawnIoDriver.Unknown, null);
+
+    /// <summary>
+    /// The driver was installed (any thread): the registry is read again and a new helper started at the next round.
+    /// </summary>
+    public void DriverChanged() => _sampler?.DriverChanged();
 
     /// <summary>
     /// The stored settings changed (the settings store's <c>Changed</c>; any thread, quick): Off ends the helper's request

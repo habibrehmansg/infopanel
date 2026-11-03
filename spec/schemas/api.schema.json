@@ -1091,7 +1091,39 @@
           "enum": ["starting", "running", "limited", "unavailable", "off"]
         },
         "reason": { "$ref": "#/$defs/sensorSourceReason" },
-        "sensors": { "description": "How many sensors the source lists now (its entries in GET /api/sensors).", "type": "integer", "minimum": 0 }
+        "sensors": { "description": "How many sensors the source lists now (its entries in GET /api/sensors).", "type": "integer", "minimum": 0 },
+        "driver": { "$ref": "#/$defs/libreDriver", "description": "The Libre source's only (`libre`): the PawnIO driver its sensor helper reads ring0 sensors through (docs/api.md#the-pawnio-driver)." }
+      }
+    },
+    "libreDriver": {
+      "description": "The PawnIO driver (docs/api.md#the-pawnio-driver): on the Libre source's entry in GET /api/sensors/sources, and the answer to POST /api/sensors/sources/libre/driver.",
+      "type": "object",
+      "required": ["state", "version", "installer", "lastInstall"],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "description": "`missing` (not installed), `outdated` (older than 2.0, which LibreHardwareMonitor needs), `installed`, `notLoaded` (installed, but the sensor helper couldn't open it), `installing` (an install the engine started runs now) or `unknown` (not read: no registry to read, or a sensor helper that doesn't say). A client treats a state it doesn't know as `unknown`.",
+          "enum": ["missing", "outdated", "installed", "notLoaded", "installing", "unknown"]
+        },
+        "version": { "description": "The installed version as Windows lists it (dotted whole numbers), or null when the engine doesn't read it or none is installed.", "type": ["string", "null"], "maxLength": 64 },
+        "installer": { "description": "The version of the PawnIO installer bundled with the engine that POST /api/sensors/sources/libre/driver runs, or null when there is none (not Windows, a replay, or a build without it).", "type": ["string", "null"], "maxLength": 64 },
+        "lastInstall": {
+          "description": "How the last install the engine started since it started ended, or null when none has.",
+          "oneOf": [{ "$ref": "#/$defs/libreDriverInstall" }, { "type": "null" }]
+        }
+      }
+    },
+    "libreDriverInstall": {
+      "description": "How an install of the PawnIO driver ended (docs/api.md#the-pawnio-driver).",
+      "type": "object",
+      "required": ["outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "description": "`installed`; `restartNeeded` (installed, Windows must restart to finish); `declined` (Windows' prompt for administrator rights was declined: nothing changed); `failed`. A client treats an outcome it doesn't know as `failed`.",
+          "enum": ["installed", "restartNeeded", "declined", "failed"]
+        },
+        "code": { "description": "With `failed`: the installer's exit code, when it exited (absent when it couldn't be started).", "type": "integer" }
       }
     },
     "sensorSourceReason": {
@@ -1101,7 +1133,7 @@
       "additionalProperties": false,
       "properties": {
         "code": {
-          "description": "The reason for programs, an open code the source names: HWiNFO's `notRunning`, `sharedMemoryOff` and `stopped`; HWiNFO Gadget's `notSetUp`, `notRunning` and `stopped`; the plugins source's `disabled` (docs/api.md#sensor-sources). A client shows `message` for a code it doesn't know.",
+          "description": "The reason for programs, an open code the source names: HWiNFO's `notRunning`, `sharedMemoryOff` and `stopped`; HWiNFO Gadget's `notSetUp`, `notRunning` and `stopped`; Libre's `disabled`, `noDriver`, `driverOutdated`, `driverNotLoaded`, `notElevated` and `helperFailed`; the plugins source's `disabled` (docs/api.md#sensor-sources). A client shows `message` for a code it doesn't know.",
           "type": "string",
           "pattern": "^[a-z][A-Za-z0-9]{0,63}$"
         },

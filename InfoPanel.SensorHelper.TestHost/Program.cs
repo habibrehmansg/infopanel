@@ -17,11 +17,19 @@ namespace InfoPanel.SensorHelper.TestHost;
 /// output, one word a line, on a stream of its own (so a held <see cref="Console.Out"/> doesn't silence it):
 /// <c>tree-created</c>, <c>update-entered</c>, <c>console-held</c>, <c>dispose-entered</c>, <c>disposed</c>; and, as it
 /// exits after a close was entered, <c>exit-after-dispose-ms &lt;n&gt;</c>, the time since on its own clock.
+/// <para>
+/// Run with PawnIO's installer's own arguments, <c>-install -silent</c>, it is <c>PawnIoWindowsTests</c>' harmless
+/// stand-in for that installer instead: it writes its own path to <c>ran.txt</c> beside itself and exits with the number
+/// in <c>exit-code.txt</c> there. It installs nothing.
+/// </para>
 /// </summary>
 internal static class Program
 {
     private static Task<int> Main(string[] args)
     {
+        if (args is ["-install", "-silent"])
+            return Task.FromResult(InstallerStandIn());
+
         if (args.Length < 1 || args[0] is not ("serve" or "hang-update" or "hang-dispose" or "fail-open" or "hold-console"))
         {
             Console.Error.WriteLine("Usage: InfoPanel.SensorHelper.TestHost <serve|hang-update|hang-dispose|fail-open|hold-console> [--cleanup-ms <n>] [--engine-client <pid>] <helper arguments>");
@@ -61,6 +69,14 @@ internal static class Program
             },
         };
         return HelperProcess.RunAsync(rest, () => new TestTree(behaviour), "2.0.0-testhost", options);
+    }
+
+    /// <summary>The installer's stand-in: says it ran, and exits with the code its folder holds.</summary>
+    private static int InstallerStandIn()
+    {
+        var folder = AppContext.BaseDirectory;
+        File.WriteAllText(Path.Combine(folder, "ran.txt"), Environment.ProcessPath ?? "");
+        return int.Parse(File.ReadAllText(Path.Combine(folder, "exit-code.txt")).Trim(), CultureInfo.InvariantCulture);
     }
 
     /// <summary>When the tree's close was entered (<see cref="Stopwatch.GetTimestamp"/>), or 0.</summary>

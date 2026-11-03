@@ -374,9 +374,10 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
         foreach (var (pattern, methods, scope) in endpoints)
         {
             var name = $"{string.Join(",", methods)} {pattern}";
-            // The token endpoints, the paired clients, the engine settings, the recent log entries and the engine's folders are
-            // the session token's alone.
+            // The token endpoints, the paired clients, the engine settings, the recent log entries, the engine's folders and
+            // the PawnIO driver's install are the session token's alone.
             var sessionEndpoint = pattern is "/api/tokens" or "/api/pairings" or "/api/settings" or "/api/logs" or "/api/folders/{folder}/open"
+                or "/api/sensors/sources/libre/driver"
                 || pattern.StartsWith("/api/tokens/", StringComparison.Ordinal) || pattern.StartsWith("/api/pairings/", StringComparison.Ordinal);
             var reads = methods.All(m => m is "GET" or "HEAD") || pattern == "/api/{**rest}";
             ApiScope? expected = sessionEndpoint ? ApiScope.Session : reads ? ApiScope.Read : ApiScope.Edit;

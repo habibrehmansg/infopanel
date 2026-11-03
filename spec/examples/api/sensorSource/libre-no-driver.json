@@ -1,0 +1,1 @@
+{"id": "libre", "state": "limited", "reason": {"code": "noDriver", "message": "The PawnIO driver isn't installed, so the CPU's temperatures, clocks and power and the board's fans and voltages aren't read"}, "sensors": 179, "driver": {"state": "missing", "version": null, "installer": "2.2.0", "lastInstall": null}}

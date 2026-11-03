@@ -170,6 +170,26 @@
         }
       }
     },
+    "/api/sensors/sources/libre/driver": {
+      "post": {
+        "operationId": "installLibreDriver",
+        "summary": "Installs the PawnIO driver from the installer bundled with the engine; Windows asks for administrator rights once.",
+        "description": "docs/api.md#the-pawnio-driver. No body: the engine runs its own installer with fixed arguments.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "202": {
+            "description": "The install started: the driver's state is `installing` until it ends, and its outcome is then the driver's `lastInstall` (GET /api/sensors/sources).",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/libreDriver"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "409": {
+            "description": "No install started: one runs already, or the engine has no bundled installer to run (not Windows, a replay, a build without it, or one whose SHA-256 isn't the one the engine pins).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
     "/api/folders/{folder}/open": {
       "parameters": [
         {

@@ -631,6 +631,29 @@ public sealed record SensorSourceBody
     public required InfoPanel.Sensors.SourceStateKind State { get; init; }
     public SensorSourceReason? Reason { get; init; }
     public required int Sensors { get; init; }
+    public LibreDriverBody? Driver { get; init; }
+}
+
+/// <summary>
+/// The PawnIO driver, on the Libre source's entry only (<c>GET /api/sensors/sources</c>), and the answer to
+/// <c>POST /api/sensors/sources/libre/driver</c>: its state, its installed version, the version of the installer bundled
+/// with the engine, and how the last install since the engine started ended; each null when there is none.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/libreDriver")]
+public sealed record LibreDriverBody
+{
+    public required string State { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Version { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Installer { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required LibreDriverInstall? LastInstall { get; init; }
+}
+
+/// <summary>How an install of the PawnIO driver ended, with the installer's exit code for <c>failed</c> when it exited.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/libreDriverInstall")]
+public sealed record LibreDriverInstall
+{
+    public required string Outcome { get; init; }
+    public int? Code { get; init; }
 }
 
 /// <summary>Why a source is in its state: an open code and the same in English.</summary>

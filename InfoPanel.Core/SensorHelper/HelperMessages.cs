@@ -25,8 +25,10 @@ public sealed record ConfigureRequest(bool Storage, int StorageInterval) : Helpe
 public abstract record HelperAnswer;
 
 /// <summary>
-/// <c>{"type":"hello","protocol":1,"helper":"2.0.0","elevated":false,"driver":"unknown"}</c>: the helper's protocol
-/// and version, whether it runs as administrator, and the driver's state (<c>unknown</c> until the driver is read).
+/// <c>{"type":"hello","protocol":1,"helper":"2.0.0","elevated":false,"driver":"missing"}</c>: the helper's protocol
+/// and version, whether it runs as administrator, and the PawnIO driver's state as it read it at its start
+/// (<see cref="PawnIoDriver"/>: <c>missing</c>, <c>outdated</c>, <c>installed</c>, <c>notLoaded</c>; <c>unknown</c> from a
+/// helper that doesn't read it).
 /// </summary>
 public sealed record HelloAnswer(int Protocol, string Helper, bool Elevated, string Driver) : HelperAnswer;
 

@@ -189,6 +189,12 @@ The following packages are licensed under LGPL:
 
 ## Other Licenses
 
+### PawnIO installer (the Windows package, not this repository)
+- **Use**: the Windows package carries PawnIO 2.2.0's `PawnIO_setup.exe` unmodified, beside the engine (`pawnio/`), which runs it only when a user asks to install the driver
+- **License**: redistributable unmodified, as the installer itself states ("This installer can be redistributed unmodified."); PawnIO's own licence terms are in its repository
+- **Copyright**: © namazso
+- **Project**: https://github.com/namazso/PawnIO (https://pawnio.eu)
+
 ### BouncyCastle.NetCore
 - **License**: MIT X Consortium-based license
 - **Additional**: Modified BZIP2 library component under Apache License 2.0

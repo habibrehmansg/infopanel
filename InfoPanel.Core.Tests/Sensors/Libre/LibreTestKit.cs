@@ -44,10 +44,13 @@ internal sealed class TreeLauncher(ISensorTree tree, TimeProvider? time = null) 
     }
 }
 
-/// <summary>A tree that says the driver is <paramref name="driver"/> in its hello, otherwise <paramref name="inner"/>.</summary>
-internal sealed class DriverTree(FakeTree inner, string driver) : ISensorTree
+/// <summary>
+/// A tree that says the driver is <paramref name="driver"/> in its hello, and whether it runs as administrator,
+/// otherwise <paramref name="inner"/>.
+/// </summary>
+internal sealed class DriverTree(FakeTree inner, string driver, bool elevated = false) : ISensorTree
 {
-    public bool Elevated => inner.Elevated;
+    public bool Elevated => elevated;
 
     public string Driver => driver;
 
@@ -196,17 +199,21 @@ internal sealed class LibreRig : IDisposable
 
     private void Notify() => Source.SettingsChanged();
 
-    public LibreRig(Func<TimeProvider, ILibreHelperLauncher> launcher, LibreSampler.IObserver? observer = null)
-        : this((time, _) => launcher(time), observer)
+    public LibreRig(Func<TimeProvider, ILibreHelperLauncher> launcher, LibreSampler.IObserver? observer = null, IPawnIoRegistry? driver = null)
+        : this((time, _) => launcher(time), observer, driver)
     {
     }
 
     /// <param name="launcher">Given the rig's clock and its log.</param>
-    public LibreRig(Func<TimeProvider, Serilog.ILogger, ILibreHelperLauncher> launcher, LibreSampler.IObserver? observer = null)
+    /// <param name="driver">The registry the engine reads the PawnIO driver from (Windows'); none by default.</param>
+    public LibreRig(Func<TimeProvider, Serilog.ILogger, ILibreHelperLauncher> launcher, LibreSampler.IObserver? observer = null, IPawnIoRegistry? driver = null)
     {
-        var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new Sink(Log)).CreateLogger();
-        Source = new LibreSource(launcher(Time, log), Read, Time, observer: observer, log: log);
+        Logger = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new Sink(Log)).CreateLogger();
+        Source = new LibreSource(launcher(Time, Logger), Read, Time, observer: observer, log: Logger, driverRegistry: driver);
     }
+
+    /// <summary>The rig's log, which keeps its events in <see cref="Log"/>.</summary>
+    public Serilog.ILogger Logger { get; }
 
     public PolledSensorSource Polled => Source.Polled;
 

@@ -14,7 +14,10 @@ public interface ISensorTree : IDisposable
     /// <summary>Whether the helper runs as administrator.</summary>
     bool Elevated { get; }
 
-    /// <summary>The driver's state, as <c>hello</c> reports it (<c>unknown</c> until it is read).</summary>
+    /// <summary>
+    /// The PawnIO driver's state, as <c>hello</c> reports it (<see cref="PawnIoDriver"/>: <c>missing</c>,
+    /// <c>outdated</c>, <c>installed</c>, <c>notLoaded</c>; <c>unknown</c> when it isn't read).
+    /// </summary>
     string Driver { get; }
 
     /// <summary>

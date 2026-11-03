@@ -12,6 +12,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `GET /api/fonts` | | An array of font family names ([below](#fonts-and-sensors)) |
 | `GET /api/sensors` | | An array of `sensorEntry` ([below](#fonts-and-sensors)) |
 | `GET /api/sensors/sources` | | An array of `sensorSource` ([below](#sensor-sources)) |
+| `POST /api/sensors/sources/libre/driver` | | 202 `libreDriver`; 409 `problem` while an install runs or without a bundled installer ([below](#the-pawnio-driver)) |
 | `GET /api/sensors/values` | | An array of `sensorValue`; 400 for a `history` that isn't a whole number from −2,147,483,648 to 2,147,483,647 |
 | `GET /api/settings` | | `engineSettings` ([below](#settings)) |
 | `PATCH /api/settings` | `settingsChange` | `engineSettings`; 409 `settingsStatusProblem`; 422 `invalidProblem` ([below](#changing-settings)) |
@@ -182,7 +183,8 @@ The test vector (also as bodies in `examples/api/pairingChallengeRequest/`, `pai
 - `id`, the `source` its sensors carry;
 - `state` now: `starting` (it hasn't finished finding its sensors), `running` (reading them), `limited` (reading, but fewer sensors than it could), `unavailable` (it can't read now) or `off` (turned off, or not set up). A client treats a state it doesn't know as `unavailable`;
 - `reason`, when there is something to say: `code`, for programs, and `message`, the same in English for people. A code is the source's own, open: a client words the codes it knows (with set-up help, say) and shows `message` for one it doesn't;
-- `sensors`, how many sensors it lists now.
+- `sensors`, how many sensors it lists now;
+- `driver`, on the Libre source's entry only: the PawnIO driver ([below](#the-pawnio-driver)).
 
 A source's state comes from what it last read: a client asks again to see it change (the state has no socket message). A source that has nothing more to say about itself is `running` while the engine runs it: the mock source, the macOS source, and the engine's own on every operating system, not in mock mode or a replay: the clock (`infopanel.clock`), the drives (`infopanel.drives`) and the network (`infopanel.network`). The plugins' source (`plugins`) is `running` while the engine hosts plugins, however many it found, and `off` · `disabled` when it was started without them. The Windows sources' reasons:
 
@@ -194,10 +196,27 @@ A source's state comes from what it last read: a client asks again to see it cha
 | `infopanel.hwinfo-gadget` (HWiNFO's gadget values) | `off` · `notSetUp` | No gadget readings yet in this run: HWiNFO isn't reporting to gadgets, or no reading is ticked for them |
 | | `unavailable` · `notRunning` | Gadget readings stopped (or never updated) and HWiNFO isn't running in the engine's session |
 | | `unavailable` · `stopped` | Gadget readings stopped while HWiNFO runs in the engine's session: its reporting to gadgets was turned off, or nothing is ticked any more |
+| `libre` (LibreHardwareMonitor, through the engine's sensor helper) | `limited` · `noDriver` | Reading, but the PawnIO driver isn't installed: the CPU's temperatures, clocks and power and the board's fans and voltages aren't read |
+| | `limited` · `driverOutdated` | Reading, but the PawnIO driver installed is older than 2.0 |
+| | `limited` · `driverNotLoaded` | Reading, but the PawnIO driver is installed and the helper, run as administrator, couldn't open it: Windows may need a restart, or blocked it |
+| | `limited` · `notElevated` | Reading, but the PawnIO driver is installed and the helper, run without administrator rights, couldn't open it |
+| | `off` · `disabled` | `sources.libre.enabled` is off ([settings](#settings)) |
+| | `unavailable` · `helperFailed` | The sensor helper stopped and is started again, or the engine isn't installed with it |
 
 Either Windows source is `unavailable` with no reason while it can't read what it reads from: HWiNFO's shared memory, or the registry key that holds the gadget values (it can't be opened or read, or it holds more values than the engine reads). Once it reads again, its state follows the table.
 
 An engine that replays a recording (the session's `mock`) runs the sources of the computer it was recorded on, reading the recording; a source the recording doesn't hold reads as on a computer where it isn't set up.
+
+### The PawnIO driver
+
+LibreHardwareMonitor reads the CPU's temperatures, clocks and power and the board's fans and voltages through PawnIO, a driver installed into Windows (https://pawnio.eu). The Libre source's entry carries `driver` (`libreDriver`):
+
+- `state`: `missing` (not installed), `outdated` (older than 2.0), `installed`, `notLoaded` (installed, but the sensor helper couldn't open it), `installing` (an install the engine started runs now) or `unknown` (not read). A client treats a state it doesn't know as `unknown`. The sensor helper reads the driver as it starts; on Windows the engine also reads it every 10 seconds while the source runs, and when it changes (installed, updated or removed outside the engine) it starts a new sensor helper, so the source's state follows within a few seconds without restarting the engine. An engine that replays a recording says what the recorded helper said, with no `version`;
+- `version`: the installed version as Windows lists it, or null;
+- `installer`: the version of the PawnIO installer bundled with the engine, or null when there is none: on any operating system but Windows, in a replay, in a build without it, and when its SHA-256 isn't the one the engine pins;
+- `lastInstall`: how the last install the engine started since it started ended, or null: `outcome` `installed`, `restartNeeded` (installed; Windows must restart to finish), `declined` (Windows' prompt for administrator rights was declined: nothing changed) or `failed`, which has `code`, the installer's exit code, when it exited. A client treats an outcome it doesn't know as `failed`.
+
+`POST /api/sensors/sources/libre/driver` (no body; the session token only, [authentication](#authentication)) runs the bundled installer and answers 202 with the driver, `state` `installing`. The engine runs only its own installer, at a fixed place beside it, with fixed arguments; it checks the installer's SHA-256 right before the launch and runs the very file it checked, and Windows asks for administrator rights once. While an install runs, or without a bundled installer, it answers 409 `problem`. The engine waits for the installer to end, however long it takes, and never stops it: the install runs, and others are refused, until then. `failed` has no `code` only when the installer couldn't be started. After `installed` the engine reads the driver again and starts a new sensor helper. The engine never uninstalls PawnIO, and never asks to install it by itself.
 
 ## Settings
 

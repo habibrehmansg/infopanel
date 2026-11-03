@@ -35,6 +35,17 @@ namespace InfoPanel.Sensors.Libre;
 /// the wait and the failed rounds, and a catalogue it then fails to fetch fails that round's readings. A helper the build
 /// doesn't carry is the same state, logged once.
 /// </para>
+/// <para>
+/// <b>The PawnIO driver.</b> The helper reads the driver's state as it starts and says it in <c>hello</c>; the source's
+/// state follows it (<see cref="StateOf"/>). Given the registry (<c>driverRegistry</c>, on Windows), the sampler reads
+/// the same value itself right before it starts each helper (so a change while the helper starts is one the next read
+/// sees) and then every <see cref="LibreSource.DriverCheckInterval"/> on the source's clock, whatever the settings: when
+/// it differs from what it read before the running helper started (a driver installed, updated or removed outside the
+/// engine), that helper is stopped (the engine asked) and a new one started in the same round, once, with no backoff (it
+/// isn't a failure). <see cref="DriverChanged"/> (an install that finished) does the same at the next round, whatever the
+/// registry says. Either, with no helper running (waiting out a restart's backoff), starts one in that round, the wait
+/// cleared.
+/// </para>
 /// </summary>
 public sealed class LibreSampler : ISensorSampler
 {
@@ -66,7 +77,7 @@ public sealed class LibreSampler : ISensorSampler
     private IObserver? _observer;
 
     private ILibreHelper? _helper;
-    private HelloAnswer? _hello;
+    private volatile HelloAnswer? _hello;
     private volatile LibreCatalogue _catalogue = LibreCatalogue.Empty;
     private long _version;
     private (bool Storage, int Interval) _applied;
@@ -86,6 +97,14 @@ public sealed class LibreSampler : ISensorSampler
     private CancellationTokenSource? _generation;
     private bool _offHeard;
 
+    // The PawnIO driver as the engine reads it (null without a registry, or before the first read), when it was read, and
+    // as it was read right before the running helper (or the last start) started; a restart asked from another thread.
+    private readonly IPawnIoRegistry? _driverRegistry;
+    private volatile PawnIoReading? _driverRead;
+    private long _driverReadAt;
+    private PawnIoReading? _driverAtStart;
+    private int _driverChanged;
+
     // Sensors dropped on purpose (Off; storage off) since the polled source last took them.
     private readonly HashSet<string> _withdrawn = new(StringComparer.Ordinal);
 
@@ -97,9 +116,11 @@ public sealed class LibreSampler : ISensorSampler
     /// <param name="settings">The <c>sources.libre</c> settings now (the settings store's current ones).</param>
     /// <param name="stopping">Cancelled when the source stops: a request in flight ends at once.</param>
     /// <param name="observer">A recording, when one is made.</param>
+    /// <param name="driverRegistry">Where the engine reads the PawnIO driver's version itself (Windows); none elsewhere.</param>
     public LibreSampler(ILibreHelperLauncher launcher, Func<LibreSettings> settings, TimeProvider? time = null, CancellationToken stopping = default,
-        IObserver? observer = null, ILogger? log = null)
+        IObserver? observer = null, ILogger? log = null, IPawnIoRegistry? driverRegistry = null)
     {
+        _driverRegistry = driverRegistry;
         _launcher = launcher;
         _settings = settings;
         _time = time ?? TimeProvider.System;
@@ -127,6 +148,33 @@ public sealed class LibreSampler : ISensorSampler
 
     /// <summary>The helper's hello, while one runs.</summary>
     public HelloAnswer? Hello => _hello;
+
+    /// <summary>
+    /// The PawnIO driver now, from any thread: <c>notLoaded</c> when the running helper says so; else what the engine
+    /// last read from the registry (Windows); else what the running helper said (a recording's); else <c>unknown</c>.
+    /// The version is the registry's, when the engine reads it.
+    /// </summary>
+    public PawnIoReading Driver
+    {
+        get
+        {
+            var hello = _hello;
+            var read = _driverRead;
+            if (hello?.Driver == PawnIoDriver.NotLoaded)
+                return new PawnIoReading(PawnIoDriver.NotLoaded, read?.Version);
+            if (read is not null)
+                return read;
+            return hello?.Driver is PawnIoDriver.Missing or PawnIoDriver.Outdated or PawnIoDriver.Installed
+                ? new PawnIoReading(hello.Driver, null)
+                : new PawnIoReading(PawnIoDriver.Unknown, null);
+        }
+    }
+
+    /// <summary>
+    /// The driver was installed (from any thread): at the next round the registry is read again and the running helper,
+    /// if any, is stopped and a new one started, once, with no backoff.
+    /// </summary>
+    public void DriverChanged() => Interlocked.Exchange(ref _driverChanged, 1);
 
     public IReadOnlyCollection<string> TakeWithdrawn()
     {
@@ -243,6 +291,7 @@ public sealed class LibreSampler : ISensorSampler
         var wanted = _settings();
         if (!wanted.Enabled)
         {
+            CheckDriver();
             TurnOff();
             Fail(samples);
             return;
@@ -252,10 +301,22 @@ public sealed class LibreSampler : ISensorSampler
         if (TakeOffHeard())
             TurnOff();
 
+        // The driver changed since the running helper read it (or an install finished): a new helper reads it, now.
+        var driverChanged = CheckDriver();
+        if (driverChanged is { } why && _helper is not null)
+        {
+            Restart(wanted, why);
+            Fail(samples);
+            return;
+        }
+
         if (_helper is null)
         {
-            // Waiting out a restart's backoff, or the start failed: this round has nothing to read.
-            if (!_waiting || _time.GetElapsedTime(_lostAt) >= _wait)
+            // Waiting out a restart's backoff, or the start failed: this round has nothing to read. A driver that changed
+            // meanwhile clears the wait: a helper starts now, to read it.
+            if (driverChanged is not null && _waiting)
+                _log.Information("Libre: {Why}; the sensor helper is started now, not after its wait", driverChanged);
+            if (driverChanged is not null || !_waiting || _time.GetElapsedTime(_lostAt) >= _wait)
                 Start(wanted);
             Fail(samples);
             return;
@@ -339,6 +400,9 @@ public sealed class LibreSampler : ISensorSampler
     {
         _waiting = false;
         NewGeneration();
+        // The engine's own reading before the helper reads it: a change while it starts differs from this at the next read.
+        // Taken at every start, one that fails too, so a change is acted on once.
+        _driverAtStart = ReadDriver();
         ILibreHelper? helper = null;
         try
         {
@@ -507,8 +571,63 @@ public sealed class LibreSampler : ISensorSampler
             _log.Information("Libre: the sensor helper is restarted in {Wait} s (restart {Restart} in a row): {Why}", _wait.TotalSeconds, _restarts, why);
     }
 
-    private static SourceState StateOf(HelloAnswer? hello) =>
-        hello?.Driver == LibreSource.DriverMissing ? new SourceState(SourceStateKind.Limited, LibreSource.NoDriver) : SourceState.Running;
+    /// <summary>
+    /// The state the helper's hello gives: the driver <c>missing</c> limited · <c>noDriver</c>, <c>outdated</c> limited ·
+    /// <c>driverOutdated</c>, <c>notLoaded</c> limited · <c>driverNotLoaded</c> when the helper runs as administrator and
+    /// · <c>notElevated</c> when it doesn't; anything else (<c>installed</c>, <c>unknown</c>) running.
+    /// </summary>
+    private static SourceState StateOf(HelloAnswer? hello) => hello?.Driver switch
+    {
+        PawnIoDriver.Missing => new SourceState(SourceStateKind.Limited, LibreSource.NoDriver),
+        PawnIoDriver.Outdated => new SourceState(SourceStateKind.Limited, LibreSource.DriverOutdated),
+        PawnIoDriver.NotLoaded => new SourceState(SourceStateKind.Limited, hello.Elevated ? LibreSource.DriverNotLoaded : LibreSource.NotElevated),
+        _ => SourceState.Running,
+    };
+
+    /// <summary>Reads the driver from the registry now (none without one), keeping it as the engine's last reading.</summary>
+    private PawnIoReading? ReadDriver()
+    {
+        if (_driverRegistry is null)
+            return null;
+        var read = PawnIoDriver.Read(_driverRegistry);
+        _driverRead = read;
+        _driverReadAt = _time.GetTimestamp();
+        return read;
+    }
+
+    /// <summary>
+    /// Reads the driver when an install finished or <see cref="LibreSource.DriverCheckInterval"/> passed since the last
+    /// read, and says why the running helper should start again: an install finished, or the driver isn't what it was as
+    /// that helper started. Null for nothing to do.
+    /// </summary>
+    private string? CheckDriver()
+    {
+        if (Interlocked.Exchange(ref _driverChanged, 0) == 1)
+        {
+            ReadDriver();
+            return "the PawnIO driver was installed";
+        }
+
+        if (_driverRegistry is null || (_driverRead is not null && _time.GetElapsedTime(_driverReadAt) < LibreSource.DriverCheckInterval))
+            return null;
+        var read = ReadDriver();
+        return _driverAtStart is { } was && read is not null && read != was
+            ? $"the PawnIO driver changed ({Describe(was)} to {Describe(read)})"
+            : null;
+    }
+
+    private static string Describe(PawnIoReading driver) => driver.Version is { } version ? $"{driver.State} {version}" : driver.State;
+
+    /// <summary>The engine stops the running helper (it asked: not a failure, no backoff) and starts a new one at once.</summary>
+    private void Restart(LibreSettings wanted, string why)
+    {
+        var helper = _helper;
+        _helper = null;
+        _hello = null;
+        Stop(helper);
+        _log.Information("Libre: {Why}; the sensor helper is started again", why);
+        Start(wanted);
+    }
 
     private static void Fail(Span<SensorSample> samples)
     {

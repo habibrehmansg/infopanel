@@ -311,14 +311,20 @@ try
         // the Windows PC's sources in its order, HWiNFO's from the recording, its gadget values with no key (not recorded).
         builder.Services.AddSingleton<ISensorSource>(sp => SensorReplay.CreateHwInfo(recording, sp.GetRequiredService<TimeProvider>()));
         builder.Services.AddSingleton<ISensorSource>(sp => SensorReplay.CreateGadget(sp.GetRequiredService<TimeProvider>()));
-        // Libre's sensor helper as recorded, its settings applied as on the PC, when the recording holds it.
+        // Libre's sensor helper as recorded, its settings applied as on the PC, when the recording holds it; its PawnIO
+        // driver as the recorded helper said, with no installer to run (not this computer).
         if (SensorRecording.HoldsLibre(recording))
-            builder.Services.AddSingleton<ISensorSource>(sp =>
+        {
+            builder.Services.AddSingleton(sp =>
             {
                 var libre = SensorReplay.CreateLibre(recording, () => settings.Current.Settings.Libre, sp.GetRequiredService<TimeProvider>());
                 settings.Changed += _ => libre.SettingsChanged();
                 return libre;
             });
+            builder.Services.AddSingleton<ISensorSource>(sp => sp.GetRequiredService<LibreSource>());
+            builder.Services.AddSingleton(sp => new PawnIoInstaller(PawnIoInstaller.DefaultPath, new ShellPawnIoLauncher(),
+                sp.GetRequiredService<LibreSource>().DriverChanged, supported: false, sp.GetRequiredService<TimeProvider>()));
+        }
     }
     else if (options.Mock)
     {
@@ -344,7 +350,7 @@ try
         builder.Services.AddSingleton<ISensorSource>(sp => HwInfoGadgetSource.CreateWindows(sp.GetRequiredService<TimeProvider>()));
         // LibreHardwareMonitor's sensors, after HWiNFO's (1.4.x's start order): the sensor helper in its own folder beside the engine, started
         // by the source and run by sources.libre.* as they change; --record-sensors records its answers too.
-        builder.Services.AddSingleton<ISensorSource>(sp =>
+        builder.Services.AddSingleton(sp =>
         {
             var time = sp.GetRequiredService<TimeProvider>();
             var recorder = options.RecordSensors is { } folder
@@ -355,6 +361,11 @@ try
             settings.Changed += _ => libre.SettingsChanged();
             return libre;
         });
+        builder.Services.AddSingleton<ISensorSource>(sp => sp.GetRequiredService<LibreSource>());
+        // The PawnIO installer bundled beside the engine (pawnio/PawnIO_setup.exe, its SHA-256 pinned), run only when a
+        // session asks (POST /api/sensors/sources/libre/driver); an install that ends well starts a new sensor helper.
+        builder.Services.AddSingleton(sp => new PawnIoInstaller(PawnIoInstaller.DefaultPath, new ShellPawnIoLauncher(),
+            sp.GetRequiredService<LibreSource>().DriverChanged, supported: true, sp.GetRequiredService<TimeProvider>()));
     }
     // The engine's own sources on every OS (the clock, the drives, the network), outside mock mode and a replay.
     builder.Services.AddBuiltInSources(options);

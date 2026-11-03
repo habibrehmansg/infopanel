@@ -1020,12 +1020,40 @@ export interface SensorSource {
    * Range: ≥ 0.
    */
   sensors: number;
+  /** The Libre source's only (`libre`): the PawnIO driver its sensor helper reads ring0 sensors through (docs/api.md#the-pawnio-driver). */
+  driver?: LibreDriver;
+}
+
+/** The PawnIO driver (docs/api.md#the-pawnio-driver): on the Libre source's entry in GET /api/sensors/sources, and the answer to POST /api/sensors/sources/libre/driver. */
+export interface LibreDriver {
+  /** `missing` (not installed), `outdated` (older than 2.0, which LibreHardwareMonitor needs), `installed`, `notLoaded` (installed, but the sensor helper couldn't open it), `installing` (an install the engine started runs now) or `unknown` (not read: no registry to read, or a sensor helper that doesn't say). A client treats a state it doesn't know as `unknown`. */
+  state: "missing" | "outdated" | "installed" | "notLoaded" | "installing" | "unknown";
+  /**
+   * The installed version as Windows lists it (dotted whole numbers), or null when the engine doesn't read it or none is installed.
+   * Length: ≤ 64.
+   */
+  version: string | null;
+  /**
+   * The version of the PawnIO installer bundled with the engine that POST /api/sensors/sources/libre/driver runs, or null when there is none (not Windows, a replay, or a build without it).
+   * Length: ≤ 64.
+   */
+  installer: string | null;
+  /** How the last install the engine started since it started ended, or null when none has. */
+  lastInstall: LibreDriverInstall | null;
+}
+
+/** How an install of the PawnIO driver ended (docs/api.md#the-pawnio-driver). */
+export interface LibreDriverInstall {
+  /** `installed`; `restartNeeded` (installed, Windows must restart to finish); `declined` (Windows' prompt for administrator rights was declined: nothing changed); `failed`. A client treats an outcome it doesn't know as `failed`. */
+  outcome: "installed" | "restartNeeded" | "declined" | "failed";
+  /** With `failed`: the installer's exit code, when it exited (absent when it couldn't be started). */
+  code?: number;
 }
 
 /** Why a source is in its state (docs/api.md#sensor-sources); absent when there is nothing to say. */
 export interface SensorSourceReason {
   /**
-   * The reason for programs, an open code the source names: HWiNFO's `notRunning`, `sharedMemoryOff` and `stopped`; HWiNFO Gadget's `notSetUp`, `notRunning` and `stopped`; the plugins source's `disabled` (docs/api.md#sensor-sources). A client shows `message` for a code it doesn't know.
+   * The reason for programs, an open code the source names: HWiNFO's `notRunning`, `sharedMemoryOff` and `stopped`; HWiNFO Gadget's `notSetUp`, `notRunning` and `stopped`; Libre's `disabled`, `noDriver`, `driverOutdated`, `driverNotLoaded`, `notElevated` and `helperFailed`; the plugins source's `disabled` (docs/api.md#sensor-sources). A client shows `message` for a code it doesn't know.
    * Pattern: `^[a-z][A-Za-z0-9]{0,63}$`.
    */
   code: string;
@@ -3902,6 +3930,26 @@ export interface ApiOperations {
       401: Problem;
       /** The token lacks the scope the request needs. */
       403: ScopeProblem;
+    };
+  };
+  /**
+   * installLibreDriver: Installs the PawnIO driver from the installer bundled with the engine; Windows asks for administrator rights once.
+   *
+   * docs/api.md#the-pawnio-driver. No body: the engine runs its own installer with fixed arguments.
+   */
+  "POST /api/sensors/sources/libre/driver": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The install started: the driver's state is `installing` until it ends, and its outcome is then the driver's `lastInstall` (GET /api/sensors/sources). */
+      202: LibreDriver;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No install started: one runs already, or the engine has no bundled installer to run (not Windows, a replay, a build without it, or one whose SHA-256 isn't the one the engine pins). */
+      409: Problem;
     };
   };
   /**

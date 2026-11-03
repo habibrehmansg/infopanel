@@ -182,6 +182,24 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
             await Send(failingSession, "POST", "/api/folders/data/open", 500);
         }
 
+        // The PawnIO driver's install, the session token's: none to run on this engine (409); an engine of its own with a
+        // bundled installer starts one (202), run by a fake launcher (nothing is ever run), and refuses a second meanwhile.
+        await Send(session, "POST", "/api/sensors/sources/libre/driver", 409);
+        var pawnIo = Path.Combine(factory.Root, "pawnio", "PawnIO_setup.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(pawnIo)!);
+        File.WriteAllBytes(pawnIo, "MZ a stand-in"u8.ToArray());
+        var pawnIoLauncher = new TourPawnIoLauncher();
+        using (var installing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", Path.Combine(factory.Root, "pawnio-data"))
+                   .ConfigureTestServices(s => s.AddSingleton(new InfoPanel.Sensors.Libre.PawnIoInstaller(pawnIo, pawnIoLauncher, () => { }, supported: true,
+                       sha256: Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(pawnIo))))))))
+        using (var installingSession = installing.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            installingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            Assert.Equal("installing", (await Send(installingSession, "POST", "/api/sensors/sources/libre/driver", 202)).GetProperty("state").GetString());
+            await Send(installingSession, "POST", "/api/sensors/sources/libre/driver", 409);
+            pawnIoLauncher.Exit.TrySetResult(0);
+        }
+
         // The displays, every token's: none where the engine shows no desktop windows (this one); listed by an engine of
         // its own on a fake desktop, then 500 once that desktop fails to list them. No test needs a real display.
         Assert.False((await Send(reader, "GET", "/api/displays", 200)).GetProperty("supported").GetBoolean());
@@ -360,5 +378,24 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         var content = new ByteArrayContent(bytes);
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         return content;
+    }
+}
+
+/// <summary>The tour's stand-in for the shell: a PawnIO installer that "runs" until the tour lets it exit.</summary>
+internal sealed class TourPawnIoLauncher : InfoPanel.Sensors.Libre.IPawnIoLauncher
+{
+    public TaskCompletionSource<int> Exit { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public InfoPanel.Sensors.Libre.IPawnIoProcess? Start(System.Diagnostics.ProcessStartInfo start) => new Process(Exit.Task);
+
+    private sealed class Process(Task<int> exit) : InfoPanel.Sensors.Libre.IPawnIoProcess
+    {
+        public Task WaitForExitAsync(CancellationToken cancel) => exit.WaitAsync(cancel);
+
+        public int ExitCode => exit.Result;
+
+        public void Dispose()
+        {
+        }
     }
 }
