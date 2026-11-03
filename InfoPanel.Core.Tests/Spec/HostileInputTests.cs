@@ -65,43 +65,87 @@ public class HostileInputTests
     /// Runs <paramref name="check"/> on a dedicated background thread with a 1 MiB stack and holds it to
     /// <see cref="MaxAllocated"/> allocated on that thread (independent of load) and to <paramref name="seconds"/> scaled by
     /// the calibration workload's time on the same thread just before (<see cref="Baseline"/>; never below
-    /// <paramref name="seconds"/>), so the time bound measures the check's cost, not the machine's load. A check that
-    /// hasn't finished within <paramref name="joinTimeout"/> (default: ten times <paramref name="seconds"/>, at least 10 s)
-    /// fails the test as a hang; the thread is left behind as a background thread.
+    /// <paramref name="seconds"/>), so the time bound measures the check's cost, not the machine's load. With
+    /// <paramref name="samples"/> over one, the check runs that many times, each after a full collection and its own
+    /// calibration, and the bound holds the median sample (the same work every time, so a slower check moves every sample and the median with them,
+    /// while a busy machine preempts only some); every sample is printed, the slowest last. A sample that hasn't finished
+    /// within <paramref name="joinTimeout"/> of its start (default: ten times <paramref name="seconds"/>, at least 10 s;
+    /// each sample its own, so quick samples never cover a slow one) fails the test as a hang, though it finished before
+    /// the caller looked: the sample's own time counts, not when its signal was taken; the thread is left behind as a
+    /// background thread. <paramref name="afterSample"/> (a test seam) is called by the caller with each sample's index
+    /// once it has taken that sample's signal.
     /// </summary>
-    private static T Bounded<T>(Func<T> check, double seconds = 1, TimeSpan? joinTimeout = null)
+    private static T Bounded<T>(Func<T> check, double seconds = 1, TimeSpan? joinTimeout = null, int samples = 1, Action<int>? afterSample = null)
     {
         T result = default!;
         Exception? error = null;
-        TimeSpan elapsed = default, baseline = default;
+        var runs = new List<(TimeSpan Elapsed, TimeSpan Baseline)>();
+        // Each sample's own start and end on the check's thread, so the caller judges a sample by its time, not by when it looks.
+        var spans = new List<TimeSpan>();
         long allocated = 0;
+        // Released as each sample ends (or the check throws). Not disposed: a hung sample's thread may still release it.
+        var finished = new SemaphoreSlim(0);
         var thread = new Thread(() =>
         {
             try
             {
-                baseline = Baseline();
-                var before = GC.GetAllocatedBytesForCurrentThread();
-                var clock = Stopwatch.StartNew();
-                result = check();
-                elapsed = clock.Elapsed;
-                allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                for (var i = 0; i < samples; i++)
+                {
+                    // Each sample starts with no garbage left from before it (the input's parse, the sample before), which
+                    // it would otherwise collect: a sample's time is then the check's alone.
+                    var begun = Stopwatch.GetTimestamp();
+                    if (samples > 1) GC.Collect();
+                    var baseline = Baseline();
+                    var before = GC.GetAllocatedBytesForCurrentThread();
+                    var clock = Stopwatch.StartNew();
+                    result = check();
+                    var elapsed = clock.Elapsed;
+                    allocated = Math.Max(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+                    var span = Stopwatch.GetElapsedTime(begun);
+                    lock (runs)
+                    {
+                        runs.Add((elapsed, baseline));
+                        spans.Add(span);
+                    }
+                    finished.Release();
+                }
             }
             catch (Exception e)
             {
                 error = e;
+                finished.Release();
             }
         }, maxStackSize: 1 << 20) { IsBackground = true, Name = "hostile input check" };
         thread.Start();
         var timeout = joinTimeout ?? TimeSpan.FromSeconds(Math.Max(10, seconds * 10));
-        if (!thread.Join(timeout))
-            throw new Xunit.Sdk.XunitException($"The check didn't finish within {timeout.TotalMilliseconds:0} ms.");
+        for (var i = 0; i < samples && error is null; i++)
+        {
+            var late = !finished.Wait(timeout);
+            if (!late && error is null)
+            {
+                // The sample's signal may have been waiting for the caller: its own time says whether it was in time.
+                lock (runs) late = spans[i] > timeout;
+            }
+            if (late)
+                throw new Xunit.Sdk.XunitException((samples > 1 ? $"Sample {i + 1} of {samples}" : "The check") +
+                    $" didn't finish within {timeout.TotalMilliseconds:0} ms.");
+            afterSample?.Invoke(i);
+        }
         if (error is not null) throw new Xunit.Sdk.XunitException("The check threw: " + error);
         Assert.True(allocated < MaxAllocated, $"Allocated {allocated >> 20} MiB.");
-        var load = Math.Max(1, baseline / NominalBaseline);
-        var limit = TimeSpan.FromSeconds(seconds * load);
-        Assert.True(elapsed < limit,
-            $"Took {elapsed.TotalMilliseconds:0} ms, {elapsed / baseline:0} baselines of {baseline.TotalMilliseconds:0.0} ms " +
-            $"(limit {seconds / NominalBaseline.TotalSeconds:0} baselines, {limit.TotalMilliseconds:0} ms).");
+        // Each sample against its own limit, as a share of it: the median carries the bound.
+        var shares = runs.Select(r =>
+        {
+            var limit = TimeSpan.FromSeconds(seconds * Math.Max(1, r.Baseline / NominalBaseline));
+            return (Share: r.Elapsed / limit, r.Elapsed, r.Baseline, Limit: limit);
+        }).OrderBy(r => r.Share).ToList();
+        string Describe((double Share, TimeSpan Elapsed, TimeSpan Baseline, TimeSpan Limit) r) =>
+            $"{r.Elapsed.TotalMilliseconds:0} ms, {r.Elapsed / r.Baseline:0} baselines of {r.Baseline.TotalMilliseconds:0.0} ms " +
+            $"(limit {seconds / NominalBaseline.TotalSeconds:0} baselines, {r.Limit.TotalMilliseconds:0} ms)";
+        if (samples > 1)
+            TestContext.Current.TestOutputHelper?.WriteLine($"{samples} samples, slowest last: " + string.Join("; ", shares.Select(Describe)));
+        var median = shares[shares.Count / 2];
+        Assert.True(median.Share < 1, (samples > 1 ? $"The median of {samples} samples took " : "Took ") + Describe(median) + ".");
         return result;
     }
 
@@ -140,6 +184,50 @@ public class HostileInputTests
         {
             release.Set();
         }
+    }
+
+    [Fact]
+    public void Bounded_FailsASampleThatDoesntFinishInItsOwnTimeThoughTheOthersAreQuick()
+    {
+        // Five samples, 1 s each to finish: four take 0.3 s, the last 2.5 s. The whole would fit five deadlines, and the
+        // median is quick; the last sample is a hang all the same, named as one.
+        using var release = new ManualResetEventSlim();
+        try
+        {
+            var calls = 0;
+            var failure = Assert.Throws<Xunit.Sdk.XunitException>(() => Bounded(() =>
+            {
+                if (Interlocked.Increment(ref calls) < 5) Thread.Sleep(300);
+                else release.Wait(TimeSpan.FromSeconds(2.5));
+                return calls;
+            }, joinTimeout: TimeSpan.FromSeconds(1), samples: 5));
+            Assert.Equal("Sample 5 of 5 didn't finish within 1000 ms.", failure.Message);
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [Fact]
+    public void Bounded_FailsASampleThatTookLongerThanItsTimeEvenWhenItsSignalWasWaitingForTheCaller()
+    {
+        // Five samples, 1 s each to finish: the second takes 1.5 s and the others are quick. The caller is held after the
+        // first sample until the check has started its last, as a descheduled caller would be: every signal is queued
+        // when it waits again, and each wait is met at once. The second sample is over its time all the same.
+        var calls = 0;
+        using var started = new ManualResetEventSlim();
+        var failure = Assert.Throws<Xunit.Sdk.XunitException>(() => Bounded(() =>
+        {
+            var call = Interlocked.Increment(ref calls);
+            if (call == 2) Thread.Sleep(1500);
+            if (call == 5) started.Set();
+            return call;
+        }, joinTimeout: TimeSpan.FromSeconds(1), samples: 5, afterSample: i =>
+        {
+            if (i == 0) Assert.True(started.Wait(TimeSpan.FromSeconds(10)), "the check never reached its last sample");
+        }));
+        Assert.Equal("Sample 2 of 5 didn't finish within 1000 ms.", failure.Message);
     }
 
     [Fact]
@@ -301,12 +389,13 @@ public class HostileInputTests
     {
         // 1,000 ops within the limit, each with errors: at most 100 are listed, then one "more".
         var commit = Parse(Repeat("""{"opId": "a", "instance": "i", "baseRev": 0, "ops": [""", """{"op": "setPlacement", "id": "x", "placement": {"x": "a", "y": "b"}}""", "]}", 60_000));
-        var check = Bounded(() => CommitValidator.Check(commit), seconds: 2);
+        // A fixed work timed whole for a few seconds of a busy machine: its bound holds the median of five samples.
+        var check = Bounded(() => CommitValidator.Check(commit), seconds: 2, samples: 5);
         Assert.Equal(101, check.Errors.Count);
         Assert.Equal("more", check.Errors[^1].Code);
 
         var nodes = Parse(Repeat("""{"format": "infopanel.scene/1", "nodes": [""", "1", "]}", 2 << 20));
-        var schemaOnly = Bounded(() => SpecSchemas.Strict.Validate(nodes, SpecSchemas.Scene), seconds: 2);
+        var schemaOnly = Bounded(() => SpecSchemas.Strict.Validate(nodes, SpecSchemas.Scene), seconds: 2, samples: 5);
         Assert.Equal(SchemaSet.MaxErrors + 1, schemaOnly.Errors.Count);
         Assert.Equal("more", schemaOnly.Errors[^1].Keyword);
     }
