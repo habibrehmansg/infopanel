@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Threading.Channels;
 using InfoPanel.Images;
@@ -349,7 +350,7 @@ public sealed class MjpegStreamTests
     // ---- what streams may hold, and for how long -------------------------------------------------------------------
 
     /// <summary>A provider over the rig's server, store and cache with stream limits of the test's own (the rig's own provider stays unused).</summary>
-    private static HttpMediaProvider Limited(Rig rig, int maxStreams = 16, int perItem = 4, long streamBytes = 128L * 1024 * 1024) =>
+    private static HttpMediaProvider Limited(Rig rig, int maxStreams = 16, int perItem = 4, long streamBytes = 128L * 1024 * 1024, ReadShape? reads = null) =>
         new(rig.Cache, rig.Store, new HttpMediaProviderOptions
         {
             Time = rig.Time,
@@ -357,7 +358,62 @@ public sealed class MjpegStreamTests
             MaxStreams = maxStreams,
             MaxStreamsPerItem = perItem,
             StreamBytes = streamBytes,
+            Connect = reads is null
+                ? HttpMediaProvider.ConnectSocketAsync
+                : async (endpoint, token) => new ShapedReads(await HttpMediaProvider.ConnectSocketAsync(endpoint, token), reads),
         });
+
+    /// <summary>How the provider's connections are read: a test sets it, whatever size the server's writes arrive in.</summary>
+    private sealed class ReadShape
+    {
+        /// <summary>The most bytes one read returns.</summary>
+        public volatile int MaxRead = int.MaxValue;
+
+        /// <summary>When set, the next read that gets bytes goes on reading until it holds this many, and returns them in one.</summary>
+        public long Gather;
+    }
+
+    /// <summary>A connection read as its <see cref="ReadShape"/> says; writes pass through.</summary>
+    private sealed class ShapedReads(Stream inner, ReadShape shape) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
+        {
+            var n = await inner.ReadAsync(buffer[..Math.Min(buffer.Length, shape.MaxRead)], token);
+            if (n > 0 && Interlocked.Exchange(ref shape.Gather, 0) is var want and > 0 && want > n)
+            {
+                // The bytes of one write arrive in one read.
+                var take = (int)Math.Min(buffer.Length, want);
+                while (n < take)
+                {
+                    var more = await inner.ReadAsync(buffer[n..take], token);
+                    if (more == 0) break;
+                    n += more;
+                }
+            }
+            return n;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken token) => ReadAsync(buffer.AsMemory(offset, count), token).AsTask();
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, Math.Min(count, shape.MaxRead));
+        public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken token = default) => inner.WriteAsync(buffer, token);
+        public override void Flush() => inner.Flush();
+        public override Task FlushAsync(CancellationToken token) => inner.FlushAsync(token);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) inner.Dispose();
+            base.Dispose(disposing);
+        }
+    }
 
     /// <summary>Completes once <paramref name="count"/> parts of <paramref name="address"/> have been read by <paramref name="provider"/>.</summary>
     private static Task PartsOf(HttpMediaProvider provider, string address, int count = 1)
@@ -661,6 +717,124 @@ public sealed class MjpegStreamTests
         var after = provider.Get(new MediaRequest(c2, 0, MediaPlayback.Loop));
         Assert.Null(after.Sample);
         Assert.Equal(new MediaStatus("media.budget", "The streams are over their budget of 2500 bytes."), after.Status);
+    }
+
+    [Fact]
+    public async Task A_reading_stream_that_is_itself_the_idlest_past_the_budget_closes_without_failing()
+    {
+        // These parts aren't JPEGs: their bytes count all the same.
+        var cam1 = Channel.CreateUnbounded<int>();
+        var cam2 = Channel.CreateUnbounded<int>();
+        var opened = 0;
+        await using var rig = new Rig(async (r, s, t) =>
+        {
+            await LocalHttpServer.Head(s, 200, Multipart);
+            if (r.Path == "/cam1.mjpg" && Interlocked.Increment(ref opened) > 1)
+            {
+                // Opened again: one small part.
+                await Part(s, new byte[100], t);
+                await Task.Delay(Timeout.Infinite, t);
+                return;
+            }
+            await foreach (var size in (r.Path == "/cam1.mjpg" ? cam1 : cam2).Reader.ReadAllAsync(t)) await Part(s, new byte[size], t);
+        });
+        using var provider = Limited(rig, streamBytes: 2500);
+        string c1 = rig.Url("/cam1.mjpg"), c2 = rig.Url("/cam2.mjpg");
+
+        // Both open, each holding a part no tick has taken.
+        var held = Task.WhenAll(PartsOf(provider, c1), PartsOf(provider, c2));
+        Rig.Release(provider.Get(new MediaRequest(c1, 0, MediaPlayback.Loop)));
+        Rig.Release(provider.Get(new MediaRequest(c2, 0, MediaPlayback.Loop)));
+        cam1.Writer.TryWrite(100);
+        cam2.Writer.TryWrite(1000);
+        await held.WaitAsync(Wait, Ct);
+
+        // 3 s on, c2 is asked for and holds a new part; c1, asked for at 0 s, is idle.
+        rig.Time.Advance(TimeSpan.FromSeconds(3));
+        Rig.Release(provider.Get(new MediaRequest(c2, 0, MediaPlayback.Loop)));
+        var newer = PartsOf(provider, c2);
+        cam2.Writer.TryWrite(1000);
+        await newer.WaitAsync(Wait, Ct);
+
+        // c1 reads a part that takes the streams past 2500 bytes. The idle stream asked for longest ago is c1 itself: it
+        // closes as an idle stream does, with no failure, and opens again as soon as a tick asks for it.
+        var closed = AnswerOf(provider, c1);
+        cam1.Writer.TryWrite(2000);
+        await closed.WaitAsync(Wait, Ct);
+        var reopened = PartsOf(provider, c1);
+        var after = provider.Get(new MediaRequest(c1, 0, MediaPlayback.Loop));
+        Assert.Null(after.Sample);
+        Assert.Equal(new MediaStatus("media.loading", "Loading."), after.Status);
+        await reopened.WaitAsync(Wait, Ct);
+        Assert.Equal(2, RequestsFor(rig, "/cam1.mjpg"));
+    }
+
+    [Fact]
+    public async Task A_reading_stream_closed_as_the_idlest_closes_without_failing_though_its_end_comes_in_the_same_read()
+    {
+        // As above, but c1's part past the budget and the stream's closing delimiter come in one write, which the reader
+        // takes in one read whatever size the connection would have delivered it in (the test gathers it): the part is
+        // read whole, and the delimiter after it is already buffered, when the part's charge closes the stream, so no
+        // later read could observe the close.
+        var cam1 = Channel.CreateUnbounded<byte[]>();
+        var cam2 = Channel.CreateUnbounded<int>();
+        var opened = 0;
+        await using var rig = new Rig(async (r, s, t) =>
+        {
+            await LocalHttpServer.Head(s, 200, Multipart);
+            if (r.Path == "/cam1.mjpg")
+            {
+                if (Interlocked.Increment(ref opened) > 1)
+                {
+                    await Part(s, new byte[100], t);
+                    await Task.Delay(Timeout.Infinite, t);
+                    return;
+                }
+                await foreach (var bytes in cam1.Reader.ReadAllAsync(t))
+                {
+                    await s.WriteAsync(bytes, t);
+                    await s.FlushAsync(t);
+                }
+                return;
+            }
+            await foreach (var size in cam2.Reader.ReadAllAsync(t)) await Part(s, new byte[size], t);
+        });
+        static byte[] Raw(int size, bool last)
+        {
+            var head = Encoding.ASCII.GetBytes($"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {size}\r\n\r\n");
+            var tail = Encoding.ASCII.GetBytes(last ? "\r\n--frame--\r\n" : "\r\n");
+            return [.. head, .. new byte[size], .. tail];
+        }
+        var reads = new ReadShape();
+        using var provider = Limited(rig, streamBytes: 2500, reads: reads);
+        string c1 = rig.Url("/cam1.mjpg"), c2 = rig.Url("/cam2.mjpg");
+
+        var held = Task.WhenAll(PartsOf(provider, c1), PartsOf(provider, c2));
+        Rig.Release(provider.Get(new MediaRequest(c1, 0, MediaPlayback.Loop)));
+        Rig.Release(provider.Get(new MediaRequest(c2, 0, MediaPlayback.Loop)));
+        cam1.Writer.TryWrite(Raw(100, last: false));
+        cam2.Writer.TryWrite(1000);
+        await held.WaitAsync(Wait, Ct);
+
+        rig.Time.Advance(TimeSpan.FromSeconds(3));
+        Rig.Release(provider.Get(new MediaRequest(c2, 0, MediaPlayback.Loop)));
+        var newer = PartsOf(provider, c2);
+        cam2.Writer.TryWrite(1000);
+        await newer.WaitAsync(Wait, Ct);
+
+        // c1, the idlest, closes itself reading the part past the budget; the stream's end, read with it, isn't a failure.
+        var closed = AnswerOf(provider, c1);
+        var write = Raw(2000, last: true);
+        Volatile.Write(ref reads.Gather, write.Length);
+        cam1.Writer.TryWrite(write);
+        await closed.WaitAsync(Wait, Ct);
+        Assert.Equal(0, Volatile.Read(ref reads.Gather));
+        var reopened = PartsOf(provider, c1);
+        var after = provider.Get(new MediaRequest(c1, 0, MediaPlayback.Loop));
+        Assert.Null(after.Sample);
+        Assert.Equal(new MediaStatus("media.loading", "Loading."), after.Status);
+        await reopened.WaitAsync(Wait, Ct);
+        Assert.Equal(2, RequestsFor(rig, "/cam1.mjpg"));
     }
 
     [Fact]

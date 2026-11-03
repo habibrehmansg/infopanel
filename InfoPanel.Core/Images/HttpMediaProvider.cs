@@ -740,6 +740,9 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
                 // Each part has the answer's time limit, from the one before.
                 timeout.CancelAfter(_options.AnswerTimeout);
                 var part = await parts.ReadPartAsync(close.Token).ConfigureAwait(false);
+                // Closed for the streams' limits while it read (by its own read past the budget, say): closed as an idle
+                // stream is, though the read finished from what was buffered and no later read would see the close.
+                if (stream.Closed && !token.IsCancellationRequested) return Outcome.ClosedIdle;
                 if (part is null) return Outcome.Failed("media.provider", "The stream ended.");
                 lock (_lock)
                 {
@@ -847,7 +850,9 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     /// <summary>
     /// Counts <paramref name="bytes"/> more of the part <paramref name="stream"/> is reading against the streams' budget
     /// (<see cref="HttpMediaProviderOptions.StreamBytes"/>). Past it, idle streams close, the one asked for longest ago
-    /// first, and the parts they hold go; with none idle left, the reading stream ends (<c>media.budget</c>).
+    /// first, and the parts they hold go: the reading stream among them, which then closes as any idle stream does (no
+    /// failure; <see cref="Outcome.ClosedIdle"/>, as soon as its read returns or is cancelled). With none idle left, the
+    /// reading stream ends (<c>media.budget</c>).
     /// </summary>
     private void Charge(Fetcher fetcher, OpenStream stream, long bytes)
     {
@@ -861,10 +866,12 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
                 var max = _options.StreamBytes;
                 while (_streamBytes + bytes > max)
                 {
-                    var holding = _fetchers.Values.Where(f => f != fetcher && (f.PartBytes > 0 || f.Open is { Reading: > 0 }));
+                    var holding = _fetchers.Values.Where(f => f == fetcher || f.PartBytes > 0 || f.Open is { Reading: > 0 });
                     if (Idlest(holding, Now()) is not { } idle)
                         throw new MultipartStream.Problem("media.budget", $"The streams are over their budget of {max} bytes.");
                     CloseStream(idle, ref closed);
+                    // The reader itself was the idlest: closed, it counts nothing more.
+                    if (idle == fetcher) return;
                 }
                 _streamBytes += bytes;
                 stream.Reading += bytes;
