@@ -764,6 +764,64 @@ public sealed class MjpegStreamTests
     }
 
     [Fact]
+    public async Task Every_ask_of_a_tick_shows_what_its_first_ask_was_answered_even_once_a_decode_finishes_between_them()
+    {
+        var parts = Channel.CreateUnbounded<byte[]>();
+        await using var rig = new Rig(async (r, s, t) =>
+        {
+            await LocalHttpServer.Head(s, 200, Multipart);
+            await foreach (var part in parts.Reader.ReadAllAsync(t)) await Part(s, part, t);
+        }, synchronous: false);
+        var url = rig.Url("/video.mjpg");
+        var red = FetchedMediaStore.KeyOf(Red);
+        object item = new();
+        ProvidedMedia Ask(MediaTick tick, double seconds, MediaPlayback playback) =>
+            rig.Provider.Get(new MediaRequest(url, seconds, playback), new MediaAsk(tick, item));
+
+        Task Decoded()
+        {
+            var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Handler(string h)
+            {
+                if (h != red) return;
+                rig.Cache.FrameDecoded -= Handler;
+                done.TrySetResult();
+            }
+            rig.Cache.FrameDecoded += Handler;
+            return done.Task;
+        }
+
+        var first = Parts(rig, url, 1);
+        parts.Writer.TryWrite(Red);
+        Rig.Release(Ask(new MediaTick(), 0, MediaPlayback.Loop));
+        await first.WaitAsync(Wait, Ct);
+        var decoded = Decoded();
+        Rig.Release(Ask(new MediaTick(), 0, MediaPlayback.Loop));
+        await decoded.WaitAsync(Wait, Ct);
+        var shown = Ask(new MediaTick(), 0, MediaPlayback.Loop);
+        Assert.Equal("red", Colour(shown.Sample));
+        Rig.Release(shown);
+
+        // The cache drops the picture's frame (as its budget may), its bytes stay. A tick's first ask finds no frame and
+        // the decode starts; it finishes before a second node of the tick, with another time and playback, asks.
+        rig.Cache.Forget(red);
+        var tick = new MediaTick();
+        var again = Decoded();
+        var placeholder = Ask(tick, 0, MediaPlayback.Loop);
+        Assert.Null(placeholder.Sample);
+        Assert.Equal("media.loading", placeholder.Status?.Code);
+        await again.WaitAsync(Wait, Ct);
+        var second = Ask(tick, 1.5, MediaPlayback.Once);
+        Assert.Null(second.Sample);
+        Assert.Equal(placeholder.Status, second.Status);
+
+        // The next tick shows the picture.
+        var next = Ask(new MediaTick(), 0, MediaPlayback.Loop);
+        Assert.Equal("red", Colour(next.Sample));
+        Rig.Release(next);
+    }
+
+    [Fact]
     public async Task A_camera_that_answers_only_requests_accepting_a_stream_is_shown()
     {
         await using var rig = new Rig(async (r, s, t) =>

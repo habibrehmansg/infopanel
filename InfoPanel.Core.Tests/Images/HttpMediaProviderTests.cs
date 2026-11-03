@@ -626,6 +626,89 @@ public sealed class HttpMediaProviderTests
         Assert.Equal(shown, times.Select(At));
     }
 
+    [Fact]
+    public async Task Asks_of_a_tick_at_one_time_and_playback_show_one_frame_though_its_decode_finishes_between_them()
+    {
+        // blink.gif: three frames of 0.2 s. Decoding on the cache's worker, as the engine does.
+        var gif = File.ReadAllBytes(Path.Combine(SceneKit.ExamplesDir, "media", "valid", "blink.gif"));
+        await using var rig = new Rig((r, s, t) => r.Path == "/red.png" ? LocalHttpServer.Answer(s, 200, Red, "image/png") : LocalHttpServer.Answer(s, 200, gif, "image/gif"), synchronous: false);
+        var url = rig.Url("/blink.gif");
+        var key = FetchedMediaStore.KeyOf(gif);
+        object a = new(), b = new();
+        ProvidedMedia Ask(MediaTick tick, object who, double seconds) =>
+            rig.Provider.Get(new MediaRequest(url, seconds, MediaPlayback.Loop), new MediaAsk(tick, who));
+        Task Decoded()
+        {
+            var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Handler(string h)
+            {
+                if (h != key) return;
+                rig.Cache.FrameDecoded -= Handler;
+                done.TrySetResult();
+            }
+            rig.Cache.FrameDecoded += Handler;
+            return done.Task;
+        }
+
+        // Fetched, then shown at 0 s: frames 0 and 1 are decoded (a decode takes the frame after too), frame 2 isn't.
+        var answered = rig.NextAnswer(url);
+        Rig.Release(Ask(new MediaTick(), a, 0));
+        await answered.WaitAsync(Wait, Ct);
+        var decoded = Decoded();
+        Rig.Release(Ask(new MediaTick(), a, 0));
+        await decoded.WaitAsync(Wait, Ct);
+        var shown = Ask(new MediaTick(), a, 0);
+        Assert.NotNull(shown.Sample);
+        Rig.Release(shown);
+
+        // The cache's one decode worker is held on another picture, so frame 2's decode waits in its queue until the test
+        // lets it go: it can't finish before the first ask has read the frame standing in.
+        var other = rig.Url("/red.png");
+        var otherKey = FetchedMediaStore.KeyOf(Red);
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        rig.Cache.HoldingDecodeLock = h =>
+        {
+            if (h != otherKey) return;
+            held.TrySetResult();
+            release.Wait(Wait);
+        };
+
+        // A tick at 0.45 s (frame 2): the first item is answered a decoded frame standing in while frame 2 waits to
+        // decode. The decode finishes before a second item asks at the same time and playback: it is answered the
+        // same frame.
+        var tick = new MediaTick();
+        var again = Decoded();
+        ProvidedMedia first;
+        try
+        {
+            // Fetched, then asked for once more as the fetch's answer is: its decode holds the worker.
+            Rig.Release(await rig.Fetch(other));
+            await held.Task.WaitAsync(Wait, Ct);
+            first = Ask(tick, a, 0.45);
+            Assert.NotNull(first.Sample);
+        }
+        finally
+        {
+            release.Set();
+        }
+        await again.WaitAsync(Wait, Ct);
+        var exact = rig.Cache.Get(key, 0.45, MediaPlayback.Loop);
+        Assert.NotNull(exact.Sample);
+        Assert.NotSame(first.Sample, exact.Sample);
+        var second = Ask(tick, b, 0.45);
+        Assert.Same(first.Sample, second.Sample);
+        Assert.Equal(first.Status, second.Status);
+        Rig.Release(second);
+        Rig.Release(first);
+
+        // The next tick shows frame 2.
+        var next = Ask(new MediaTick(), b, 0.45);
+        Assert.Same(exact.Sample, next.Sample);
+        Rig.Release(next);
+        exact.Sample.Release();
+    }
+
     // ---- what is sent ----------------------------------------------------------------------------------------------
 
     [Fact]

@@ -219,7 +219,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         MediaStatus? status;
         (byte[] Part, long Fetch)? part = null;
         var chose = false;
-        string? chosen = null;
+        Choice? chosen = null;
         List<Fetcher>? dropped = null;
         List<OpenStream>? closed = null;
         try
@@ -266,25 +266,36 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
             CancelClosed(closed);
         }
 
-        if (chose) return Chosen(fetcher, chosen, request);
+        if (chose && chosen is not null) return Chosen(chosen, request);
         var answer = Present(fetcher, request, part, key, pending, status, out var shown);
-        if (tick is not null && request.Live) tick.Show(fetcher, shown);
+        // What this ask was answered, a picture or none: every later ask of the tick shows the same.
+        if (tick is not null && request.Live)
+            tick.Show(fetcher, new Choice(shown, answer.Sample, answer.Status, request.Seconds, request.Playback));
         return answer;
     }
 
     /// <summary>
-    /// The media <paramref name="chosen"/> for the fetcher earlier in the tick, at this ask's time and playback: nothing is
-    /// taken, decoded anew or replaced.
+    /// What the tick's first live ask for the fetcher was answered (<paramref name="chosen"/>), at this ask's time and
+    /// playback: nothing is taken, decoded anew or replaced. No picture then is none now, though a decode finished
+    /// meanwhile; a picture then is its media's frame at this ask's time, else that same picture; and a time and playback
+    /// the tick answered already are answered the same picture, though a frame decoded meanwhile. The status is the first
+    /// ask's.
     /// </summary>
-    private ProvidedMedia Chosen(Fetcher fetcher, string? chosen, in MediaRequest request)
+    private ProvidedMedia Chosen(Choice chosen, in MediaRequest request)
     {
-        MediaStatus? status;
-        lock (_lock) status = fetcher.Status;
-        if (chosen is null) return new ProvidedMedia(null, status ?? new MediaStatus("media.loading", "Loading."));
-        var lookup = _cache.Get(chosen, request.Seconds, request.Playback);
-        return lookup.Sample is { } sample
-            ? new ProvidedMedia(sample, status)
-            : new ProvidedMedia(null, status ?? new MediaStatus("media.loading", "Decoding."));
+        if (chosen.Sample is not { } first || chosen.Key is not { } key) return new ProvidedMedia(null, chosen.Status);
+        var at = (request.Seconds, request.Playback);
+        lock (chosen.Answers)
+        {
+            // A picture let go for good meanwhile (no tick holds it) is looked up again.
+            if (chosen.Answers.TryGetValue(at, out var answered) && answered?.Retain() is { } same)
+                return new ProvidedMedia(same, chosen.Status);
+            var sample = _cache.Get(key, request.Seconds, request.Playback).Sample ?? first.Retain();
+            chosen.Answers[at] = sample;
+            return sample is not null
+                ? new ProvidedMedia(sample, chosen.Status)
+                : new ProvidedMedia(null, chosen.Status ?? new MediaStatus("media.loading", "Decoding."));
+        }
     }
 
     /// <summary>
@@ -1096,6 +1107,20 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     private readonly record struct Validators(string? ETag, DateTimeOffset? LastModified)
     {
         public bool Any => ETag is not null || LastModified is not null;
+    }
+
+    /// <summary>
+    /// A tick's first live answer for a fetcher: the media shown (<see cref="Key"/>, null for none), the picture answered
+    /// (null for none: still decoding, or nothing to show) and the status; and the picture the tick answered at each time
+    /// and playback asked (<see cref="Answers"/>, under its own lock), so asks alike are answered alike. The pictures
+    /// aren't held: a later ask retains one only while its first holder still does.
+    /// </summary>
+    private sealed class Choice(string? key, MediaSample? sample, MediaStatus? status, double seconds, MediaPlayback playback)
+    {
+        public readonly string? Key = key;
+        public readonly MediaSample? Sample = sample;
+        public readonly MediaStatus? Status = status;
+        public readonly Dictionary<(double Seconds, MediaPlayback Playback), MediaSample?> Answers = new() { [(seconds, playback)] = sample };
     }
 
     private sealed record Outcome(byte[]? Bytes, bool NotModified, Validators Validators, MediaStatus? Status, bool Closed = false)
