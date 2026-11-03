@@ -137,6 +137,9 @@ internal sealed class VideoStream : IDisposable
 
         /// <summary>The generation of its last submission (the loop).</summary>
         public int LastGeneration = -1;
+
+        /// <summary>The times frames had left video as it started (<see cref="VideoStream._leaves"/>).</summary>
+        public int LeavesBefore;
         public bool Dead;
         public string? Failure;
         public bool FailureGivesUp;
@@ -182,8 +185,13 @@ internal sealed class VideoStream : IDisposable
     private volatile bool _lastRouteVideo;
     private volatile bool _refreshAsked;
 
-    // Set by the render thread as frames leave video, taken by the loop (which retires the session).
+    // Set by the render thread as frames leave video (Left), and as they go back to it before the loop took the flag
+    // (Returned); taken by the loop, which retires the session the frames left: one that started before they left.
     private int _leftVideo;
+    private const int Left = 1, Returned = 2;
+
+    // The times frames have left video: counted by the render thread, read by the loop as a session starts.
+    private int _leaves;
 
     // Any thread.
     private volatile int _fps;
@@ -282,6 +290,7 @@ internal sealed class VideoStream : IDisposable
             // ended): frames wait for the next session from here, not from the end of the retirement.
             if (Volatile.Read(ref _leftVideo) != 0 || _retiring)
                 OpenEpisode();
+            Interlocked.CompareExchange(ref _leftVideo, Returned, Left);
             if (EpisodePng(seq))
             {
                 _lastRouteVideo = false;
@@ -303,7 +312,8 @@ internal sealed class VideoStream : IDisposable
             // encoder); video resumes in a new session, with a keyframe.
             _routedVideo = false;
             NewGeneration();
-            Volatile.Write(ref _leftVideo, 1);
+            Interlocked.Increment(ref _leaves);
+            Volatile.Write(ref _leftVideo, Left);
             Kick();
         }
 
@@ -659,13 +669,19 @@ internal sealed class VideoStream : IDisposable
     private async Task StepAsync()
     {
         // The one retirement without an episode, with the end of the stream: its frames are PNG already. A frame that goes
-        // back to video during it opens one (Route), so the retirement is marked before the flag is taken.
-        if (Volatile.Read(ref _leftVideo) != 0)
+        // back to video during it opens one (Route), so the retirement is marked before the flag is taken. A session that
+        // started after the frames left, which they have gone back to since, isn't the one they left (that one was being
+        // retired as they left, or none had started): the flag is let go, unless they leave again meanwhile.
+        if (Volatile.Read(ref _leftVideo) is var left and not 0)
         {
-            _retiring = _session != null;
-            Interlocked.Exchange(ref _leftVideo, 0);
-            if (_session is { } left)
-                await RetireAsync(left, "the frames are PNG now");
+            var cameBackTo = left == Returned && _session is { } current && current.LeavesBefore == Volatile.Read(ref _leaves);
+            if (!cameBackTo || Interlocked.CompareExchange(ref _leftVideo, 0, Returned) != Returned)
+            {
+                _retiring = _session != null;
+                Interlocked.Exchange(ref _leftVideo, 0);
+                if (_session is { } leftBehind)
+                    await RetireAsync(leftBehind, "the frames are PNG now");
+            }
         }
 
         var now = _time.GetTimestamp();
@@ -1013,7 +1029,7 @@ internal sealed class VideoStream : IDisposable
                     }
                 }
 
-                var session = new Session(backend, i, width, height) { Fps = _fps };
+                var session = new Session(backend, i, width, height) { Fps = _fps, LeavesBefore = Volatile.Read(ref _leaves) };
                 try
                 {
                     var bitrate = backend.Kind == H264Kind.Hardware ? HardwareBitrate : SoftwareBitrate;

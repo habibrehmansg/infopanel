@@ -1184,6 +1184,67 @@ public class VideoStreamTests
     }
 
     [Fact]
+    public async Task FramesLeavingVideoAndBack_DuringASizeChangesRetirement_StartOneSessionForTheNewSize()
+    {
+        using var h = new Harness();
+        h.Hardware.Configure = s => s.Wedged = h.Hardware.Sessions.Count == 0;
+        Assert.Null(h.Frame());
+        await Eventually(() => h.Stream.Queued == 1, "the first keyframe");
+        h.Take();
+        h.Sent.Clear();
+        var old = h.Hardware.Last;
+
+        Assert.Null(h.Frame(80, 48));
+        await Eventually(() => old.Aborted && h.Stream.Waiting, "the new size retires the session");
+        // During its 1.9 s teardown an oversized frame leaves video, and 0.1 s later frames go back to it at the new size:
+        // the session the frames left is the one being retired, so leaving retires nothing more.
+        h.Time.Advance(TimeSpan.FromSeconds(0.1));
+        Assert.Equal(VideoStream.Size, h.Frame(VideoStream.MaxSide + 1, H));
+        h.Time.Advance(TimeSpan.FromSeconds(0.1));
+        Assert.Null(h.Frame(80, 48));
+        await h.Play(TimeSpan.FromSeconds(1.9), width: 80, height: 48, take: false);
+        old.Unwedge();
+        await h.Play(TimeSpan.FromSeconds(2.5), width: 80, height: 48);
+        await Eventually(() =>
+        {
+            h.Take();
+            return !h.Stream.Waiting && h.Sent.Count > 0;
+        }, "the new size's session cuts over");
+
+        Assert.Equal(2, h.Hardware.Starts);
+        Assert.False(h.Hardware.Last.Aborted, "the new size's session goes on");
+        AssertCutOver(h);
+        Assert.Equal(80, h.Sent[0].Header.PixelWidth);
+    }
+
+    [Fact]
+    public async Task FramesLeavingVideo_DuringASizeChangesRetirement_AndStayingPng_HoldNoEncoder()
+    {
+        using var h = new Harness();
+        h.Hardware.Configure = s => s.Wedged = h.Hardware.Sessions.Count == 0;
+        Assert.Null(h.Frame());
+        await Eventually(() => h.Stream.Queued == 1, "the first keyframe");
+        h.Take();
+        var old = h.Hardware.Last;
+
+        Assert.Null(h.Frame(80, 48));
+        await Eventually(() => old.Aborted && h.Stream.Waiting, "the new size retires the session");
+        // During its teardown the frames leave video and stay PNG: a session started after the teardown for the frame
+        // that waited is retired too.
+        h.Time.Advance(TimeSpan.FromSeconds(0.1));
+        Assert.Equal(VideoStream.Size, h.Frame(VideoStream.MaxSide + 1, H));
+        old.Unwedge();
+        await Eventually(() =>
+        {
+            Assert.Equal(VideoStream.Size, h.Frame(VideoStream.MaxSide + 1, H));
+            return h.Hardware.Starts == 2 && h.Hardware.Sessions.All(s => s.Aborted);
+        }, "the session started after the teardown is retired", h.Time);
+        await Settle();
+        Assert.All(h.Hardware.Sessions, s => Assert.True(s.Aborted));
+        Assert.Equal(0, h.Stream.InFlight);
+    }
+
+    [Fact]
     public async Task ANormalStart_AndASizeChange_SendNoPngFrame()
     {
         using var firstStart = new Gate();
