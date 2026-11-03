@@ -132,10 +132,17 @@ public sealed class NetworkSourceTests : IDisposable
         }
     }
 
+    /// <summary>Runs <see cref="_writing"/> as each event is written: a slow log sink advances the clock there.</summary>
+    private sealed class WritingSink(NetworkSourceTests tests) : Serilog.Core.ILogEventSink
+    {
+        public void Emit(LogEvent logEvent) => tests._writing?.Invoke(logEvent);
+    }
+
     private readonly ManualTimeProvider _time = new(new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.Zero));
     private readonly FakeLister _lister = new();
     private readonly StubHandler _handler = new();
     private readonly List<LogEvent> _events = [];
+    private Action<LogEvent>? _writing;
     private NetworkSource? _source;
 
     public void Dispose() => _source?.Dispose();
@@ -143,7 +150,8 @@ public sealed class NetworkSourceTests : IDisposable
     /// <summary>The source over the fake lister, with a lookup over the stub unless <paramref name="offline"/>, discovered and polled once.</summary>
     private NetworkSource Open(bool offline = false, TimeProvider? time = null)
     {
-        var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(_events)).CreateLogger();
+        var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(_events))
+            .WriteTo.Sink(new WritingSink(this)).CreateLogger();
         _source = new NetworkSource(_lister, offline ? null : new PublicIpLookup(_handler, _time, log), time ?? _time, log: log);
         _source.Polled.Open();
         return _source;
@@ -656,6 +664,45 @@ public sealed class NetworkSourceTests : IDisposable
         _lister.During = () => _time.Advance(TimeSpan.FromSeconds(40));
         Round();
         _lister.During = null;
+        Assert.Equal(SensorStatus.Live, Status("br010"));
+        Assert.Equal("First", Text("br010", "name"));
+
+        // Gone from t=55: stale with the owner's readings up to 30 s after t=50, then unavailable, never the other's.
+        _lister.Interfaces.Remove(first);
+        for (var i = 0; i < 6; i++)
+        {
+            Round();
+            Assert.Equal(SensorStatus.Stale, Status("br010"));
+            Assert.Equal("First", Text("br010", "name"));
+        }
+
+        Round();
+        Assert.Equal(SensorStatus.Unavailable, Status("br010"));
+
+        // The hold (35 s from t=50) over, the other takes the interface id as an interface appearing does.
+        Round(2);
+        Assert.Equal(SensorStatus.Live, Status("br010"));
+        Assert.Equal("Second", Text("br010", "name"));
+    }
+
+    [Fact]
+    public void TwoInterfacesWithOneId_AfterASlowClashWarning_TheOwnersRemoval_StillGoesStaleThenUnavailable_BeforeTheOtherTakesIt()
+    {
+        var first = Add("br0.10", "First");
+        Open();
+        Round();
+
+        // The other appears in a round whose clash warning takes 40 s to write: started at t=10, its readings published
+        // at t=50.
+        Add("br010", "Second");
+        _writing = e =>
+        {
+            if (e.RenderMessage().Contains("of another interface", StringComparison.Ordinal))
+                _time.Advance(TimeSpan.FromSeconds(40));
+        };
+        Round();
+        _writing = null;
+        Assert.Equal(1, Warnings("of another interface"));
         Assert.Equal(SensorStatus.Live, Status("br010"));
         Assert.Equal("First", Text("br010", "name"));
 

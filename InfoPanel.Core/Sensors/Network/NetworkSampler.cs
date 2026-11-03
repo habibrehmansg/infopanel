@@ -35,7 +35,7 @@ namespace InfoPanel.Sensors.Network;
 /// An interface id belongs to the interface (by its system id) that took it first: while the system lists that one
 /// (its read failing included), however late a round comes, and, once it has gone, until its readings have run out
 /// (stale, then unavailable: <see cref="OwnerHold"/>, counted from the end of the last round that read it, when its
-/// readings were published, not from when that round began); another interface whose id makes the same one is left out
+/// readings were published, after the round's warnings were written, not from when that round began); another interface whose id makes the same one is left out
 /// (logged once while it stands), whatever the order the system lists them in, and takes it only after that, as an
 /// interface appearing does. A speed that turns unknown after a good read is unavailable at once
 /// (<see cref="SampleOutcome.Unavailable"/>, committed with the round's other readings), not the last speed gone stale.
@@ -303,8 +303,8 @@ public sealed class NetworkSampler : ISensorSampler
             candidates.Add((id, ni));
         }
 
-        // The interfaces are read: this round's readings are published as it ends, so the holds count from here, not
-        // from when the round began (a slow listing would otherwise eat into a gone owner's hold).
+        // The interfaces are read: whether a gone owner's hold is over is judged from here, not from when the round
+        // began (a slow listing would otherwise eat into it).
         var observed = _time.GetTimestamp();
         // Every system id listed this round, an interface whose read failed included: an owner listed keeps its id.
         var present = new HashSet<string>(failing, StringComparer.Ordinal);
@@ -331,11 +331,15 @@ public sealed class NetworkSampler : ISensorSampler
                 _log.Warning("Network: the interface {Interface} has the interface id '{Container}' of another interface, which keeps it, and is left out", ni.Texts[0], ni.Container);
         }
 
+        // The round's blocking work is done (a clash's warning is written synchronously, and a slow log sink can take
+        // seconds): its readings are published as it ends, so the owners' holds are renewed from now, not from before
+        // the warnings.
+        var published = _time.GetTimestamp();
         foreach (var (id, ni) in listed)
-            _owners[ni.Container] = new Owner(id, observed);
+            _owners[ni.Container] = new Owner(id, published);
         foreach (var (container, owner) in _owners.ToArray())
         {
-            if (Released(owner, present, observed))
+            if (Released(owner, present, published))
                 _owners.Remove(container);
         }
 
