@@ -98,8 +98,9 @@ public sealed class ToolArguments
         _objects = objects;
     }
 
+    /// <param name="given">Members given another way (a design's scene and box): not required among the arguments.</param>
     /// <exception cref="ToolFailure">The arguments don't fit the schema.</exception>
-    public static ToolArguments Check(string tool, JsonObject schema, JsonElement arguments)
+    public static ToolArguments Check(string tool, JsonObject schema, JsonElement arguments, IReadOnlyList<string>? given = null)
     {
         var problems = new List<string>();
         var objects = new Dictionary<string, JsonNode>(StringComparer.Ordinal);
@@ -159,7 +160,7 @@ public sealed class ToolArguments
 
             foreach (var required in schema["required"]!.AsArray().Select(r => r!.GetValue<string>()))
             {
-                if (!arguments.TryGetProperty(required, out _))
+                if (given?.Contains(required) != true && !arguments.TryGetProperty(required, out _))
                     problems.Add($"'{required}' is required");
             }
         }

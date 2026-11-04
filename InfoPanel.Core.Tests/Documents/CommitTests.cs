@@ -678,6 +678,84 @@ public sealed class CommitTests
         Assert.Equal(3, doc.Ok(current).Rev);
     }
 
+    public static TheoryData<string> CheckCases() =>
+        ["applies", "replay", "opIdReused", "instance", "expired", "baseRevFuture", "conflict", "invalid", "notJson"];
+
+    /// <summary>
+    /// <see cref="ProfileDocument.Check"/> is the commit's own validation, applying nothing: on the same bytes against the
+    /// same document it refuses exactly as the commit then does (the same status and codes: a reused opId, another
+    /// instance, an expired retry, a baseRev newer than the document, a conflict, an invalid op, a body that isn't JSON),
+    /// and passes exactly where the commit answers 200 (applied, or replayed). It changes nothing: not the revision, the
+    /// history, nor the opIds remembered.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(CheckCases))]
+    public void A_check_refuses_exactly_as_the_commit_then_does_and_changes_nothing(string which)
+    {
+        var options = Options();
+        using var doc = Sample(new ProfileDocumentOptions
+        {
+            Instance = options.Instance, Time = options.Time, HistoryBudget = options.HistoryBudget, Persistence = options.Persistence,
+            RememberedOps = 2,
+        });
+        string body;
+        switch (which)
+        {
+            case "applies":
+                body = Commit(1, "fresh", null, Place("a", 5, 5)).GetRawText();
+                break;
+            case "replay":
+                body = Commit(1, "once", null, Place("a", 5, 5)).GetRawText();
+                Assert.NotNull(doc.Commit(Encoding.UTF8.GetBytes(body)).Result);
+                break;
+            case "opIdReused":
+                doc.Ok(Commit(1, "once", null, Place("a", 5, 5)));
+                body = Commit(2, "once", null, Place("b", 5, 5)).GetRawText();
+                break;
+            case "instance":
+                body = Element(new JsonObject { ["opId"] = "o", ["instance"] = "an-older-run", ["baseRev"] = 1, ["ops"] = new JsonArray(Place("a", 3, 3)) }).GetRawText();
+                break;
+            case "expired":
+                // As the retry window's test: c1 is forgotten once two more are remembered, and its retry (based on 1) is
+                // older than the window.
+                var c1 = Commit(1, "c1", null, Place("a", 20, 20));
+                doc.Ok(c1);
+                doc.Ok(Commit(2, "c2", null, Place("a", 20, 20)));
+                doc.Ok(Commit(2, "c3", null, Place("a", 30, 30)));
+                body = c1.GetRawText();
+                break;
+            case "baseRevFuture":
+                body = Commit(2, "ahead", null, Place("a", 5, 5)).GetRawText();
+                break;
+            case "conflict":
+                doc.Ok(Commit(1, "first", null, Design("a", Rect("#00ff00"))));
+                body = Commit(1, "stale", null, Design("a", Rect("#0000ff"), baseRev: 1)).GetRawText();
+                break;
+            case "invalid":
+                body = Commit(1, "bad", null, Design("a", InvalidScene())).GetRawText();
+                break;
+            default:
+                body = "{\"opId\": ";
+                break;
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(body);
+        var before = (doc.Rev, doc.HistorySize.Undo, SpecJson.Write(doc.Current.Document).GetRawText());
+        var check = doc.Check(bytes);
+        Assert.Equal(before, (doc.Rev, doc.HistorySize.Undo, SpecJson.Write(doc.Current.Document).GetRawText()));
+
+        var commit = doc.Commit(bytes);
+        Assert.Equal(Verdict(commit), check is null ? "200" : Verdict(check));
+        Assert.Equal(which == "replay", commit.Result?.Replayed ?? false);
+        Assert.Equal(which is "applies" or "replay" ? "200" : "refused", Verdict(commit) == "200" ? "200" : "refused");
+
+        static string Verdict(CommitOutcome o) =>
+            o.Result is not null ? "200"
+            : o.Invalid is { } invalid ? $"422 {string.Join(" ", invalid.Errors.Select(e => $"{e.Code}@{e.Path}"))}"
+            : o.Expired is { } expired ? $"409 {expired.Code}"
+            : $"409 {string.Join(" ", o.Conflict!.Conflicts.Select(c => $"{c.Reason}:{c.Op}:{c.Id}"))}";
+    }
+
     [Fact]
     public void A_retry_is_the_whole_body_byte_for_byte_whitespace_around_it_included()
     {

@@ -297,8 +297,10 @@ public sealed class RelayTimeTests
         await using var rig = await StartAsync(tools);
         var peer = await rig.ConnectAsync();
 
-        // Sent "10 minutes from now" on the relay's clock: not late, and its deadline is still 60 s, not 11 minutes.
+        // Sent "10 minutes from now" on the relay's clock: not late, and its deadline is still 60 s, not 11 minutes. Its
+        // sentAt contradicts the reading, so the engine reads the relay's clock again, which still says now.
         await peer.SendAsync(rig.Call("ahead", "add_item", sentAt: rig.Clocks.RelayNow + 600_000));
+        await peer.AnswerTimeAsync(rig.Clocks.RelayNow, Ct);
         var ahead = await CutoffOf(tools);
         rig.Clocks.Advance(TimeSpan.FromSeconds(59));
         Assert.False(ahead.IsTripped);
@@ -308,6 +310,131 @@ public sealed class RelayTimeTests
 
         tools.Hold.SetResult();
         await peer.ExpectAsync("result", Ct);
+    }
+
+    [Fact]
+    public async Task ACallsDeadline_ShortensItsTime_ButNeverExtendsItPastSentAtAnd60s()
+    {
+        var tools = new FakeToolHost { Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        await using var rig = await StartAsync(tools);
+        var peer = await rig.ConnectAsync();
+
+        // A deadline 20 s after it was sent: the call's change has 20 s, not 60.
+        var shortened = rig.Call("shortened", "add_item");
+        shortened["deadline"] = rig.Clocks.RelayNow + 20_000;
+        await peer.SendAsync(shortened);
+        var early = await CutoffOf(tools);
+        rig.Clocks.Advance(TimeSpan.FromSeconds(19));
+        Assert.False(early.IsTripped);
+        rig.Clocks.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(early.IsTripped);
+        Assert.Equal("deadline", early.Reason);
+
+        // One 10 minutes after it was sent, 5 s before it arrived: what is left of sentAt + 60 s, 55 s, not 60 or 10
+        // minutes.
+        var later = rig.Call("later", "add_item", sentAt: rig.Clocks.RelayNow - 5000);
+        later["deadline"] = rig.Clocks.RelayNow - 5000 + 600_000;
+        await peer.SendAsync(later);
+        var extended = await CutoffOf(tools);
+        rig.Clocks.Advance(TimeSpan.FromSeconds(54));
+        Assert.False(extended.IsTripped);
+        rig.Clocks.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(extended.IsTripped);
+
+        // One already past as it arrives: no time at all for a change, though a read may still answer.
+        var passed = rig.Call("passed", "add_item", sentAt: rig.Clocks.RelayNow - 3000);
+        passed["deadline"] = rig.Clocks.RelayNow - 1000;
+        await peer.SendAsync(passed);
+        await peer.AnswerTimeAsync(rig.Clocks.RelayNow, Ct);
+        Assert.True((await CutoffOf(tools)).IsTripped);
+
+        tools.Hold.SetResult();
+        for (var i = 0; i < 3; i++)
+            await peer.ExpectAsync("result", Ct);
+    }
+
+    [Fact]
+    public async Task ACallsShortenedDeadline_HoldsWhenOnlyTheRelaysClockMoved()
+    {
+        var tools = new FakeToolHost { Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        await using var rig = await StartAsync(tools);
+        var peer = await rig.ConnectAsync();
+
+        // The relay's clock stepped 60 s ahead of the reading still in use: a call sent then, with a deadline 20 s after
+        // it was sent, has 20 s, not the 60 its timestamps would give on the reading. Its sentAt contradicts the reading,
+        // so the engine reads the relay's clock again; the relay answers with the clock the reading had: still 20 s.
+        var sentAt = rig.Clocks.RelayNow + 60_000;
+        var stepped = rig.Call("stepped", "add_item", sentAt: sentAt);
+        stepped["deadline"] = sentAt + 20_000;
+        await peer.SendAsync(stepped);
+        await peer.AnswerTimeAsync(rig.Clocks.RelayNow, Ct);
+        var cutoff = await CutoffOf(tools);
+        rig.Clocks.Advance(TimeSpan.FromSeconds(19));
+        Assert.False(cutoff.IsTripped);
+        rig.Clocks.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(cutoff.IsTripped);
+        Assert.Equal("deadline", cutoff.Reason);
+
+        tools.Hold.SetResult();
+        await peer.ExpectAsync("result", Ct);
+    }
+
+    /// <summary>
+    /// The relay's clock stepped 60 s ahead of the reading the engine holds, and the call took 5 s to arrive: its
+    /// <c>sentAt</c> is ahead of the relay's clock by that reading, which it contradicts, so the engine reads the relay's
+    /// clock again and the call gets what is left of its absolute cutoff on it: 15 s of a deadline 20 s after it was sent,
+    /// 55 s of <c>sentAt</c> + 60 s; never the 20 or 60 s the stale reading would give.
+    /// </summary>
+    [Theory]
+    [InlineData(20_000, 15)]
+    [InlineData(null, 55)]
+    public async Task ACallWhoseSentAtContradictsTheReading_ReadsTheRelaysClockAgain_AndKeepsItsAbsoluteCutoffPastADeliveryDelay(int? deadline, int left)
+    {
+        var tools = new FakeToolHost { Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        await using var rig = await StartAsync(tools);
+        var peer = await rig.ConnectAsync();
+
+        // From here on the relay's clock is 60 s ahead of the reading; the call is sent, and arrives 5 s later.
+        const long Stepped = 60_000;
+        var sentAt = rig.Clocks.RelayNow + Stepped;
+        var call = rig.Call("delayed", "add_item", sentAt: sentAt);
+        if (deadline is { } span)
+            call["deadline"] = sentAt + span;
+        rig.Clocks.Advance(TimeSpan.FromSeconds(5));
+        await peer.SendAsync(call);
+        await peer.AnswerTimeAsync(rig.Clocks.RelayNow + Stepped, Ct);
+
+        var cutoff = await CutoffOf(tools);
+        rig.Clocks.Advance(TimeSpan.FromSeconds(left - 1));
+        Assert.False(cutoff.IsTripped);
+        rig.Clocks.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(cutoff.IsTripped);
+        Assert.Equal("deadline", cutoff.Reason);
+
+        tools.Hold.SetResult();
+        await peer.ExpectAsync("result", Ct);
+    }
+
+    [Fact]
+    public async Task ACallsDesignAndFiles_ReachTheToolHostInItsContext()
+    {
+        await using var rig = await StartAsync();
+        var peer = await rig.ConnectAsync();
+        var call = rig.Call("d", "add_item", new JsonObject { ["profile"] = "P" });
+        call["design"] = JsonNode.Parse("""{"source":{"format":"example.widget/1","data":{},"deps":[]},"scene":{"format":"infopanel.scene/1"}}""");
+        call["files"] = new JsonArray("one");
+        await peer.SendAsync(call);
+        await peer.ExpectAsync("result", Ct);
+        var context = rig.FakeTools!.Calls.Single().Context;
+        Assert.Equal(call["design"]!.ToJsonString(), context.Design!.Value.GetRawText());
+        Assert.Equal(["one"], context.Files);
+
+        // A call without them has neither.
+        await peer.SendAsync(rig.Call("plain", "list_profiles"));
+        await peer.ExpectAsync("result", Ct);
+        var plain = rig.FakeTools.Calls.Single(c => c.Context.Id == "plain").Context;
+        Assert.Null(plain.Design);
+        Assert.Null(plain.Files);
     }
 
     [Theory]

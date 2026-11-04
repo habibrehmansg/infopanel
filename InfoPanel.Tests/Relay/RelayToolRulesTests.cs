@@ -260,7 +260,7 @@ public sealed class RelayToolRulesTests
         Assert.Null(Assert.IsType<InfoPanel.Spec.SceneItem>(Assert.Single(document.Current.Document.Items)).Bindings);
     }
 
-    private static JsonObject WebImageScene(string address) => new()
+    internal static JsonObject WebImageScene(string address) => new()
     {
         ["format"] = "infopanel.scene/1",
         ["requires"] = new JsonArray("media.provider"),
@@ -402,7 +402,7 @@ public sealed class RelayToolRulesTests
     }
 
     /// <summary>A test engine's tool host, reached through a recorder of what each relay call answered.</summary>
-    private sealed class Engine
+    internal sealed class Engine
     {
         private readonly EngineFactory _factory;
 

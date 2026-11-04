@@ -67,6 +67,64 @@ public sealed class PinnedItem(string wanted)
     }
 }
 
+/// <summary>
+/// A profile a tool names, found once (<see cref="ProfileNames.Find"/>) and carried to the commit, never looked up by its
+/// name again: the document object (so its instance: a profile deleted and created again under its id is another
+/// document, and a commit names its document's instance), and, for a change that must not land in a profile renamed
+/// away meanwhile (<see cref="Find"/>'s <c>holdName</c>) when it was found by its name, the revision of that name, which
+/// every rename stamps anew, a rename back included (<see cref="ProfileDocument.ProfileName"/>). <see cref="IsStill"/>
+/// checks both; every check before a write and every commit attempt asks it under the document's lock
+/// (<see cref="ProfileChanges.Apply(string, FoundProfile, McpCall, Func{DocumentState, JsonArray}, Action?)"/>).
+/// </summary>
+public sealed class FoundProfile
+{
+    private FoundProfile(ProfileDocument document, string given, long? nameRev)
+    {
+        Document = document;
+        Given = given;
+        Instance = document.Instance;
+        NameRev = nameRev;
+    }
+
+    public ProfileDocument Document { get; }
+
+    /// <summary>The profile as the tool's arguments name it.</summary>
+    public string Given { get; }
+
+    /// <summary>The document's instance when it was found.</summary>
+    public string Instance { get; }
+
+    /// <summary>The revision of the name it was found by; null when renames don't matter (found by id, or not held by name).</summary>
+    public long? NameRev { get; }
+
+    /// <param name="holdName">Whether a rename of the profile, once found by its name, refuses the change.</param>
+    /// <exception cref="ToolFailure">As <see cref="ProfileNames.Find"/>; <c>notFound</c> when it was renamed away as it was found.</exception>
+    public static FoundProfile Find(Workspace workspace, string given, bool holdName)
+    {
+        var document = ProfileNames.Find(workspace, given);
+        if (!holdName || document.Id == given)
+            return new FoundProfile(document, given, null);
+        // The name and its revision read together: a rename between the list and this read is seen here.
+        var (name, rev) = document.ProfileName;
+        if (name != given)
+            throw ProfileChanges.Renamed(given);
+        return new FoundProfile(document, given, rev);
+    }
+
+    /// <summary>
+    /// Refuses unless the document is still the profile found: the same instance, and, when its name is held, no rename
+    /// since. (A document deleted since is disposed, which a commit sees under its lock as it starts.)
+    /// </summary>
+    /// <exception cref="ToolFailure"><c>notFound</c>: replaced, or renamed.</exception>
+    public void IsStill()
+    {
+        if (Document.Instance != Instance)
+            throw ProfileChanges.Replaced(Given);
+        if (NameRev is { } rev && Document.ProfileName.Rev != rev)
+            throw ProfileChanges.Renamed(Given);
+    }
+}
+
 /// <summary>A change a tool made: the document, the profile's name, the commit's result and what became of the save.</summary>
 public sealed record ToolChange(ProfileDocument Document, string Name, CommitResult Result, bool Changed, string Saving);
 
@@ -87,7 +145,7 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
     public Workspace Workspace => workspace;
 
     /// <summary>A test seam: the host's step hook (<see cref="McpToolHost.StepHook"/>).</summary>
-    private void Step(string step) => hook()?.Invoke(step);
+    public void Step(string step) => hook()?.Invoke(step);
 
     /// <summary>
     /// Every write a tool makes passes here just before it is made (a commit, on every attempt; a profile created; a
@@ -101,12 +159,30 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
         Step("locking");
     }
 
+    /// <summary>A change to the profile <paramref name="profile"/> names, found once (renames don't refuse it).</summary>
     /// <exception cref="ToolFailure">The profile isn't there or can't be opened, the ops can't be built, the engine refused them, or a conflict twice.</exception>
     /// <exception cref="ChangeCutOffException">A call from elsewhere whose cutoff tripped before a commit: nothing was changed.</exception>
-    public ToolChange Apply(string tool, string profile, McpCall call, Func<DocumentState, JsonArray> build)
+    public ToolChange Apply(string tool, string profile, McpCall call, Func<DocumentState, JsonArray> build) =>
+        Apply(tool, FoundProfile.Find(workspace, profile, holdName: false), call, build, null);
+
+    /// <summary>
+    /// A change to <paramref name="found"/>'s document, never to one found again by its name: every check before a write
+    /// and every commit attempt asks, under the document's lock, that it is still the profile found
+    /// (<see cref="FoundProfile.IsStill"/>), else the call is refused (<c>notFound</c>) with nothing changed.
+    /// </summary>
+    /// <exception cref="ToolFailure">The profile was replaced or renamed, the ops can't be built, the engine refused them, or a conflict twice.</exception>
+    /// <exception cref="ChangeCutOffException">A call from elsewhere whose cutoff tripped before a commit: nothing was changed.</exception>
+    /// <remarks>
+    /// <paramref name="beforeWrites"/>, when given, runs once, before the first commit: only once the ops are built and
+    /// the document would take them as it is now (<see cref="ProfileDocument.Check"/>, the commit's own checks): a
+    /// conflict there reads again and rebuilds, as a commit's does, and any other refusal is the call's error, with
+    /// nothing written. A design's files are stored there, so a refused insertion leaves none stored.
+    /// </remarks>
+    public ToolChange Apply(string tool, FoundProfile found, McpCall call, Func<DocumentState, JsonArray> build, Action? beforeWrites)
     {
-        // Found once: a retry rebuilds on this document, never on one found again by its name.
-        var document = ProfileNames.Find(workspace, profile);
+        var (document, profile) = (found.Document, found.Given);
+        void Identity(Document _) => found.IsStill();
+        var stored = beforeWrites is null;
         for (var attempt = 0; ; attempt++)
         {
             if (attempt > 0)
@@ -130,15 +206,36 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
                     ["baseRev"] = state.Generation.Rev,
                     ["ops"] = ops,
                 };
-                BeforeWrite();
-                // Under the commit's lock, on the document as the commit finds it: the cutoff, and for a call from
-                // elsewhere the web-image rule (a design changed since the read can't slip a binding change past it).
-                outcome = document.Commit(Encoding.UTF8.GetBytes(body.ToJsonString()), current =>
+                var bytes = Encoding.UTF8.GetBytes(body.ToJsonString());
+                // Until beforeWrites has run, every attempt is first checked as its commit would be, changing nothing
+                // (the profile still the one found included): any refusal stands for the commit's, so a conflict reads
+                // again and rebuilds and anything else is the call's error, before anything is stored.
+                var refused = stored ? null : document.Check(bytes, Identity);
+                if (refused is not null)
                 {
-                    call.BeforeWrite();
-                    if (call.FromElsewhere)
-                        RefuseWebImages(current, ops);
-                }, out wasClean);
+                    outcome = refused;
+                    wasClean = false;
+                }
+                else
+                {
+                    if (!stored)
+                    {
+                        beforeWrites!();
+                        stored = true;
+                    }
+
+                    BeforeWrite();
+                    // Under the commit's lock, on the document as the commit finds it, on every attempt: the profile still
+                    // the one found, the cutoff, and for a call from elsewhere the web-image rule (a design changed since
+                    // the read can't slip a binding change past it).
+                    outcome = document.Commit(bytes, current =>
+                    {
+                        Identity(current);
+                        call.BeforeWrite();
+                        if (call.FromElsewhere)
+                            RefuseWebImages(current, ops);
+                    }, out wasClean);
+                }
             }
             catch (ObjectDisposedException)
             {
@@ -208,8 +305,11 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
     private static ToolFailure Gone(string profile) =>
         new("notFound", $"There's no profile {profile} any more (notFound). list_profiles names them.");
 
-    private static ToolFailure Replaced(string profile) =>
+    internal static ToolFailure Replaced(string profile) =>
         new("notFound", $"The profile {profile} was deleted or replaced while I worked (notFound): nothing was changed. list_profiles names the profiles now.");
+
+    internal static ToolFailure Renamed(string profile) =>
+        new("notFound", $"The profile {profile} was renamed while I worked (notFound): nothing was changed. list_profiles names the profiles now.");
 
     /// <summary>The engine's 422 as a tool's error: each problem's path (as the tool's arguments name it), code and message.</summary>
     public static ToolFailure Refused(string tool, IReadOnlyList<ValidationErrorBody> errors)
@@ -368,7 +468,22 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
     {
         string? id = null;
         var group = arguments.String("group") is { } wantedGroup ? new PinnedItem(wantedGroup) : null;
-        var change = changes.Apply(Name, arguments.String("profile")!, arguments.Call, state =>
+        // A design from elsewhere (docs/2.0/relay.md, "Designs"): the profile found, then every file and dependency checked,
+        // then the insertion built and checked against the profile, before anything is stored; then its files stored, each
+        // behind the cutoff, and the item committed to the profile first found (refused if it was replaced or renamed away
+        // meanwhile), behind the cutoff too.
+        var design = arguments.Call.Design;
+        // Found once, before anything else: the change goes to this document, a design's only while the name still names
+        // it (a rename away and back included).
+        var profile = FoundProfile.Find(changes.Workspace, arguments.String("profile")!, holdName: design is not null);
+        IReadOnlyList<byte[]>? files = null;
+        if (design is not null)
+        {
+            files = Designs.Preflight(changes.Workspace, [design], arguments.Call.Files);
+            changes.Step("preflight");
+        }
+
+        var change = changes.Apply(Name, profile, arguments.Call, state =>
         {
             id = ProfileChanges.NewItemId(state.Document);
             var item = new JsonObject
@@ -379,7 +494,13 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
             };
             if (arguments.String("name") is { } name)
                 item["name"] = name;
-            if (arguments.Has("width") || arguments.Has("height"))
+            if (design is not null)
+            {
+                // As the design gives them: its box, scene, source and origin.
+                if (design["layout"] is { } layout)
+                    item["layout"] = layout.DeepClone();
+            }
+            else if (arguments.Has("width") || arguments.Has("height"))
             {
                 var layout = new JsonObject();
                 if (arguments.Double("width") is { } lw)
@@ -390,7 +511,17 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
             }
             if (arguments.Object("bindings") is { } bindings)
                 item["bindings"] = ProfileChanges.Bindings(bindings);
-            item["scene"] = arguments.Object("scene");
+            if (design is not null)
+            {
+                item["scene"] = design["scene"]!.DeepClone();
+                item["source"] = design["source"]!.DeepClone();
+                if (design["origin"] is { } origin)
+                    item["origin"] = origin.DeepClone();
+            }
+            else
+            {
+                item["scene"] = arguments.Object("scene");
+            }
 
             var op = new JsonObject { ["op"] = "insert", ["item"] = item };
             if (group != null)
@@ -403,7 +534,7 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
             if (arguments.Integer("index") is { } index)
                 op["index"] = index;
             return [op];
-        });
+        }, files is null ? null : () => Designs.Store(changes, arguments.Call, files));
 
         var label = arguments.String("name") is { } n ? $"\"{n}\" ({id})" : id;
         return Task.FromResult(ToolResult.Text(

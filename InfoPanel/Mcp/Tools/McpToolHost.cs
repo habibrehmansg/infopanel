@@ -31,6 +31,9 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
         "create_profile", "add_item", "update_item", "remove_item", "add_asset", "show_on_desktop",
     ];
 
+    /// <summary>The tools a call from elsewhere may bring a design to (docs/2.0/relay.md, "Designs").</summary>
+    public static IReadOnlyList<string> DesignTools { get; } = ["add_item"];
+
     private readonly IReadOnlyDictionary<string, McpTool> _tools;
     private readonly McpText _text;
     private readonly ILogger _logger;
@@ -58,7 +61,8 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
     public McpText Text => _text;
 
     /// <summary>
-    /// A test seam: called on the calling thread at each step of a change (<c>read</c> once the document is read,
+    /// A test seam: called on the calling thread at each step of a change (<c>preflight</c> once a design's files and
+    /// deps are checked, before anything is built or stored; <c>read</c> once the document is read,
     /// <c>write</c> and then <c>locking</c> just before a write goes to take its lock, <c>retry</c> after a conflict,
     /// before it reads again, <c>committed</c> once the commit applied, before the save), so a test can slip another
     /// client's change, or a cutoff, in between.
@@ -139,7 +143,19 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
         {
             try
             {
-                result = await found.CallAsync(ToolArguments.Check(tool, found.InputSchema, arguments).For(call), ct).ConfigureAwait(false);
+                // A design comes only from elsewhere (McpCall.Elsewhere), and only to a tool that takes one; it stands for
+                // the arguments it gives (the scene and box), which the relay's frame left out.
+                if (call.BringsDesign && !DesignTools.Contains(tool))
+                {
+                    throw new ToolFailure("design",
+                        $"{tool} doesn't take a design (design): only {string.Join(", ", DesignTools)} does. Nothing was stored or changed.");
+                }
+                // Files are a design's: without one, none are checked or stored, so the call is refused before it runs.
+                if (call.Design is null && call.Files is { Count: > 0 })
+                    throw new ToolFailure("design", "Files come only with a design (design): this call brought files and no design. Nothing was stored or changed.");
+
+                var given = call.Design is null ? null : RelayFrames.DesignGives;
+                result = await found.CallAsync(ToolArguments.Check(tool, found.InputSchema, arguments, given).For(call), ct).ConfigureAwait(false);
             }
             catch (ToolFailure failure)
             {

@@ -16,7 +16,7 @@ isn't running. Nothing goes over the network, unless AI apps elsewhere is turned
 | `render_preview` | read | A profile drawn as a PNG, `width` pixels wide (the profile's, at most 1,200), and the checks on the same tick (below), of the profile as it is now (the live frame's tick when it shows the newest change; what the live output holds back over the process budget is held back here too) |
 | `get_design_guide` | read | The guide's topics (built-in: `scenes`, the scene format in short), palettes and examples, from the text folder |
 | `create_profile` | edit | An empty profile (`name`, `width`, `height`, `background`), stored and saved at once |
-| `add_item` | edit | An item drawing a `scene`, at `x`, `y`, with an optional box (`width`, `height`), `name`, `bindings`, `group`, `index` |
+| `add_item` | edit | An item drawing a `scene`, at `x`, `y`, with an optional box (`width`, `height`), `name`, `bindings`, `group`, `index`; from elsewhere, a design the service produced may stand for the scene and box ([relay.md](relay.md#designs)) |
 | `update_item` | edit | Any of an item's `x`, `y`, `rotation`, `width`, `height`, `scene`, `bindings`, `name`, `visible`; the rest stays |
 | `remove_item` | edit | An item, a group with everything in it |
 | `add_asset` | edit | An SVG stored as a blob: its asset id and size, for a scene's `media` node; nothing stored when it isn't an SVG the engine shows |
@@ -169,5 +169,8 @@ never used as paths.
   session's powers.
 - **AI apps elsewhere.** With the `service.aiApps` setting on, the same tools also answer AI apps elsewhere, through one
   connection the engine opens to the configured service, under the engine's own rules: only the tools, a cutoff before
-  every write, late calls refused, web images refused for now, text held to what the app takes, and log lines marked
-  "from elsewhere" ([relay.md](relay.md)).
+  every write (bounded by the call's own deadline, never past 60 s after it was sent), late calls refused, web images
+  refused for now, text held to what the app takes, and log lines marked "from elsewhere" ([relay.md](relay.md)). A
+  call to `add_item` from elsewhere may bring a design the service produced, with the files its source needs: every file
+  and dependency is checked before anything is stored, so a refused design leaves nothing behind
+  ([relay.md](relay.md#designs)).

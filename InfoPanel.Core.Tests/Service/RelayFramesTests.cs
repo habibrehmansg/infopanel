@@ -94,6 +94,72 @@ public sealed class RelayFramesTests
     }
 
     [Fact]
+    public void TheHello_ListsTheFeatures_Design()
+    {
+        var hello = RelayFrames.Hello("2.0.1");
+        Assert.Equal("""{"type":"hello","protocol":1,"engineVersion":"2.0.1","features":["design"]}""", hello.ToJsonString());
+    }
+
+    [Fact]
+    public void ACallsDeadline_IsRead_AndOneThatIsntATime_IsMalformed()
+    {
+        Assert.Null(Assert.IsType<RelayFrame.Call>(Read("""{"type":"call","id":"c","tool":"t","sentAt":5}""")).Deadline);
+        Assert.Null(Assert.IsType<RelayFrame.Call>(Read("""{"type":"call","id":"c","tool":"t","sentAt":5,"deadline":null}""")).Deadline);
+        Assert.Equal(20_005, Assert.IsType<RelayFrame.Call>(Read("""{"type":"call","id":"c","tool":"t","sentAt":5,"deadline":20005}""")).Deadline);
+        // Before sentAt is a time too: the call's change then has none left.
+        Assert.Equal(1, Assert.IsType<RelayFrame.Call>(Read("""{"type":"call","id":"c","tool":"t","sentAt":5,"deadline":1}""")).Deadline);
+        foreach (var deadline in new[] { "0", "-1", "1.5", "\"soon\"", "[]", "253402300800000", "9223372036854775807" })
+            Assert.Equal(new RelayFrame.Refused("malformed", "c"), Read($$"""{"type":"call","id":"c","tool":"t","sentAt":5,"deadline":{{deadline}}}"""));
+    }
+
+    [Fact]
+    public void ACallsDesignAndFiles_AreRead()
+    {
+        var call = Assert.IsType<RelayFrame.Call>(Read("""
+            {"type":"call","id":"c","tool":"add_item","arguments":{"profile":"P","x":5},"sentAt":5,"deadline":9,
+             "files":["one","two"],
+             "design":{"layout":{"w":10},"source":{"format":"example.widget/1","data":{},"deps":[]},"scene":{"format":"infopanel.scene/1"},"origin":{"kind":"local"}}}
+            """));
+        Assert.Equal(["one", "two"], call.Files);
+        Assert.Equal("""{"layout":{"w":10},"source":{"format":"example.widget/1","data":{},"deps":[]},"scene":{"format":"infopanel.scene/1"},"origin":{"kind":"local"}}""",
+            call.Design!.Value.GetRawText());
+        Assert.Equal(9, call.Deadline);
+
+        // Neither: a call as before. Null is absent.
+        var plain = Assert.IsType<RelayFrame.Call>(Read("""{"type":"call","id":"c","tool":"t","sentAt":5,"design":null,"files":null}"""));
+        Assert.Null(plain.Design);
+        Assert.Null(plain.Files);
+
+        // Only layout and origin may be left out.
+        var bare = Assert.IsType<RelayFrame.Call>(Read("""{"type":"call","id":"c","tool":"add_item","sentAt":5,"design":{"source":{"ref":"r"},"scene":{}}}"""));
+        Assert.Equal("""{"source":{"ref":"r"},"scene":{}}""", bare.Design!.Value.GetRawText());
+    }
+
+    [Theory]
+    [InlineData("""{"design":[]}""")]
+    [InlineData("""{"design":"x"}""")]
+    [InlineData("""{"design":{"scene":{}}}""")]
+    [InlineData("""{"design":{"source":{}}}""")]
+    [InlineData("""{"design":{"source":[],"scene":{}}}""")]
+    [InlineData("""{"design":{"source":{},"scene":"x"}}""")]
+    [InlineData("""{"design":{"source":{},"scene":{},"layout":5}}""")]
+    [InlineData("""{"design":{"source":{},"scene":{},"origin":"local"}}""")]
+    [InlineData("""{"files":"x","design":{"source":{},"scene":{}}}""")]
+    [InlineData("""{"files":["x",1],"design":{"source":{},"scene":{}}}""")]
+    [InlineData("""{"files":{},"design":{"source":{},"scene":{}}}""")]
+    // A design is the item's scene and box: the arguments don't give them too.
+    [InlineData("""{"arguments":{"scene":{}},"design":{"source":{},"scene":{}}}""")]
+    [InlineData("""{"arguments":{"width":10},"design":{"source":{},"scene":{}}}""")]
+    [InlineData("""{"arguments":{"height":10},"design":{"source":{},"scene":{}}}""")]
+    public void ADesignOrFilesNotAsTheyMustBe_IsMalformed(string members)
+    {
+        var frame = System.Text.Json.Nodes.JsonNode.Parse("""{"type":"call","id":"c","tool":"add_item","sentAt":5}""")!.AsObject();
+        foreach (var (name, value) in System.Text.Json.Nodes.JsonNode.Parse(members)!.AsObject())
+            frame[name] = value?.DeepClone();
+        Assert.Equal(new RelayFrame.Refused("malformed", "c"), Read(frame.ToJsonString()));
+    }
+
+    [Fact]
     public void AReading_CountsOnlyWithin2sOnBothClocks()
     {
         var time = new ManualTimeProvider(new DateTimeOffset(2026, 11, 4, 0, 0, 0, TimeSpan.Zero));

@@ -1,0 +1,34 @@
+{
+  "about": "Frames of the connection AI apps elsewhere use (docs/2.0/relay.md), one of each the engine sends and the relay sends, as the engine writes and reads them. RelayFrameFixtureTests holds the engine to them; a relay can parse them with its own schemas.",
+  "engine": {
+    "hello": { "type": "hello", "protocol": 1, "engineVersion": "2.0.1", "features": ["design"] },
+    "time": { "type": "time", "nonce": "AAAAAAAAAAAAAAAAAAAAAA" },
+    "result": { "type": "result", "id": "c1", "result": { "content": [{ "type": "text", "text": "Added \"Gauge\" (ai-0123456789) to Overview at 10, 20. Saved." }], "isError": false } },
+    "late": { "type": "late", "id": "c1" },
+    "cancelled": { "type": "cancelled", "id": "c1" },
+    "error": { "type": "error", "code": "malformed", "id": "c1" },
+    "bye": { "type": "bye" }
+  },
+  "relay": {
+    "welcome": { "type": "welcome" },
+    "time": { "type": "time", "nonce": "AAAAAAAAAAAAAAAAAAAAAA", "now": 1762214400000 },
+    "call": { "type": "call", "id": "c1", "tool": "list_profiles", "arguments": {}, "sentAt": 1762214400000, "deadline": 1762214460000, "maxChars": 140000 },
+    "callWithDesign": {
+      "type": "call",
+      "id": "c2",
+      "tool": "add_item",
+      "arguments": { "profile": "Overview", "x": 10, "y": 20, "name": "Gauge", "bindings": { "v": "plugin:/infopanel.mock/cpu/cpu-load" } },
+      "sentAt": 1762214400000,
+      "deadline": 1762214445000,
+      "maxChars": 140000,
+      "files": ["{\"package\":\"example.widget\",\"version\":\"1.0.0\"}"],
+      "design": {
+        "layout": { "w": 120, "h": 40 },
+        "source": { "format": "example.widget/1", "data": { "colour": "#ff8800" }, "deps": ["sha256:88226416b4bb8baa201e8d28b3b9eb72a4e8743b4bd7f53d15d7665d92f8368a"] },
+        "scene": { "format": "infopanel.scene/1", "inputs": { "v": { "type": "number" } }, "nodes": [{ "kind": "rect", "w": { "op": "input", "name": "v" }, "h": 10, "fill": "#ff8800" }] },
+        "origin": { "kind": "local" }
+      }
+    },
+    "cancel": { "type": "cancel", "id": "c2" }
+  }
+}

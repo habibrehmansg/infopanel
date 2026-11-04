@@ -250,6 +250,20 @@ public sealed class ProfileDocument : IDisposable
     public long Rev => _current.Rev;
 
     /// <summary>
+    /// The profile's name and the revision at which it last changed, read together: every rename stamps a new one (an
+    /// undo, redo or revert that renames, and a rename back, included), so equal revisions mean no rename came between.
+    /// Safe under the document's lock too (a commit's guard reads it there).
+    /// </summary>
+    public (string Name, long Rev) ProfileName
+    {
+        get
+        {
+            lock (_lock)
+                return (_current.Document.Profile.Name, _revisions.FieldRev(ProfileField.Name));
+        }
+    }
+
+    /// <summary>
     /// When the unsaved changes restored at open (<see cref="Restore"/>) were kept, from the restore until the first
     /// save or revert; null otherwise. A client shows it only while the document is dirty.
     /// </summary>
@@ -529,19 +543,9 @@ public sealed class ProfileDocument : IDisposable
     public CommitOutcome Commit(ReadOnlyMemory<byte> body, Action<Document>? guard, out bool wasClean)
     {
         wasClean = false;
-        var limits = _options.Limits;
-        if (body.Length > limits.CommitBytes) return Invalid([DocumentValidator.Over("", "commitBytes", body.Length, limits.CommitBytes)], "Invalid commit");
-        JsonDocument json;
-        try
-        {
-            json = JsonDocument.Parse(body, BodyOptions);
-        }
-        catch (JsonException ex)
-        {
-            return Invalid([new SpecError("", "json", $"The body isn't JSON: {ex.Message}")], "Invalid commit");
-        }
+        if (Read(body, out var json) is { } unreadable) return unreadable;
         // The request read from the body holds copies of its JSON values, so nothing refers to the document afterwards.
-        using (json) return Commit(json.RootElement, body.Span, guard, out wasClean);
+        using (json) return Commit(json!.RootElement, body.Span, guard, out wasClean);
     }
 
     /// <summary>
@@ -556,11 +560,104 @@ public sealed class ProfileDocument : IDisposable
     /// </summary>
     public CommitOutcome Commit(JsonElement body) => Commit(body, JsonMarshal.GetRawUtf8Value(body), null, out _);
 
+    /// <summary>
+    /// Checks a commit body as <see cref="Commit(ReadOnlyMemory{byte}, Action{Document}?, out bool)"/> would meet it now,
+    /// applying and recording nothing: the same reading of the body and the same checks under the lock, in the same
+    /// order (<see cref="Validate"/>, which the commit runs too: <paramref name="guard"/>, the <c>opId</c>, the
+    /// <c>instance</c>, the retry window, every <c>baseRev</c>, the ops on a tentative copy). Answers the refusal the
+    /// commit would answer (422 or 409), or null where it would answer 200 (applied, or replayed). A check, not a
+    /// promise: a later commit meets the document as it then is, and is checked again.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The document was disposed (its profile deleted).</exception>
+    public CommitOutcome? Check(ReadOnlyMemory<byte> body, Action<Document>? guard = null)
+    {
+        if (Read(body, out var json) is { } unreadable) return unreadable;
+        using (json)
+        {
+            if (Prepare(json!.RootElement, body.Span, out var refused) is not { } prepared) return refused;
+            using (Locks.Enter(_lock, WaitingForLock))
+                return Validate(prepared, guard, out _, out _);
+        }
+    }
+
+    /// <summary>A commit body's size, then its JSON: the refusal (422 <c>commitBytes</c> or <c>json</c>), else null and the JSON.</summary>
+    private CommitOutcome? Read(ReadOnlyMemory<byte> body, out JsonDocument? json)
+    {
+        json = null;
+        var limits = _options.Limits;
+        if (body.Length > limits.CommitBytes) return Invalid([DocumentValidator.Over("", "commitBytes", body.Length, limits.CommitBytes)], "Invalid commit");
+        try
+        {
+            json = JsonDocument.Parse(body, BodyOptions);
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            return Invalid([new SpecError("", "json", $"The body isn't JSON: {ex.Message}")], "Invalid commit");
+        }
+    }
+
+    /// <summary>The body checked on its own, outside the lock (422): the prepared commit, or null and the refusal.</summary>
+    private PreparedCommit? Prepare(JsonElement body, ReadOnlySpan<byte> bytes, out CommitOutcome? refused)
+    {
+        var prepared = CommitApplier.Prepare(body, bytes, _options.Limits, _options.Support, out var errors);
+        refused = prepared is null ? Invalid(errors, "Invalid commit") : null;
+        return prepared;
+    }
+
+    /// <summary>
+    /// Every check a commit makes under the lock before it changes anything, on the document as it is, changing nothing:
+    /// <paramref name="guard"/> (what it throws stops the commit), the <c>opId</c> (a retry of the same body answers
+    /// <paramref name="replayed"/>, the stored result; another body is 422 <c>opId.reused</c>), the <c>instance</c> (409),
+    /// the retry window (409 <c>expired</c>), every <c>baseRev</c> newer than the document (422 <c>baseRev.future</c>),
+    /// and the ops against a tentative copy (409 listing every conflict, else 422 listing every error), else
+    /// <paramref name="applied"/>. The refusal, or null. Under the lock; shared by <see cref="Check"/> and the commit.
+    /// </summary>
+    private CommitOutcome? Validate(PreparedCommit prepared, Action<Document>? guard, out CommitResult? replayed, out AppliedCommit? applied)
+    {
+        replayed = null;
+        applied = null;
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        guard?.Invoke(_current.Document);
+        var request = prepared.Request;
+        if (_ops.TryGet(request.OpId, out var hash, out var stored))
+        {
+            if (!hash.AsSpan().SequenceEqual(prepared.Hash))
+                return Invalid([new SpecError("/opId", "opId.reused", $"The opId '{request.OpId}' was already applied with a different body.")], "Invalid commit");
+            replayed = stored with { Replayed = true };
+            return null;
+        }
+
+        var current = _current;
+        if (request.Instance != _options.Instance) return InstanceConflict(current.Rev);
+        if (_ops.Expired(request.BaseRev, current.Rev))
+        {
+            return new CommitOutcome
+            {
+                Expired = new ExpiredProblem
+                {
+                    Title = "Expired",
+                    Detail = $"The commit is based on revision {request.BaseRev}, and the engine has forgotten commits that old: read the document and commit again with a new opId.",
+                    Status = 409,
+                    Code = "expired",
+                    Rev = current.Rev,
+                },
+            };
+        }
+        // After the opId (a retry still replays) and the window (which a baseRev newer than the document never meets).
+        if (CommitApplier.FutureBaseRevs(request, current.Rev) is { Count: > 0 } future) return Invalid(future, "Invalid commit");
+
+        var tentative = CommitApplier.Apply(current.Content, _revisions, prepared);
+        if (tentative.Conflicts.Count > 0) return Conflict(current.Rev, tentative.Conflicts, null);
+        if (tentative.Errors.Count > 0) return Invalid(tentative.Errors, "Invalid commit");
+        applied = tentative;
+        return null;
+    }
+
     private CommitOutcome Commit(JsonElement body, ReadOnlySpan<byte> bytes, Action<Document>? guard, out bool wasClean)
     {
         wasClean = false;
-        var prepared = CommitApplier.Prepare(body, bytes, _options.Limits, _options.Support, out var errors);
-        if (prepared is null) return Invalid(errors, "Invalid commit");
+        if (Prepare(body, bytes, out var refusedAlone) is not { } prepared) return refusedAlone!;
         var request = prepared.Request;
 
         CommitResult result;
@@ -568,46 +665,21 @@ public sealed class ProfileDocument : IDisposable
         long endCheckpoint;
         using (Locks.Enter(_lock, WaitingForLock))
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            guard?.Invoke(_current.Document);
+            if (Validate(prepared, guard, out var replayed, out var applied) is { } refused) return refused;
             var cleanBefore = !DirtyCore;
-            if (_ops.TryGet(request.OpId, out var hash, out var stored))
+            if (replayed is not null)
             {
-                if (!hash.AsSpan().SequenceEqual(prepared.Hash))
-                    return Invalid([new SpecError("/opId", "opId.reused", $"The opId '{request.OpId}' was already applied with a different body.")], "Invalid commit");
                 // A retry answers as the commit did, and only once what that commit removes is gone: it waits for the
                 // removal, or makes it.
                 published = null;
-                result = stored with { Replayed = true };
-                endCheckpoint = _ending.Contains(stored.Rev) ? stored.Rev : 0;
+                result = replayed;
+                endCheckpoint = _ending.Contains(replayed.Rev) ? replayed.Rev : 0;
             }
             else
             {
                 var current = _current;
-                if (request.Instance != _options.Instance) return InstanceConflict(current.Rev);
-                if (_ops.Expired(request.BaseRev, current.Rev))
-                {
-                    return new CommitOutcome
-                    {
-                        Expired = new ExpiredProblem
-                        {
-                            Title = "Expired",
-                            Detail = $"The commit is based on revision {request.BaseRev}, and the engine has forgotten commits that old: read the document and commit again with a new opId.",
-                            Status = 409,
-                            Code = "expired",
-                            Rev = current.Rev,
-                        },
-                    };
-                }
-                // After the opId (a retry still replays) and the window (which a baseRev newer than the document never meets).
-                if (CommitApplier.FutureBaseRevs(request, current.Rev) is { Count: > 0 } future) return Invalid(future, "Invalid commit");
-
-                var applied = CommitApplier.Apply(current.Content, _revisions, prepared);
-                if (applied.Conflicts.Count > 0) return Conflict(current.Rev, applied.Conflicts, null);
-                if (applied.Errors.Count > 0) return Invalid(applied.Errors, "Invalid commit");
-
                 var warnings = prepared.Warnings.Count > 0 ? prepared.Warnings : null;
-                if (applied.Content is not { } content)
+                if (applied!.Content is not { } content)
                 {
                     published = null;
                     result = Result(current.Rev, null, warnings);

@@ -44,7 +44,7 @@ with 1009) and 272 levels deep (the formats' 256 and an envelope, as on the loca
 
 | Frame | When |
 |---|---|
-| `{"type":"hello","protocol":1,"engineVersion":"2.0.1"}` | First, once open |
+| `{"type":"hello","protocol":1,"engineVersion":"2.0.1","features":["design"]}` | First, once open. `features` lists what the engine takes beyond the protocol: `design`, a call's design ([below](#designs)). A relay sends a design only to an engine that lists it, and reads the list tolerantly (an entry it doesn't know is ignored) |
 | `{"type":"time","nonce":"‹128 random bits, base64url›"}` | A reading of the relay's clock ([below](#never-late)) |
 | `{"type":"result","id":…,"result":{"content":[…],"isError":false}}` | A call's answer, as MCP's `tools/call` result. One that would be over 9 MiB is an error result saying so |
 | `{"type":"late","id":…}` | The call was sent too long ago; it didn't run |
@@ -58,7 +58,7 @@ The relay sends:
 |---|---|
 | `{"type":"welcome"}` | `connected`; reads the relay's clock |
 | `{"type":"time","nonce":…,"now":1762214400000}` | The answer to its reading with that nonce: the relay's clock, in ms since 1970 UTC. Another nonce is ignored |
-| `{"type":"call","id":…,"tool":"add_item","arguments":{…},"sentAt":…,"maxChars":140000}` | Runs the tool ([below](#calls)). `sentAt` is the relay's clock when it sent the call, in ms since 1970 UTC (one past 9999-12-31, what a time holds, is `malformed`; one ahead of the relay's clock still gets at most 60 s, [below](#never-late)); `maxChars`, optional, the most text the AI app takes (brought within 1,000 and 9 MiB) |
+| `{"type":"call","id":…,"tool":"add_item","arguments":{…},"sentAt":…,"deadline":…,"maxChars":140000}` | Runs the tool ([below](#calls)). `sentAt` is the relay's clock when it sent the call, in ms since 1970 UTC (one past 9999-12-31, what a time holds, is `malformed`; one ahead of the relay's clock still gets at most 60 s, [below](#never-late)); `deadline`, optional, the latest its change may be made, on the same clock (a time as `sentAt` is, else `malformed`; the engine takes the earlier of it and `sentAt` + 60 s, [below](#never-late)); `maxChars`, optional, the most text the AI app takes (brought within 1,000 and 9 MiB). For `add_item` also `design` and `files` ([below](#designs)) |
 | `{"type":"cancel","id":…}` | Trips the call's cutoff: its change stops unmade |
 
 The engine dispatches only these four types; any other gets `error` `unsupported` and nothing closes, so the relay can
@@ -92,6 +92,45 @@ add types without a new protocol. A protocol the relay can't serve, it closes wi
 - **Logs:** as local calls (tool, profile as named, outcome, time; never the other arguments), marked "from
   elsewhere"; a late call is logged as late.
 
+## Designs
+
+A call to `add_item` from elsewhere may bring a design the service produced instead of a `scene`: the item's box, scene,
+how it was produced and where it came from, as the document holds them ([document](../../spec/docs/document.md#source-and-origin)),
+with the texts its `source` needs stored. The engine checks it as any item the API is given and never interprets it.
+
+```jsonc
+{"type":"call","id":…,"tool":"add_item","arguments":{"profile":"Overview","x":10,"y":20,"bindings":{…}},"sentAt":…,"deadline":…,
+ "files":["‹text›"],
+ "design":{"layout":{"w":120,"h":40},"source":{"format":…,"data":{…},"deps":["sha256:‹the text's SHA-256›"]},"scene":{…},"origin":{…}}}
+```
+
+- **The frame.** `design` is an object with `source` and `scene`, each an object, and optionally `layout` and `origin`,
+  each an object; `files` a list of text. With a design, the arguments hold no `scene`, `width` or `height` (the design
+  is the item's scene and box). Anything else is `malformed`.
+- **Only from elsewhere, only to `add_item`.** The local channel's calls carry only arguments, and a `design` or `files`
+  among them isn't one of the tool's. A design or files on a call to another tool, or non-empty `files` without a
+  design, is an error result, `design`, with nothing stored or changed (`files: []` without a design is taken as none).
+- **Checked before anything is written:** at most 16 files, each at most 1 MiB as UTF-8; each file's SHA-256
+  (`sha256:` and 64 hexadecimal digits, as `POST /api/blobs` names a blob) must be one of the design's `source.deps`,
+  and every dep must be one of the files or already stored (as a verified read finds it: a file under the id whose
+  bytes don't hash to it isn't); `source.deps` must list blob ids; and the design's scene may not hold a provider's
+  media source (the web-image rule). The first miss is an error result naming it (`files`, `design`, `missingDep`:
+  "add_asset gives an SVG's id", or `webImage`), and nothing is stored or changed. Then the item it would insert is
+  built and checked against the profile as it is, by the commit's own checks, applying nothing (its layout, group,
+  index and bindings, and the commit's every other refusal): a conflict (the profile changed since it was read) reads
+  it again and rebuilds once, as a commit's does; any other refusal is the tool's error, and nothing is stored or
+  changed.
+- **Then the files are stored** as `POST /api/blobs` stores bytes (already-stored bytes are kept as they are), each
+  behind the call's cutoff, under the blob store's lock; then the item is inserted as `add_item` inserts one: a new id,
+  the call's `x`, `y`, `name`, `bindings`, `group` and `index`, and the design's `layout`, `scene`, `source` and
+  `origin` as given, in one commit behind the cutoff, with the save rule as for any change. The profile is found once,
+  as the call starts, and that profile is the one checked and committed to, never one found again by its name. If it
+  is deleted or replaced, or, when the call named it by its name, renamed (away, or away and back) at any point before
+  the commit, the call is an error result, `notFound`, and no profile is changed: every check before the files are
+  stored and every commit attempt (a retry's too) asks it under the profile's lock.
+- **Cut off part way:** the files stored before the cutoff stay, unreferenced, and are swept as any such blob is
+  (24 hours after they were stored, [API](../../spec/docs/api.md)); the item isn't added.
+
 ## Never late
 
 A frame TCP holds across a sleep can arrive minutes later. The engine refuses unrun, with `late`, a call whose `sentAt`
@@ -110,12 +149,22 @@ the same sleep would make an old call look fresh).
   `late`, not run.
 - **A reading a call joins in flight** is checked again when it comes: one voided meanwhile (a step, or its age) is
   asked for once more.
+- **A reading the call contradicts is read again:** a call arrives after it was sent, so the relay's clock is at least
+  its `sentAt`; a reading that puts the relay's clock more than 1 s (half a reading's round trip, the most a good one
+  can be off) behind `sentAt` missed a step of the relay's clock, and is asked for once more before the call is judged.
+  A forward step of the relay's clock hidden by an equal delay in delivering the call isn't seen this way: the cutoff
+  can then fall up to that step late. The engine accepts this rather than ask the relay's clock before every call.
 - **One reading of the clocks decides:** both of the engine's clocks are read once as the call's reading is checked,
   and whether it may be used, how long the call waited, how late it is and its deadline (the instant it runs from) are
   all worked out from that; a step of the wall clock after it reaches none of them.
-- **The commit deadline** is set when the call is admitted as the time left until `sentAt` plus 60 s on the relay's
-  clock, from 0 to 60 s (a `sentAt` ahead of the relay's clock never gives a call more than 60 s), then runs on both clocks and trips when either has run it out: neither a sleep nor a step of the wall clock
-  extends it. A step can at worst refuse a call.
+- **The commit deadline** is set when the call is admitted as the time left until its absolute cutoff, the earlier of
+  the call's `deadline` and `sentAt` plus 60 s, on the relay's clock as read (so the time a call took to arrive counts
+  against it), from 0 to 60 s (a relay can shorten a call's time, never extend it; a `sentAt` ahead of the relay's
+  clock never gives a call more than 60 s; a `deadline` already past leaves a change no time at all), and never more
+  than the call's own `deadline` − `sentAt` (60 s at most) from its arrival on the engine's clocks, so a call whose
+  `sentAt` is ahead of the relay's clock even as read again gets no more than that; then runs on both clocks and trips
+  when either has run it out: neither a sleep nor a step of the wall clock extends it. A step can at worst refuse a
+  call.
 
 ## Tests
 
@@ -128,4 +177,9 @@ steps the wall clock), a turn off and on from the log line a 4409 writes, the de
 flight (`RelayPeer.PauseReading` withholds the relay's reading and its close answer), and each edit tool paused just
 before its write and again past where a check before its lock would have passed (the tool host's step hook, `write`
 and `locking`) and then cut off by `cancel`, its deadline or the connection's close. `InfoPanel.Core.Tests` holds each
-write's guard to its lock (a commit, a create, a blob) with the lock held and the write waiting for it.
+write's guard to its lock (a commit, a create, a blob) with the lock held and the write waiting for it. Designs
+(`RelayDesignTests`): inserted as given, files under their hashes, each refusal with nothing stored, the profile renamed (away, or away and back) at each point up to a retry's commit, and the cutoff
+before each file and the commit (`EveryDesignTool_HasACutoffTestAtEachWrite` fails for a tool that takes a design without
+one). **Frame fixtures:** `InfoPanel.Core.Tests/Fixtures/relay/frames.json` holds one frame of each kind either side
+sends; `RelayFrameFixtureTests` holds the engine to them (its own written exactly so, the relay's read as what they are),
+so a relay can test its own parsing against the same file.

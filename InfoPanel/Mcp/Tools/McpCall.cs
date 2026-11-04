@@ -22,18 +22,34 @@ public sealed class McpCall
 {
     private readonly RelayCutoff? _cutoff;
 
-    private McpCall(McpCallOrigin origin, int? maxChars, RelayCutoff? cutoff)
+    private McpCall(McpCallOrigin origin, int? maxChars, RelayCutoff? cutoff, JsonObject? design, IReadOnlyList<string>? files)
     {
         Origin = origin;
         MaxChars = maxChars;
         _cutoff = cutoff;
+        Design = design;
+        Files = files;
     }
 
-    /// <summary>A call from an AI app on this computer: no cutoff, no limit beyond the tools' own.</summary>
-    public static McpCall ThisComputer { get; } = new(McpCallOrigin.ThisComputer, null, null);
+    /// <summary>A call from an AI app on this computer: no cutoff, no limit beyond the tools' own, never a design.</summary>
+    public static McpCall ThisComputer { get; } = new(McpCallOrigin.ThisComputer, null, null, null, null);
 
-    /// <summary>A call from elsewhere, with its relay context.</summary>
-    public static McpCall Elsewhere(RelayCallContext context) => new(McpCallOrigin.Elsewhere, context.MaxChars, context.Cutoff);
+    /// <summary>A call from elsewhere, with its relay context: the only kind that brings a design.</summary>
+    public static McpCall Elsewhere(RelayCallContext context) => new(McpCallOrigin.Elsewhere, context.MaxChars, context.Cutoff,
+        context.Design is { } design ? JsonNode.Parse(design.GetRawText(), documentOptions: InfoPanel.Spec.SpecJson.DocumentOptions)!.AsObject() : null,
+        context.Files);
+
+    /// <summary>
+    /// A design the service produced (<c>layout</c>, <c>source</c>, <c>scene</c>, <c>origin</c>; docs/2.0/relay.md, "Designs"):
+    /// only on a call from elsewhere, only for <see cref="McpToolHost.DesignTools"/>. A copy per call; null without one.
+    /// </summary>
+    public JsonObject? Design { get; }
+
+    /// <summary>The texts the design needs stored, each under its SHA-256, or null.</summary>
+    public IReadOnlyList<string>? Files { get; }
+
+    /// <summary>Whether the call brings a design or files.</summary>
+    public bool BringsDesign => Design is not null || Files is not null;
 
     public McpCallOrigin Origin { get; }
 

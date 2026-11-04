@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using InfoPanel.Spec;
@@ -18,7 +20,17 @@ public abstract record RelayFrame
     /// <c>call</c>: a tool call, <paramref name="SentAt"/> on the relay's clock (ms since 1970 UTC); <paramref name="MaxChars"/>
     /// the most text the AI app takes, or null.
     /// </summary>
-    public sealed record Call(string Id, string Tool, JsonElement Arguments, long SentAt, int? MaxChars) : RelayFrame;
+    public sealed record Call(string Id, string Tool, JsonElement Arguments, long SentAt, int? MaxChars) : RelayFrame
+    {
+        /// <summary><c>deadline</c>: the latest its change may be made, on the relay's clock (ms since 1970 UTC), or null.</summary>
+        public long? Deadline { get; init; }
+
+        /// <summary><c>design</c>: a design the service produced (<c>layout</c>, <c>source</c>, <c>scene</c>, <c>origin</c>), or null.</summary>
+        public JsonElement? Design { get; init; }
+
+        /// <summary><c>files</c>: the texts the design needs stored, or null.</summary>
+        public IReadOnlyList<string>? Files { get; init; }
+    }
 
     /// <summary><c>cancel</c>: the relay withdrew the call <paramref name="Id"/>.</summary>
     public sealed record Cancel(string Id) : RelayFrame;
@@ -150,8 +162,62 @@ public static class RelayFrames
             maxChars = (int)Math.Clamp(chars, MinMaxChars, MaxFrameBytes);
         }
 
-        return new RelayFrame.Call(id, tool.GetString()!, arguments, sentAt, maxChars);
+        // The latest its change may be made, on the relay's clock: a time, as sentAt is (the client takes the earlier of it
+        // and sentAt + 60 s).
+        long? deadline = null;
+        if (root.TryGetProperty("deadline", out var until) && until.ValueKind != JsonValueKind.Null)
+        {
+            if (until.ValueKind != JsonValueKind.Number || !until.TryGetInt64(out var at) || at <= 0 || at > MaxSentAt)
+                return new RelayFrame.Refused("malformed", id);
+            deadline = at;
+        }
+
+        // A design the service produced, and the texts it needs stored: their shape only (the tool host checks the rest).
+        JsonElement? design = null;
+        if (root.TryGetProperty("design", out var shape) && shape.ValueKind != JsonValueKind.Null)
+        {
+            if (!IsDesign(shape))
+                return new RelayFrame.Refused("malformed", id);
+            // The design is the item's scene and box: arguments that give them too are a relay's mistake.
+            foreach (var member in DesignGives)
+            {
+                if (arguments.TryGetProperty(member, out _))
+                    return new RelayFrame.Refused("malformed", id);
+            }
+
+            design = shape.Clone();
+        }
+
+        List<string>? files = null;
+        if (root.TryGetProperty("files", out var texts) && texts.ValueKind != JsonValueKind.Null)
+        {
+            if (texts.ValueKind != JsonValueKind.Array)
+                return new RelayFrame.Refused("malformed", id);
+            files = [];
+            foreach (var text in texts.EnumerateArray())
+            {
+                if (text.ValueKind != JsonValueKind.String)
+                    return new RelayFrame.Refused("malformed", id);
+                files.Add(text.GetString()!);
+            }
+        }
+
+        return new RelayFrame.Call(id, tool.GetString()!, arguments, sentAt, maxChars) { Deadline = deadline, Design = design, Files = files };
     }
+
+    /// <summary>The members of a call's arguments a design stands for: with a design, the arguments don't give them.</summary>
+    public static IReadOnlyList<string> DesignGives { get; } = ["scene", "width", "height"];
+
+    /// <summary>
+    /// A design's shape: an object with a <c>source</c> and a <c>scene</c>, each an object, and an optional <c>layout</c> and
+    /// <c>origin</c>, each an object when given.
+    /// </summary>
+    private static bool IsDesign(JsonElement design) =>
+        design.ValueKind == JsonValueKind.Object
+        && design.TryGetProperty("source", out var source) && source.ValueKind == JsonValueKind.Object
+        && design.TryGetProperty("scene", out var scene) && scene.ValueKind == JsonValueKind.Object
+        && (!design.TryGetProperty("layout", out var layout) || layout.ValueKind == JsonValueKind.Object)
+        && (!design.TryGetProperty("origin", out var origin) || origin.ValueKind == JsonValueKind.Object);
 
     /// <summary>Reads every name and string in <paramref name="element"/> (at most <see cref="MaxDepth"/> deep, as parsed).</summary>
     /// <exception cref="InvalidOperationException">One doesn't decode (a lone surrogate).</exception>
@@ -222,8 +288,20 @@ public static class RelayFrames
         return empty.RootElement.Clone();
     }
 
-    /// <summary><c>{"type":"hello","protocol":1,"engineVersion":…}</c>, the engine's first frame.</summary>
-    public static JsonObject Hello(string engineVersion) => new() { ["type"] = "hello", ["protocol"] = Protocol, ["engineVersion"] = engineVersion };
+    /// <summary>
+    /// What the engine takes beyond the protocol, in its <c>hello</c>: <c>design</c>, a call's design the service produced
+    /// (docs/2.0/relay.md, "Designs"). A relay sends a design only to an engine that lists it.
+    /// </summary>
+    public static IReadOnlyList<string> Features { get; } = ["design"];
+
+    /// <summary><c>{"type":"hello","protocol":1,"engineVersion":…,"features":[…]}</c>, the engine's first frame.</summary>
+    public static JsonObject Hello(string engineVersion) => new()
+    {
+        ["type"] = "hello",
+        ["protocol"] = Protocol,
+        ["engineVersion"] = engineVersion,
+        ["features"] = new JsonArray([.. Features.Select(f => (JsonNode)JsonValue.Create(f))]),
+    };
 
     /// <summary><c>{"type":"time","nonce":…}</c>: the engine asks for the relay's clock.</summary>
     public static JsonObject TimeRequest(string nonce) => new() { ["type"] = "time", ["nonce"] = nonce };

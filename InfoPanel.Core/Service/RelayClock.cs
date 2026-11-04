@@ -47,6 +47,9 @@ public static class RelayClock
     /// <summary>How long after it was sent, on the relay's clock, a call may still make its change.</summary>
     public static readonly TimeSpan CommitWithin = TimeSpan.FromSeconds(60);
 
+    /// <summary>How far a good reading can be off: half its round trip, the most its midpoint can miss the relay's answer by.</summary>
+    public static readonly TimeSpan ReadingError = ReadingRoundTrip / 2;
+
     /// <summary>
     /// The reading made from a <c>time</c> answer, or null when it doesn't count: it took longer than
     /// <see cref="ReadingRoundTrip"/> on either clock (an answer held across a sleep fails the wall clock, or Stopwatch
@@ -79,6 +82,14 @@ public static class RelayClock
         var monotonic = time.GetElapsedTime(reading.MonotonicAt, now.Monotonic);
         return wall >= TimeSpan.Zero && (wall - monotonic).Duration() <= ClocksAgree && wall <= ReadingLife && monotonic <= ReadingLife;
     }
+
+    /// <summary>
+    /// Whether a call sent at <paramref name="sentAtMs"/> on the relay's clock contradicts <paramref name="reading"/> at
+    /// <paramref name="now"/>: a call arrives after it was sent, so the relay's clock is at least its <c>sentAt</c>; a reading
+    /// that puts it further behind than <see cref="ReadingError"/> missed a step of the relay's clock, and is read again.
+    /// </summary>
+    public static bool Contradicts(RelayReading reading, ClockSnapshot now, double sentAtMs) =>
+        sentAtMs - RelayNowMs(reading, now) > ReadingError.TotalMilliseconds;
 
     /// <summary>The relay's clock at <paramref name="now"/>, in ms since 1970 UTC, by <paramref name="reading"/>.</summary>
     public static double RelayNowMs(RelayReading reading, ClockSnapshot now) => Ms(now.Wall) + reading.OffsetMs;

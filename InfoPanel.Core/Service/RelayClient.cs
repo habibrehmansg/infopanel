@@ -37,7 +37,14 @@ public enum RelayState
 }
 
 /// <summary>What a relay call carries into the tool host: its id, the most text its AI app takes, and its cutoff for changes.</summary>
-public sealed record RelayCallContext(string Id, int? MaxChars, RelayCutoff Cutoff);
+public sealed record RelayCallContext(string Id, int? MaxChars, RelayCutoff Cutoff)
+{
+    /// <summary>A design the service produced, for the tool to commit (docs/2.0/relay.md, "Designs"), or null.</summary>
+    public JsonElement? Design { get; init; }
+
+    /// <summary>The texts the design needs stored, each under its SHA-256, or null.</summary>
+    public IReadOnlyList<string>? Files { get; init; }
+}
 
 /// <summary>A relay call's answer: the tool's result, or that its change was stopped before it was made.</summary>
 public sealed record RelayToolAnswer(JsonObject Result, bool Cancelled);
@@ -817,14 +824,17 @@ public sealed class RelayClient : IAsyncDisposable
             try
             {
                 // Checked as it comes, not only as it was asked for: a reading joined in flight may have been voided
-                // meanwhile (a step of the wall clock, or its age), and is then asked for once more. None at all (two
-                // questions unanswered) is final. The clocks are read once for what follows (the reading checked, how long
-                // the call waited, how late it is, its deadline): a step of the wall clock after that reaches none of it.
+                // meanwhile (a step of the wall clock, or its age), and one the call's sentAt contradicts (the relay's clock
+                // stepped ahead since it was read) would give the call time it doesn't have; either is asked for once more,
+                // and a call whose sentAt still contradicts the fresh one gets no more than its own span from its arrival
+                // (below). None at all (two questions unanswered) is final. The clocks are read once for what follows (the
+                // reading checked, how long the call waited, how late it is, its deadline): a step of the wall clock after
+                // that reaches none of it.
                 var reading = await admitted.ConfigureAwait(false);
                 var now = ClockSnapshot.Take(Time);
-                if (reading is not null && !RelayClock.IsUsable(reading, now, Time))
+                if (reading is not null && (!RelayClock.IsUsable(reading, now, Time) || RelayClock.Contradicts(reading, now, call.SentAt)))
                 {
-                    reading = await ReadingAsync().ConfigureAwait(false);
+                    reading = await ReadingAsync(reading).ConfigureAwait(false);
                     now = ClockSnapshot.Take(Time);
                 }
 
@@ -849,12 +859,19 @@ public sealed class RelayClient : IAsyncDisposable
                     return;
                 }
 
-                // The time left on the relay's clock, from 0 to 60 s: a call sent "ahead" of the relay's clock gets 60 s at
-                // most. In doubles, from a sentAt within what a time holds (RelayFrames.MaxSentAt): nothing overflows.
+                // The absolute cutoff: the time left until the earlier of the call's deadline and sentAt + 60 s, on the relay's
+                // clock as read (a reading the call's sentAt contradicted was read again above, so a delivery delay counts
+                // against the call), from 0 to 60 s: a relay can shorten a call's time, never extend it. In doubles, from a
+                // sentAt and a deadline within what a time holds (RelayFrames.MaxSentAt): nothing overflows.
+                // The call's own span, deadline − sentAt (60 s at most), also runs from its arrival on the engine's clocks: a
+                // call whose sentAt is ahead of the relay's clock even as read again gets no more than that. The earlier wins.
                 var within = RelayClock.CommitWithin.TotalMilliseconds;
-                cutoff.SetDeadline(TimeSpan.FromMilliseconds(Math.Clamp(call.SentAt + within - RelayClock.RelayNowMs(reading, now), 0, within)), now);
-                var answer = await _client._tools.CallAsync(call.Tool, call.Arguments, new RelayCallContext(call.Id, call.MaxChars, cutoff), _client._stop.Token)
-                    .ConfigureAwait(false);
+                var until = Math.Min(call.SentAt + within, call.Deadline ?? double.MaxValue);
+                var span = Math.Min(within, (call.Deadline ?? double.MaxValue) - call.SentAt) - waitedMonotonic.TotalMilliseconds;
+                var left = Math.Min(until - RelayClock.RelayNowMs(reading, now), span);
+                cutoff.SetDeadline(TimeSpan.FromMilliseconds(Math.Clamp(left, 0, within)), now);
+                var context = new RelayCallContext(call.Id, call.MaxChars, cutoff) { Design = call.Design, Files = call.Files };
+                var answer = await _client._tools.CallAsync(call.Tool, call.Arguments, context, _client._stop.Token).ConfigureAwait(false);
                 if (answer.Cancelled)
                 {
                     await SendAsync(RelayFrames.Cancelled(call.Id)).ConfigureAwait(false);
@@ -890,16 +907,16 @@ public sealed class RelayClient : IAsyncDisposable
         }
 
         /// <summary>
-        /// A usable reading of the relay's clock (<see cref="RelayClock.IsUsable"/>), or a fresh one, asked once more when
-        /// the first fails; null when neither counts.
+        /// A usable reading of the relay's clock (<see cref="RelayClock.IsUsable"/>) other than <paramref name="stale"/>, or a
+        /// fresh one (joining one in flight), asked once more when the first fails; null when neither counts.
         /// </summary>
-        private Task<RelayReading?> ReadingAsync()
+        private Task<RelayReading?> ReadingAsync(RelayReading? stale = null)
         {
             Task<RelayReading?> reading;
             bool joined;
             lock (_lock)
             {
-                if (RelayClock.IsUsable(_reading, Time))
+                if (RelayClock.IsUsable(_reading, Time) && !ReferenceEquals(_reading, stale))
                     return Task.FromResult(_reading);
                 joined = _readingInFlight is not null;
                 reading = _readingInFlight ??= ReadAsync();
