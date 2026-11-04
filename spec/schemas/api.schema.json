@@ -1013,7 +1013,7 @@
       }
     },
     "scopeProblem": {
-      "description": "403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings, the recent log entries, opening the engine's folders). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication).",
+      "description": "403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings, the configured service, the recent log entries, opening the engine's folders). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication).",
       "type": "object",
       "required": ["status", "code", "scope"],
       "additionalProperties": false,
@@ -1189,7 +1189,7 @@
     "engineSettingsOk": {
       "description": "The engine read its stored settings (or had none), and they can be changed: no `problem`.",
       "type": "object",
-      "required": ["status", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "clients"],
+      "required": ["status", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "service", "clients"],
       "additionalProperties": false,
       "properties": {
         "status": { "const": "ok" },
@@ -1204,6 +1204,7 @@
         "logLevel": { "$ref": "#/$defs/logLevel" },
         "sources": { "$ref": "#/$defs/settingsSources" },
         "media": { "$ref": "#/$defs/mediaSettings" },
+        "service": { "$ref": "#/$defs/serviceSettings" },
         "clients": {
           "description": "Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any.",
           "type": "object",
@@ -1216,7 +1217,7 @@
     "engineSettingsProblem": {
       "description": "The engine couldn't read its stored settings when it started: the defaults are in effect, `problem` says why, and every change is refused (409 settingsStatusProblem) until the stored settings are fixed or removed and the engine restarts.",
       "type": "object",
-      "required": ["status", "problem", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "clients"],
+      "required": ["status", "problem", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "service", "clients"],
       "additionalProperties": false,
       "properties": {
         "status": {
@@ -1235,6 +1236,7 @@
         "logLevel": { "$ref": "#/$defs/logLevel" },
         "sources": { "$ref": "#/$defs/settingsSources" },
         "media": { "$ref": "#/$defs/mediaSettings" },
+        "service": { "$ref": "#/$defs/serviceSettings" },
         "clients": {
           "description": "Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any.",
           "type": "object",
@@ -1293,7 +1295,7 @@
       "pattern": "^[A-Za-z0-9._-]{1,64}$"
     },
     "settingsChange": {
-      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `media` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
+      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `media`, `service` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -1329,6 +1331,18 @@
             "localNetwork": { "description": "mediaSettings.", "type": ["boolean", "null"] }
           }
         },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "address": {
+              "description": "The configured service's address (serviceSettings): an origin, `https`, or `http` on a loopback host, its scheme and host in any case (the engine keeps it in lower case); `null` sets it back to the engine's default. A change of address removes the credential the engine keeps first, and is refused (503) when it can't (docs/api.md#the-configured-service).",
+              "type": ["string", "null"],
+              "maxLength": 2048,
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://[^/?#@%\\\\\\s]+/?$"
+            }
+          }
+        },
         "clients": {
           "description": "Client preferences to set, each whole, or to remove (`null`), by client name; the other clients' are kept.",
           "type": "object",
@@ -1349,6 +1363,71 @@
         "status": { "const": 409 },
         "code": { "description": "The settings' status (engineSettings). A client treats a status it doesn't know as settings it can't change.", "enum": ["unreadable", "unsupported"] },
         "problem": { "$ref": "#/$defs/validationError", "description": "The settings' `problem` (engineSettings)." }
+      }
+    },
+    "serviceSettings": {
+      "description": "The settings of the configured service (docs/api.md#the-configured-service).",
+      "type": "object",
+      "required": ["address"],
+      "additionalProperties": false,
+      "properties": {
+        "address": { "$ref": "#/$defs/serviceAddress" }
+      }
+    },
+    "serviceAddress": {
+      "description": "The configured service's address in effect: the one set, else the engine's default; null when there is neither (an engine built from source has no default). An origin, `scheme://host[:port]` in lower case without a path: `https`, or `http` on a loopback host (`localhost`, 127.0.0.0/8, `[::1]`).",
+      "type": ["string", "null"],
+      "maxLength": 2048,
+      "pattern": "^https?://[^/?#@%\\\\\\s]+$"
+    },
+
+    "serviceState": {
+      "description": "GET /api/service: the configured service's address and the state of the credential a client provides for it, never the credential (docs/api.md#the-configured-service). Read tolerantly: a later engine may add members, and a client ignores members it doesn't know.",
+      "type": "object",
+      "required": ["address", "credential", "store", "fingerprint"],
+      "additionalProperties": false,
+      "properties": {
+        "address": { "$ref": "#/$defs/serviceAddress" },
+        "credential": {
+          "description": "`absent`: the engine keeps no credential; `present`: it keeps one and sends it with its requests to the service; `rejected`: it keeps one the service refused (401), and sends no request to the service until a client provides another. A client treats a value it doesn't know as `absent`.",
+          "enum": ["absent", "present", "rejected"]
+        },
+        "store": {
+          "description": "Where the engine keeps the credential: `private`, a file in its data folder only this user may read; `protected`, a file in its data folder encrypted for this user by the operating system; `keychain`, the operating system's keychain. Null when `credential` is `absent`. A client shows a value it doesn't know by its name.",
+          "enum": ["keychain", "protected", "private", null]
+        },
+        "fingerprint": {
+          "description": "A fingerprint of the stored credential: the first 16 hexadecimal digits, in lower case, of the SHA-256 of its UTF-8 bytes, so a client can tell which credential the engine keeps without reading it. Null when `credential` is `absent`.",
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{16}$"
+        }
+      }
+    },
+    "serviceCredential": {
+      "description": "PUT /api/service/credential: a credential a client provides for the configured service, which the engine keeps in place of any it has and sends as `Authorization: Bearer {credential}` (docs/api.md#the-configured-service). An RFC 6750 token: letters, digits, `-`, `.`, `_`, `~`, `+` and `/`, then any `=`, at most 4,096 characters.",
+      "type": "object",
+      "required": ["credential"],
+      "additionalProperties": false,
+      "properties": {
+        "credential": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[A-Za-z0-9._~+/-]+=*$"
+        }
+      }
+    },
+    "serviceProblem": {
+      "description": "application/problem+json to PUT and DELETE /api/service/credential, and to a PATCH /api/settings that changes the service's address: 409 `noService`, the engine has no service address, so it keeps no credential (docs/api.md#the-configured-service); 503 `storeUnavailable`, the store refused to keep or remove it (for a change of address, the credential kept for the old one) and nothing was changed, or it did but couldn't make that durable: then GET /api/service answers what it holds, and a retry finishes it (a change of address stays refused until then). A client treats a code it doesn't know by the status.",
+      "type": "object",
+      "required": ["status", "code"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "status": { "description": "The response's status: 409 or 503. A client treats a status it doesn't know by its class.", "enum": [409, 503] },
+        "code": { "description": "`noService` (409) or `storeUnavailable` (503). A client treats a code it doesn't know by the status.", "enum": ["noService", "storeUnavailable"] }
       }
     },
 

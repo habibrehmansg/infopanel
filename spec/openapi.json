@@ -137,6 +137,67 @@
           "422": {
             "description": "The body breaks its definition or a limit (limit.settingsRequestBytes, limit.settingsDepth, limit.settingsClientBytes), or the settings it makes would be over a limit (limit.settingsClients, limit.settingsBytes); nothing was changed.",
             "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          },
+          "503": {
+            "description": "`storeUnavailable`: the change would change the service's address, and the store couldn't remove the credential kept for the old one (docs/api.md#the-configured-service). The settings weren't changed.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/serviceProblem"}}}
+          }
+        }
+      }
+    },
+    "/api/service": {
+      "get": {
+        "operationId": "getService",
+        "summary": "The configured service's address and the state of the credential a client provides for it, never the credential.",
+        "description": "docs/api.md#the-configured-service.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "200": {
+            "description": "The address, the credential's state, where it is kept and a fingerprint of the stored credential.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/serviceState"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"}
+        }
+      }
+    },
+    "/api/service/credential": {
+      "put": {
+        "operationId": "putServiceCredential",
+        "summary": "Keeps a credential a client provides for the configured service, in place of any the engine has.",
+        "description": "docs/api.md#the-configured-service.",
+        "security": [{"bearer": ["session"]}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/serviceCredential"}}}},
+        "responses": {
+          "204": {"description": "The credential is kept; its state is `present`."},
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "409": {
+            "description": "`noService`: the engine has no service address, so it keeps no credential. Nothing was changed.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/serviceProblem"}}}
+          },
+          "422": {
+            "description": "The body breaks its definition or its limit (limit.requestBytes): a credential that isn't an RFC 6750 token or is over 4,096 characters. Nothing was changed.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          },
+          "503": {
+            "description": "`storeUnavailable`: the store refused to keep the credential. The credential the engine had, if any, is kept as it was.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/serviceProblem"}}}
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteServiceCredential",
+        "summary": "Removes the credential the engine keeps for the configured service, if any.",
+        "description": "docs/api.md#the-configured-service.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "204": {"description": "The engine keeps no credential (it had none, or it removed it)."},
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "503": {
+            "description": "`storeUnavailable`: the store couldn't remove the credential; the engine keeps it as it was.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/serviceProblem"}}}
           }
         }
       }

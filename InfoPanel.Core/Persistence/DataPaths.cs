@@ -13,7 +13,8 @@ namespace InfoPanel.Persistence;
 /// The 2.0 document store (<see cref="DocumentStore"/>, <see cref="BlobStore"/>) adds <c>profiles.json</c>,
 /// <c>profiles/{id}/document.json</c> (with its earlier saved versions, <c>profiles/{id}/versions/{n}.json</c>) and
 /// <c>blobs/{sha256 hex}</c>; the engine adds <c>store.json</c> (the folder's
-/// marker, <see cref="StoreMarker"/>), <c>tokens.json</c>, <c>pairings.json</c> and <c>settings.json</c>, and the 1.x import its run-once record
+/// marker, <see cref="StoreMarker"/>), <c>tokens.json</c>, <c>pairings.json</c>, <c>settings.json</c> and the service credential's
+/// <c>service-credential</c> (or, on Windows, <c>service-credential.bin</c>), and the 1.x import its run-once record
 /// <c>import-v1.json</c>. <see cref="EngineFiles"/> and <see cref="EngineFolders"/> list them (docs/2.0/data-folder.md).
 /// </summary>
 public sealed class DataPaths
@@ -51,19 +52,28 @@ public sealed class DataPaths
     public const string PairingsFileName = "pairings.json";
 
     /// <summary>
+    /// The credential a client provides for the configured service (<c>InfoPanel.Service.FileServiceCredentialStore</c>),
+    /// in the data folder: macOS and Linux keep it here, 0600.
+    /// </summary>
+    public const string ServiceCredentialFileName = "service-credential";
+
+    /// <summary>The same credential encrypted for the current user (DPAPI), in the data folder: Windows keeps it here.</summary>
+    public const string ServiceCredentialProtectedFileName = "service-credential.bin";
+
+    /// <summary>
     /// The top-level files the engine writes in its data folder: the folder's marker, the 2.0 store's profile order, the
-    /// integration tokens, the paired clients, the engine settings, the runtime file, the lock, step-1's profile list (which this engine leaves
+    /// integration tokens, the paired clients, the engine settings, the service credential (either store's file), the runtime file, the lock, step-1's profile list (which this engine leaves
     /// alone) and the 1.x migration's run-once record. The one list of them: <c>--fresh</c> wipes only a folder that holds
     /// nothing else, and the 1.x import keeps the 1.x folder clear of them.
     /// </summary>
     public static IReadOnlyList<string> EngineFiles { get; } =
-        [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, "runtime.json", "engine.lock", "profiles.xml", ImportRecordFileName, PluginStateFileName];
+        [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, ServiceCredentialFileName, ServiceCredentialProtectedFileName, "runtime.json", "engine.lock", "profiles.xml", ImportRecordFileName, PluginStateFileName];
 
     /// <summary>The top-level folders the engine writes in its data folder (<c>assets</c> is step-1's).</summary>
     public static IReadOnlyList<string> EngineFolders { get; } = ["profiles", "blobs", "fonts", "logs", "assets", "plugins", "plugin-settings"];
 
     /// <summary>The engine files written by renaming a temp file (<c>{name}.{32 hex}.tmp</c>) over them.</summary>
-    private static readonly string[] ReplacedFiles = [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, "runtime.json", "profiles.xml", ImportRecordFileName, PluginStateFileName];
+    private static readonly string[] ReplacedFiles = [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, ServiceCredentialFileName, ServiceCredentialProtectedFileName, "runtime.json", "profiles.xml", ImportRecordFileName, PluginStateFileName];
 
     private static readonly Regex EngineTempFile = new(
         $"\\A({string.Join('|', ReplacedFiles.Select(Regex.Escape))})\\.[0-9a-f]{{32}}\\.tmp\\z",

@@ -930,7 +930,7 @@ export interface PairingSession {
   proof: PairingProof;
 }
 
-/** 403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings, the recent log entries, opening the engine's folders). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication). */
+/** 403 application/problem+json: the token is valid but lacks the scope the request needs: `read` or `edit`, or `session` for what only the session token may do (signing in, the token endpoints, the engine settings, the configured service, the recent log entries, opening the engine's folders). A missing, unknown or revoked token is answered 401 instead (docs/api.md#authentication). */
 export interface ScopeProblem {
   type?: string;
   title?: string;
@@ -1110,6 +1110,7 @@ export interface EngineSettingsOk {
   logLevel: LogLevel;
   sources: SettingsSources;
   media: MediaSettings;
+  service: ServiceSettings;
   /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
   clients: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean };
 }
@@ -1138,6 +1139,7 @@ export interface EngineSettingsProblem {
   logLevel: LogLevel;
   sources: SettingsSources;
   media: MediaSettings;
+  service: ServiceSettings;
   /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
   clients: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean };
 }
@@ -1182,7 +1184,7 @@ export type LogLevel = "debug" | "information" | "warning" | "error";
  */
 export type ClientName = string;
 
-/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `media` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
+/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `media`, `service` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
 export interface SettingsChange {
   /**
    * Frames a second, 1 to 60 (engineSettings).
@@ -1214,6 +1216,14 @@ export interface SettingsChange {
     /** mediaSettings. */
     localNetwork?: boolean | null;
   };
+  service?: {
+    /**
+     * The configured service's address (serviceSettings): an origin, `https`, or `http` on a loopback host, its scheme and host in any case (the engine keeps it in lower case); `null` sets it back to the engine's default. A change of address removes the credential the engine keeps first, and is refused (503) when it can't (docs/api.md#the-configured-service).
+     * Length: ≤ 2048.
+     * Pattern: `^[Hh][Tt][Tt][Pp][Ss]?://[^/?#@%\\\s]+/?$`.
+     */
+    address?: string | null;
+  };
   /** Client preferences to set, each whole, or to remove (`null`), by client name; the other clients' are kept. */
   clients?: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean | null };
 }
@@ -1228,6 +1238,52 @@ export interface SettingsStatusProblem {
   code: "unreadable" | "unsupported";
   /** The settings' `problem` (engineSettings). */
   problem: ValidationError;
+}
+
+/** The settings of the configured service (docs/api.md#the-configured-service). */
+export interface ServiceSettings {
+  address: ServiceAddress;
+}
+
+/**
+ * The configured service's address in effect: the one set, else the engine's default; null when there is neither (an engine built from source has no default). An origin, `scheme://host[:port]` in lower case without a path: `https`, or `http` on a loopback host (`localhost`, 127.0.0.0/8, `[::1]`).
+ * Length: ≤ 2048.
+ * Pattern: `^https?://[^/?#@%\\\s]+$`.
+ */
+export type ServiceAddress = string | null;
+
+/** GET /api/service: the configured service's address and the state of the credential a client provides for it, never the credential (docs/api.md#the-configured-service). Read tolerantly: a later engine may add members, and a client ignores members it doesn't know. */
+export interface ServiceState {
+  address: ServiceAddress;
+  /** `absent`: the engine keeps no credential; `present`: it keeps one and sends it with its requests to the service; `rejected`: it keeps one the service refused (401), and sends no request to the service until a client provides another. A client treats a value it doesn't know as `absent`. */
+  credential: "absent" | "present" | "rejected";
+  /** Where the engine keeps the credential: `private`, a file in its data folder only this user may read; `protected`, a file in its data folder encrypted for this user by the operating system; `keychain`, the operating system's keychain. Null when `credential` is `absent`. A client shows a value it doesn't know by its name. */
+  store: "keychain" | "protected" | "private" | null;
+  /**
+   * A fingerprint of the stored credential: the first 16 hexadecimal digits, in lower case, of the SHA-256 of its UTF-8 bytes, so a client can tell which credential the engine keeps without reading it. Null when `credential` is `absent`.
+   * Pattern: `^[0-9a-f]{16}$`.
+   */
+  fingerprint: string | null;
+}
+
+/** PUT /api/service/credential: a credential a client provides for the configured service, which the engine keeps in place of any it has and sends as `Authorization: Bearer {credential}` (docs/api.md#the-configured-service). An RFC 6750 token: letters, digits, `-`, `.`, `_`, `~`, `+` and `/`, then any `=`, at most 4,096 characters. */
+export interface ServiceCredential {
+  /**
+   * Length: 1–4096.
+   * Pattern: `^[A-Za-z0-9._~+/-]+=*$`.
+   */
+  credential: string;
+}
+
+/** application/problem+json to PUT and DELETE /api/service/credential, and to a PATCH /api/settings that changes the service's address: 409 `noService`, the engine has no service address, so it keeps no credential (docs/api.md#the-configured-service); 503 `storeUnavailable`, the store refused to keep or remove it (for a change of address, the credential kept for the old one) and nothing was changed, or it did but couldn't make that durable: then GET /api/service answers what it holds, and a retry finishes it (a change of address stays refused until then). A client treats a code it doesn't know by the status. */
+export interface ServiceProblem {
+  type?: string;
+  title?: string;
+  detail?: string;
+  /** The response's status: 409 or 503. A client treats a status it doesn't know by its class. */
+  status: 409 | 503;
+  /** `noService` (409) or `storeUnavailable` (503). A client treats a code it doesn't know by the status. */
+  code: "noService" | "storeUnavailable";
 }
 
 /** GET /api/logs: the engine's recent log entries newer than the request's `after`, oldest first, and the `seq` of the newest entry it has logged (docs/api.md#logs). A client polls with `after` set to the `latest` it last read. Read tolerantly: a client ignores members it doesn't know. */
@@ -3929,6 +3985,70 @@ export interface ApiOperations {
       409: SettingsStatusProblem;
       /** The body breaks its definition or a limit (limit.settingsRequestBytes, limit.settingsDepth, limit.settingsClientBytes), or the settings it makes would be over a limit (limit.settingsClients, limit.settingsBytes); nothing was changed. */
       422: InvalidProblem;
+      /** `storeUnavailable`: the change would change the service's address, and the store couldn't remove the credential kept for the old one (docs/api.md#the-configured-service). The settings weren't changed. */
+      503: ServiceProblem;
+    };
+  };
+  /**
+   * getService: The configured service's address and the state of the credential a client provides for it, never the credential.
+   *
+   * docs/api.md#the-configured-service.
+   */
+  "GET /api/service": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The address, the credential's state, where it is kept and a fingerprint of the stored credential. */
+      200: ServiceState;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+    };
+  };
+  /**
+   * putServiceCredential: Keeps a credential a client provides for the configured service, in place of any the engine has.
+   *
+   * docs/api.md#the-configured-service.
+   */
+  "PUT /api/service/credential": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: ServiceCredential;
+    responses: {
+      /** The credential is kept; its state is `present`. */
+      204: null;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** `noService`: the engine has no service address, so it keeps no credential. Nothing was changed. */
+      409: ServiceProblem;
+      /** The body breaks its definition or its limit (limit.requestBytes): a credential that isn't an RFC 6750 token or is over 4,096 characters. Nothing was changed. */
+      422: InvalidProblem;
+      /** `storeUnavailable`: the store refused to keep the credential. The credential the engine had, if any, is kept as it was. */
+      503: ServiceProblem;
+    };
+  };
+  /**
+   * deleteServiceCredential: Removes the credential the engine keeps for the configured service, if any.
+   *
+   * docs/api.md#the-configured-service.
+   */
+  "DELETE /api/service/credential": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The engine keeps no credential (it had none, or it removed it). */
+      204: null;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** `storeUnavailable`: the store couldn't remove the credential; the engine keeps it as it was. */
+      503: ServiceProblem;
     };
   };
   /**

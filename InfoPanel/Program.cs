@@ -19,6 +19,7 @@ using InfoPanel.Sensors.HwInfo.Gadget;
 using InfoPanel.Sensors.Libre;
 using InfoPanel.Sensors.MacOS;
 using InfoPanel.Sensors.Replay;
+using InfoPanel.Service;
 using InfoPanel.Settings;
 using InfoPanel.Spec;
 using Microsoft.AspNetCore.HostFiltering;
@@ -226,6 +227,19 @@ try
     var tokens = TokenStore.Open(paths.TokensFile, paths.Root, TimeProvider.System, engineLogger.ForContext<TokenStore>());
     // The paired clients and the last port: a file that can't be read is logged, the run has none, and it is never rewritten.
     var pairings = PairingStore.Open(paths.PairingsFile, paths.Root, TimeProvider.System, engineLogger.ForContext<PairingStore>());
+    // The credential a client provides for the configured service: a private file (0600) on macOS and Linux, a file
+    // encrypted for this user (DPAPI) with a private access list on Windows; never in settings.json.
+    IServiceCredentialStore serviceStore;
+    if (OperatingSystem.IsWindows())
+    {
+        var windowsFiles = new WindowsPrivateFiles();
+        serviceStore = FileServiceCredentialStore.ForProtectedFile(paths.Root, temp => windowsFiles.CreateFile(temp, windowsFiles.CurrentUser),
+            engineLogger.ForContext<FileServiceCredentialStore>());
+    }
+    else
+    {
+        serviceStore = FileServiceCredentialStore.ForPrivateFile(paths.Root, engineLogger.ForContext<FileServiceCredentialStore>());
+    }
 
     FontRegistry.RegisterEmbedded();
     var userFonts = FontRegistry.RegisterDirectory(paths.FontsDirectory);
@@ -292,6 +306,32 @@ try
     builder.Services.AddSingleton(sp => new PairingProofs(pairings, runtime, workspace.Instance, sp.GetRequiredService<TimeProvider>(),
         engineLogger.ForContext<PairingProofs>()));
     builder.Services.AddSingleton(settings);
+    // The configured service: its address is the setting, else the build's web client origin. A change of address removes
+    // the credential (and one made while the engine was stopped is removed when it is first made, at start). Every request
+    // to the service goes through ServiceClient's rules.
+    builder.Services.AddSingleton(serviceStore);
+    builder.Services.AddSingleton(sp =>
+    {
+        string? AddressOf(EngineSettings s) => s.Service.Address ?? options.DefaultServiceAddress;
+        var service = new ServiceCredentials(sp.GetRequiredService<IServiceCredentialStore>(),
+            () => AddressOf(settings.Current.Settings), engineLogger.ForContext<ServiceCredentials>());
+        // A change of the address in effect removes the credential before it is stored, and is refused (503) when it can't.
+        // A change that keeps the address doesn't touch the credential, so it never waits for the credential's store.
+        settings.Changing = (previous, next) => AddressOf(previous) == AddressOf(next) ? null : service.AddressChanging(AddressOf(next));
+        // The address the last change left in effect; Changed is raised under the settings' lock, in order.
+        var inEffect = AddressOf(settings.Current.Settings);
+        settings.Changed += snapshot =>
+        {
+            var address = AddressOf(snapshot.Settings);
+            if (address == inEffect)
+                return;
+            inEffect = address;
+            service.AddressChanged();
+        };
+        return service;
+    });
+    builder.Services.AddSingleton(sp => new ServiceClient(sp.GetRequiredService<ServiceCredentials>(), loopbackOnly: options.Offline,
+        sp.GetRequiredService<TimeProvider>()));
     builder.Services.AddSingleton(recentLog);
     builder.Services.AddSingleton(regionalFormat);
     // The 1.x import: its limits (tests lower them), the 1.x folder, and one import read at a time.
@@ -510,6 +550,8 @@ try
     builder.Services.AddHostedService(sp => sp.GetRequiredService<DisplayWindowManager>());
 
     var app = builder.Build();
+    // Opened now, so a credential kept for another address than the one in effect is removed at start.
+    app.Services.GetRequiredService<ServiceCredentials>();
 
     app.UseApiProblems();
     app.UseMiddleware<SecurityMiddleware>();
@@ -530,6 +572,7 @@ try
     app.MapTokenEndpoints();
     app.MapPairingEndpoints();
     app.MapSettingsEndpoints();
+    app.MapServiceEndpoints();
     app.MapLogEndpoints();
     app.MapFolderEndpoints();
     app.MapDisplayEndpoints();

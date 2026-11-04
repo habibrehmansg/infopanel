@@ -164,6 +164,41 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
             await Send(refusingSession, "PATCH", "/api/settings", 409, Body("""{"frameRate":30}"""));
         }
 
+        // The configured service, the session token's: no address (a build from source), so a credential is refused; an
+        // address set, a credential kept, read, refused when malformed, removed; a store that refuses (an engine of its
+        // own) is 503 to a credential given or removed.
+        await Send(session, "GET", "/api/service", 200);
+        await Send(session, "PUT", "/api/service/credential", 409, Body("""{"credential":"tour-credential"}"""));
+        await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"address":"https://service.example"}}"""));
+        await Send(session, "PUT", "/api/service/credential", 204, Body("""{"credential":"tour-credential"}"""));
+        await Send(session, "GET", "/api/service", 200);
+        await Send(session, "PUT", "/api/service/credential", 422, Body("""{"credential":"tour credential"}"""));
+        await Send(session, "DELETE", "/api/service/credential", 204);
+        await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"address":null}}"""));
+        var refusingStore = Path.Combine(factory.Root, "service-store-refuses");
+        Directory.CreateDirectory(refusingStore);
+        using (var refusing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", refusingStore)
+            .ConfigureTestServices(s => s.AddSingleton<InfoPanel.Service.IServiceCredentialStore>(new ServiceEndpointTests.RefusingServiceStore()))))
+        using (var refusingSession = refusing.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            refusingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            await Send(refusingSession, "PATCH", "/api/settings", 200, Body("""{"service":{"address":"https://service.example"}}"""));
+            await Send(refusingSession, "PUT", "/api/service/credential", 503, Body("""{"credential":"tour-credential"}"""));
+            await Send(refusingSession, "DELETE", "/api/service/credential", 503);
+        }
+
+        // A store holding a credential it can't remove (an engine of its own): a change of the service's address is 503.
+        var stuckStore = Path.Combine(factory.Root, "service-store-stuck");
+        Directory.CreateDirectory(stuckStore);
+        var stuck = new InfoPanel.Service.StoredServiceCredential("https://service.example", "tour-credential", Rejected: false);
+        using (var refusing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", stuckStore)
+            .ConfigureTestServices(s => s.AddSingleton<InfoPanel.Service.IServiceCredentialStore>(new ServiceEndpointTests.RefusingServiceStore(stuck)))))
+        using (var refusingSession = refusing.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            refusingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            await Send(refusingSession, "PATCH", "/api/settings", 503, Body("""{"service":{"address":"https://service.example"}}"""));
+        }
+
         // The recent log entries and the engine's folders, the session token's; a folder the engine can't open (an
         // engine of its own, whose opener fails) is 500. No file manager opens: the test engines' openers only record.
         await Send(session, "GET", "/api/logs", 200);

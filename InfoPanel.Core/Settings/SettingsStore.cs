@@ -11,6 +11,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using InfoPanel.Documents;
 using InfoPanel.Persistence;
+using InfoPanel.Service;
 using InfoPanel.Spec;
 using InfoPanel.Spec.Schema;
 using Serilog;
@@ -121,6 +122,14 @@ public sealed class SettingsStore
     /// </summary>
     public event Action<SettingsSnapshot>? Changed;
 
+    /// <summary>
+    /// Asked under the store's lock before a change to the stored settings is written, with the settings in effect and
+    /// those the change makes. It refuses the change by throwing: nothing is written or raised, and <see cref="Apply"/>
+    /// throws what it threw. What it returns, when not null, is disposed once the change is in effect (after
+    /// <see cref="Changed"/>) or has failed. Set at start-up; it must not call <see cref="Apply"/>.
+    /// </summary>
+    public Func<EngineSettings, EngineSettings, IDisposable?>? Changing { get; set; }
+
     /// <summary>Opens the data folder's settings file (<see cref="DataPaths.SettingsFile"/>) and removes temp files an interrupted write left.</summary>
     public static SettingsStore Open(DataPaths paths, ILogger? logger = null) => Open(paths.SettingsFile, paths.Root, logger, faults: null);
 
@@ -148,7 +157,7 @@ public sealed class SettingsStore
 
     /// <summary>
     /// Merges <paramref name="change"/> into the settings and writes them: a member's value sets it, <c>null</c> removes it
-    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>media</c> and <c>clients</c> merge member by member, and each
+    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>media</c>, <c>service</c> and <c>clients</c> merge member by member, and each
     /// <c>clients</c> member is set or removed whole. Unknown members are refused.
     /// </summary>
     /// <returns>The settings in effect afterwards (the same version when nothing changed).</returns>
@@ -163,6 +172,7 @@ public sealed class SettingsStore
     /// The write failed: nothing changed. Or the file was replaced but its folder couldn't be flushed: the new values are
     /// in effect (and <see cref="Changed"/> was raised), since the file holds them.
     /// </exception>
+    /// <exception cref="Exception">What <see cref="Changing"/> refused the change with: nothing changed.</exception>
     public SettingsSnapshot Apply(JsonElement change)
     {
         if (Status != SettingsStatus.Ok)
@@ -221,6 +231,7 @@ public sealed class SettingsStore
                 return _current;
             }
 
+            using var changing = Changing?.Invoke(_current.Settings, Effective(next));
             var replaced = false;
             try
             {
@@ -437,6 +448,9 @@ public sealed class SettingsStore
         if (Container(tree, "media", "/media") is { } media)
             Check(media, "localNetwork", "/media/localNetwork", BoolProblem);
 
+        if (Container(tree, "service", "/service") is { } service)
+            Check(service, "address", "/service/address", AddressProblem);
+
         if (Container(tree, "clients", "/clients") is { } clients)
         {
             var kept = 0;
@@ -467,6 +481,7 @@ public sealed class SettingsStore
         var libre = (tree["sources"] as JsonObject)?["libre"] as JsonObject;
         var network = (tree["sources"] as JsonObject)?["network"] as JsonObject;
         var media = tree["media"] as JsonObject;
+        var service = tree["service"] as JsonObject;
         var clients = ImmutableDictionary.CreateBuilder<string, JsonElement>(StringComparer.Ordinal);
         if (tree["clients"] is JsonObject stored)
         {
@@ -484,6 +499,7 @@ public sealed class SettingsStore
                 Int(libre?["storageInterval"]) ?? LibreSettings.Default.StorageInterval),
             new NetworkSettings(Bool(network?["publicIp"]) ?? NetworkSettings.Default.PublicIp),
             new MediaSettings(Bool(media?["localNetwork"]) ?? MediaSettings.Default.LocalNetwork),
+            new ServiceSettings(service?["address"] is { } address && ServiceAddress.TryNormalize(ElementOf(address).GetString(), out var normal) ? normal : null),
             clients.ToImmutable());
 
         static int? Int(JsonNode? node) => node is null ? null : SpecJson.ReadInt32(ElementOf(node));
@@ -603,6 +619,19 @@ public sealed class SettingsStore
                     }
 
                     break;
+                case "service":
+                    if (!Object(member.Value, pointer))
+                        break;
+                    foreach (var setting in member.Value.EnumerateObject())
+                    {
+                        var settingPointer = pointer + "/" + Escape(setting.Name);
+                        if (setting.Name == "address")
+                            Leaf(setting.Value, settingPointer, AddressProblem);
+                        else
+                            Unknown(settingPointer);
+                    }
+
+                    break;
                 case "clients":
                     if (!Object(member.Value, pointer))
                         break;
@@ -667,6 +696,17 @@ public sealed class SettingsStore
                         Set(media, setting.Name, setting.Value, e => JsonValue.Create(e.GetBoolean()));
                     PruneIfEmpty(tree, "media");
                     break;
+                case "service":
+                    // An address is stored in its normal form (lower case, no trailing slash or default port).
+                    var service = Child(tree, "service");
+                    foreach (var setting in member.Value.EnumerateObject())
+                    {
+                        Set(service, setting.Name, setting.Value, e =>
+                            JsonValue.Create(ServiceAddress.TryNormalize(e.GetString(), out var normal) ? normal : e.GetString()));
+                    }
+
+                    PruneIfEmpty(tree, "service");
+                    break;
                 case "clients":
                     var clients = Child(tree, "clients");
                     foreach (var client in member.Value.EnumerateObject())
@@ -714,6 +754,12 @@ public sealed class SettingsStore
 
     private static string? BoolProblem(JsonElement e) =>
         e.ValueKind is JsonValueKind.True or JsonValueKind.False ? null : "isn't true or false";
+
+    /// <summary>The configured service's address: an origin, <c>https</c>, or <c>http</c> on a loopback host (<see cref="ServiceAddress"/>).</summary>
+    private static string? AddressProblem(JsonElement e) =>
+        e.ValueKind == JsonValueKind.String && ServiceAddress.TryNormalize(e.GetString(), out _)
+            ? null
+            : "isn't a service address: an origin without a path, https, or http on a loopback host";
 
     private static string? LogLevelProblem(JsonElement e) =>
         e.ValueKind == JsonValueKind.String && SettingsLimits.LogLevelNamed(e.GetString()) != null

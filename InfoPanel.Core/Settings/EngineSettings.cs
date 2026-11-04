@@ -125,6 +125,15 @@ public sealed record MediaSettings(bool LocalNetwork)
 }
 
 /// <summary>
+/// The configured service's settings: its address as set (<c>service.address</c>, an origin in its normal form,
+/// <c>InfoPanel.Service.ServiceAddress</c>), or null when none is set and the engine's default applies.
+/// </summary>
+public sealed record ServiceSettings(string? Address)
+{
+    public static ServiceSettings Default { get; } = new((string?)null);
+}
+
+/// <summary>
 /// The engine settings in effect: each set value, or its default. <see cref="Clients"/> holds each client's own
 /// preferences, opaque to the engine.
 /// </summary>
@@ -135,6 +144,7 @@ public sealed record EngineSettings(
     LibreSettings Libre,
     NetworkSettings Network,
     MediaSettings Media,
+    ServiceSettings Service,
     IReadOnlyDictionary<string, JsonElement> Clients)
 {
     public static EngineSettings Default { get; } = new(
@@ -144,6 +154,7 @@ public sealed record EngineSettings(
         LibreSettings.Default,
         NetworkSettings.Default,
         MediaSettings.Default,
+        ServiceSettings.Default,
         ImmutableDictionary<string, JsonElement>.Empty);
 
     /// <summary>The time between the sensor history's samples.</summary>

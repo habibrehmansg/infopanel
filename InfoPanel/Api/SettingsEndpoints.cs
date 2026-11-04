@@ -1,5 +1,7 @@
 using InfoPanel.Documents;
+using InfoPanel.Hosting;
 using InfoPanel.Security;
+using InfoPanel.Service;
 using InfoPanel.Settings;
 using InfoPanel.Spec;
 using static InfoPanel.Api.ApiResults;
@@ -21,9 +23,9 @@ public static class SettingsEndpoints
     {
         var api = app.MapGroup("/api/settings");
 
-        api.MapGet("", (SettingsStore settings) => Json(BodyOf(settings, settings.Current))).RequireScope(ApiScope.Session);
+        api.MapGet("", (SettingsStore settings, EngineOptions options) => Json(BodyOf(settings, settings.Current, options.DefaultServiceAddress))).RequireScope(ApiScope.Session);
 
-        api.MapPatch("", async (HttpRequest request, SettingsStore settings, Workspace workspace, CancellationToken ct) =>
+        api.MapPatch("", async (HttpRequest request, SettingsStore settings, EngineOptions options, Workspace workspace, CancellationToken ct) =>
         {
             // Settings the engine couldn't read at start-up are never changed: answered before the body is read, as a
             // profile that can't be opened is.
@@ -44,17 +46,25 @@ public static class SettingsEndpoints
 
             try
             {
-                return Json(BodyOf(settings, settings.Apply(json.RootElement)));
+                return Json(BodyOf(settings, settings.Apply(json.RootElement), options.DefaultServiceAddress));
             }
             catch (SettingsChangeException refused)
             {
                 return InvalidBody([.. refused.Errors.Select(e => new ValidationErrorBody { Path = e.Path, Code = e.Code, Message = e.Message })]);
             }
+            catch (ServiceStoreException refused)
+            {
+                // A change of the service's address whose credential the store couldn't remove: nothing changed.
+                return Problem(ServiceEndpoints.StoreUnavailable(refused), StatusCodes.Status503ServiceUnavailable);
+            }
         }).WithOwnBodyLimit().RequireScope(ApiScope.Session);
     }
 
-    /// <summary>The settings in effect as the API answers them: every value, the version, the status and its problem.</summary>
-    internal static EngineSettingsBody BodyOf(SettingsStore store, SettingsSnapshot snapshot)
+    /// <summary>
+    /// The settings in effect as the API answers them: every value, the version, the status and its problem; the service's
+    /// address the one set, else <paramref name="defaultServiceAddress"/>.
+    /// </summary>
+    internal static EngineSettingsBody BodyOf(SettingsStore store, SettingsSnapshot snapshot, string? defaultServiceAddress)
     {
         var settings = snapshot.Settings;
         return new EngineSettingsBody
@@ -76,6 +86,7 @@ public static class SettingsEndpoints
                 Network = new NetworkSettingsBody { PublicIp = settings.Network.PublicIp },
             },
             Media = new MediaSettingsBody { LocalNetwork = settings.Media.LocalNetwork },
+            Service = new ServiceSettingsBody { Address = settings.Service.Address ?? defaultServiceAddress },
             Clients = settings.Clients,
         };
     }

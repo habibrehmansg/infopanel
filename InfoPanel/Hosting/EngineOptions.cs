@@ -67,6 +67,13 @@ public sealed partial class EngineOptions
         .FirstOrDefault(a => a.Key == "InfoPanel.AllowOrigin")?.Value is { Length: > 0 } origin ? origin : null;
 
 
+    /// <summary>
+    /// The configured service's address when the <c>service.address</c> setting has none: the web client origin this build
+    /// carries (<see cref="BuiltInAllowOrigin"/>), normalised (<see cref="InfoPanel.Service.ServiceAddress"/>), whatever
+    /// <c>--allow-origin</c> says; null in a build from source, which has no service until one is set.
+    /// </summary>
+    public string? DefaultServiceAddress { get; init; }
+
     /// <summary>Wipe the data folder before starting (only with an explicit <see cref="DataDir"/>).</summary>
     public bool Fresh { get; init; }
 
@@ -220,6 +227,17 @@ public sealed partial class EngineOptions
                 allowOrigins.Add(normalized);
         }
 
+        // The configured service's default address: the origin the build carries, flags or not, so it is checked as a
+        // service address whatever the flags say (one can pass the allow-origin check above and still not be one).
+        string? defaultService = null;
+        if (!string.IsNullOrWhiteSpace(builtInOrigin))
+        {
+            if (InfoPanel.Service.ServiceAddress.TryNormalize(builtInOrigin.Trim(), out var service))
+                defaultService = service;
+            else
+                problems.Add($"The web client origin this build carries (InfoPanelAllowOrigin) is the configured service's default address too, so it must be one: an exact https origin, or http on a loopback host, with no user part (got '{builtInOrigin}').");
+        }
+
         var dataDir = Value(section, "DataDir");
         string? fullDataDir = null;
         if (dataDir != null)
@@ -363,6 +381,7 @@ public sealed partial class EngineOptions
             DevOrigins = devOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             AllowOrigins = allowOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             AllowOriginsBuiltIn = allowBuiltIn,
+            DefaultServiceAddress = defaultService,
             Fresh = fresh,
             MockSeed = seed,
             Mock = mock,

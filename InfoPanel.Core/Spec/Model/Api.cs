@@ -707,6 +707,7 @@ public sealed record EngineSettingsBody
     public required string LogLevel { get; init; }
     public required SettingsSources Sources { get; init; }
     public required MediaSettingsBody Media { get; init; }
+    public required ServiceSettingsBody Service { get; init; }
     /// <summary>Each client's preferences by client name, as the client set them.</summary>
     public required IReadOnlyDictionary<string, JsonElement> Clients { get; init; }
 }
@@ -754,6 +755,7 @@ public sealed record SettingsChange : IRemovesMembers
     public string? LogLevel { get; init; }
     public SettingsChangeSources? Sources { get; init; }
     public MediaSettingsChange? Media { get; init; }
+    public ServiceSettingsChange? Service { get; init; }
     public IReadOnlyDictionary<string, JsonElement>? Clients { get; init; }
     /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
@@ -787,6 +789,16 @@ public sealed record MediaSettingsChange : IRemovesMembers
     public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
+/// <summary>The configured service's settings to change; an address given as <c>null</c> goes back to the default (<see cref="IRemovesMembers"/>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/service")]
+public sealed record ServiceSettingsChange : IRemovesMembers
+{
+    public string? Address { get; init; }
+    /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
+
 /// <summary>The Libre source's settings to change; one given as <c>null</c> goes back to its default (<see cref="IRemovesMembers"/>).</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/sources/properties/libre")]
 public sealed record LibreSettingsChange : IRemovesMembers
@@ -810,6 +822,48 @@ public sealed record SettingsStatusProblem
     /// <summary><c>unreadable</c> or <c>unsupported</c>.</summary>
     public required string Code { get; init; }
     public required ValidationErrorBody Problem { get; init; }
+}
+
+/// <summary>The configured service's settings (<c>serviceSettings</c>, engineSettings' <c>service</c>): its address in effect, or null.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/serviceSettings")]
+public sealed record ServiceSettingsBody
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Address { get; init; }
+}
+
+// The configured service (GET /api/service, PUT and DELETE /api/service/credential).
+
+/// <summary>
+/// <c>GET /api/service</c>: the service's address in effect, the state of the credential a client provides for it
+/// (<c>absent</c>, <c>present</c> or <c>rejected</c>), where it is kept and a fingerprint of the stored credential; never
+/// the credential.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/serviceState")]
+public sealed record ServiceStateBody
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Address { get; init; }
+    public required string Credential { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Store { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Fingerprint { get; init; }
+}
+
+/// <summary><c>PUT /api/service/credential</c>: a credential a client provides for the configured service.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/serviceCredential")]
+public sealed record ServiceCredentialRequest
+{
+    public required string Credential { get; init; }
+}
+
+/// <summary>409 <c>noService</c> or 503 <c>storeUnavailable</c> to <c>PUT</c> or <c>DELETE /api/service/credential</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/serviceProblem")]
+public sealed record ServiceProblem
+{
+    public string? Type { get; init; }
+    public string? Title { get; init; }
+    public string? Detail { get; init; }
+    public required int Status { get; init; }
+    /// <summary><c>noService</c> or <c>storeUnavailable</c>.</summary>
+    public required string Code { get; init; }
 }
 
 // The engine's recent log entries (GET /api/logs).

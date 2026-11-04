@@ -17,7 +17,10 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `DELETE /api/sensors/sources/libre/elevation` | | 202 `libreElevation`; 409 `problem` while a change runs or with nothing to set up ([below](#reading-all-sensors)) |
 | `GET /api/sensors/values` | | An array of `sensorValue`; 400 for a `history` that isn't a whole number from −2,147,483,648 to 2,147,483,647 |
 | `GET /api/settings` | | `engineSettings` ([below](#settings)) |
-| `PATCH /api/settings` | `settingsChange` | `engineSettings`; 409 `settingsStatusProblem`; 422 `invalidProblem` ([below](#changing-settings)) |
+| `PATCH /api/settings` | `settingsChange` | `engineSettings`; 409 `settingsStatusProblem`; 422 `invalidProblem` ([below](#changing-settings)); 503 `serviceProblem` when a change of the service's address can't remove its credential ([below](#the-configured-service)) |
+| `GET /api/service` | | `serviceState` ([below](#the-configured-service)) |
+| `PUT /api/service/credential` | `serviceCredential` | 204; 409 `serviceProblem` without a service address; 422 `invalidProblem`; 503 `serviceProblem` when the store refuses ([below](#the-configured-service)) |
+| `DELETE /api/service/credential` | | 204; 503 `serviceProblem` when the store refuses ([below](#the-configured-service)) |
 | `GET /api/logs` | | `logPage`; 400 for an `after` that isn't a whole number from 0 to 9,007,199,254,740,991 ([below](#logs)) |
 | `POST /api/folders/{folder}/open` | | 204; 404 for a `folder` other than `data` and `logs`; 500 when the engine can't open it ([below](#folders)) |
 | `GET /api/displays` | | `displayList`; 500 when the engine can't list the displays ([below](#displays)) |
@@ -56,7 +59,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 
 A request on a profile is checked in this order, and the first failure answers: its query parameters (else 400 `problem`); the profile exists (else 404); a request that reads, changes or draws its document needs a profile that can be opened (else 409 `profileStatusProblem`, [below](#profiles)); the body matches its definition and the formats (else 422 `invalidProblem`, at most 100 errors and then one `more`, [validation](validation.md)); then what the request itself checks.
 
-A request body is held to its size limit as received, whitespace around the JSON value included, before it is parsed ([limits](limits.md#request-limits)): an undo's, redo's, revert's, save's or duplicate's to `requestBytes` (64 KiB), a token create's and a pairing request's to `tokenRequestBytes` (4 KiB), a settings change's to `settingsRequestBytes` (512 KiB), a 1.x migration record's to `recordBytes` (1 MiB) and a commit's to `commitBytes`. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""`. A create's body is read up to `documentBytes` plus 64 KiB, then its document is held to `documentBytes` ([sizes](limits.md#sizes)); a blob's bytes are held to `videoBytes` and an archive's to `archiveBytes` (413).
+A request body is held to its size limit as received, whitespace around the JSON value included, before it is parsed ([limits](limits.md#request-limits)): an undo's, redo's, revert's, save's or duplicate's and a service credential's to `requestBytes` (64 KiB), a token create's and a pairing request's to `tokenRequestBytes` (4 KiB), a settings change's to `settingsRequestBytes` (512 KiB), a 1.x migration record's to `recordBytes` (1 MiB) and a commit's to `commitBytes`. A body over its limit is answered 422 `invalidProblem` with one error, `limit.<name>` at `""`. A create's body is read up to `documentBytes` plus 64 KiB, then its document is held to `documentBytes` ([sizes](limits.md#sizes)); a blob's bytes are held to `videoBytes` and an archive's to `archiveBytes` (413).
 
 ## Errors
 
@@ -84,7 +87,7 @@ Every request under `/api` carries a token, as `Authorization: Bearer {token}`. 
 | `read` | Every `GET` and `HEAD` under `/api` but the session token's own (below): the session, fonts, sensors, the displays, the profile list, documents, exports and archives, thumbnails, blobs, the 1.x migration's state; and the preview socket, `doc` messages and frames included |
 | `edit` | Every request that changes a profile, a document or a blob, or the engine's data: creating, duplicating and deleting profiles, commits, undo, redo, revert, save, `POST /api/blobs`, opening a profile archive, and the 1.x import's reads (which store blobs) and record. `edit` implies `read`: a token made with `edit` has both |
 
-Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token), uses the token and pairing endpoints, reads and changes the engine settings ([below](#settings)), reads the engine's recent log entries ([below](#logs)) and opens the engine's folders ([below](#folders)). Scopes fail closed: a request that neither scope covers needs the session token.
+Only the session token signs in (`GET /auth/{token}` refuses any other token as an invalid link, so an integration token can never be exchanged for the session token), uses the token and pairing endpoints, reads and changes the engine settings ([below](#settings)), reads the configured service's state and gives or removes its credential ([below](#the-configured-service)), reads the engine's recent log entries ([below](#logs)) and opens the engine's folders ([below](#folders)). Scopes fail closed: a request that neither scope covers needs the session token.
 
 Narrower access, such as a token that sees only some profiles, would come as a token kind of its own in a later version: `read` and `edit` keep allowing everything this table says.
 
@@ -246,6 +249,7 @@ With the PawnIO driver, LibreHardwareMonitor still needs administrator rights fo
 | `sources.libre.storageInterval` | 1–300 | 30 | Seconds between its reads of storage drives |
 | `sources.network.publicIp` | `true`, `false` | `true` | Whether the network sensor source (`infopanel.network`) asks ipify for this network's public address while a public-address reading is in use, and lists the two (`plugin:/infopanel.network/public/ipv4`, `…/ipv6`). Off, it asks nothing and lists neither: a sensor bound to one is `unavailable`. `--offline` asks nothing and lists neither whatever this says |
 | `media.localNetwork` | `true`, `false` | `true` | Whether media providers may connect to this computer and the local network ([providers](providers.md#addresses)) |
+| `service.address` | An origin: `https`, or `http` on a loopback host | The engine's own, or none | The configured service's address ([below](#the-configured-service)). A change removes the credential the engine keeps for the service |
 | `clients.{name}` | Any JSON value but `null` | none | A client's own preferences ([below](#client-preferences)) |
 
 A change takes effect at once: outputs re-time to the new frame rate, the history takes its next sample at the new rate and keeps the samples it has, the log follows the new level, media providers fetch every reference again under the new `media.localNetwork`, and the network source follows `sources.network.publicIp`: turned off, it cancels a lookup under way, forgets the public addresses and lists them no more; turned on, it lists them again (`unavailable` until a lookup answers) and, while one is in use, asks at once. An engine keeps the source settings whether or not it has that source.
@@ -256,7 +260,7 @@ A change takes effect at once: outputs re-time to the new frame rate, the histor
 
 ### Changing settings
 
-`PATCH /api/settings` changes the settings its body (`settingsChange`) names and answers the settings in effect, as `GET` does. A value sets a setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `media` and `clients` are merged member by member. The change is stored before the answer, all of it or none of it. No revision guards it: two changes to different settings never conflict, and of two changes to the same setting the later one stays. A change is one to the stored settings, not only to the values in effect: a value equal to its setting's default is stored, and from then on the setting keeps it rather than following the default (an engine with another default keeps it too); `null` removes a stored value, so the default applies again. Either changes the stored settings, and counts in `version`, though the value in effect stays the same. A change that leaves the stored settings as they were (a setting given the value it already has, the same number spelled otherwise included, `null` for a setting that isn't set, or `{}`) keeps `version` as it was and sends no message; it rewrites the stored file only to finish an earlier write whose folder flush failed.
+`PATCH /api/settings` changes the settings its body (`settingsChange`) names and answers the settings in effect, as `GET` does. A value sets a setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `media`, `service` and `clients` are merged member by member. The change is stored before the answer, all of it or none of it. No revision guards it: two changes to different settings never conflict, and of two changes to the same setting the later one stays. A change is one to the stored settings, not only to the values in effect: a value equal to its setting's default is stored, and from then on the setting keeps it rather than following the default (an engine with another default keeps it too); `null` removes a stored value, so the default applies again. Either changes the stored settings, and counts in `version`, though the value in effect stays the same. A change that leaves the stored settings as they were (a setting given the value it already has, the same number spelled otherwise included, `null` for a setting that isn't set, or `{}`) keeps `version` as it was and sends no message; it rewrites the stored file only to finish an earlier write whose folder flush failed.
 
 The engine checks, in order, and the first failure answers, nothing changed:
 
@@ -270,6 +274,27 @@ After each change that changed the stored settings, every preview socket authent
 ### Client preferences
 
 `clients` keeps each client's own preferences with the engine, by a name the client picks (1–64 letters, digits, dots, underscores and hyphens), so that they last as long as the engine's data, whatever the client's own storage keeps. Each is any JSON value but `null`, and the engine stores it as the same value and never reads it. A change sets a client's preferences whole, or removes them with `null`, and keeps the other clients'. A client changes only its own name's.
+
+## The configured service
+
+The engine can keep a credential a client provides for one configured service, and send it with the requests it makes to that service. Only the session token reads the service's state and gives or removes its credential ([authentication](#authentication)).
+
+The service's address is the `service.address` setting ([settings](#settings)): an origin, `scheme://host[:port]` without a path, `https`, or `http` on a loopback host (`localhost`, 127.0.0.0/8, `[::1]`); its scheme and host may be given in any case, and the engine keeps them in lower case. Without one set, it is the engine's default, which an engine built from source doesn't have: then there is no service, and the engine keeps no credential. A change of the address in effect removes the credential the engine keeps, since it was given for the other service, before the change is stored: when the store can't remove it, the change is answered 503 `serviceProblem` with the code `storeUnavailable`, and neither the settings nor the credential change. A credential is sent only to the address it was stored for: one the engine couldn't remove after a change of address stays in its store, and is used again only if the address in effect returns to the one it was stored for.
+
+`GET /api/service` answers `serviceState`: the address in effect (`null` without one); `credential`, `absent`, `present` or `rejected`; `store`, where the engine keeps it (`private`, a file in its data folder only this user may read, on macOS and Linux; `protected`, a file in its data folder encrypted for this user by the operating system, on Windows; `null` when absent); and `fingerprint`, a fingerprint of the stored credential: the first 16 hexadecimal digits, in lower case, of the SHA-256 of its UTF-8 bytes (`null` when absent). It never answers the credential itself.
+
+`PUT /api/service/credential` with `serviceCredential` keeps the credential in place of any the engine has, and answers 204; its state is then `present`. The credential is an RFC 6750 token (letters, digits, `-`, `.`, `_`, `~`, `+` and `/`, then any `=`), at most 4,096 characters: anything else is answered 422 `invalidProblem` at `/credential`, without the value. Without a service address it is answered 409 `serviceProblem` with the code `noService`, and when the store refuses to keep it 503 with `storeUnavailable`; either way the credential the engine had, if any, is kept as it was. `DELETE /api/service/credential` removes the credential and answers 204, whether or not there was one (503 `storeUnavailable` when the store can't remove it). A store that kept or removed the credential but couldn't make that durable answers 503 `storeUnavailable` too: the engine then keeps what the store holds, as `GET` answers, and the same request again finishes it.
+
+The engine never writes the credential to its settings, its log or any answer. It sends it only:
+
+- to the address in effect, its origin exactly: a request to any other origin is refused before it is made;
+- over `https`, or `http` to a loopback host;
+- as `Authorization: Bearer {credential}`;
+- never on a redirect: an answer 3xx is the answer, and its `Location` isn't followed;
+- with `--offline`, only to a loopback host;
+- never through a proxy, whatever the environment names.
+
+Without a credential, the engine makes no request to the service. When the service answers 401, the credential's state becomes `rejected`, which lasts across restarts: the engine makes no request to the service until a client provides another credential. A 401 to a request sent with a credential since replaced (provided again, even the same one) or removed changes nothing. When it answers 429 or 503, its `Retry-After` tells the engine when to ask again.
 
 ## Logs
 

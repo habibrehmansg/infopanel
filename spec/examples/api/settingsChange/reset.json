@@ -1,1 +1,1 @@
-{"frameRate": null, "logLevel": null, "sources": {"libre": {"storageInterval": null}, "network": {"publicIp": null}}, "media": {"localNetwork": null}}
+{"frameRate": null, "logLevel": null, "sources": {"libre": {"storageInterval": null}, "network": {"publicIp": null}}, "media": {"localNetwork": null}, "service": {"address": null}}
