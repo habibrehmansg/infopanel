@@ -794,6 +794,7 @@ public sealed record MediaSettingsChange : IRemovesMembers
 public sealed record ServiceSettingsChange : IRemovesMembers
 {
     public string? Address { get; init; }
+    public bool? AiApps { get; init; }
     /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
     public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
@@ -824,11 +825,15 @@ public sealed record SettingsStatusProblem
     public required ValidationErrorBody Problem { get; init; }
 }
 
-/// <summary>The configured service's settings (<c>serviceSettings</c>, engineSettings' <c>service</c>): its address in effect, or null.</summary>
+/// <summary>
+/// The configured service's settings (<c>serviceSettings</c>, engineSettings' <c>service</c>): its address in effect, or
+/// null; and whether AI apps may use this engine's tools through it.
+/// </summary>
 [SpecDef("urn:infopanel:api:1#/$defs/serviceSettings")]
 public sealed record ServiceSettingsBody
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Address { get; init; }
+    public required bool AiApps { get; init; }
 }
 
 // The configured service (GET /api/service, PUT and DELETE /api/service/credential).
@@ -845,6 +850,8 @@ public sealed record ServiceStateBody
     public required string Credential { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Store { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Fingerprint { get; init; }
+    /// <summary>The connection AI apps elsewhere use: <c>off</c>, <c>connecting</c>, <c>connected</c>, <c>replaced</c>, <c>outdated</c> or <c>waiting</c>.</summary>
+    public required string AiApps { get; init; }
 }
 
 /// <summary><c>PUT /api/service/credential</c>: a credential a client provides for the configured service.</summary>

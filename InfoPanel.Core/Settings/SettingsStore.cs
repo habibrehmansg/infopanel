@@ -449,7 +449,10 @@ public sealed class SettingsStore
             Check(media, "localNetwork", "/media/localNetwork", BoolProblem);
 
         if (Container(tree, "service", "/service") is { } service)
+        {
             Check(service, "address", "/service/address", AddressProblem);
+            Check(service, "aiApps", "/service/aiApps", BoolProblem);
+        }
 
         if (Container(tree, "clients", "/clients") is { } clients)
         {
@@ -499,7 +502,9 @@ public sealed class SettingsStore
                 Int(libre?["storageInterval"]) ?? LibreSettings.Default.StorageInterval),
             new NetworkSettings(Bool(network?["publicIp"]) ?? NetworkSettings.Default.PublicIp),
             new MediaSettings(Bool(media?["localNetwork"]) ?? MediaSettings.Default.LocalNetwork),
-            new ServiceSettings(service?["address"] is { } address && ServiceAddress.TryNormalize(ElementOf(address).GetString(), out var normal) ? normal : null),
+            new ServiceSettings(
+                service?["address"] is { } address && ServiceAddress.TryNormalize(ElementOf(address).GetString(), out var normal) ? normal : null,
+                Bool(service?["aiApps"]) ?? ServiceSettings.Default.AiApps),
             clients.ToImmutable());
 
         static int? Int(JsonNode? node) => node is null ? null : SpecJson.ReadInt32(ElementOf(node));
@@ -627,6 +632,8 @@ public sealed class SettingsStore
                         var settingPointer = pointer + "/" + Escape(setting.Name);
                         if (setting.Name == "address")
                             Leaf(setting.Value, settingPointer, AddressProblem);
+                        else if (setting.Name == "aiApps")
+                            Leaf(setting.Value, settingPointer, BoolProblem);
                         else
                             Unknown(settingPointer);
                     }
@@ -701,6 +708,12 @@ public sealed class SettingsStore
                     var service = Child(tree, "service");
                     foreach (var setting in member.Value.EnumerateObject())
                     {
+                        if (setting.Name == "aiApps")
+                        {
+                            Set(service, setting.Name, setting.Value, e => JsonValue.Create(e.GetBoolean()));
+                            continue;
+                        }
+
                         Set(service, setting.Name, setting.Value, e =>
                             JsonValue.Create(ServiceAddress.TryNormalize(e.GetString(), out var normal) ? normal : e.GetString()));
                     }

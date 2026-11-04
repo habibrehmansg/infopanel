@@ -126,9 +126,10 @@ public sealed record MediaSettings(bool LocalNetwork)
 
 /// <summary>
 /// The configured service's settings: its address as set (<c>service.address</c>, an origin in its normal form,
-/// <c>InfoPanel.Service.ServiceAddress</c>), or null when none is set and the engine's default applies.
+/// <c>InfoPanel.Service.ServiceAddress</c>), or null when none is set and the engine's default applies; and whether AI
+/// apps may use this engine's tools through the configured service (<c>service.aiApps</c>, off by default).
 /// </summary>
-public sealed record ServiceSettings(string? Address)
+public sealed record ServiceSettings(string? Address, bool AiApps = false)
 {
     public static ServiceSettings Default { get; } = new((string?)null);
 }

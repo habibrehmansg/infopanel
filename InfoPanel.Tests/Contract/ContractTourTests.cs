@@ -172,6 +172,13 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"address":"https://service.example"}}"""));
         await Send(session, "PUT", "/api/service/credential", 204, Body("""{"credential":"tour-credential"}"""));
         await Send(session, "GET", "/api/service", 200);
+        // AI apps elsewhere: the setting on and off, and the service's state with it (this engine is --offline, so it
+        // never connects to service.example: its state stays off).
+        var aiApps = await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"aiApps":true}}"""));
+        Assert.True(aiApps.GetProperty("service").GetProperty("aiApps").GetBoolean());
+        Assert.Equal("off", (await Send(session, "GET", "/api/service", 200)).GetProperty("aiApps").GetString());
+        await Send(session, "PATCH", "/api/settings", 422, Body("""{"service":{"aiApps":"on"}}"""));
+        await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"aiApps":null}}"""));
         await Send(session, "PUT", "/api/service/credential", 422, Body("""{"credential":"tour credential"}"""));
         await Send(session, "DELETE", "/api/service/credential", 204);
         await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"address":null}}"""));

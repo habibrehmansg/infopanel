@@ -232,7 +232,13 @@ public sealed partial class BlobStore
     /// <see cref="Put(ReadOnlyMemory{byte})"/>, and whether this call wrote the blob (<paramref name="created"/> false
     /// when it was already stored), decided under the store's lock: of concurrent identical calls exactly one creates it.
     /// </summary>
-    public string Put(ReadOnlyMemory<byte> content, out bool created)
+    public string Put(ReadOnlyMemory<byte> content, out bool created) => Put(content, out created, null);
+
+    /// <summary>
+    /// <see cref="Put(ReadOnlyMemory{byte}, out bool)"/>, with <paramref name="guard"/> run under the store's lock before
+    /// anything is written: what it throws stops it, nothing stored.
+    /// </summary>
+    public string Put(ReadOnlyMemory<byte> content, out bool created, Action? guard)
     {
         if (content.Length > MaxBytes)
             throw new ArgumentOutOfRangeException(nameof(content), content.Length, $"A blob holds at most {MaxBytes} bytes.");
@@ -241,6 +247,7 @@ public sealed partial class BlobStore
         var path = Paths.BlobFile(id);
         using (Locks.Enter(_lock, WaitingForLock))
         {
+            guard?.Invoke();
             _changed = true;
             using (var existing = OpenFile(id))
             {

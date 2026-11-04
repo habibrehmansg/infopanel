@@ -3,7 +3,7 @@
 The engine is an MCP server for AI apps on the same computer (Claude Desktop, Claude Code and other apps that run local
 MCP servers over stdio). An app starts `InfoPanel --mcp`; that small front speaks MCP on stdin and stdout and hands each
 tool call to the engine that holds the data folder, starting the engine (without a browser) on the first call when it
-isn't running. Nothing goes over the network.
+isn't running. Nothing goes over the network, unless AI apps elsewhere is turned on ([below](#how-it-works)).
 
 ## The tools
 
@@ -167,3 +167,7 @@ never used as paths.
   front (beyond the run folder and the start timeout) nor passed on.
 - **Scopes.** The tools run inside the engine on the same code paths as the API, each with `read` or `edit`, never the
   session's powers.
+- **AI apps elsewhere.** With the `service.aiApps` setting on, the same tools also answer AI apps elsewhere, through one
+  connection the engine opens to the configured service, under the engine's own rules: only the tools, a cutoff before
+  every write, late calls refused, web images refused for now, text held to what the app takes, and log lines marked
+  "from elsewhere" ([relay.md](relay.md)).

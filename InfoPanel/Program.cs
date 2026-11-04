@@ -539,6 +539,12 @@ try
     builder.Services.AddSingleton<ILocalChannelHandler>(sp => sp.GetRequiredService<InfoPanel.Mcp.Tools.McpToolHost>());
     builder.Services.AddSingleton<LocalChannelService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<LocalChannelService>());
+    // AI apps elsewhere (docs/2.0/relay.md): with service.aiApps on, one connection to the configured service's relay, under
+    // ServiceClient's rules; its calls reach the tool host and nothing else.
+    builder.Services.AddSingleton(sp => new RelayClient(sp.GetRequiredService<ServiceCredentials>(), sp.GetRequiredService<InfoPanel.Mcp.Tools.McpToolHost>(),
+        new RelayOptions { EngineVersion = ReadEndpoints.EngineVersion(), LoopbackOnly = options.Offline }, sp.GetRequiredService<TimeProvider>(),
+        engineLogger.ForContext<RelayClient>()));
+    builder.Services.AddHostedService<InfoPanel.Mcp.RelayHostedService>();
 
     // Desktop windows and the menu-bar item: on macOS the main thread runs AppKit and the host runs on a worker (DesktopHost).
     var desktop = DesktopHost.Create(options);

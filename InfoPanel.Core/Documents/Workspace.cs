@@ -673,7 +673,13 @@ public sealed class Workspace : IDisposable
     /// a document (<c>{id, document}</c>, checked as a stored document: scenes that can't be drawn become placeholders),
     /// stored and saved at once, last in the list. The body is checked whole (422) before the id (409 <c>exists</c>).
     /// </summary>
-    public CreateOutcome Create(ReadOnlyMemory<byte> body)
+    public CreateOutcome Create(ReadOnlyMemory<byte> body) => Create(body, null);
+
+    /// <summary>
+    /// <see cref="Create(ReadOnlyMemory{byte})"/>, with <paramref name="guard"/> run under the workspace lock just before
+    /// the profile is stored: what it throws stops it, nothing stored.
+    /// </summary>
+    public CreateOutcome Create(ReadOnlyMemory<byte> body, Action? guard)
     {
         if (Parse(body, out var errors) is not { } json)
             return Invalid(errors);
@@ -717,7 +723,7 @@ public sealed class Workspace : IDisposable
                 var load = Generation.Load(document.RootElement, 1, Limits, Support, null, jsonChecked: true);
                 if (load.Generation is not { } generation)
                     return Invalid(load.Check.Errors.Select(e => e.Under("/document")).ToList());
-                return Store(id, generation, "/document", source: null);
+                return Store(id, generation, "/document", source: null, guard);
             }
         }
     }
@@ -792,7 +798,7 @@ public sealed class Workspace : IDisposable
     /// the bytes to store are over the limit (<see cref="OverDocumentBytes"/>), and 422 <c>limit.profileListBytes</c> at
     /// <c>""</c> when the stored profile list would be over its own (<see cref="ProfileListFullException"/>).
     /// </summary>
-    private CreateOutcome Store(string id, Generation generation, string path, ProfileDocument? source)
+    private CreateOutcome Store(string id, Generation generation, string path, ProfileDocument? source, Action? guard = null)
     {
         if (OverDocumentBytes(generation, path, out var bytes) is { } over)
             return Invalid([over]);
@@ -801,6 +807,7 @@ public sealed class Workspace : IDisposable
         using (EnterLock())
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            guard?.Invoke();
             if (source is not null && !(_slots.TryGetValue(source.Id, out var held) && ReferenceEquals(held.Document, source)))
                 return new CreateOutcome { NotFound = true };
             if (Documents.Contains(id))
@@ -895,9 +902,15 @@ public sealed class Workspace : IDisposable
     /// identical uploads exactly one is new.
     /// </summary>
     /// <exception cref="IOException">The blob couldn't be stored.</exception>
-    public StoredBlob PutBlob(ReadOnlyMemory<byte> bytes)
+    public StoredBlob PutBlob(ReadOnlyMemory<byte> bytes) => PutBlob(bytes, null);
+
+    /// <summary>
+    /// <see cref="PutBlob(ReadOnlyMemory{byte})"/>, with <paramref name="guard"/> run under the blob store's lock just
+    /// before the blob is stored: what it throws stops it, nothing stored.
+    /// </summary>
+    public StoredBlob PutBlob(ReadOnlyMemory<byte> bytes, Action? guard)
     {
-        var id = Blobs.Put(bytes, out var created);
+        var id = Blobs.Put(bytes, out var created, guard);
         return Described(id, bytes.Length, created, MediaValidator.Check(bytes.Span, Limits));
     }
 

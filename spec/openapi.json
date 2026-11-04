@@ -148,12 +148,12 @@
     "/api/service": {
       "get": {
         "operationId": "getService",
-        "summary": "The configured service's address and the state of the credential a client provides for it, never the credential.",
+        "summary": "The configured service's address, the state of the credential a client provides for it (never the credential) and of the connection AI apps elsewhere use.",
         "description": "docs/api.md#the-configured-service.",
         "security": [{"bearer": ["session"]}],
         "responses": {
           "200": {
-            "description": "The address, the credential's state, where it is kept and a fingerprint of the stored credential.",
+            "description": "The address, the credential's state, where it is kept, a fingerprint of the stored credential, and the state of the connection AI apps elsewhere use (docs/api.md#ai-apps-elsewhere).",
             "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/serviceState"}}}
           },
           "401": {"$ref": "#/components/responses/unauthorized"},

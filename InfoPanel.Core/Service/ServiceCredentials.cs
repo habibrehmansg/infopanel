@@ -88,6 +88,13 @@ public sealed class ServiceCredentials
         }
     }
 
+    /// <summary>
+    /// Raised, outside this object's lock, after the credential or the address it is for may have changed: one provided,
+    /// removed, rejected, or the address in effect changed. Whoever holds a connection made with the credential checks
+    /// whether it is still the one to use (<see cref="TryTake(out string?, out string?, out ServiceCredentialState, out long)"/>).
+    /// </summary>
+    public event Action? Changed;
+
     /// <summary>The store's name (<c>private</c>, <c>protected</c>).</summary>
     public string StoreName => _store.Name;
 
@@ -145,6 +152,7 @@ public sealed class ServiceCredentials
     {
         if (!IsWellFormed(credential))
             throw new ArgumentException("The credential isn't an RFC 6750 token of at most 4,096 characters.", nameof(credential));
+        using var raise = new RaiseIfChanged(this);
         lock (_lock)
         {
             var address = _address() ?? throw new NoServiceException();
@@ -172,6 +180,7 @@ public sealed class ServiceCredentials
     /// </exception>
     public void Delete()
     {
+        using var raise = new RaiseIfChanged(this);
         lock (_lock)
         {
             var had = _held is not null;
@@ -193,6 +202,7 @@ public sealed class ServiceCredentials
     public IDisposable AddressChanging(string? next)
     {
         _lock.Enter();
+        var before = _generation;
         try
         {
             if (next != _address() && (_held is not null || _stale))
@@ -201,11 +211,15 @@ public sealed class ServiceCredentials
                 _logger.Information("The service address changes; removed the credential provided for the previous one");
             }
 
-            return new Held(_lock);
+            return new Held(this, before);
         }
         catch
         {
+            // A removal that reached the store but couldn't be made durable is in effect: raised as any other.
+            var moved = _generation != before;
             _lock.Exit();
+            if (moved)
+                Changed?.Invoke();
             throw;
         }
     }
@@ -218,6 +232,7 @@ public sealed class ServiceCredentials
     {
         lock (_lock)
             DropIfAnotherAddress(_address());
+        Changed?.Invoke();
     }
 
     /// <summary>
@@ -268,6 +283,7 @@ public sealed class ServiceCredentials
         }
 
         _logger.Warning("The configured service refused the credential (401); the engine sends it no request until a client provides another");
+        Changed?.Invoke();
     }
 
     /// <summary>Under <see cref="_lock"/>: <paramref name="record"/> is what the store holds now, a new credential.</summary>
@@ -325,11 +341,47 @@ public sealed class ServiceCredentials
         }
     }
 
-    /// <summary>Holds <see cref="ServiceCredentials"/>' lock until disposed, once.</summary>
-    private sealed class Held(Lock held) : IDisposable
+    /// <summary>Raises <see cref="Changed"/> when disposed, if the credential's generation moved since it was made.</summary>
+    private readonly struct RaiseIfChanged : IDisposable
     {
-        private Lock? _held = held;
+        private readonly ServiceCredentials _owner;
+        private readonly long _before;
 
-        public void Dispose() => Interlocked.Exchange(ref _held, null)?.Exit();
+        public RaiseIfChanged(ServiceCredentials owner)
+        {
+            _owner = owner;
+            lock (owner._lock)
+                _before = owner._generation;
+        }
+
+        public void Dispose()
+        {
+            long now;
+            lock (_owner._lock)
+                now = _owner._generation;
+            if (now != _before)
+                _owner.Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Holds <see cref="ServiceCredentials"/>' lock until disposed, once; then, outside it, raises <see cref="Changed"/>
+    /// when the credential was removed meanwhile, whether the settings change went through or failed after the removal
+    /// (a failed write raises neither <see cref="AddressChanged"/> nor the settings' change), so a connection made with
+    /// it closes either way.
+    /// </summary>
+    private sealed class Held(ServiceCredentials owner, long before) : IDisposable
+    {
+        private ServiceCredentials? _owner = owner;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _owner, null) is not { } owner)
+                return;
+            var moved = owner._generation != before;
+            owner._lock.Exit();
+            if (moved)
+                owner.Changed?.Invoke();
+        }
     }
 }

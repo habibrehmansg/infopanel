@@ -86,7 +86,7 @@ public static class SettingsEndpoints
                 Network = new NetworkSettingsBody { PublicIp = settings.Network.PublicIp },
             },
             Media = new MediaSettingsBody { LocalNetwork = settings.Media.LocalNetwork },
-            Service = new ServiceSettingsBody { Address = settings.Service.Address ?? defaultServiceAddress },
+            Service = new ServiceSettingsBody { Address = settings.Service.Address ?? defaultServiceAddress, AiApps = settings.Service.AiApps },
             Clients = settings.Clients,
         };
     }

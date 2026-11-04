@@ -75,7 +75,8 @@ public sealed class ListProfilesTool(Workspace workspace) : McpTool
 /// <summary>
 /// <c>get_profile</c>: a profile's summary (name, size, revision and its items as a tree: position, box, visibility,
 /// bindings, what made each), listed within <see cref="MaxReplyBytes"/> as sent and then cut with "… and N more items";
-/// with <c>item</c>, that item's scene and source too, each cut at 256 KiB.
+/// with <c>item</c>, that item's scene and source too, each cut at 256 KiB. For an AI app that takes less text
+/// (<see cref="McpCall.MaxChars"/>), the list stops within that, and an item's parts are cut at a quarter of it.
 /// </summary>
 public sealed class GetProfileTool(Workspace workspace) : McpTool
 {
@@ -100,6 +101,9 @@ public sealed class GetProfileTool(Workspace workspace) : McpTool
         var document = ProfileNames.Find(workspace, arguments.String("profile")!);
         var state = document.Read();
         var doc = state.Document;
+        var maxChars = arguments.Call.MaxChars;
+        var reply = maxChars is { } chars ? Math.Min(MaxReplyBytes, chars) : MaxReplyBytes;
+        var part = maxChars is { } partChars ? Math.Min(MaxPartBytes, partChars / 4) : MaxPartBytes;
         var summary = new JsonObject
         {
             ["id"] = document.Id,
@@ -131,19 +135,23 @@ public sealed class GetProfileTool(Workspace workspace) : McpTool
             var detail = Summary(item);
             if (item is SceneItem scene)
             {
-                detail["scene"] = Cut(scene.Scene.GetRawText(), "scene");
+                detail["scene"] = Cut(scene.Scene.GetRawText(), "scene", part);
                 if (scene.Source is { } source)
-                    detail["source"] = Cut(JsonSerializer.Serialize(source, SpecJson.Options), "source");
+                    detail["source"] = Cut(JsonSerializer.Serialize(source, SpecJson.Options), "source", part);
             }
             summary["item"] = detail;
         }
 
         // The items within what is left of the reply's bytes as sent, the room for the note kept.
-        long budget = MaxReplyBytes - Sent(summary.ToJsonString()) - 256;
+        long budget = reply - Sent(summary.ToJsonString()) - 256;
         var listed = Fill(items, doc.Items, ref budget);
         var total = Flatten(doc.Items).Count();
         if (listed < total)
-            summary["more"] = $"… and {total - listed} more items: the list stops at {MaxReplyBytes / (1024 * 1024)} MiB. Ask for one with item.";
+        {
+            summary["more"] = reply < MaxReplyBytes
+                ? $"… and {total - listed} more items: the list stops at {reply} characters, the most this AI app takes. Ask for one with item."
+                : $"… and {total - listed} more items: the list stops at {MaxReplyBytes / (1024 * 1024)} MiB. Ask for one with item.";
+        }
 
         // Written without serializer options: a node's writer allows 1,000 levels, past the format's 256.
         return Task.FromResult(ToolResult.Text(summary.ToJsonString()));
@@ -238,14 +246,14 @@ public sealed class GetProfileTool(Workspace workspace) : McpTool
         return summary;
     }
 
-    /// <summary>The JSON text as a JSON value when it is within the cap; else its first bytes as a string, said to be cut.</summary>
-    private static JsonNode Cut(string json, string what)
+    /// <summary>The JSON text as a JSON value when it is within <paramref name="cap"/>; else its first bytes as a string, said to be cut.</summary>
+    private static JsonNode Cut(string json, string what, int cap)
     {
         var bytes = Encoding.UTF8.GetByteCount(json);
-        if (bytes <= MaxPartBytes)
+        if (bytes <= cap)
             return JsonNode.Parse(json, documentOptions: SpecJson.DocumentOptions)!; // any depth the format allows
-        var cut = json[..Math.Min(json.Length, MaxPartBytes)];
-        return $"(the {what} is {bytes} bytes; its first {MaxPartBytes} bytes follow, cut) {cut}";
+        var cut = json[..Math.Min(json.Length, cap)];
+        return $"(the {what} is {bytes} bytes; its first {cap} bytes follow, cut) {cut}";
     }
 }
 

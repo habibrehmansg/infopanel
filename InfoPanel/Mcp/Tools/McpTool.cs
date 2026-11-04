@@ -188,6 +188,16 @@ public sealed class ToolArguments
         }
     }
 
+    /// <summary>The call these arguments came with: where from, its limits and its cutoff for changes.</summary>
+    public McpCall Call { get; private set; } = McpCall.ThisComputer;
+
+    /// <summary>These arguments for <paramref name="call"/>.</summary>
+    internal ToolArguments For(McpCall call)
+    {
+        Call = call;
+        return this;
+    }
+
     public bool Has(string name) => _arguments.TryGetProperty(name, out _);
 
     public string? String(string name) =>

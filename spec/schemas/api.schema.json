@@ -1340,6 +1340,10 @@
               "type": ["string", "null"],
               "maxLength": 2048,
               "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://[^/?#@%\\\\\\s]+/?$"
+            },
+            "aiApps": {
+              "description": "serviceSettings: whether AI apps elsewhere may use this engine's tools through the configured service; `null` sets it back to its default, off (docs/api.md#ai-apps-elsewhere).",
+              "type": ["boolean", "null"]
             }
           }
         },
@@ -1368,10 +1372,14 @@
     "serviceSettings": {
       "description": "The settings of the configured service (docs/api.md#the-configured-service).",
       "type": "object",
-      "required": ["address"],
+      "required": ["address", "aiApps"],
       "additionalProperties": false,
       "properties": {
-        "address": { "$ref": "#/$defs/serviceAddress" }
+        "address": { "$ref": "#/$defs/serviceAddress" },
+        "aiApps": {
+          "description": "Whether AI apps may use this engine's tools through the configured service (AI apps elsewhere): on, the engine keeps a connection open to the service while it has an address and a credential, and answers the tool calls that arrive over it under its own rules (docs/api.md#ai-apps-elsewhere). Off by default. Only the session token changes it.",
+          "type": "boolean"
+        }
       }
     },
     "serviceAddress": {
@@ -1384,7 +1392,7 @@
     "serviceState": {
       "description": "GET /api/service: the configured service's address and the state of the credential a client provides for it, never the credential (docs/api.md#the-configured-service). Read tolerantly: a later engine may add members, and a client ignores members it doesn't know.",
       "type": "object",
-      "required": ["address", "credential", "store", "fingerprint"],
+      "required": ["address", "credential", "store", "fingerprint", "aiApps"],
       "additionalProperties": false,
       "properties": {
         "address": { "$ref": "#/$defs/serviceAddress" },
@@ -1400,6 +1408,10 @@
           "description": "A fingerprint of the stored credential: the first 16 hexadecimal digits, in lower case, of the SHA-256 of its UTF-8 bytes, so a client can tell which credential the engine keeps without reading it. Null when `credential` is `absent`.",
           "type": ["string", "null"],
           "pattern": "^[0-9a-f]{16}$"
+        },
+        "aiApps": {
+          "description": "The connection AI apps elsewhere use (docs/api.md#ai-apps-elsewhere): `off`, none is open or being made (the `service.aiApps` setting is off, or there is no address or no `present` credential to connect with); `connecting`, the engine is connecting, or waiting to connect again after a failure; `connected`, the service accepted the connection; `replaced`, another engine with the same credential took over, and this one stays stopped until the setting is turned off and on again or the engine restarts; `outdated`, the service no longer serves this engine's version, and it stays stopped until the engine is updated; `waiting`, the service asked the engine to wait before connecting again (429), and it will. A client treats a value it doesn't know as `connecting`.",
+          "enum": ["off", "connecting", "connected", "replaced", "outdated", "waiting"]
         }
       }
     },

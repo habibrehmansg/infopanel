@@ -89,8 +89,21 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
     /// <summary>A test seam: the host's step hook (<see cref="McpToolHost.StepHook"/>).</summary>
     private void Step(string step) => hook()?.Invoke(step);
 
+    /// <summary>
+    /// Every write a tool makes passes here just before it is made (a commit, on every attempt; a profile created; a
+    /// blob stored): the step hook's <c>write</c>, then its <c>locking</c> as the write goes to take its lock. The call's
+    /// cutoff is not asked here but under that lock (<see cref="McpCall.BeforeWrite"/>, the write's guard), so a cutoff
+    /// that trips while the write waits for its lock still stops it.
+    /// </summary>
+    public void BeforeWrite()
+    {
+        Step("write");
+        Step("locking");
+    }
+
     /// <exception cref="ToolFailure">The profile isn't there or can't be opened, the ops can't be built, the engine refused them, or a conflict twice.</exception>
-    public ToolChange Apply(string tool, string profile, Func<DocumentState, JsonArray> build)
+    /// <exception cref="ChangeCutOffException">A call from elsewhere whose cutoff tripped before a commit: nothing was changed.</exception>
+    public ToolChange Apply(string tool, string profile, McpCall call, Func<DocumentState, JsonArray> build)
     {
         // Found once: a retry rebuilds on this document, never on one found again by its name.
         var document = ProfileNames.Find(workspace, profile);
@@ -109,14 +122,23 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
             {
                 state = document.Read();
                 Step("read");
+                var ops = build(state);
                 var body = new JsonObject
                 {
                     ["opId"] = Guid.NewGuid().ToString("N"),
                     ["instance"] = document.Instance,
                     ["baseRev"] = state.Generation.Rev,
-                    ["ops"] = build(state),
+                    ["ops"] = ops,
                 };
-                outcome = document.Commit(Encoding.UTF8.GetBytes(body.ToJsonString()), out wasClean);
+                BeforeWrite();
+                // Under the commit's lock, on the document as the commit finds it: the cutoff, and for a call from
+                // elsewhere the web-image rule (a design changed since the read can't slip a binding change past it).
+                outcome = document.Commit(Encoding.UTF8.GetBytes(body.ToJsonString()), current =>
+                {
+                    call.BeforeWrite();
+                    if (call.FromElsewhere)
+                        RefuseWebImages(current, ops);
+                }, out wasClean);
             }
             catch (ObjectDisposedException)
             {
@@ -137,6 +159,26 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
             Step("committed");
             var changed = result.Rev != state.Generation.Rev;
             return new ToolChange(document, name, result, changed, changed ? Save(document, name, result.Rev, wasClean) : "");
+        }
+    }
+
+    /// <summary>
+    /// A change from elsewhere that would insert or set a scene holding a provider's media source, or change the bindings
+    /// of an item whose scene holds one, is refused (<see cref="WebImageRule"/>); anything else passes.
+    /// </summary>
+    private static void RefuseWebImages(Document document, JsonArray ops)
+    {
+        foreach (var op in ops.OfType<JsonObject>())
+        {
+            var refused = op["op"]?.GetValue<string>() switch
+            {
+                "insert" or "setDesign" => WebImageRule.InsertsOrSetsProvider(op),
+                "setBindings" => op["id"]?.GetValue<string>() is { } id
+                    && ItemNames.Flatten(document.Items).FirstOrDefault(i => i.Id == id) is SceneItem scene && WebImageRule.HoldsProvider(scene.Scene),
+                _ => false,
+            };
+            if (refused)
+                throw new ToolFailure(WebImageRule.Code, WebImageRule.Refusal);
         }
     }
 
@@ -290,7 +332,8 @@ public sealed class CreateProfileTool(ProfileChanges changes) : McpTool
             ["document"] = new JsonObject { ["format"] = "infopanel.document/1", ["id"] = id, ["profile"] = profile, ["items"] = new JsonArray() },
         };
 
-        var outcome = changes.Workspace.Create(Encoding.UTF8.GetBytes(body.ToJsonString()));
+        changes.BeforeWrite();
+        var outcome = changes.Workspace.Create(Encoding.UTF8.GetBytes(body.ToJsonString()), arguments.Call.BeforeWrite);
         if (outcome.Invalid is { } invalid)
             throw ProfileChanges.Refused(Name, invalid.Errors);
         if (outcome.Entry is not { } entry)
@@ -325,7 +368,7 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
     {
         string? id = null;
         var group = arguments.String("group") is { } wantedGroup ? new PinnedItem(wantedGroup) : null;
-        var change = changes.Apply(Name, arguments.String("profile")!, state =>
+        var change = changes.Apply(Name, arguments.String("profile")!, arguments.Call, state =>
         {
             id = ProfileChanges.NewItemId(state.Document);
             var item = new JsonObject
@@ -396,7 +439,7 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
 
         string? label = null;
         var pinned = new PinnedItem(arguments.String("item")!);
-        var change = changes.Apply(Name, arguments.String("profile")!, state =>
+        var change = changes.Apply(Name, arguments.String("profile")!, arguments.Call, state =>
         {
             var item = pinned.Find(state.Document);
             label = ItemNames.Label(item);
@@ -475,7 +518,7 @@ public sealed class RemoveItemTool(ProfileChanges changes) : McpTool
     {
         string? label = null;
         var pinned = new PinnedItem(arguments.String("item")!);
-        var change = changes.Apply(Name, arguments.String("profile")!, state =>
+        var change = changes.Apply(Name, arguments.String("profile")!, arguments.Call, state =>
         {
             var item = pinned.Find(state.Document);
             label = ItemNames.Label(item);
@@ -511,7 +554,8 @@ public sealed class AddAssetTool(ProfileChanges changes) : McpTool
         if (media.Format != MediaFormat.Svg)
             throw new ToolFailure("media.format", "add_asset takes SVG only (media.format). Nothing was stored.");
 
-        var stored = workspace.PutBlob(bytes).Info;
+        changes.BeforeWrite();
+        var stored = workspace.PutBlob(bytes, arguments.Call.BeforeWrite).Info;
         return Task.FromResult(ToolResult.Text(
             $"Stored the SVG as {stored.Id} ({media.Width}×{media.Height}, {stored.Bytes} bytes). Show it with a media node in a scene: " +
             $"{{\"kind\":\"media\",\"x\":0,\"y\":0,\"w\":{media.Width},\"h\":{media.Height},\"source\":{{\"asset\":\"{stored.Id}\"}}}}"));
@@ -539,7 +583,7 @@ public sealed class ShowOnDesktopTool(ProfileChanges changes, string? noWindow) 
     public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
     {
         var show = arguments.Boolean("show") ?? true;
-        var change = changes.Apply(Name, arguments.String("profile")!, state =>
+        var change = changes.Apply(Name, arguments.String("profile")!, arguments.Call, state =>
         {
             var window = state.Document.Profile.Window is { } kept ? ProfileChanges.Node(kept).AsObject() : new JsonObject();
             window["enabled"] = show;

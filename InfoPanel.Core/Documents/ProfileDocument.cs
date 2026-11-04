@@ -391,6 +391,9 @@ public sealed class ProfileDocument : IDisposable
     /// <summary>Tests: called on a thread that finds the save lock held by another as it ends a change that left the document clean, before it waits for it.</summary>
     internal Action? WaitingForSave;
 
+    /// <summary>Tests: called on a thread whose commit finds the document's lock held by another, before it waits for it.</summary>
+    internal Action? WaitingForLock;
+
     /// <summary>
     /// Removes what was kept, under the save lock; a failure is logged, and the removal is pending: tried again on its own
     /// (<see cref="Checkpoint()"/>) until it succeeds or a checkpoint replaces the file.
@@ -516,7 +519,14 @@ public sealed class ProfileDocument : IDisposable
     /// this commit applied: read under the lock that applies it, so no other client's commit can come between that
     /// answer and this commit (an AI app's tool saves its change only then). False when nothing was applied.
     /// </summary>
-    public CommitOutcome Commit(ReadOnlyMemory<byte> body, out bool wasClean)
+    public CommitOutcome Commit(ReadOnlyMemory<byte> body, out bool wasClean) => Commit(body, null, out wasClean);
+
+    /// <summary>
+    /// <see cref="Commit(ReadOnlyMemory{byte}, out bool)"/>, with <paramref name="guard"/> run under the lock that applies
+    /// it, before anything else there, on the document as it then is: what it throws stops the commit, nothing applied
+    /// (a change that may be made only while a condition holds, checked where no other commit can come between).
+    /// </summary>
+    public CommitOutcome Commit(ReadOnlyMemory<byte> body, Action<Document>? guard, out bool wasClean)
     {
         wasClean = false;
         var limits = _options.Limits;
@@ -531,7 +541,7 @@ public sealed class ProfileDocument : IDisposable
             return Invalid([new SpecError("", "json", $"The body isn't JSON: {ex.Message}")], "Invalid commit");
         }
         // The request read from the body holds copies of its JSON values, so nothing refers to the document afterwards.
-        using (json) return Commit(json.RootElement, body.Span, out wasClean);
+        using (json) return Commit(json.RootElement, body.Span, guard, out wasClean);
     }
 
     /// <summary>
@@ -544,9 +554,9 @@ public sealed class ProfileDocument : IDisposable
     /// <c>coalesceKey</c>); a commit that changes nothing records nothing. The <c>opId</c> digest is over the value's
     /// own text, without whitespace around it: an endpoint uses <see cref="Commit(ReadOnlyMemory{byte})"/>.
     /// </summary>
-    public CommitOutcome Commit(JsonElement body) => Commit(body, JsonMarshal.GetRawUtf8Value(body), out _);
+    public CommitOutcome Commit(JsonElement body) => Commit(body, JsonMarshal.GetRawUtf8Value(body), null, out _);
 
-    private CommitOutcome Commit(JsonElement body, ReadOnlySpan<byte> bytes, out bool wasClean)
+    private CommitOutcome Commit(JsonElement body, ReadOnlySpan<byte> bytes, Action<Document>? guard, out bool wasClean)
     {
         wasClean = false;
         var prepared = CommitApplier.Prepare(body, bytes, _options.Limits, _options.Support, out var errors);
@@ -556,9 +566,10 @@ public sealed class ProfileDocument : IDisposable
         CommitResult result;
         Generation? published;
         long endCheckpoint;
-        lock (_lock)
+        using (Locks.Enter(_lock, WaitingForLock))
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            guard?.Invoke(_current.Document);
             var cleanBefore = !DirtyCore;
             if (_ops.TryGet(request.OpId, out var hash, out var stored))
             {

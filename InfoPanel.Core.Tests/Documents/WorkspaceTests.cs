@@ -1086,4 +1086,108 @@ public sealed class WorkspaceTests : IDisposable
         Assert.Null(new BlobMediaStore(workspace.Blobs).Read(id));
         Assert.Equal(64, new BlobMediaStore(workspace.Blobs).Read(workspace.PutBlob(new byte[64]).Info.Id)!.Length);
     }
+
+    /// <summary>What a write's guard throws once the condition its write needs is gone (a cutoff tripped).</summary>
+    private sealed class CutOff : Exception;
+
+    /// <summary>A guard that throws once <paramref name="cut"/> says so, and sees the document it is given.</summary>
+    private static Action<Document> Guard(Func<bool> cut, List<Document> seen) => document =>
+    {
+        seen.Add(document);
+        if (cut())
+            throw new CutOff();
+    };
+
+    [Fact]
+    public void ACommitsGuard_RunsUnderTheDocumentsLock_SoWhatChangesWhileTheCommitWaitsForItStopsTheCommit()
+    {
+        var workspace = With();
+        workspace.Create(CreateBody(A, "A"));
+        var document = workspace.Open(A)!;
+        var cut = false;
+        var seen = new List<Document>();
+        var body = Encoding.UTF8.GetBytes(Commit(document, "guarded", null, Insert(Scene("x"))).GetRawText());
+
+        // Another holds the document's lock; the commit, past everything before it, waits for it; the cutoff trips.
+        Task<CommitOutcome>? waiting = null;
+        document.ReadRevisions(revisions =>
+        {
+            waiting = Alongside(() => document.Commit(body, Guard(() => cut, seen), out _), hook => document.WaitingForLock = hook);
+            Assert.False(waiting.IsCompleted);
+            cut = true;
+            return 0;
+        });
+
+        Assert.IsType<CutOff>(Assert.Throws<AggregateException>(() => waiting!.Wait(Failure)).InnerException);
+        Assert.Equal(1L, document.Rev);
+        Assert.Empty(document.Current.Document.Items);
+        // The guard saw the document as the commit found it under the lock.
+        Assert.Same(document.Current.Document, Assert.Single(seen));
+
+        // Not cut off: the same guard lets it through.
+        cut = false;
+        Assert.NotNull(document.Commit(body, Guard(() => cut, seen), out _).Result);
+        Assert.Equal(2L, document.Rev);
+    }
+
+    [Fact]
+    public void ACreatesGuard_RunsUnderTheWorkspaceLock_SoWhatChangesWhileItWaitsForItStopsTheCreate()
+    {
+        var workspace = With();
+        var cut = false;
+        Task<CreateOutcome>? waiting = null;
+        workspace.StoreChanged = id =>
+        {
+            // The first create holds the workspace lock: the second, guarded, waits for it, and the cutoff trips.
+            if (id != A)
+                return;
+            waiting = Alongside(workspace, () => workspace.Create(CreateBody(B, "B"), () =>
+            {
+                if (cut)
+                    throw new CutOff();
+            }));
+            Assert.False(waiting.IsCompleted);
+            cut = true;
+        };
+
+        Assert.Equal(201, workspace.Create(CreateBody(A, "A")).Status);
+        Assert.IsType<CutOff>(Assert.Throws<AggregateException>(() => waiting!.Wait(Failure)).InnerException);
+        Assert.False(workspace.Find(B).Found);
+        Assert.False(File.Exists(Paths.DocumentFile(B)));
+    }
+
+    [Fact]
+    public void APutBlobsGuard_RunsUnderTheBlobStoresLock_SoWhatChangesWhileItWaitsForItStopsThePut()
+    {
+        var guarded = "stored only while not cut off"u8.ToArray();
+        Workspace? workspace = null;
+        BlobStore? blobs = null;
+        var cut = false;
+        Task<StoredBlob>? waiting = null;
+        var faults = new MatchFaults
+        {
+            Fail = (step, _) =>
+            {
+                // The first put holds the store's lock: the second, guarded, waits for it, and the cutoff trips.
+                if (step == StorageStep.CreateTemp && waiting is null)
+                {
+                    waiting = Alongside(() => workspace!.PutBlob(guarded, () =>
+                    {
+                        if (cut)
+                            throw new CutOff();
+                    }), hook => blobs!.WaitingForLock = hook);
+                    Assert.False(waiting.IsCompleted);
+                    cut = true;
+                }
+
+                return false;
+            },
+        };
+        blobs = new BlobStore(Paths, null, faults);
+        workspace = Over(new DocumentStore(Paths), blobs);
+
+        Assert.True(workspace.PutBlob("stored first"u8.ToArray()).Created);
+        Assert.IsType<CutOff>(Assert.Throws<AggregateException>(() => waiting!.Wait(Failure)).InnerException);
+        Assert.Null(blobs.StoredSize(BlobStore.IdOf(guarded)));
+    }
 }

@@ -250,6 +250,7 @@ With the PawnIO driver, LibreHardwareMonitor still needs administrator rights fo
 | `sources.network.publicIp` | `true`, `false` | `true` | Whether the network sensor source (`infopanel.network`) asks ipify for this network's public address while a public-address reading is in use, and lists the two (`plugin:/infopanel.network/public/ipv4`, `…/ipv6`). Off, it asks nothing and lists neither: a sensor bound to one is `unavailable`. `--offline` asks nothing and lists neither whatever this says |
 | `media.localNetwork` | `true`, `false` | `true` | Whether media providers may connect to this computer and the local network ([providers](providers.md#addresses)) |
 | `service.address` | An origin: `https`, or `http` on a loopback host | The engine's own, or none | The configured service's address ([below](#the-configured-service)). A change removes the credential the engine keeps for the service |
+| `service.aiApps` | `true`, `false` | `false` | Whether AI apps may use this engine's tools through the configured service ([below](#ai-apps-elsewhere)) |
 | `clients.{name}` | Any JSON value but `null` | none | A client's own preferences ([below](#client-preferences)) |
 
 A change takes effect at once: outputs re-time to the new frame rate, the history takes its next sample at the new rate and keeps the samples it has, the log follows the new level, media providers fetch every reference again under the new `media.localNetwork`, and the network source follows `sources.network.publicIp`: turned off, it cancels a lookup under way, forgets the public addresses and lists them no more; turned on, it lists them again (`unavailable` until a lookup answers) and, while one is in use, asks at once. An engine keeps the source settings whether or not it has that source.
@@ -281,7 +282,7 @@ The engine can keep a credential a client provides for one configured service, a
 
 The service's address is the `service.address` setting ([settings](#settings)): an origin, `scheme://host[:port]` without a path, `https`, or `http` on a loopback host (`localhost`, 127.0.0.0/8, `[::1]`); its scheme and host may be given in any case, and the engine keeps them in lower case. Without one set, it is the engine's default, which an engine built from source doesn't have: then there is no service, and the engine keeps no credential. A change of the address in effect removes the credential the engine keeps, since it was given for the other service, before the change is stored: when the store can't remove it, the change is answered 503 `serviceProblem` with the code `storeUnavailable`, and neither the settings nor the credential change. A credential is sent only to the address it was stored for: one the engine couldn't remove after a change of address stays in its store, and is used again only if the address in effect returns to the one it was stored for.
 
-`GET /api/service` answers `serviceState`: the address in effect (`null` without one); `credential`, `absent`, `present` or `rejected`; `store`, where the engine keeps it (`private`, a file in its data folder only this user may read, on macOS and Linux; `protected`, a file in its data folder encrypted for this user by the operating system, on Windows; `null` when absent); and `fingerprint`, a fingerprint of the stored credential: the first 16 hexadecimal digits, in lower case, of the SHA-256 of its UTF-8 bytes (`null` when absent). It never answers the credential itself.
+`GET /api/service` answers `serviceState`: the address in effect (`null` without one); `credential`, `absent`, `present` or `rejected`; `aiApps`, the state of the connection AI apps elsewhere use ([below](#ai-apps-elsewhere)); `store`, where the engine keeps it (`private`, a file in its data folder only this user may read, on macOS and Linux; `protected`, a file in its data folder encrypted for this user by the operating system, on Windows; `null` when absent); and `fingerprint`, a fingerprint of the stored credential: the first 16 hexadecimal digits, in lower case, of the SHA-256 of its UTF-8 bytes (`null` when absent). It never answers the credential itself.
 
 `PUT /api/service/credential` with `serviceCredential` keeps the credential in place of any the engine has, and answers 204; its state is then `present`. The credential is an RFC 6750 token (letters, digits, `-`, `.`, `_`, `~`, `+` and `/`, then any `=`), at most 4,096 characters: anything else is answered 422 `invalidProblem` at `/credential`, without the value. Without a service address it is answered 409 `serviceProblem` with the code `noService`, and when the store refuses to keep it 503 with `storeUnavailable`; either way the credential the engine had, if any, is kept as it was. `DELETE /api/service/credential` removes the credential and answers 204, whether or not there was one (503 `storeUnavailable` when the store can't remove it). A store that kept or removed the credential but couldn't make that durable answers 503 `storeUnavailable` too: the engine then keeps what the store holds, as `GET` answers, and the same request again finishes it.
 
@@ -295,6 +296,23 @@ The engine never writes the credential to its settings, its log or any answer. I
 - never through a proxy, whatever the environment names.
 
 Without a credential, the engine makes no request to the service. When the service answers 401, the credential's state becomes `rejected`, which lasts across restarts: the engine makes no request to the service until a client provides another credential. A 401 to a request sent with a credential since replaced (provided again, even the same one) or removed changes nothing. When it answers 429 or 503, its `Retry-After` tells the engine when to ask again.
+
+### AI apps elsewhere
+
+With the `service.aiApps` setting on, AI apps a user connects to the configured service may use this engine's tools (the ones an AI app on this computer uses) through the service. Only a change of the settings turns it on or off, so only the session token can: never a tool call, the service or an integration token. While it is on and the engine has a service address and a `present` credential, the engine keeps one connection open to the service, which it opens itself (the service never connects to the engine), under the rules above: to the address's origin only, `wss` (or `ws` to a loopback host), the credential only in the opening request's `Authorization`, never through a proxy or on a redirect. The tool calls that arrive over it run under the engine's own rules, whatever the service says: only the tools, never the API, the settings, tokens, the log or folders; a change stops unmade when the service withdraws the call, the connection closes or the call is too old to run; and a call sent more than 10 seconds before it arrives is refused unrun.
+
+`serviceState`'s `aiApps` says how the connection stands:
+
+| `aiApps` | Means |
+|---|---|
+| `off` | No connection is open or being made: the setting is off, or there is no address or no `present` credential to connect with (`credential` says which) |
+| `connecting` | The engine is connecting, or waiting to connect again after a failure (from 1 second, doubling to at most 60, and at once when the computer's network changes) |
+| `connected` | The service accepted the connection |
+| `replaced` | Another engine with the same credential took over. This one stays stopped until the setting is turned off and on again, or the engine restarts |
+| `outdated` | The service no longer serves this engine's version. It stays stopped until the engine is updated |
+| `waiting` | The service asked the engine to wait (429, or a close asking for it) before connecting again, and it will |
+
+When the service refuses the credential (401, or a close saying this computer was removed), `credential` becomes `rejected` and `aiApps` is `off` until a client provides another credential. Turning the setting off closes the connection and tells the service to forget this computer; a change of address, or removing the credential, closes it too.
 
 ## Logs
 

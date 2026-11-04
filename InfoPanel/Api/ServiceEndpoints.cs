@@ -8,8 +8,8 @@ namespace InfoPanel.Api;
 
 /// <summary>
 /// The configured service (spec/docs/api.md, "The configured service"), for the session token only: <c>GET
-/// /api/service</c> answers its address and the state of the credential a client provides for it (<c>serviceState</c>),
-/// never the credential; <c>PUT /api/service/credential</c> keeps one (204; 409 <c>noService</c> without an address; 422
+/// /api/service</c> answers its address, the state of the credential a client provides for it and that of the connection
+/// AI apps elsewhere use (<c>serviceState</c>), never the credential; <c>PUT /api/service/credential</c> keeps one (204; 409 <c>noService</c> without an address; 422
 /// for a body that breaks <c>serviceCredential</c> or <c>requestBytes</c>, never echoing the credential; 503
 /// <c>storeUnavailable</c> when the store refuses); <c>DELETE /api/service/credential</c> removes it (204; 503).
 /// </summary>
@@ -19,10 +19,10 @@ public static class ServiceEndpoints
 
     public static void MapServiceEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/service", (ServiceCredentials service, HttpContext context) =>
+        app.MapGet("/api/service", (ServiceCredentials service, RelayClient relay, HttpContext context) =>
         {
             context.Response.Headers.CacheControl = "no-store";
-            return Json(StateOf(service.Status));
+            return Json(StateOf(service.Status, relay.State));
         }).RequireScope(ApiScope.Session);
 
         var credential = app.MapGroup("/api/service/credential");
@@ -76,7 +76,7 @@ public static class ServiceEndpoints
         }).RequireScope(ApiScope.Session);
     }
 
-    internal static ServiceStateBody StateOf(ServiceStatus status) => new()
+    internal static ServiceStateBody StateOf(ServiceStatus status, RelayState relay) => new()
     {
         Address = status.Address,
         Credential = status.Credential switch
@@ -88,6 +88,16 @@ public static class ServiceEndpoints
         },
         Store = status.Store,
         Fingerprint = status.Fingerprint,
+        AiApps = relay switch
+        {
+            RelayState.Off => "off",
+            RelayState.Connecting => "connecting",
+            RelayState.Connected => "connected",
+            RelayState.Replaced => "replaced",
+            RelayState.Outdated => "outdated",
+            RelayState.Waiting => "waiting",
+            _ => throw new ArgumentOutOfRangeException(nameof(relay)),
+        },
     };
 
     private static ServiceProblem NoService() => new()

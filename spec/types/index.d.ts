@@ -1223,6 +1223,8 @@ export interface SettingsChange {
      * Pattern: `^[Hh][Tt][Tt][Pp][Ss]?://[^/?#@%\\\s]+/?$`.
      */
     address?: string | null;
+    /** serviceSettings: whether AI apps elsewhere may use this engine's tools through the configured service; `null` sets it back to its default, off (docs/api.md#ai-apps-elsewhere). */
+    aiApps?: boolean | null;
   };
   /** Client preferences to set, each whole, or to remove (`null`), by client name; the other clients' are kept. */
   clients?: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean | null };
@@ -1243,6 +1245,8 @@ export interface SettingsStatusProblem {
 /** The settings of the configured service (docs/api.md#the-configured-service). */
 export interface ServiceSettings {
   address: ServiceAddress;
+  /** Whether AI apps may use this engine's tools through the configured service (AI apps elsewhere): on, the engine keeps a connection open to the service while it has an address and a credential, and answers the tool calls that arrive over it under its own rules (docs/api.md#ai-apps-elsewhere). Off by default. Only the session token changes it. */
+  aiApps: boolean;
 }
 
 /**
@@ -1264,6 +1268,8 @@ export interface ServiceState {
    * Pattern: `^[0-9a-f]{16}$`.
    */
   fingerprint: string | null;
+  /** The connection AI apps elsewhere use (docs/api.md#ai-apps-elsewhere): `off`, none is open or being made (the `service.aiApps` setting is off, or there is no address or no `present` credential to connect with); `connecting`, the engine is connecting, or waiting to connect again after a failure; `connected`, the service accepted the connection; `replaced`, another engine with the same credential took over, and this one stays stopped until the setting is turned off and on again or the engine restarts; `outdated`, the service no longer serves this engine's version, and it stays stopped until the engine is updated; `waiting`, the service asked the engine to wait before connecting again (429), and it will. A client treats a value it doesn't know as `connecting`. */
+  aiApps: "off" | "connecting" | "connected" | "replaced" | "outdated" | "waiting";
 }
 
 /** PUT /api/service/credential: a credential a client provides for the configured service, which the engine keeps in place of any it has and sends as `Authorization: Bearer {credential}` (docs/api.md#the-configured-service). An RFC 6750 token: letters, digits, `-`, `.`, `_`, `~`, `+` and `/`, then any `=`, at most 4,096 characters. */
@@ -3990,7 +3996,7 @@ export interface ApiOperations {
     };
   };
   /**
-   * getService: The configured service's address and the state of the credential a client provides for it, never the credential.
+   * getService: The configured service's address, the state of the credential a client provides for it (never the credential) and of the connection AI apps elsewhere use.
    *
    * docs/api.md#the-configured-service.
    */
@@ -3999,7 +4005,7 @@ export interface ApiOperations {
     query: { [key: string]: never };
     request: never;
     responses: {
-      /** The address, the credential's state, where it is kept and a fingerprint of the stored credential. */
+      /** The address, the credential's state, where it is kept, a fingerprint of the stored credential, and the state of the connection AI apps elsewhere use (docs/api.md#ai-apps-elsewhere). */
       200: ServiceState;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
