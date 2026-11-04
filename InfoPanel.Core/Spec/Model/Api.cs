@@ -718,6 +718,7 @@ public sealed record SettingsSources
 {
     public required LibreSettingsBody Libre { get; init; }
     public required NetworkSettingsBody Network { get; init; }
+    public required WeatherSettingsBody Weather { get; init; }
 }
 
 /// <summary>The network source's settings (<c>networkSettings</c>, engineSettings' <c>sources.network</c>).</summary>
@@ -725,6 +726,18 @@ public sealed record SettingsSources
 public sealed record NetworkSettingsBody
 {
     public required bool PublicIp { get; init; }
+}
+
+/// <summary>The weather source's settings (<c>weatherSettings</c>, engineSettings' <c>sources.weather</c>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/weatherSettings")]
+public sealed record WeatherSettingsBody
+{
+    public required bool Enabled { get; init; }
+    /// <summary><c>auto</c>, <c>metric</c> or <c>imperial</c>.</summary>
+    public required string Units { get; init; }
+    /// <summary>The place the source asks for, or null: the place the service finds for the request's network address.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public required string? Place { get; init; }
 }
 
 /// <summary>The media providers' settings (<c>mediaSettings</c>, engineSettings' <c>media</c>).</summary>
@@ -767,6 +780,7 @@ public sealed record SettingsChangeSources
 {
     public LibreSettingsChange? Libre { get; init; }
     public NetworkSettingsChange? Network { get; init; }
+    public WeatherSettingsChange? Weather { get; init; }
 }
 
 /// <summary>The network source's settings to change; one given as <c>null</c> goes back to its default (<see cref="IRemovesMembers"/>).</summary>
@@ -774,6 +788,18 @@ public sealed record SettingsChangeSources
 public sealed record NetworkSettingsChange : IRemovesMembers
 {
     public bool? PublicIp { get; init; }
+    /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
+
+/// <summary>The weather source's settings to change; one given as <c>null</c> goes back to its default (<see cref="IRemovesMembers"/>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/sources/properties/weather")]
+public sealed record WeatherSettingsChange : IRemovesMembers
+{
+    public bool? Enabled { get; init; }
+    public string? Units { get; init; }
+    public string? Place { get; init; }
     /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
     public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);

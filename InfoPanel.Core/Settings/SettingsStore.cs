@@ -157,7 +157,7 @@ public sealed class SettingsStore
 
     /// <summary>
     /// Merges <paramref name="change"/> into the settings and writes them: a member's value sets it, <c>null</c> removes it
-    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>media</c>, <c>service</c> and <c>clients</c> merge member by member, and each
+    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>sources.weather</c>, <c>media</c>, <c>service</c> and <c>clients</c> merge member by member, and each
     /// <c>clients</c> member is set or removed whole. Unknown members are refused.
     /// </summary>
     /// <returns>The settings in effect afterwards (the same version when nothing changed).</returns>
@@ -443,6 +443,13 @@ public sealed class SettingsStore
 
             if (Container(sources, "network", "/sources/network") is { } network)
                 Check(network, "publicIp", "/sources/network/publicIp", BoolProblem);
+
+            if (Container(sources, "weather", "/sources/weather") is { } weather)
+            {
+                Check(weather, "enabled", "/sources/weather/enabled", BoolProblem);
+                Check(weather, "units", "/sources/weather/units", UnitsProblem);
+                Check(weather, "place", "/sources/weather/place", PlaceProblem);
+            }
         }
 
         if (Container(tree, "media", "/media") is { } media)
@@ -483,6 +490,7 @@ public sealed class SettingsStore
     {
         var libre = (tree["sources"] as JsonObject)?["libre"] as JsonObject;
         var network = (tree["sources"] as JsonObject)?["network"] as JsonObject;
+        var weather = (tree["sources"] as JsonObject)?["weather"] as JsonObject;
         var media = tree["media"] as JsonObject;
         var service = tree["service"] as JsonObject;
         var clients = ImmutableDictionary.CreateBuilder<string, JsonElement>(StringComparer.Ordinal);
@@ -501,6 +509,10 @@ public sealed class SettingsStore
                 Bool(libre?["storage"]) ?? LibreSettings.Default.Storage,
                 Int(libre?["storageInterval"]) ?? LibreSettings.Default.StorageInterval),
             new NetworkSettings(Bool(network?["publicIp"]) ?? NetworkSettings.Default.PublicIp),
+            new WeatherSettings(
+                Bool(weather?["enabled"]) ?? WeatherSettings.Default.Enabled,
+                weather?["units"] is { } units ? WeatherSettings.UnitsNamed(ElementOf(units).GetString())!.Value : WeatherSettings.Default.Units,
+                weather?["place"] is { } place ? ElementOf(place).GetString() : WeatherSettings.Default.Place),
             new MediaSettings(Bool(media?["localNetwork"]) ?? MediaSettings.Default.LocalNetwork),
             new ServiceSettings(
                 service?["address"] is { } address && ServiceAddress.TryNormalize(ElementOf(address).GetString(), out var normal) ? normal : null,
@@ -584,7 +596,7 @@ public sealed class SettingsStore
                     foreach (var source in member.Value.EnumerateObject())
                     {
                         var sourcePointer = pointer + "/" + Escape(source.Name);
-                        if (source.Name is not ("libre" or "network"))
+                        if (source.Name is not ("libre" or "network" or "weather"))
                         {
                             Unknown(sourcePointer);
                             continue;
@@ -597,8 +609,14 @@ public sealed class SettingsStore
                             var settingPointer = sourcePointer + "/" + Escape(setting.Name);
                             switch (source.Name, setting.Name)
                             {
-                                case ("libre", "enabled" or "storage") or ("network", "publicIp"):
+                                case ("libre", "enabled" or "storage") or ("network", "publicIp") or ("weather", "enabled"):
                                     Leaf(setting.Value, settingPointer, BoolProblem);
+                                    break;
+                                case ("weather", "units"):
+                                    Leaf(setting.Value, settingPointer, UnitsProblem);
+                                    break;
+                                case ("weather", "place"):
+                                    Leaf(setting.Value, settingPointer, PlaceProblem);
                                     break;
                                 case ("libre", "storageInterval"):
                                     Leaf(setting.Value, settingPointer, e => IntProblem(e, SettingsLimits.StorageInterval));
@@ -688,6 +706,8 @@ public sealed class SettingsStore
                         {
                             if (setting.Name == "storageInterval")
                                 Set(settings, setting.Name, setting.Value, e => JsonValue.Create(SpecJson.ReadInt32(e)));
+                            else if (setting.Name is "units" or "place")
+                                Set(settings, setting.Name, setting.Value, e => JsonValue.Create(e.GetString()));
                             else
                                 Set(settings, setting.Name, setting.Value, e => JsonValue.Create(e.GetBoolean()));
                         }
@@ -767,6 +787,17 @@ public sealed class SettingsStore
 
     private static string? BoolProblem(JsonElement e) =>
         e.ValueKind is JsonValueKind.True or JsonValueKind.False ? null : "isn't true or false";
+
+    private static string? UnitsProblem(JsonElement e) =>
+        e.ValueKind == JsonValueKind.String && WeatherSettings.UnitsNamed(e.GetString()) != null
+            ? null
+            : "isn't one of auto, metric and imperial";
+
+    /// <summary>The weather's place: 1 to 200 UTF-16 code units, not all white space (<see cref="WeatherSettings.IsPlace"/>).</summary>
+    private static string? PlaceProblem(JsonElement e) =>
+        e.ValueKind == JsonValueKind.String && WeatherSettings.IsPlace(e.GetString())
+            ? null
+            : $"isn't a place: 1 to {WeatherSettings.PlaceLength} characters, not all white space";
 
     /// <summary>The configured service's address: an origin, <c>https</c>, or <c>http</c> on a loopback host (<see cref="ServiceAddress"/>).</summary>
     private static string? AddressProblem(JsonElement e) =>

@@ -116,6 +116,52 @@ public sealed record NetworkSettings(bool PublicIp)
     public static NetworkSettings Default { get; } = new(true);
 }
 
+/// <summary>The units the weather source reads in (<c>sources.weather.units</c>).</summary>
+public enum WeatherUnits
+{
+    /// <summary>The PC's region's: metric unless its regional format's region uses imperial units.</summary>
+    Auto,
+
+    /// <summary>°C, hPa, m/s, mm.</summary>
+    Metric,
+
+    /// <summary>°F, inHg, mph, in.</summary>
+    Imperial,
+}
+
+/// <summary>
+/// The weather source's settings (<c>sources.weather</c>; <c>InfoPanel.Sensors.Weather.WeatherSource</c>): whether it
+/// asks the configured service for the weather, the units it reads in, and the place it asks for (null: the place the
+/// service finds for the request's network address).
+/// </summary>
+public sealed record WeatherSettings(bool Enabled, WeatherUnits Units, string? Place)
+{
+    public static WeatherSettings Default { get; } = new(true, WeatherUnits.Auto, null);
+
+    /// <summary>The longest place, in UTF-16 code units.</summary>
+    public const int PlaceLength = 200;
+
+    /// <summary>Whether <paramref name="place"/> is a place the source may ask for: 1 to <see cref="PlaceLength"/> UTF-16 code units, not all white space.</summary>
+    public static bool IsPlace(string? place) => place is { Length: > 0 and <= PlaceLength } && !string.IsNullOrWhiteSpace(place);
+
+    /// <summary>A units setting's name (<c>auto</c>, <c>metric</c>, <c>imperial</c>).</summary>
+    public static string NameOf(WeatherUnits units) => units switch
+    {
+        WeatherUnits.Metric => "metric",
+        WeatherUnits.Imperial => "imperial",
+        _ => "auto",
+    };
+
+    /// <summary>The units a name gives, or null for a name that isn't one.</summary>
+    public static WeatherUnits? UnitsNamed(string? name) => name switch
+    {
+        "auto" => WeatherUnits.Auto,
+        "metric" => WeatherUnits.Metric,
+        "imperial" => WeatherUnits.Imperial,
+        _ => null,
+    };
+}
+
 /// <summary>
 /// The media providers' settings: whether they may connect to this computer and the local network (spec/docs/providers.md).
 /// </summary>
@@ -144,6 +190,7 @@ public sealed record EngineSettings(
     EngineLogLevel LogLevel,
     LibreSettings Libre,
     NetworkSettings Network,
+    WeatherSettings Weather,
     MediaSettings Media,
     ServiceSettings Service,
     IReadOnlyDictionary<string, JsonElement> Clients)
@@ -154,6 +201,7 @@ public sealed record EngineSettings(
         SettingsLimits.LogLevel,
         LibreSettings.Default,
         NetworkSettings.Default,
+        WeatherSettings.Default,
         MediaSettings.Default,
         ServiceSettings.Default,
         ImmutableDictionary<string, JsonElement>.Empty);

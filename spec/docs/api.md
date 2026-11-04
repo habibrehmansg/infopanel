@@ -192,7 +192,7 @@ The test vector (also as bodies in `examples/api/pairingChallengeRequest/`, `pai
 - `driver`, on the Libre source's entry only: the PawnIO driver ([below](#the-pawnio-driver));
 - `elevation`, on the Libre source's entry only: whether its sensor helper reads every sensor ([below](#reading-all-sensors)).
 
-A source's state comes from what it last read: a client asks again to see it change (the state has no socket message). A source that has nothing more to say about itself is `running` while the engine runs it: the mock source, the macOS source, and the engine's own on every operating system, not in mock mode or a replay: the clock (`infopanel.clock`), the drives (`infopanel.drives`) and the network (`infopanel.network`). The plugins' source (`plugins`) is `running` while the engine hosts plugins, however many it found, and `off` · `disabled` when it was started without them. The Windows sources' reasons:
+A source's state comes from what it last read: a client asks again to see it change (the state has no socket message). A source that has nothing more to say about itself is `running` while the engine runs it: the mock source, the macOS source, and the engine's own on every operating system, not in mock mode or a replay: the clock (`infopanel.clock`), the drives (`infopanel.drives`) and the network (`infopanel.network`). The weather source (`infopanel.weather`, the engine's own on every operating system, not in mock mode or a replay) is `starting` until its first request to the configured service has come back, then `running` while the service answers with the weather, and else says why ([below](#the-weather-sources-reasons)). The plugins' source (`plugins`) is `running` while the engine hosts plugins, however many it found, and `off` · `disabled` when it was started without them. The Windows sources' reasons:
 
 | Source | `state` · `reason.code` | When |
 |---|---|---|
@@ -208,6 +208,24 @@ A source's state comes from what it last read: a client asks again to see it cha
 | | `limited` · `notElevated` | Reading, but the PawnIO driver is installed and the helper, run without administrator rights, can't open it: it needs them ([reading all sensors](#reading-all-sensors)) |
 | | `off` · `disabled` | `sources.libre.enabled` is off ([settings](#settings)) |
 | | `unavailable` · `helperFailed` | The sensor helper stopped and is started again, or the engine isn't installed with it |
+
+### The weather source's reasons
+
+The weather source asks the configured service ([below](#the-configured-service)) for the weather, with the credential a client provides, and reads its readings from the last answer: `live` while the answer is at most 90 minutes old and the service didn't call it stale, then `stale` (the last values kept) until it is 6 hours old, then `unavailable`. An answer the service calls stale never renews that age: the values shown stay, now `stale`, or, with none yet, its own are shown `stale`. Its state says why it doesn't ask, or what the last request came to:
+
+| `state` · `reason.code` | When |
+|---|---|
+| `off` · `disabled` | `sources.weather.enabled` is off ([settings](#settings)): it asks nothing, and its readings are `unavailable` |
+| `off` · `noService` | The engine has no service address |
+| `off` · `noCredential` | No client has provided the service credential: it sends no request |
+| `unavailable` · `offline` | The engine runs with `--offline`, and the service isn't on this computer |
+| `unavailable` · `credentialRejected` | The service refused the credential (401): it sends no request until a client provides another |
+| `unavailable` · `placeNotFound` | The service found no place by the name `sources.weather.place` gives (or couldn't read it) |
+| `unavailable` · `locationUnknown` | The service couldn't tell where the request came from: a place must be set |
+| `unavailable` · `rateLimited` | The service asked the engine to wait (429): it waits its `Retry-After`, at least 10 minutes and at most 24 hours |
+| `unavailable` · `serviceUnavailable` | The service couldn't be reached, or didn't answer with the weather: it asks again after 1, 2, 4, 8, 16, then every 30 minutes, or after the answer's `Retry-After` when that is longer (at most 24 hours) |
+
+A change of the place, of the credential or of the service address asks at once. Otherwise the source asks again when the service's answer expires, plus up to 2 minutes, never sooner than 10 minutes nor later than 60.
 
 Either Windows source is `unavailable` with no reason while it can't read what it reads from: HWiNFO's shared memory, or the registry key that holds the gadget values (it can't be opened or read, or it holds more values than the engine reads). Once it reads again, its state follows the table.
 
@@ -248,12 +266,15 @@ With the PawnIO driver, LibreHardwareMonitor still needs administrator rights fo
 | `sources.libre.storage` | `true`, `false` | `true` | Whether it reads storage drives |
 | `sources.libre.storageInterval` | 1–300 | 30 | Seconds between its reads of storage drives |
 | `sources.network.publicIp` | `true`, `false` | `true` | Whether the network sensor source (`infopanel.network`) asks ipify for this network's public address while a public-address reading is in use, and lists the two (`plugin:/infopanel.network/public/ipv4`, `…/ipv6`). Off, it asks nothing and lists neither: a sensor bound to one is `unavailable`. `--offline` asks nothing and lists neither whatever this says |
+| `sources.weather.enabled` | `true`, `false` | `true` | Whether the weather sensor source (`infopanel.weather`) asks the configured service for the weather ([the weather source's reasons](#the-weather-sources-reasons)). Off, it asks nothing and its readings are `unavailable` |
+| `sources.weather.units` | `auto`, `metric`, `imperial` | `auto` | The units its readings are in: metric (°C, hPa, m/s, mm) or imperial (°F, inHg, mph, in); `auto` is metric unless the PC's regional format is a region's that uses imperial units |
+| `sources.weather.place` | A place name, or `latitude, longitude` in decimal degrees: 1–200 characters (UTF-16 code units), not all white space; or `null` | `null` | The place it asks the service for; `null` asks for the place the service finds for the request's network address |
 | `media.localNetwork` | `true`, `false` | `true` | Whether media providers may connect to this computer and the local network ([providers](providers.md#addresses)) |
 | `service.address` | An origin: `https`, or `http` on a loopback host | The engine's own, or none | The configured service's address ([below](#the-configured-service)). A change removes the credential the engine keeps for the service |
 | `service.aiApps` | `true`, `false` | `false` | Whether AI apps may use this engine's tools through the configured service ([below](#ai-apps-elsewhere)) |
 | `clients.{name}` | Any JSON value but `null` | none | A client's own preferences ([below](#client-preferences)) |
 
-A change takes effect at once: outputs re-time to the new frame rate, the history takes its next sample at the new rate and keeps the samples it has, the log follows the new level, media providers fetch every reference again under the new `media.localNetwork`, and the network source follows `sources.network.publicIp`: turned off, it cancels a lookup under way, forgets the public addresses and lists them no more; turned on, it lists them again (`unavailable` until a lookup answers) and, while one is in use, asks at once. An engine keeps the source settings whether or not it has that source.
+A change takes effect at once: outputs re-time to the new frame rate, the history takes its next sample at the new rate and keeps the samples it has, the log follows the new level, media providers fetch every reference again under the new `media.localNetwork`, and the network source follows `sources.network.publicIp`: turned off, it cancels a lookup under way, forgets the public addresses and lists them no more; turned on, it lists them again (`unavailable` until a lookup answers) and, while one is in use, asks at once; the weather source follows `sources.weather`: turned off, it cancels a request under way, forgets the answer and asks nothing; turned on, or given another place (which forgets the answer, for the place before), it asks at once; another unit reads the answer it holds in the new units at once, those readings' minimum, maximum and average starting afresh. An engine keeps the source settings whether or not it has that source.
 
 `version` counts the changes this run of the engine made to the stored settings: 0 when it starts, one more after each change that changed them ([below](#changing-settings)). It belongs to the run the session's `instance` names: after a restart it starts again at 0, so a client that sees another `instance` (here or in `hello`) reads the settings again.
 

@@ -421,6 +421,64 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(Open().Current.Settings.Network.PublicIp);
     }
 
+    [Fact]
+    public void TheWeatherSettings_AreOnAutoAndNoPlaceByDefault_SetAndResetMemberByMember_AndAStoredBadOneGetsItsDefault()
+    {
+        var store = Open();
+        Assert.Equal(new WeatherSettings(true, WeatherUnits.Auto, null), store.Current.Settings.Weather);
+        Assert.Equal(WeatherSettings.Default, EngineSettings.Default.Weather);
+
+        store.Apply(Change("""{"sources":{"weather":{"enabled":false,"units":"imperial","place":"São Paulo"}}}"""));
+        Assert.Equal(new WeatherSettings(false, WeatherUnits.Imperial, "São Paulo"), store.Current.Settings.Weather);
+        Assert.Equal(new WeatherSettings(false, WeatherUnits.Imperial, "São Paulo"), Open().Current.Settings.Weather);
+        Assert.True(JsonNode.DeepEquals(
+            JsonNode.Parse("""{"format":"infopanel.settings/1","sources":{"weather":{"enabled":false,"units":"imperial","place":"São Paulo"}}}"""), Stored()));
+
+        // Merged member by member; null sets each back, and the last empties its container.
+        store.Apply(Change("""{"sources":{"weather":{"units":"metric","place":null}}}"""));
+        Assert.Equal(new WeatherSettings(false, WeatherUnits.Metric, null), store.Current.Settings.Weather);
+        store.Apply(Change("""{"sources":{"weather":{"enabled":null,"units":null}}}"""));
+        Assert.Equal(WeatherSettings.Default, store.Current.Settings.Weather);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"format":"infopanel.settings/1"}"""), Stored()));
+
+        File.WriteAllText(File_, """{"format":"infopanel.settings/1","sources":{"weather":{"enabled":false,"units":"kelvin","place":"  "}}}""");
+        var read = Open();
+        Assert.Equal(new WeatherSettings(false, WeatherUnits.Auto, null), read.Current.Settings.Weather);
+        Assert.Equal(2, Warnings.Count);
+    }
+
+    [Theory]
+    [InlineData("""{"sources":{"weather":{"enabled":"no"}}}""", "/sources/weather/enabled")]
+    [InlineData("""{"sources":{"weather":{"units":"kelvin"}}}""", "/sources/weather/units")]
+    [InlineData("""{"sources":{"weather":{"units":"Metric"}}}""", "/sources/weather/units")]
+    [InlineData("""{"sources":{"weather":{"place":""}}}""", "/sources/weather/place")]
+    [InlineData("""{"sources":{"weather":{"place":" \t "}}}""", "/sources/weather/place")]
+    [InlineData("""{"sources":{"weather":{"place":7}}}""", "/sources/weather/place")]
+    [InlineData("""{"sources":{"weather":{"city":"Oslo"}}}""", "/sources/weather/city")]
+    [InlineData("""{"sources":{"weather":null}}""", "/sources/weather")]
+    public void ABadWeatherChange_IsRefusedAtItsPath_AndChangesNothing(string json, string path)
+    {
+        var store = Open();
+
+        var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(Change(json)));
+
+        Assert.Contains(refused.Errors, e => e.Path == path && e.Code == "schema");
+        Assert.Equal(WeatherSettings.Default, store.Current.Settings.Weather);
+        Assert.False(File.Exists(File_));
+    }
+
+    [Fact]
+    public void AWeatherPlace_IsAtMost200Utf16CodeUnits()
+    {
+        static string PlaceChange(int length) => "{\"sources\":{\"weather\":{\"place\":\"" + new string('x', length) + "\"}}}";
+
+        var store = Open();
+
+        store.Apply(Change(PlaceChange(200)));
+        Assert.Equal(200, store.Current.Settings.Weather.Place!.Length);
+        Assert.Throws<SettingsChangeException>(() => store.Apply(Change(PlaceChange(201))));
+    }
+
     [Theory]
     [InlineData("""{"sources":{"network":{"publicIp":"no"}}}""", "/sources/network/publicIp")]
     [InlineData("""{"sources":{"network":{"publicIP":true}}}""", "/sources/network/publicIP")]

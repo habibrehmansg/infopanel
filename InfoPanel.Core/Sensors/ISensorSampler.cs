@@ -53,9 +53,17 @@ public struct SensorSample
     /// </summary>
     public bool HasStatistics;
 
+    /// <summary>
+    /// The value or text set is one kept from before, not read now (<see cref="MarkStale"/>): the source keeps it as it
+    /// keeps a good one (a first one too), but the sensor reads stale. It is no new reading: it counts in the statistics
+    /// only as a first one (none yet, or none since they were dropped), so repeating it round after round moves no average.
+    /// </summary>
+    public bool Stale;
+
     public void Set(double value)
     {
         HasStatistics = false;
+        Stale = false;
         Text = null;
         if (double.IsFinite(value))
         {
@@ -88,6 +96,7 @@ public struct SensorSample
     public void SetText(string? text)
     {
         HasStatistics = false;
+        Stale = false;
         Text = text;
         Outcome = text is null ? SampleOutcome.Failed : SampleOutcome.Ok;
     }
@@ -96,9 +105,17 @@ public struct SensorSample
     public void SetUnavailable()
     {
         HasStatistics = false;
+        Stale = false;
         Text = null;
         Outcome = SampleOutcome.Unavailable;
     }
+
+    /// <summary>
+    /// Marks the value or text just set (<see cref="Set(double)"/>, <see cref="SetText"/>) as one kept from before, which
+    /// reads stale (<see cref="Stale"/>): a source that keeps values a while after it can no longer read them shows them
+    /// stale, after a change of units too, when it has no reading of its own to keep.
+    /// </summary>
+    public void MarkStale() => Stale = true;
 }
 
 /// <summary>

@@ -1148,6 +1148,7 @@ export interface EngineSettingsProblem {
 export interface SettingsSources {
   libre: LibreSettings;
   network: NetworkSettings;
+  weather: WeatherSettings;
 }
 
 /** The settings of the LibreHardwareMonitor sensor source (on Windows): whether it reads sensors, whether it reads storage drives, and how often. An engine keeps them whether or not it has the source. */
@@ -1169,6 +1170,24 @@ export interface NetworkSettings {
   publicIp: boolean;
 }
 
+/** The settings of the weather sensor source (`infopanel.weather`, on every operating system): whether it asks the configured service for the weather, the units it reads in and the place it asks for (docs/api.md#settings). An engine keeps them whether or not it has the source. */
+export interface WeatherSettings {
+  /** Whether the source asks the configured service for the weather; true by default. Off, it asks nothing and its readings are unavailable. */
+  enabled: boolean;
+  units: WeatherUnits;
+  place: WeatherPlace;
+}
+
+/** The units the weather source reads in: `auto` (the default: metric, unless the PC's regional format is a region's that uses imperial units), `metric` (°C, hPa, m/s, mm) or `imperial` (°F, inHg, mph, in). A client shows units it doesn't know by their name. */
+export type WeatherUnits = "auto" | "metric" | "imperial";
+
+/**
+ * The place the weather source asks for, a place name or `latitude, longitude` in decimal degrees: 1 to 200 characters (UTF-16 code units), not all white space; `null` (the default) asks for the place the service finds for the request's network address.
+ * Length: 1–200.
+ * Pattern: `\S`.
+ */
+export type WeatherPlace = string | null;
+
 /** The settings of the engine's media providers (docs/providers.md). */
 export interface MediaSettings {
   /** Whether a provider may connect to this computer and the local network (docs/providers.md#addresses); true by default. */
@@ -1184,7 +1203,7 @@ export type LogLevel = "debug" | "information" | "warning" | "error";
  */
 export type ClientName = string;
 
-/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `media`, `service` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
+/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `media`, `service` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
 export interface SettingsChange {
   /**
    * Frames a second, 1 to 60 (engineSettings).
@@ -1210,6 +1229,12 @@ export interface SettingsChange {
     network?: {
       /** networkSettings. */
       publicIp?: boolean | null;
+    };
+    weather?: {
+      /** weatherSettings. */
+      enabled?: boolean | null;
+      units?: WeatherUnits | null;
+      place?: WeatherPlace;
     };
   };
   media?: {

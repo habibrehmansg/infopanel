@@ -125,6 +125,9 @@ public class SettingsSchemaTests
         var libre = example["sources"]!["libre"]!;
         Assert.Equal(defaults.Libre, new LibreSettings(libre["enabled"]!.GetValue<bool>(), libre["storage"]!.GetValue<bool>(), libre["storageInterval"]!.GetValue<int>()));
         Assert.Equal(defaults.Network, new NetworkSettings(example["sources"]!["network"]!["publicIp"]!.GetValue<bool>()));
+        var weather = example["sources"]!["weather"]!;
+        Assert.Equal(defaults.Weather, new WeatherSettings(weather["enabled"]!.GetValue<bool>(),
+            WeatherSettings.UnitsNamed(weather["units"]!.GetValue<string>())!.Value, weather["place"]?.GetValue<string>()));
         Assert.Empty(example["clients"]!.AsObject());
     }
 

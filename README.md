@@ -61,7 +61,7 @@ For development and tests, see [`CLAUDE.md`](CLAUDE.md). What still has to come 
 
 - **Plugin System**:
   - Built-in system information plugins (CPU, memory, network, drives)
-  - Weather information integration
+  - Weather built into the engine
   - Support for third-party plugins
   - Sensor data tables with customizable formatting
 
@@ -93,7 +93,6 @@ InfoPanel features a robust plugin system that extends its capabilities:
 ### Built-in Plugins
 - **System Info Plugin**: CPU usage, memory usage, process statistics, and system uptime
 - **Volume Plugin**: Audio volume control and monitoring
-- **Weather Plugin**: Current weather conditions and forecasts
 
 ### Community Plugins
 - [InfoPanel Spotify Plugin](https://github.com/F3NN3X/InfoPanel.Spotify) - Displays currently playing tracks and album art from Spotify

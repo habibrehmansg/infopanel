@@ -110,11 +110,6 @@ The following packages are licensed under the MIT License:
 - **Copyright**: © 2021-2024 Leszek Pomianowski and WPF UI Contributors
 - **Project**: https://wpfui.lepo.co/
 
-### OpenWeatherMap.Standard
-- **License**: MIT License
-- **Copyright**: © Ken Tucker
-- **Project**: https://github.com/Ken-Tucker/OpenWeatherMap.Standard
-
 ## Apache License 2.0
 
 The following packages are licensed under the Apache License 2.0:

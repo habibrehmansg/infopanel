@@ -84,6 +84,12 @@ public static class SettingsEndpoints
                     StorageInterval = settings.Libre.StorageInterval,
                 },
                 Network = new NetworkSettingsBody { PublicIp = settings.Network.PublicIp },
+                Weather = new WeatherSettingsBody
+                {
+                    Enabled = settings.Weather.Enabled,
+                    Units = WeatherSettings.NameOf(settings.Weather.Units),
+                    Place = settings.Weather.Place,
+                },
             },
             Media = new MediaSettingsBody { LocalNetwork = settings.Media.LocalNetwork },
             Service = new ServiceSettingsBody { Address = settings.Service.Address ?? defaultServiceAddress, AiApps = settings.Service.AiApps },

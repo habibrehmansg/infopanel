@@ -243,6 +243,64 @@ public class PolledSensorSourceTests
     }
 
     [Fact]
+    public void AValueMarkedStale_IsKept_InTheStatisticsToo_AndReadsStale_AFirstOneToo()
+    {
+        var (source, sampler, time) = Create("a");
+        sampler.Set(0, 10);
+        sampler.Next[0].MarkStale();
+        source.Open();
+        var key = source.KeyOf("a");
+
+        var state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Stale, 10, 10, 10, 10), (state.Status, state.Reading.ValueNow, state.Reading.ValueMin, state.Reading.ValueMax, state.Reading.ValueAvg));
+
+        // A good value after it reads live; the statistics hold both.
+        sampler.Set(0, 20);
+        Assert.False(sampler.Next[0].Stale);
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Live, 20, 10, 20, 15), (state.Status, state.Reading.ValueNow, state.Reading.ValueMin, state.Reading.ValueMax, state.Reading.ValueAvg));
+
+        // Given stale again, it reads stale with that value; given every round, it doesn't age out.
+        sampler.Set(0, 30);
+        sampler.Next[0].MarkStale();
+        foreach (var _ in Enumerable.Range(0, 3))
+        {
+            time.Advance(TimeSpan.FromSeconds(20));
+            source.Poll();
+        }
+
+        state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Stale, 30, 10, 30), (state.Status, state.Reading.ValueNow, state.Reading.ValueMin, state.Reading.ValueMax));
+    }
+
+    [Fact]
+    public void AValueKeptStale_RoundAfterRound_IsNoNewReading_SoTheStatisticsHoldStill()
+    {
+        var (source, sampler, time) = Create("a");
+        sampler.Set(0, 10);
+        source.Open();
+        var key = source.KeyOf("a");
+        sampler.Set(0, 20);
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        var state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Live, 20, 10, 20, 15), (state.Status, state.Reading.ValueNow, state.Reading.ValueMin, state.Reading.ValueMax, state.Reading.ValueAvg));
+
+        // The last value kept and marked stale every round, as a source does while it can't read: no new readings.
+        sampler.Next[0].MarkStale();
+        foreach (var _ in Enumerable.Range(0, 10))
+        {
+            time.Advance(TimeSpan.FromSeconds(1));
+            source.Poll();
+        }
+
+        state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Stale, 20, 10, 20, 15), (state.Status, state.Reading.ValueNow, state.Reading.ValueMin, state.Reading.ValueMax, state.Reading.ValueAvg));
+    }
+
+    [Fact]
     public void Unavailable_DropsTheSourcesOwnStatisticsToo()
     {
         var (source, sampler, time) = Create("a");

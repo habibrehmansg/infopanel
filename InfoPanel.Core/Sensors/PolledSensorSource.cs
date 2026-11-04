@@ -39,8 +39,9 @@ public sealed class PolledSensorSourceOptions
 /// <item><see cref="SensorStatus.Unavailable"/> with no good sample yet, none since a sample said the sensor has no
 /// reading now (<see cref="SampleOutcome.Unavailable"/>, which drops the last reading and its statistics in the round
 /// that commits it), or the last good one older than <see cref="PolledSensorSourceOptions.UnavailableAfter"/>;</item>
-/// <item><see cref="SensorStatus.Stale"/> when the latest read failed or the last good sample is older than
-/// <see cref="PolledSensorSourceOptions.StaleAfter"/> (the last value is still read);</item>
+/// <item><see cref="SensorStatus.Stale"/> when the latest read failed, the latest sample was a value kept from before
+/// (<see cref="SensorSample.MarkStale"/>: kept as a good one, a first one too, so it is read) or the last good sample is
+/// older than <see cref="PolledSensorSourceOptions.StaleAfter"/> (the last value is still read);</item>
 /// <item><see cref="SensorStatus.Live"/> otherwise.</item>
 /// </list>
 /// Reads take a short lock and allocate nothing.
@@ -542,12 +543,15 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                         slot.Count++;
                         slot.Text = Cut(text, ref slot, s);
                         slot.LastGood = sampled;
-                        slot.Latest = SampleOutcome.Ok;
+                        slot.Latest = sample.Stale ? SampleOutcome.Failed : SampleOutcome.Ok;
                         break;
                     case SampleOutcome.Ok when slot.Kind == SensorKind.Number && sample.Text is null && double.IsFinite(sample.Value):
-                        slot.Count++;
+                        // A value kept from before is no new reading: it counts only when there is none yet.
+                        var counted = !sample.Stale || slot.Count == 0;
+                        if (counted)
+                            slot.Count++;
                         slot.Now = sample.Value;
-                        if (slot.Count == 1)
+                        if (counted && slot.Count == 1)
                         {
                             slot.OwnMin = slot.OwnMax = slot.OwnAvg = sample.Value;
                         }
@@ -555,7 +559,8 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                         {
                             slot.OwnMin = Math.Min(slot.OwnMin, sample.Value);
                             slot.OwnMax = Math.Max(slot.OwnMax, sample.Value);
-                            slot.OwnAvg += (sample.Value - slot.OwnAvg) / slot.Count;
+                            if (counted)
+                                slot.OwnAvg += (sample.Value - slot.OwnAvg) / slot.Count;
                         }
 
                         (slot.Min, slot.Max, slot.Avg) = sample.HasStatistics
@@ -563,7 +568,7 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                             : (slot.OwnMin, slot.OwnMax, slot.OwnAvg);
 
                         slot.LastGood = sampled;
-                        slot.Latest = SampleOutcome.Ok;
+                        slot.Latest = sample.Stale ? SampleOutcome.Failed : SampleOutcome.Ok;
                         break;
                     case SampleOutcome.Ok:
                     case SampleOutcome.Failed:

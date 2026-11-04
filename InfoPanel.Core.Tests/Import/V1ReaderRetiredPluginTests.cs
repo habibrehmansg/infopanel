@@ -141,7 +141,8 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         var container = new PluginContainer("Clock").Id;
         var expected = names.Select(n => SensorKey.Plugin($"/clock-plugin/{container}/{new PluginSensor(n, 0).Id}").ToString()).ToList();
 
-        var table = RetiredPlugins.All.ToList();
+        // The Clock plugin's part of the fixed table (the Weather plugin's is V1ReaderWeatherTests').
+        var table = RetiredPlugins.All.Where(t => t.Key.Id.StartsWith("/clock-plugin/", StringComparison.Ordinal)).ToList();
 
         Assert.Equal(expected.Order(StringComparer.Ordinal), table.Select(t => t.Key.ToString()).Order(StringComparer.Ordinal));
         var catalogue = new ClockSensorSource(_time).GetSensors().ToDictionary(s => s.Key);
@@ -151,7 +152,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
             Assert.Equal((sensor!.Name, ClockSensorSource.Name), (t.Value.Name, t.Value.Source));
         });
         Assert.Equal("Clock", RetiredPlugins.SourceOf("clock-plugin"));
-        Assert.Null(RetiredPlugins.SourceOf("weather-plugin"));
+        Assert.Null(RetiredPlugins.SourceOf("volume-plugin"));
     }
 
     private static void CopyFolder(string from, string to)

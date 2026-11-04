@@ -10,7 +10,6 @@
 
   <ItemGroup>
     <PackageReference Include="NAudio.Wasapi" />
-    <PackageReference Include="OpenWeatherMap.Cache" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="System.Diagnostics.PerformanceCounter" />
   </ItemGroup>

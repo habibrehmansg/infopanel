@@ -4,13 +4,15 @@ using InfoPanel.Enums;
 using InfoPanel.Sensors.Clock;
 using InfoPanel.Sensors.Drives;
 using InfoPanel.Sensors.Network;
+using InfoPanel.Sensors.Weather;
 
 namespace InfoPanel.Sensors;
 
 /// <summary>
-/// The 1.x plugins whose sensors the engine's own sources read now, under keys of their own: the plugins source refuses
-/// a package's plugin with such an id (an old copy of a bundled package), so their keys don't come back half live, and
-/// a 1.x import binds each of their keys that a source has an entry for to that entry's key, once
+/// The 1.x plugins whose sensors the engine's own sources read now, under keys of their own (the Clock, Drive Info and
+/// Network Info plugins'), or whose place a source of the engine's takes (the Weather plugin's): the plugins source
+/// refuses a package's plugin with such an id (an old copy of a bundled package), so their keys don't come back half
+/// live, and a 1.x import binds each of their keys that a source has an entry for to that entry's key, once
 /// (<see cref="Translate"/>). The engine never answers their keys: a binding to one that wasn't imported reads
 /// unavailable.
 /// </summary>
@@ -25,10 +27,26 @@ public static class RetiredPlugins
         ["clock-plugin"] = ClockSensorSource.Name,
         ["drive-info-plugin"] = DriveSource.Name,
         ["network-info-plugin"] = NetworkSource.Name,
+        ["weather-plugin"] = WeatherSource.Name,
     };
 
+    /// <summary>
+    /// The 1.x Weather plugin's entries (its one container, "Weather", id <c>weather</c>) that the weather source has an
+    /// equivalent for, and that equivalent's id: one to one, but the description and the group both to the condition,
+    /// the sea-level pressure to the pressure (the service's is at sea level), the spread now across a city to the next
+    /// 24 hours' high and low, and the last hour's rain to the next hour's precipitation. Its snow, ground-level
+    /// pressure, icon and icon address have none.
+    /// </summary>
+    private static readonly (string Entry, string Id)[] WeatherEntries =
+    [
+        ("name", "place"), ("weather", "condition"), ("weather_desc", "condition"),
+        ("temp", "temperature"), ("feels_like", "feels_like"), ("humidity", "humidity"), ("pressure", "pressure"),
+        ("sea_level", "pressure"), ("wind_speed", "wind_speed"), ("wind_gust", "wind_gust"), ("wind_deg", "wind_direction"),
+        ("clouds", "cloud_cover"), ("max_temp", "high"), ("min_temp", "low"), ("rain", "precipitation"),
+    ];
+
     // A retired plugin's key id (1.x's PluginSensorId) → what it is bound to on import, for the plugins whose keys are
-    // fixed (the clock's); a drive's and the network's keys follow a rule (DriveKey, NetworkKey).
+    // fixed (the clock's, the weather's); a drive's and the network's keys follow a rule (DriveKey, NetworkKey).
     private static readonly Dictionary<string, Translation> Keys = Build();
 
     private const string DriveInfoPrefix = "/drive-info-plugin/";
@@ -40,6 +58,9 @@ public static class RetiredPlugins
         // The 1.x Clock plugin: one container, "Clock" (clock), its entries the source's, one to one.
         foreach (var (id, name) in ClockSensorSource.Entries)
             keys[$"/clock-plugin/clock/{id}"] = new Translation(ClockSensorSource.KeyOf(id), "Clock", ClockSensorSource.Name, name);
+        // The 1.x Weather plugin: one container, "Weather" (weather), its entries by WeatherEntries.
+        foreach (var (entry, id) in WeatherEntries)
+            keys[$"/weather-plugin/weather/{entry}"] = new Translation(WeatherSource.KeyOf(id), "Weather", WeatherSource.Name, WeatherSource.EntryOf(id)!.Name);
         return keys;
     }
 
@@ -47,8 +68,8 @@ public static class RetiredPlugins
     public static string? SourceOf(string pluginId) => Sources.TryGetValue(pluginId, out var source) ? source : null;
 
     /// <summary>
-    /// Every fixed key a 1.x import binds (the Clock plugin's), and what it binds it to. The Drive Info plugin's keys,
-    /// one set per drive, and the Network Info plugin's follow a rule instead (<see cref="Translate"/>).
+    /// Every fixed key a 1.x import binds (the Clock plugin's and the Weather plugin's), and what it binds it to. The
+    /// Drive Info plugin's keys, one set per drive, and the Network Info plugin's follow a rule instead (<see cref="Translate"/>).
     /// </summary>
     public static IEnumerable<KeyValuePair<SensorKey, Translation>> All
     {
@@ -61,7 +82,9 @@ public static class RetiredPlugins
 
     /// <summary>
     /// What a 1.x import binds <paramref name="key"/> to: the native entry for a retired plugin's key, else null (any
-    /// other key, and an entry no source has). The Clock plugin's eight keys go to the clock's; the Drive Info plugin's
+    /// other key, and an entry no source has). The Clock plugin's eight keys go to the clock's; the Weather plugin's
+    /// <c>/weather-plugin/weather/{entry}</c>, for 15 of its 19 entries, to the weather source's (<see cref="WeatherEntries"/>);
+    /// the Drive Info plugin's
     /// <c>/drive-info-plugin/{drive}/{entry}</c>, for any drive id the plugin could make (<see cref="DriveSource.IsDriveId"/>)
     /// and each of its entries, to the drives source's <c>plugin:/infopanel.drives/{drive}/{entry}</c>, whether or not
     /// this computer has the drive. The Network Info plugin's public addresses,

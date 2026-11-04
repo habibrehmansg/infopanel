@@ -85,6 +85,8 @@ public sealed class SettingsEndpointTests
         var libre = settings.GetProperty("sources").GetProperty("libre");
         Assert.Equal((true, true, 30), (libre.GetProperty("enabled").GetBoolean(), libre.GetProperty("storage").GetBoolean(), libre.GetProperty("storageInterval").GetInt32()));
         Assert.True(settings.GetProperty("sources").GetProperty("network").GetProperty("publicIp").GetBoolean());
+        var weather = settings.GetProperty("sources").GetProperty("weather");
+        Assert.Equal((true, "auto", JsonValueKind.Null), (weather.GetProperty("enabled").GetBoolean(), weather.GetProperty("units").GetString(), weather.GetProperty("place").ValueKind));
         Assert.Empty(settings.GetProperty("clients").EnumerateObject());
         Assert.False(File.Exists(Settings(factory)));
     }
@@ -222,6 +224,26 @@ public sealed class SettingsEndpointTests
 
     // ---- refusals -----------------------------------------------------------------------------------------------
 
+    [Fact]
+    public async Task TheWeatherSettings_AreChangedAndSetBack_StoredAndReadBack()
+    {
+        using var factory = new EngineFactory();
+        using var api = factory.CreateApiClient();
+
+        var set = await Patch(api, """{"sources":{"weather":{"enabled":false,"units":"imperial","place":"Oslo"}}}""");
+
+        var weather = set.GetProperty("sources").GetProperty("weather");
+        Assert.Equal((false, "imperial", "Oslo"), (weather.GetProperty("enabled").GetBoolean(), weather.GetProperty("units").GetString(), weather.GetProperty("place").GetString()));
+        Assert.True(JsonElement.DeepEquals(set, await Get(api)));
+        Assert.Equal(new WeatherSettings(false, WeatherUnits.Imperial, "Oslo"), factory.Services.GetRequiredService<SettingsStore>().Current.Settings.Weather);
+
+        var reset = await Patch(api, """{"sources":{"weather":{"enabled":null,"units":null,"place":null}}}""");
+
+        weather = reset.GetProperty("sources").GetProperty("weather");
+        Assert.Equal((true, "auto", JsonValueKind.Null), (weather.GetProperty("enabled").GetBoolean(), weather.GetProperty("units").GetString(), weather.GetProperty("place").ValueKind));
+        Assert.False(JsonNode.Parse(File.ReadAllText(Settings(factory)))!.AsObject().ContainsKey("sources"));
+    }
+
     public static TheoryData<string, string, string> BadChanges => new()
     {
         { """{"frameRate":0}""", "/frameRate", "schema" },
@@ -241,6 +263,9 @@ public sealed class SettingsEndpointTests
         { """{"sources":{"network":{"publicIp":"off"}}}""", "/sources/network/publicIp", "schema" },
         { """{"sources":{"network":{"lookup":false}}}""", "/sources/network/lookup", "schema" },
         { """{"sources":{"network":null}}""", "/sources/network", "schema" },
+        { """{"sources":{"weather":{"units":"kelvin"}}}""", "/sources/weather/units", "schema" },
+        { """{"sources":{"weather":{"place":""}}}""", "/sources/weather/place", "schema" },
+        { """{"sources":{"weather":{"enabled":1}}}""", "/sources/weather/enabled", "schema" },
         { """{"clients":{"my client":{}}}""", "/clients/my client", "schema" },
         { """{"clients":null}""", "/clients", "schema" },
         { "[]", "", "schema" },
