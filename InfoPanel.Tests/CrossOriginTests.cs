@@ -1,5 +1,6 @@
 using System.Net;
 using InfoPanel.Security;
+using InfoPanel.Tests.Contract;
 using Xunit;
 
 namespace InfoPanel.Tests;
@@ -41,6 +42,8 @@ public class CrossOriginTests(EngineFactory factory) : IClassFixture<EngineFacto
     [InlineData("/api/session", "GET")]
     [InlineData("/api/profiles", "POST")]
     [InlineData("/api/profiles/00000000-0000-0000-0000-000000000001", "DELETE")]
+    [InlineData("/api/service/credential", "PUT")]
+    [InlineData("/api/import/v1", "PUT")]
     [InlineData("/healthz", "GET")]
     public async Task Preflight_FromTheCrossOrigin_Is204WithTheCorsHeaders_WithoutAToken(string path, string method)
     {
@@ -58,6 +61,17 @@ public class CrossOriginTests(EngineFactory factory) : IClassFixture<EngineFacto
         Assert.Null(Header(response, "Access-Control-Allow-Private-Network"));
         Assert.Null(Header(response, "Set-Cookie"));
         SecurityTests.AssertSecurityHeaders(response);
+    }
+
+    [Fact]
+    public void AllowedMethods_CoverEveryMethodTheApiDocumentUses()
+    {
+        var allowed = CrossOrigin.AllowedMethods.Split(", ");
+        var used = ApiContract.Instance.Operations.Select(o => o.Method.ToUpperInvariant()).Distinct().Order().ToList();
+
+        Assert.NotEmpty(used);
+        var missing = used.Where(m => !allowed.Contains(m)).ToList();
+        Assert.True(missing.Count == 0, $"spec/openapi.json uses {string.Join(", ", missing)}, which CrossOrigin.AllowedMethods ({CrossOrigin.AllowedMethods}) doesn't allow");
     }
 
     [Fact]

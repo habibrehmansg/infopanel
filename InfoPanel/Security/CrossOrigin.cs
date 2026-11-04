@@ -21,7 +21,8 @@ namespace InfoPanel.Security;
 /// </summary>
 public static class CrossOrigin
 {
-    public const string AllowedMethods = "GET, POST, PATCH, DELETE";
+    /// <summary>Every method <c>spec/openapi.json</c> uses (<c>CrossOriginTests</c> keeps them in step).</summary>
+    public const string AllowedMethods = "GET, HEAD, POST, PUT, PATCH, DELETE";
     public const string AllowedHeaders = "Authorization, Content-Type";
     /// <summary><c>Location</c> (201 Created) and <c>Content-Disposition</c> (export file name).</summary>
     public const string ExposedHeaders = "Location, Content-Disposition";

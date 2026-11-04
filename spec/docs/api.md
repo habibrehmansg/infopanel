@@ -103,7 +103,7 @@ A client served from another origin can pair with the engine instead, so that it
 
 ### Where requests come from
 
-The engine listens on the loopback interface only, and answers a request whose `Host` isn't `localhost`, `127.0.0.1` or `[::1]` (any port) with 400 and no body. A request with an `Origin` (a browser's, WebSocket upgrades included) must come from the engine's own origin or one the engine was started to accept; any other is answered 403 `problem`, without CORS headers. An origin the engine was started to accept as a separate client gets CORS on `/api`, `/healthz` and `/auth/pairing`: its preflights (`OPTIONS` with `Access-Control-Request-Method`) are answered 204 with no body before the token check, and every other answer carries `Access-Control-Allow-Origin`.
+The engine listens on the loopback interface only, and answers a request whose `Host` isn't `localhost`, `127.0.0.1` or `[::1]` (any port) with 400 and no body. A request with an `Origin` (a browser's, WebSocket upgrades included) must come from the engine's own origin or one the engine was started to accept; any other is answered 403 `problem`, without CORS headers. An origin the engine was started to accept as a separate client gets CORS on `/api`, `/healthz` and `/auth/pairing`: its preflights (`OPTIONS` with `Access-Control-Request-Method`) are answered 204 with no body before the token check, allowing every method the API uses (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`), and every other answer carries `Access-Control-Allow-Origin`.
 
 ### Integration tokens
 
