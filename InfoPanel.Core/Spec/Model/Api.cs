@@ -392,7 +392,7 @@ public sealed record ItemBounds
     public ItemMedia? Media { get; init; }
 }
 
-/// <summary>An item's media problem in a tick (<c>itemMedia</c>): <c>media.loading</c>, <c>media.missing</c>, <c>media.provider</c>, <c>media.address</c>, or a refusal's code.</summary>
+/// <summary>An item's media problem in a tick (<c>itemMedia</c>): <c>media.loading</c>, <c>media.missing</c>, <c>media.provider</c>, <c>media.address</c>, <c>media.reach</c>, or a refusal's code.</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/itemMedia")]
 public sealed record ItemMedia
 {

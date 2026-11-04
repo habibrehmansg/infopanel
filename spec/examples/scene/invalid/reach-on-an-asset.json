@@ -1,0 +1,4 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [{"kind": "media", "source": {"asset": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "reach": "public"}}]
+}

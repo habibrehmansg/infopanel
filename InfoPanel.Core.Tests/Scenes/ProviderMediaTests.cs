@@ -249,4 +249,24 @@ public sealed class ProviderMediaTests
             Assert.Equal(SKColors.Lime, frame.GetPixel(25, 20));
         }
     }
+
+    [Fact]
+    public void A_marked_and_an_unmarked_source_on_one_reference_are_asked_apart_and_never_share_an_answer()
+    {
+        // Two nodes of one item on one reference, one marked "reach": "public": the provider is asked for each, the marked
+        // one told so, in a live tick and in a one-off render alike, and each node shows its own answer.
+        var provider = new Recording { Answer = new ProvidedMedia(null, new MediaStatus("media.loading", "Loading.")) };
+        using var runtime = Runtime("{'format':'infopanel.scene/1','requires':['media.provider'],'nodes':["
+            + "{'kind':'media','w':20,'h':20,'source':{'provider':'http','ref':'http://192.168.1.20/cam.jpg'}},"
+            + "{'kind':'media','x':30,'w':20,'h':20,'source':{'provider':'http','ref':'http://192.168.1.20/cam.jpg','reach':'public'}}]}", provider);
+        runtime.Tick(0.5, SceneKit.Now).Dispose();
+        runtime.Snapshot(SceneKit.Now).Dispose();
+        Assert.Equal(
+            [new MediaRequest("http://192.168.1.20/cam.jpg", 0.5, MediaPlayback.Loop, 0, Live: true),
+             new MediaRequest("http://192.168.1.20/cam.jpg", 0.5, MediaPlayback.Loop, 0, Live: true, PublicOnly: true),
+             new MediaRequest("http://192.168.1.20/cam.jpg", 0, MediaPlayback.Loop, 0, Live: false),
+             new MediaRequest("http://192.168.1.20/cam.jpg", 0, MediaPlayback.Loop, 0, Live: false, PublicOnly: true)],
+            provider.Asks);
+        Assert.Empty(provider.Also);
+    }
 }

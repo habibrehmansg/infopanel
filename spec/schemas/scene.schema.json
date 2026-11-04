@@ -477,6 +477,10 @@
           "minimum": 0,
           "maximum": 86400,
           "default": 0
+        },
+        "reach": {
+          "description": "public: the provider fetches `ref` only from public addresses, refusing this computer and the local network whatever the engine's media.localNetwork setting says (media.reach), and shares nothing with a source on the same reference without it. Absent: the engine's setting applies. See docs/providers.md, public addresses only.",
+          "enum": ["public"]
         }
       }
     },

@@ -183,6 +183,9 @@ internal sealed class CMediaSource
 
     /// <summary>A provider source's seconds between fetches (0: once).</summary>
     public int Refresh;
+
+    /// <summary>A provider source marked <c>"reach": "public"</c>: its provider connects only to public addresses for it.</summary>
+    public bool PublicOnly;
     public CMediaSource[]? Sequence;
     public CExpr? Index;
     public bool Crossfade;
@@ -559,6 +562,7 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
         ProviderIndex = s.Provider is null ? 0 : _providers++,
         Ref = s.Ref is null ? null : _x.Compile(s.Ref),
         Refresh = s.Refresh ?? 0,
+        PublicOnly = s.Reach == "public",
         Sequence = depth > 0 ? null : s.Sequence?.Take(limits.Sequence).Select(x => Source(x, depth + 1)).ToArray(),
         Index = s.Index is null ? null : _x.Compile(s.Index),
         Crossfade = s.Crossfade == true,

@@ -629,7 +629,7 @@ export interface ItemBounds {
 /** Set when media the item shows had a problem in this tick: the first one, as the engine reports it (docs/api.md#frames). The item itself isn't a placeholder: the media is drawn as the missing-media placeholder, or a provider's last good image stays while it says why the newest couldn't be shown. */
 export interface ItemMedia {
   /**
-   * `media.loading` (still loading), `media.missing` (an asset that isn't stored, or was refused), `media.provider` (the provider couldn't fetch it, or the reference isn't one it takes), `media.address` (an address the engine may not connect to, docs/providers.md), `media.budget` (a video past the engine's decode sessions, docs/smart-nodes.md), or the code a fetched answer was refused with (docs/validation.md: `media.format`, `limit.mediaBytes`, ...). A client treats a code it doesn't know as media that can't be shown.
+   * `media.loading` (still loading), `media.missing` (an asset that isn't stored, or was refused), `media.provider` (the provider couldn't fetch it, or the reference isn't one it takes), `media.address` (an address the engine may not connect to, docs/providers.md), `media.reach` (an inward address a source marked public-only may not reach, docs/providers.md), `media.budget` (a video past the engine's decode sessions, docs/smart-nodes.md), or the code a fetched answer was refused with (docs/validation.md: `media.format`, `limit.mediaBytes`, ...). A client treats a code it doesn't know as media that can't be shown.
    * Length: 1–64.
    */
   code: string;
@@ -2880,6 +2880,8 @@ export interface ProviderSource {
    * @default 0
    */
   refresh?: number;
+  /** public: the provider fetches `ref` only from public addresses, refusing this computer and the local network whatever the engine's media.localNetwork setting says (media.reach), and shares nothing with a source on the same reference without it. Absent: the engine's setting applies. See docs/providers.md, public addresses only. */
+  reach?: "public";
 }
 
 /** A stored video file, played on the tick clock (version 1.0, capability media.video; docs/smart-nodes.md, video files). `playback` and `speed` mean what they mean for an animation. */

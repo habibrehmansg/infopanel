@@ -384,6 +384,8 @@
   "scene/invalid/path-syntax.json": {"code": "path.syntax", "path": "/nodes/0/d"},
   "scene/invalid/provider-newline.json": {"code": "schema", "path": "/nodes/0/source"},
   "scene/invalid/provider-without-capability.json": {"code": "requires.missing", "path": "/nodes/0/source"},
+  "scene/invalid/reach-on-an-asset.json": {"code": "schema", "path": "/nodes/0/source"},
+  "scene/invalid/reach-unknown.json": {"code": "schema", "path": "/nodes/0/source"},
   "scene/invalid/refresh-fraction.json": {"code": "schema", "path": "/nodes/0/source"},
   "scene/invalid/refresh-negative.json": {"code": "schema", "path": "/nodes/0/source"},
   "scene/invalid/refresh-over-a-day.json": {"code": "schema", "path": "/nodes/0/source"},

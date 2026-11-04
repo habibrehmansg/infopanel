@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using InfoPanel.Spec;
@@ -25,8 +26,17 @@ public sealed class HttpMediaProviderOptions
     /// <summary>The <c>media.localNetwork</c> setting, read for every connection.</summary>
     public Func<bool> LocalNetwork { get; init; } = () => true;
 
+    /// <summary>
+    /// This computer's interface addresses with their prefix lengths, read at each connection made for a source marked
+    /// to reach only public addresses (tests give a fake list).
+    /// </summary>
+    public Func<IReadOnlyList<InterfaceAddress>> Interfaces { get; init; } = AddressRules.ThisComputersAddresses;
+
     /// <summary>Connect only to this computer (an engine started offline: tests).</summary>
     public bool LoopbackOnly { get; init; }
+
+    /// <summary>Tests: shown each server certificate's chain as built (<see cref="AddressRules.TlsOptions"/>).</summary>
+    public Action<X509Chain?>? ChainBuilt { get; init; }
 
     /// <summary>Resolves a host name to its addresses (the system's resolver).</summary>
     public Func<string, CancellationToken, Task<IPAddress[]>> Resolve { get; init; } = Dns.GetHostAddressesAsync;
@@ -73,7 +83,9 @@ public sealed class HttpMediaProviderOptions
 /// every item showing it, alive while ticks ask for it and dropped <see cref="HttpMediaProviderOptions.IdleAfter"/> after
 /// the last ask; <see cref="Get"/> never blocks. Every connection resolves its host here and connects only to an address
 /// <see cref="AddressRules"/> allowed (<see cref="SocketsHttpHandler.ConnectCallback"/>), so redirects and names whose
-/// answer changes are held to the rules. Fetched bytes are inspected as assets are, kept in memory only
+/// answer changes are held to the rules. A source marked <c>"reach": "public"</c> has fetchers and a handler of its own,
+/// whose every connection reaches only public addresses, this computer's interfaces read for each
+/// (<see cref="AddressRules.PublicRefusal"/>). Fetched bytes are inspected as assets are, kept in memory only
 /// (<see cref="FetchedMediaStore"/>) and decoded by the engine's <see cref="MediaSampleCache"/>.
 /// </summary>
 public sealed class HttpMediaProvider : IMediaProvider, IDisposable
@@ -86,10 +98,14 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     private readonly FetchedMediaStore _store;
     private readonly HttpMediaProviderOptions _options;
     private readonly Lock _lock = new();
-    private readonly Dictionary<string, Fetcher> _fetchers = new(StringComparer.Ordinal);
+    /// <summary>The fetchers by address and reach: a marked source's never shares one with an unmarked source's.</summary>
+    private readonly Dictionary<(string Address, bool PublicOnly), Fetcher> _fetchers = new();
     private readonly SemaphoreSlim _slots;
     private readonly CancellationTokenSource _stop = new();
     private readonly HttpClient _client;
+
+    /// <summary>Marked sources' client: a handler of its own, whose every connection is held to public addresses.</summary>
+    private readonly HttpClient _publicClient;
     private readonly ITimer _expiry;
     private readonly long _start;
     /// <summary>When the sweep last ran; null until it has (a clock at zero is a time like any other).</summary>
@@ -113,7 +129,8 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         _options = options ?? new HttpMediaProviderOptions();
         _start = _options.Time.GetTimestamp();
         _slots = new SemaphoreSlim(Math.Max(1, _options.MaxRequests));
-        _client = Client(null);
+        _client = Client(null, publicOnly: false);
+        _publicClient = Client(null, publicOnly: true);
         // References no tick asks for expire on their own, with no lookup to notice them (a stream would read on).
         _expiry = _options.Time.CreateTimer(_ => Expire(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
@@ -121,9 +138,10 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     /// <summary>
     /// A client as every fetch makes its requests: no cookies, proxy, redirects followed by the handler or decompression,
     /// each connection through <see cref="ConnectAsync"/>; with <paramref name="credentials"/>, the one reference's that
-    /// carries them (a client of its own, made and disposed with its fetch, so no other reference ever sends them).
+    /// carries them (a client of its own, made and disposed with its fetch, so no other reference ever sends them). With
+    /// <paramref name="publicOnly"/>, a marked source's: every connection it makes reaches only public addresses.
     /// </summary>
-    private HttpClient Client(ICredentials? credentials) => new(new SocketsHttpHandler
+    private HttpClient Client(ICredentials? credentials, bool publicOnly) => new(new SocketsHttpHandler
     {
         UseCookies = false,
         UseProxy = false,
@@ -131,7 +149,8 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         AutomaticDecompression = DecompressionMethods.None,
         Credentials = credentials,
         PreAuthenticate = false,
-        ConnectCallback = ConnectAsync,
+        ConnectCallback = (context, token) => ConnectAsync(context, publicOnly, token),
+        SslOptions = AddressRules.TlsOptions(null, publicOnly, _options.ChainBuilt),
         MaxResponseHeadersLength = 64,
     }) { Timeout = Timeout.InfiniteTimeSpan };
 
@@ -169,10 +188,10 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     }
 
     /// <summary>Tests: the items noted as asking for <paramref name="reference"/>, asked lately or not.</summary>
-    internal int AskersOf(string reference)
+    internal int AskersOf(string reference, bool publicOnly = false)
     {
         if (!TryAddress(reference, _options.MaxAddressLength, out var address, out _, out _)) return 0;
-        lock (_lock) return _fetchers.TryGetValue(address, out var f) ? f.AskerCount : 0;
+        lock (_lock) return _fetchers.TryGetValue((address, publicOnly), out var f) ? f.AskerCount : 0;
     }
 
     /// <summary>The bytes the streams hold between them (<see cref="HttpMediaProviderOptions.StreamBytes"/>).</summary>
@@ -228,12 +247,12 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
             {
                 var now = Now();
                 dropped = Sweep(now);
-                if (!_fetchers.TryGetValue(address, out fetcher))
+                if (!_fetchers.TryGetValue((address, request.PublicOnly), out fetcher))
                 {
                     // A one-off render starts nothing: it shows what a live tick has fetched, else the placeholder.
                     if (!request.Live) return new ProvidedMedia(null, new MediaStatus("media.loading", "Not loaded yet."));
-                    fetcher = new Fetcher(address, uri, credential, now);
-                    _fetchers[address] = fetcher;
+                    fetcher = new Fetcher(address, request.PublicOnly, uri, credential, now);
+                    _fetchers[(address, request.PublicOnly)] = fetcher;
                 }
                 // An item joining a stream other items opened: it counts among the item's streams.
                 if (request.Live && item is not null && Joining(fetcher, item, now, ref closed) is { } over)
@@ -423,7 +442,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         if (_disposed || !request.Live || !TryAddress(request.Reference, _options.MaxAddressLength, out var address, out _, out _)) return;
         lock (_lock)
         {
-            if (_fetchers.TryGetValue(address, out var fetcher)) fetcher.Asked(request.Refresh, Now(), _options.IdleAfter);
+            if (_fetchers.TryGetValue((address, request.PublicOnly), out var fetcher)) fetcher.Asked(request.Refresh, Now(), _options.IdleAfter);
         }
     }
 
@@ -486,7 +505,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         _lastSweep = now;
         var idle = (long)_options.IdleAfter.TotalMilliseconds;
         List<Fetcher>? dropped = null;
-        foreach (var (address, f) in _fetchers.ToList())
+        foreach (var (key, f) in _fetchers.ToList())
         {
             if (now - f.LastAsked < idle)
             {
@@ -494,7 +513,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
                 continue;
             }
             Drop(f);
-            _fetchers.Remove(address);
+            _fetchers.Remove(key);
             (dropped ??= []).Add(f);
         }
         return dropped;
@@ -617,9 +636,10 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         var token = linked.Token;
         var uri = fetcher.Uri;
         var streaming = false;
-        // The reference's own user info, in a client of this fetch's: released with it, and never another reference's.
-        using var own = fetcher.Credential is { } credential ? Client(new AddressCredential(fetcher.Uri, credential)) : null;
-        var client = own ?? _client;
+        // The reference's own user info, in a client of this fetch's: released with it, and never another reference's. A
+        // marked source's fetch, every hop of it, goes through a handler held to public addresses, never an unmarked one's.
+        using var own = fetcher.Credential is { } credential ? Client(new AddressCredential(fetcher.Uri, credential), fetcher.PublicOnly) : null;
+        var client = own ?? (fetcher.PublicOnly ? _publicClient : _client);
         try
         {
             for (var hop = 0; ; hop++)
@@ -690,7 +710,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         }
         catch (HttpRequestException e) when (Refused(e) is { } refused)
         {
-            return Outcome.Failed("media.address", refused.Message);
+            return Outcome.Failed(refused.Code, refused.Message);
         }
         catch (HttpRequestException e) when (ConnectTimedOut(e))
         {
@@ -992,15 +1012,18 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     private static Validators ValidatorsOf(HttpResponseMessage response) =>
         new(response.Headers.ETag?.ToString(), response.Content.Headers.LastModified);
 
-    /// <summary>The handler's connect step: <see cref="AddressRules.ConnectAsync"/>, within the connect time limit.</summary>
-    private async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken token)
+    /// <summary>
+    /// The handler's connect step: <see cref="AddressRules.ConnectAsync"/>, within the connect time limit. A marked
+    /// source's (<paramref name="publicOnly"/>) reads this computer's interface list for this connection.
+    /// </summary>
+    private async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, bool publicOnly, CancellationToken token)
     {
         using var timeout = new CancellationTokenSource(_options.ConnectTimeout, _options.Time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, token);
         try
         {
             return await AddressRules.ConnectAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, _options.Resolve, _options.Connect,
-                _options.LocalNetwork(), _options.LoopbackOnly, linked.Token).ConfigureAwait(false);
+                _options.LocalNetwork(), _options.LoopbackOnly, linked.Token, publicOnly ? _options.Interfaces : null).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested && !token.IsCancellationRequested)
         {
@@ -1109,6 +1132,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         _expiry.Dispose();
         _stop.Cancel();
         _client.Dispose();
+        _publicClient.Dispose();
     }
 
     private readonly record struct Validators(string? ETag, DateTimeOffset? LastModified)
@@ -1143,9 +1167,12 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     }
 
     /// <summary>One address's state: its newest image, when to fetch next, why the last fetch failed. Under the provider's lock.</summary>
-    private sealed class Fetcher(string address, Uri uri, NetworkCredential? credential, long created)
+    private sealed class Fetcher(string address, bool publicOnly, Uri uri, NetworkCredential? credential, long created)
     {
         public readonly string Address = address;
+
+        /// <summary>A marked source's fetcher: its connections reach only public addresses.</summary>
+        public readonly bool PublicOnly = publicOnly;
         public readonly Uri Uri = uri;
         public readonly NetworkCredential? Credential = credential;
         private readonly CancellationTokenSource _stopped = new();

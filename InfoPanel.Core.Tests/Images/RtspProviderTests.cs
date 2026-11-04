@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using InfoPanel.Core.Tests.Sensors;
 using InfoPanel.Images;
 using InfoPanel.Images.Video;
@@ -33,6 +34,18 @@ public sealed class RtspProviderTests
         public bool LocalNetwork = true;
         public Func<string, IPAddress[]?> Names = _ => null;
 
+        /// <summary>The fake interface list: this computer's addresses with their prefix lengths.</summary>
+        public IReadOnlyList<InterfaceAddress> Own = [];
+
+        /// <summary>How often the provider read the interface list.</summary>
+        public int InterfaceReads;
+
+        /// <summary>The port every allowed connection is made to on 127.0.0.1: the test camera's unless set.</summary>
+        public int? ConnectPort;
+
+        /// <summary>Each camera certificate chain built, as the policy it was built by: downloads off, revocation mode.</summary>
+        public readonly List<(bool DownloadsOff, X509RevocationMode Revocation)> Chains = [];
+
         public Rig(TimeProvider? time = null, int maxCameras = 8, int maxCamerasPerItem = 4, RtspTestServer? server = null,
             SpecLimits? limits = null, long? workingBytes = null, Action? cancelling = null)
         {
@@ -43,6 +56,15 @@ public sealed class RtspProviderTests
             {
                 Time = time ?? TimeProvider.System,
                 LocalNetwork = () => LocalNetwork,
+                Interfaces = () =>
+                {
+                    Interlocked.Increment(ref InterfaceReads);
+                    return Own;
+                },
+                ChainBuilt = chain =>
+                {
+                    lock (Chains) Chains.Add((chain!.ChainPolicy.DisableCertificateDownloads, chain.ChainPolicy.RevocationMode));
+                },
                 MaxCameras = maxCameras,
                 MaxCamerasPerItem = maxCamerasPerItem,
                 Limits = limits ?? SpecLimits.Default,
@@ -57,14 +79,14 @@ public sealed class RtspProviderTests
                 Connect = (endpoint, token) =>
                 {
                     lock (Connected) Connected.Add(endpoint);
-                    return HttpMediaProvider.ConnectSocketAsync(new IPEndPoint(IPAddress.Loopback, Server.Port), token);
+                    return HttpMediaProvider.ConnectSocketAsync(new IPEndPoint(IPAddress.Loopback, ConnectPort ?? Server.Port), token);
                 },
             });
         }
 
-        public ProvidedMedia Ask(string address, object? item = null, bool live = true) => item is null
-            ? Provider.Get(new MediaRequest(address, 0, MediaPlayback.Loop, 0, live))
-            : Provider.Get(new MediaRequest(address, 0, MediaPlayback.Loop, 0, live), new MediaAsk(new MediaTick(), item));
+        public ProvidedMedia Ask(string address, object? item = null, bool live = true, bool publicOnly = false) => item is null
+            ? Provider.Get(new MediaRequest(address, 0, MediaPlayback.Loop, 0, live, publicOnly))
+            : Provider.Get(new MediaRequest(address, 0, MediaPlayback.Loop, 0, live, publicOnly), new MediaAsk(new MediaTick(), item));
 
         /// <summary>Waits until no camera connection is open, then says whether none is.</summary>
         public async Task<bool> AllClosed(TimeSpan within)
@@ -75,14 +97,14 @@ public sealed class RtspProviderTests
         }
 
         /// <summary>Asks as ticks do, every few milliseconds, until an answer passes <paramref name="until"/>: that answer (retained).</summary>
-        public async Task<ProvidedMedia> AskUntil(string address, Func<ProvidedMedia, bool> until, object? item = null, TimeSpan? within = null)
+        public async Task<ProvidedMedia> AskUntil(string address, Func<ProvidedMedia, bool> until, object? item = null, TimeSpan? within = null, bool publicOnly = false)
         {
             var deadline = Stopwatch.StartNew();
             ProvidedMedia last = default;
             while (deadline.Elapsed < (within ?? Wait))
             {
                 last.Sample?.Release();
-                last = Ask(address, item);
+                last = Ask(address, item, publicOnly: publicOnly);
                 if (until(last)) return last;
                 await Task.Delay(5, Ct);
             }
@@ -218,6 +240,106 @@ public sealed class RtspProviderTests
 
         Assert.Empty(rig.Connected);
         Assert.Equal(0, rig.Server.Connections);
+    }
+
+    private const string Only = ", and this source may reach only public addresses.";
+
+    [Theory]
+    [InlineData("nas.test", "192.168.1.20", "media.reach", "192.168.1.20 is on your local network" + Only)]
+    [InlineData("loop.test", "127.0.0.1", "media.reach", "127.0.0.1 is on this computer" + Only)]
+    [InlineData("self6.test", "2001:db8:1:2::5", "media.reach", "2001:db8:1:2::5 is this computer's own address" + Only)]
+    [InlineData("neighbour.test", "2001:db8:1:2::9", "media.reach", "2001:db8:1:2::9 is on your local network" + Only)]
+    [InlineData("neighbour4.test", "198.51.100.15", "media.reach", "198.51.100.15 is on your local network" + Only)]
+    [InlineData("link.test", "169.254.3.4", "media.address", "169.254.3.4 is a link-local address.")]
+    public async Task AMarkedCamera_IsRefusedInwardAddresses_WithTheLocalNetworkSettingOn(string host, string address, string code, string why)
+    {
+        await using var rig = new Rig();
+        rig.LocalNetwork = true;
+        rig.Own = PublicReachTests.Home;
+        rig.Names = h => h == host ? [IPAddress.Parse(address)] : null;
+        var refused = await rig.AskUntil($"rtsp://{host}:8554/live", m => m.Status is { Code: "media.reach" or "media.address" }, publicOnly: true);
+        Assert.Equal(new MediaStatus(code, why), refused.Status);
+        Assert.Null(refused.Sample);
+        Assert.Empty(rig.Connected);
+        Assert.Equal(0, rig.Server.Connections);
+        Assert.True(Volatile.Read(ref rig.InterfaceReads) >= 1);
+    }
+
+    [Fact]
+    public async Task AMarkedCamera_AtAPublicAddress_IsShown()
+    {
+        var server = new RtspTestServer { Authority = "rtsp://camera.test:8554" };
+        await using var rig = new Rig(server: server);
+        rig.Own = PublicReachTests.Home;
+        rig.Names = host => host == "camera.test" ? [IPAddress.Parse("203.0.113.7")] : null;
+        var shown = await rig.AskUntil("rtsp://camera.test:8554/live", m => m.Sample is not null, publicOnly: true);
+        shown.Sample!.Release();
+        lock (rig.Connected) Assert.All(rig.Connected, e => Assert.Equal(IPAddress.Parse("203.0.113.7"), e.Address));
+        var reads = Volatile.Read(ref rig.InterfaceReads);
+        Assert.True(reads >= 1);
+        var connected = rig.Server.Connections;
+
+        // The computer joins the camera's network and the stream drops: its reconnection reads the list again and is
+        // refused, the last picture kept.
+        rig.Own = [.. PublicReachTests.Home, new(IPAddress.Parse("203.0.113.1"), 24)];
+        rig.Server.Drop();
+        var refused = await rig.AskUntil("rtsp://camera.test:8554/live", m => m.Status is { Code: "media.reach" }, publicOnly: true);
+        Assert.Equal("203.0.113.7 is on your local network" + Only, refused.Status!.Message);
+        Assert.NotNull(refused.Sample);
+        refused.Sample.Release();
+        Assert.True(Volatile.Read(ref rig.InterfaceReads) > reads);
+        Assert.Equal(connected, rig.Server.Connections);
+    }
+
+    [Fact]
+    public async Task AMarkedRtspsCamera_DownloadsNothingItsCertificateNames()
+    {
+        // A camera at a public address presents a certificate whose missing issuer and revocation list are on an inward
+        // address (a second listener on 127.0.0.1): the marked camera's chain is built with downloads off and no
+        // revocation check, and nothing reaches the listener.
+        await using var hostile = new HostileCertificateServer("camera.test");
+        await using var rig = new Rig();
+        rig.ConnectPort = hostile.Port;
+        rig.Own = PublicReachTests.Home;
+        rig.Names = host => host == "camera.test" ? [IPAddress.Parse("203.0.113.7")] : null;
+        var url = $"rtsps://camera.test:{hostile.Port}/live";
+
+        var marked = await rig.AskUntil(url, m => m.Status is { Code: "media.provider" }, publicOnly: true);
+        Assert.Null(marked.Sample);
+        Assert.Equal("The camera's certificate isn't trusted.", marked.Status!.Message);
+        lock (rig.Chains) Assert.All(rig.Chains, c => Assert.Equal((true, X509RevocationMode.NoCheck), c));
+        lock (rig.Chains) Assert.NotEmpty(rig.Chains);
+        Assert.Equal(0, hostile.InwardConnections);
+        lock (rig.Connected) Assert.All(rig.Connected, e => Assert.Equal(IPAddress.Parse("203.0.113.7"), e.Address));
+
+        // An unmarked camera's certificate is checked as before: the platform's defaults, downloads included.
+        var unmarked = await rig.AskUntil(url, m => m.Status is { Code: "media.provider" });
+        Assert.Null(unmarked.Sample);
+        lock (rig.Chains) Assert.Contains((false, X509RevocationMode.NoCheck), rig.Chains);
+    }
+
+    [Fact]
+    public async Task AMarkedAndAnUnmarkedSource_OnOneAddress_NeverShareACameraOrAPicture()
+    {
+        await using var rig = new Rig();
+        var url = rig.Server.Url();
+        var unmarked = await rig.AskUntil(url, m => m.Sample is not null);
+        unmarked.Sample!.Release();
+        var connections = rig.Server.Connections;
+
+        // The marked one has a camera of its own: it never shows the unmarked one's frame, and is refused.
+        var first = rig.Ask(url, publicOnly: true);
+        Assert.Null(first.Sample);
+        var marked = await rig.AskUntil(url, m => m.Status is { Code: "media.reach" }, publicOnly: true);
+        Assert.Null(marked.Sample);
+        Assert.Equal("127.0.0.1 is on this computer" + Only, marked.Status!.Message);
+        Assert.Equal(2, rig.Provider.CameraCount);
+        Assert.Equal(connections, rig.Server.Connections);
+
+        // The unmarked one goes on showing its own.
+        var still = await rig.AskUntil(url, m => m.Sample is not null);
+        Assert.Null(still.Status);
+        still.Sample!.Release();
     }
 
     [Fact]

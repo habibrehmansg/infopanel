@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using InfoPanel.Spec;
@@ -26,8 +27,17 @@ public sealed class RtspProviderOptions
     /// <summary>The <c>media.localNetwork</c> setting, read for every connection.</summary>
     public Func<bool> LocalNetwork { get; init; } = () => true;
 
+    /// <summary>
+    /// This computer's interface addresses with their prefix lengths, read at each connection made for a source marked
+    /// to reach only public addresses (tests give a fake list).
+    /// </summary>
+    public Func<IReadOnlyList<InterfaceAddress>> Interfaces { get; init; } = AddressRules.ThisComputersAddresses;
+
     /// <summary>Connect only to this computer, and look up no other name (an engine started with <c>--offline</c>).</summary>
     public bool LoopbackOnly { get; init; }
+
+    /// <summary>Tests: shown each <c>rtsps</c> camera certificate's chain as built (<see cref="AddressRules.TlsOptions"/>).</summary>
+    public Action<X509Chain?>? ChainBuilt { get; init; }
 
     /// <summary>Resolves a host name (tests answer from a table).</summary>
     public Func<string, CancellationToken, Task<IPAddress[]>> Resolve { get; init; } = Dns.GetHostAddressesAsync;
@@ -81,7 +91,8 @@ public sealed class RtspProviderOptions
 
 /// <summary>
 /// The <c>rtsp</c> media provider (spec/docs/providers.md, "rtsp: camera streams"): RTSP cameras by address
-/// (<c>rtsp://</c>, <c>rtsps://</c>), decoded by FFmpeg. One camera per address, shared by every item and profile
+/// (<c>rtsp://</c>, <c>rtsps://</c>), decoded by FFmpeg. One camera per address and reach (a source marked
+/// <c>"reach": "public"</c> has its own, which connects only to public addresses), shared by every item and profile
 /// showing it, open only while ticks ask for it and closed <see cref="RtspProviderOptions.IdleAfter"/> after the last
 /// ask. Each camera runs on a thread of its own: it resolves and checks the host by the address rules and connects
 /// itself (<see cref="AddressRules.ConnectAsync"/>), on every connection, and hands FFmpeg only a loopback relay of
@@ -130,7 +141,8 @@ public sealed class RtspProvider : IMediaProvider, IDisposable
     private readonly IFrameBudget? _budget;
     private readonly RtspProviderOptions _options;
     private readonly Lock _lock = new();
-    private readonly Dictionary<string, Camera> _cameras = new(StringComparer.Ordinal);
+    /// <summary>The cameras by address and reach: a marked source's never shares one with an unmarked source's.</summary>
+    private readonly Dictionary<(string Address, bool PublicOnly), Camera> _cameras = new();
     private readonly ITimer _expiry;
     private readonly long _start;
     private long _lastSweep;
@@ -187,12 +199,12 @@ public sealed class RtspProvider : IMediaProvider, IDisposable
             {
                 var now = Now();
                 stops = Sweep(now);
-                if (!_cameras.TryGetValue(address, out var camera))
+                if (!_cameras.TryGetValue((address, request.PublicOnly), out var camera))
                 {
                     // A one-off render starts nothing: it shows what a live tick has, else the placeholder.
                     if (!request.Live) return new ProvidedMedia(null, new MediaStatus("media.loading", "Not connected yet."));
-                    camera = new Camera(address, uri);
-                    _cameras[address] = camera;
+                    camera = new Camera(address, request.PublicOnly, uri);
+                    _cameras[camera.Key] = camera;
                 }
                 if (request.Live && item is not null && Joining(camera, item, now) is { } over)
                     return new ProvidedMedia(null, over);
@@ -339,10 +351,10 @@ public sealed class RtspProvider : IMediaProvider, IDisposable
         _lastSweep = now;
         var idle = (long)_options.IdleAfter.TotalMilliseconds;
         List<CancellationTokenSource>? stops = null;
-        foreach (var (address, camera) in _cameras.Where(p => now - p.Value.LastAsked >= idle).ToList())
+        foreach (var (key, camera) in _cameras.Where(p => now - p.Value.LastAsked >= idle).ToList())
         {
             Drop(camera, ref stops);
-            _cameras.Remove(address);
+            _cameras.Remove(key);
         }
         foreach (var camera in _cameras.Values)
         {
@@ -417,11 +429,11 @@ public sealed class RtspProvider : IMediaProvider, IDisposable
         Stream connection;
         try
         {
-            connection = ConnectAsync(camera.Uri, token).GetAwaiter().GetResult();
+            connection = ConnectAsync(camera.Uri, camera.PublicOnly, token).GetAwaiter().GetResult();
         }
         catch (AddressRefusedException e)
         {
-            return new MediaStatus("media.address", e.Message);
+            return new MediaStatus(e.Code, e.Message);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
@@ -505,19 +517,22 @@ public sealed class RtspProvider : IMediaProvider, IDisposable
         }
     }
 
-    /// <summary>The camera's connection: the host resolved and checked by the address rules, TLS for <c>rtsps</c>, within the connect time limit.</summary>
-    private async Task<Stream> ConnectAsync(Uri uri, CancellationToken token)
+    /// <summary>
+    /// The camera's connection: the host resolved and checked by the address rules, TLS for <c>rtsps</c>, within the
+    /// connect time limit. A marked source's (<paramref name="publicOnly"/>) reads this computer's interface list for it.
+    /// </summary>
+    private async Task<Stream> ConnectAsync(Uri uri, bool publicOnly, CancellationToken token)
     {
         using var timeout = new CancellationTokenSource(_options.ConnectTimeout, _options.Time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, token);
         var port = uri.Port > 0 ? uri.Port : uri.Scheme == "rtsps" ? 322 : 554;
         var connection = await AddressRules.ConnectAsync(uri.Host, port, _options.Resolve, _options.Connect, _options.LocalNetwork(),
-            _options.LoopbackOnly, linked.Token).ConfigureAwait(false);
+            _options.LoopbackOnly, linked.Token, publicOnly ? _options.Interfaces : null).ConfigureAwait(false);
         if (uri.Scheme != "rtsps") return connection;
         var tls = new SslStream(connection, leaveInnerStreamOpen: false);
         try
         {
-            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = uri.IdnHost }, linked.Token).ConfigureAwait(false);
+            await tls.AuthenticateAsClientAsync(AddressRules.TlsOptions(uri.IdnHost, publicOnly, _options.ChainBuilt), linked.Token).ConfigureAwait(false);
             return tls;
         }
         catch
@@ -609,7 +624,7 @@ public sealed class RtspProvider : IMediaProvider, IDisposable
     {
         lock (_lock)
         {
-            if (camera.Run != run || !_cameras.ContainsKey(camera.Address))
+            if (camera.Run != run || !_cameras.ContainsKey(camera.Key))
             {
                 sample.Release();
                 return;
@@ -738,9 +753,14 @@ public sealed class RtspProvider : IMediaProvider, IDisposable
     }
 
     /// <summary>One address's camera. Every field is read and written under the provider's lock.</summary>
-    private sealed class Camera(string address, Uri uri)
+    private sealed class Camera(string address, bool publicOnly, Uri uri)
     {
         public readonly string Address = address;
+
+        /// <summary>A marked source's camera: its connections reach only public addresses.</summary>
+        public readonly bool PublicOnly = publicOnly;
+
+        public (string Address, bool PublicOnly) Key => (Address, PublicOnly);
         public readonly Uri Uri = uri;
 
         /// <summary>The camera's own scheme and authority as written, without user information: what its requests name.</summary>

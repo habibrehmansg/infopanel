@@ -1,7 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -26,8 +31,20 @@ public enum AddressKind
     Never,
 }
 
-/// <summary>A connection the address rules refused; its message names the address and why.</summary>
-public sealed class AddressRefusedException(string message) : Exception(message);
+/// <summary>
+/// A connection the address rules refused; its message names the address and why, and its <see cref="Code"/> is the
+/// item's media problem: <c>media.address</c>, or <c>media.reach</c> for a source marked to reach only public addresses.
+/// </summary>
+public sealed class AddressRefusedException(string message, string code = AddressRules.AddressCode) : Exception(message)
+{
+    public string Code { get; } = code;
+}
+
+/// <summary>
+/// An address on one of this computer's network interfaces, with its prefix length: the address is this computer's, and
+/// every address in its prefix is on-link (spec/docs/providers.md, "Public addresses only").
+/// </summary>
+public readonly record struct InterfaceAddress(IPAddress Address, int PrefixLength);
 
 /// <summary>
 /// The addresses a media provider may connect to (spec/docs/providers.md, "Addresses"). Pure but for
@@ -39,6 +56,124 @@ public sealed class AddressRefusedException(string message) : Exception(message)
 /// </summary>
 public static class AddressRules
 {
+    /// <summary>The media problem of an address the rules refuse.</summary>
+    public const string AddressCode = "media.address";
+
+    /// <summary>The media problem of an address refused only because its source may reach public addresses alone.</summary>
+    public const string ReachCode = "media.reach";
+
+    private const string PublicOnlySuffix = ", and this source may reach only public addresses.";
+
+    /// <summary>
+    /// Why a source marked to reach only public addresses may not connect to <paramref name="address"/>, or null when it
+    /// may: <paramref name="own"/> is this computer's interface addresses, read for this connection.
+    /// </summary>
+    public static (string Code, string Message)? PublicRefusal(IPAddress address, IReadOnlyList<InterfaceAddress> own, bool loopbackOnly = false)
+    {
+        const string only = PublicOnlySuffix;
+        var shown = Effective(address);
+        switch (Classify(address))
+        {
+            case AddressKind.Never:
+                return (AddressCode, $"{shown} is {NeverWhy(shown)}.");
+            case AddressKind.Loopback:
+                return (ReachCode, $"{shown} is on this computer{only}");
+            case AddressKind.LocalNetwork:
+                return (ReachCode, $"{shown} is on your local network{only}");
+        }
+        // Public by its range: this computer's own address, or a neighbour on a network it is on, is still inward. The
+        // address is checked as written and as the IPv4 address it carries.
+        foreach (var a in own)
+            if (SameAddress(a.Address, address) || SameAddress(a.Address, shown))
+                return (ReachCode, $"{shown} is this computer's own address{only}");
+        foreach (var a in own)
+            if (InPrefix(address, a) || InPrefix(shown, a))
+                return (ReachCode, $"{shown} is on your local network{only}");
+        return loopbackOnly ? (AddressCode, $"{shown} is outside this computer, and the engine runs offline.") : null;
+    }
+
+    private static bool SameAddress(IPAddress a, IPAddress b) =>
+        a.AddressFamily == b.AddressFamily && a.GetAddressBytes().AsSpan().SequenceEqual(b.GetAddressBytes());
+
+    /// <summary>Whether <paramref name="address"/> is in the network <paramref name="network"/> is on (its prefix).</summary>
+    private static bool InPrefix(IPAddress address, InterfaceAddress network)
+    {
+        if (address.AddressFamily != network.Address.AddressFamily) return false;
+        var a = address.GetAddressBytes();
+        var n = network.Address.GetAddressBytes();
+        var bits = Math.Clamp(network.PrefixLength, 0, a.Length * 8);
+        for (var i = 0; i < a.Length && bits > 0; i++, bits -= 8)
+        {
+            var mask = bits >= 8 ? 0xff : (byte)(0xff << (8 - bits));
+            if ((a[i] & mask) != (n[i] & mask)) return false;
+        }
+        return true;
+    }
+
+    /// <summary>The prefix length taken for an IPv4 interface address whose prefix the system can't give.</summary>
+    public const int UnknownIPv4Prefix = 24;
+
+    /// <summary>The prefix length taken for an IPv6 interface address whose prefix the system can't give.</summary>
+    public const int UnknownIPv6Prefix = 64;
+
+    /// <summary>
+    /// This computer's interface addresses, each with its prefix length, as the system lists them now: every interface,
+    /// up or down, IPv4 and IPv6 (<see cref="AddressesOf"/>). Throws when the list, or any interface's addresses, can't
+    /// be read: a marked source's connection is then refused (<see cref="ConnectAsync"/>).
+    /// </summary>
+    public static IReadOnlyList<InterfaceAddress> ThisComputersAddresses() =>
+        AddressesOf(NetworkInterface.GetAllNetworkInterfaces()
+            .Select(nic => (Func<IEnumerable<UnicastIPAddressInformation>>)(() => nic.GetIPProperties().UnicastAddresses)));
+
+    /// <summary>
+    /// The addresses of <paramref name="interfaces"/> (each read by its function), with their prefix lengths: the one
+    /// the system gives, else the IPv4 mask's, else <see cref="UnknownIPv4Prefix"/> or <see cref="UnknownIPv6Prefix"/>,
+    /// so an address whose prefix is unknown still counts its likely network as on-link. An interface whose addresses
+    /// can't be read isn't skipped: the read throws.
+    /// </summary>
+    public static IReadOnlyList<InterfaceAddress> AddressesOf(IEnumerable<Func<IEnumerable<UnicastIPAddressInformation>>> interfaces)
+    {
+        var list = new List<InterfaceAddress>();
+        foreach (var addresses in interfaces)
+            foreach (var unicast in addresses())
+                list.Add(new InterfaceAddress(unicast.Address, PrefixOf(unicast)));
+        return list;
+    }
+
+    private static int PrefixOf(UnicastIPAddressInformation unicast)
+    {
+        var v4 = unicast.Address.AddressFamily == AddressFamily.InterNetwork;
+        var full = v4 ? 32 : 128;
+        try
+        {
+            // No interface's network is the whole address space: 0 is a prefix not given.
+            if (unicast.PrefixLength is var p && p > 0 && p <= full) return p;
+        }
+        catch (Exception e) when (e is PlatformNotSupportedException or NotImplementedException or NetworkInformationException)
+        {
+        }
+        if (v4 && MaskLength(unicast) is { } mask) return mask;
+        return v4 ? UnknownIPv4Prefix : UnknownIPv6Prefix;
+    }
+
+    /// <summary>The length of an IPv4 address's mask when the system gives a contiguous one other than 0.0.0.0.</summary>
+    private static int? MaskLength(UnicastIPAddressInformation unicast)
+    {
+        IPAddress? mask;
+        try
+        {
+            mask = unicast.IPv4Mask;
+        }
+        catch (Exception e) when (e is PlatformNotSupportedException or NotImplementedException or NetworkInformationException)
+        {
+            return null;
+        }
+        if (mask is null || mask.AddressFamily != AddressFamily.InterNetwork) return null;
+        var bits = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(mask.GetAddressBytes());
+        var length = System.Numerics.BitOperations.LeadingZeroCount(~bits);
+        return length > 0 && bits == (length == 32 ? uint.MaxValue : ~(uint.MaxValue >> length)) ? length : null;
+    }
+
     /// <summary>
     /// Cloud metadata services, refused before any broader range: AWS's instance metadata (<c>169.254.169.254</c>, and
     /// <c>fd00:ec2::254</c> over IPv6), AWS ECS's task metadata (<c>169.254.170.2</c>), Alibaba Cloud's
@@ -171,10 +306,14 @@ public static class AddressRules
     /// (<c>localhost</c> and the names under it are this computer's addresses, never looked up; offline, no other name is
     /// looked up at all), and connects to the first of its addresses the rules allow (<see cref="Refusal"/>), so the
     /// address checked is the one connected to. A host none of whose addresses is allowed is refused, naming the first.
+    /// With <paramref name="publicOnly"/> (a source marked to reach only public addresses) the setting doesn't apply: the
+    /// interface list it gives is read once for this connection, and every address is held to <see cref="PublicRefusal"/>;
+    /// a list that can't be read refuses the connection (<c>media.reach</c>).
     /// </summary>
     /// <exception cref="AddressRefusedException">No address of the host may be connected to.</exception>
     public static async ValueTask<Stream> ConnectAsync(string host, int port, Func<string, CancellationToken, Task<IPAddress[]>> resolve,
-        Func<IPEndPoint, CancellationToken, ValueTask<Stream>> connect, bool localNetwork, bool loopbackOnly, CancellationToken token)
+        Func<IPEndPoint, CancellationToken, ValueTask<Stream>> connect, bool localNetwork, bool loopbackOnly, CancellationToken token,
+        Func<IReadOnlyList<InterfaceAddress>>? publicOnly = null)
     {
         var literal = host.StartsWith('[') && host.EndsWith(']') ? host[1..^1] : host;
         var isLiteral = IPAddress.TryParse(literal, out var ip);
@@ -184,15 +323,60 @@ public static class AddressRules
         var addresses = isLiteral ? [ip!]
             : IsThisComputer(host) ? [IPAddress.Loopback, IPAddress.IPv6Loopback]
             : await resolve(host, token).ConfigureAwait(false);
-        string? refusal = null;
+        // A marked source's connection: this computer's interfaces as they are now, read for this connection alone. A list
+        // that can't be read whole refuses the connection: an inward address can't be told from a public one without it.
+        IReadOnlyList<InterfaceAddress>? own = null;
+        if (publicOnly is not null)
+        {
+            try
+            {
+                own = publicOnly();
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                throw new AddressRefusedException($"This computer's network interfaces couldn't be read{PublicOnlySuffix}", ReachCode);
+            }
+        }
+        (string Code, string Message)? refusal = null;
         foreach (var address in addresses)
         {
-            var why = Refusal(address, localNetwork, loopbackOnly);
+            var why = own is not null ? PublicRefusal(address, own, loopbackOnly)
+                : Refusal(address, localNetwork, loopbackOnly) is { } message ? (AddressCode, message) : null;
             if (why is null)
                 return await connect(new IPEndPoint(address, port), token).ConfigureAwait(false);
             refusal ??= why;
         }
-        throw new AddressRefusedException(refusal ?? $"{host} has no address.");
+        throw refusal is { } first ? new AddressRefusedException(first.Message, first.Code) : new AddressRefusedException($"{host} has no address.");
+    }
+
+    /// <summary>
+    /// The TLS options of a provider's connection to <paramref name="targetHost"/> (null: the handler's own host). A
+    /// marked source's (<paramref name="publicOnly"/>) checks the server's certificate as usual but downloads nothing to
+    /// do it: no missing issuer certificate is fetched from the address the certificate names, and no revocation list or
+    /// status is fetched (those addresses aren't held to <see cref="PublicRefusal"/>, so may be inward). An unmarked
+    /// source's keeps the platform's defaults. <paramref name="chainBuilt"/> (tests) is shown each certificate chain as
+    /// built, and the usual validation decides.
+    /// </summary>
+    public static SslClientAuthenticationOptions TlsOptions(string? targetHost, bool publicOnly, Action<X509Chain?>? chainBuilt = null)
+    {
+        var options = new SslClientAuthenticationOptions { TargetHost = targetHost };
+        if (publicOnly)
+        {
+            options.CertificateChainPolicy = new X509ChainPolicy
+            {
+                DisableCertificateDownloads = true,
+                RevocationMode = X509RevocationMode.NoCheck,
+            };
+        }
+        if (chainBuilt is not null)
+        {
+            options.RemoteCertificateValidationCallback = (_, _, chain, errors) =>
+            {
+                chainBuilt(chain);
+                return errors == SslPolicyErrors.None;
+            };
+        }
+        return options;
     }
 
     /// <summary><c>localhost</c> and the names under it (RFC 6761), which name this computer: 127.0.0.1 and ::1.</summary>

@@ -1,0 +1,5 @@
+{
+  "format": "infopanel.scene/1",
+  "requires": ["media.provider"],
+  "nodes": [{"kind": "media", "source": {"provider": "http", "ref": "http://192.168.1.20/cam.jpg", "reach": "local"}}]
+}

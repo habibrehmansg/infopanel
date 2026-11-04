@@ -60,9 +60,11 @@ namespace InfoPanel.Images
     /// A tick's ask of a provider: the source's <paramref name="Reference"/> (its <c>ref</c>, evaluated), the media time
     /// and playback (for animated media), the source's <paramref name="Refresh"/> in seconds (0: once), and whether the ask
     /// is <paramref name="Live"/>: a render loop's tick, which may start fetching, rather than a one-off render, which is
-    /// answered with what the provider has.
+    /// answered with what the provider has. <paramref name="PublicOnly"/>: the source is marked <c>"reach": "public"</c>,
+    /// so the provider connects only to public addresses for it, apart from anything it opened for an unmarked one
+    /// (spec/docs/providers.md, "Public addresses only").
     /// </summary>
-    public readonly record struct MediaRequest(string Reference, double Seconds, MediaPlayback Playback, int Refresh = 0, bool Live = true);
+    public readonly record struct MediaRequest(string Reference, double Seconds, MediaPlayback Playback, int Refresh = 0, bool Live = true, bool PublicOnly = false);
 
     /// <summary>
     /// Who asks a provider: the <paramref name="Tick"/> (every ask of one document's tick passes the same one) and the
@@ -103,7 +105,7 @@ namespace InfoPanel.Images
 
     /// <summary>
     /// A problem the media of a reference has, as an item reports it in the frame header (<c>itemBounds[].media</c>):
-    /// <c>media.loading</c>, <c>media.provider</c>, <c>media.address</c>, or the code a fetched answer was refused with.
+    /// <c>media.loading</c>, <c>media.provider</c>, <c>media.address</c>, <c>media.reach</c>, or the code a fetched answer was refused with.
     /// </summary>
     public sealed record MediaStatus(string Code, string Message);
 

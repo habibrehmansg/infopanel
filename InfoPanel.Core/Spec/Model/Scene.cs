@@ -284,6 +284,8 @@ public sealed record MediaSource
     public Expr? Ref { get; init; }
     /// <summary>A provider source's seconds between fetches while shown, 0–86,400; absent: 0 (once).</summary>
     public int? Refresh { get; init; }
+    /// <summary>A provider source's reach: <c>public</c>, fetch only public addresses (spec/docs/providers.md); absent: the engine's setting.</summary>
+    public string? Reach { get; init; }
     public IReadOnlyList<MediaSource>? Sequence { get; init; }
     public Expr? Index { get; init; }
     public bool? Crossfade { get; init; }

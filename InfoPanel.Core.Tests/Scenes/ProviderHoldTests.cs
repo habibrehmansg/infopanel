@@ -30,10 +30,13 @@ public sealed class ProviderHoldTests
         public readonly Dictionary<string, ProvidedMedia> Answers = new(StringComparer.Ordinal);
         public readonly List<MediaRequest> Asks = [];
 
+        /// <summary>Asks answered loading whatever <see cref="Answers"/> holds.</summary>
+        public Func<MediaRequest, bool> Loads = _ => false;
+
         public ProvidedMedia Get(in MediaRequest request)
         {
             lock (Asks) Asks.Add(request);
-            return Answers.TryGetValue(request.Reference, out var a)
+            return !Loads(request) && Answers.TryGetValue(request.Reference, out var a)
                 ? new ProvidedMedia(a.Sample?.Retain(), a.Status)
                 : new ProvidedMedia(null, new MediaStatus("media.loading", "Loading."));
         }
@@ -91,6 +94,108 @@ public sealed class ProviderHoldTests
         asked = provider.Asks.Count;
         Assert.Equal((SKColors.Blue, (ItemMedia?)null), rig.Tick(1.7, B));
         Assert.Equal([new MediaRequest(B, 1.7, MediaPlayback.Loop, 0, Live: true)], provider.Asks.Skip(asked));
+    }
+
+    /// <summary>A scene of one media node on <paramref name="reference"/>, marked <c>"reach": "public"</c> or not.</summary>
+    private static string Literal(string reference, bool marked) =>
+        "{'format':'infopanel.scene/1','requires':['media.provider'],'nodes':[{'kind':'media','w':40,'h':30,'source':{'provider':'http','ref':'"
+        + reference + "'" + (marked ? ",'reach':'public'" : "") + "}}]}";
+
+    private static readonly ItemMedia Loading = new() { Code = "media.loading", Message = "Loading." };
+
+    [Fact]
+    public void Adding_the_mark_in_a_new_revision_applies_at_once_and_holds_no_unmarked_picture()
+    {
+        // Unmarked A is drawn, its document changes to unmarked B (taken at once, A held while B loads), and within the
+        // second the next revision marks B: the mark isn't throttled like a reference, and A's unmarked picture isn't held.
+        var provider = new Keyed { Answers = { [A] = Solid(SKColors.Red) } };
+        using var rig = new Rig(provider, Literal(A, marked: false));
+        Assert.Equal((SKColors.Red, (ItemMedia?)null), rig.Tick(0, ""));
+        rig.Runtime.Load(SceneKit.Doc(SceneKit.Json(Literal(B, marked: false)), 60, 40, 5, 5));
+        Assert.Equal((SKColors.Red, Loading), rig.Tick(0.1, ""));
+
+        rig.Runtime.Load(SceneKit.Doc(SceneKit.Json(Literal(B, marked: true)), 60, 40, 5, 5));
+        var asked = provider.Asks.Count;
+        var (pixel, media) = rig.Tick(0.2, "");
+        Assert.Equal([new MediaRequest(B, 0.2, MediaPlayback.Loop, 0, Live: true, PublicOnly: true)], provider.Asks.Skip(asked));
+        Assert.NotEqual(SKColors.Red, pixel);
+        Assert.Equal(Loading, media);
+
+        // It arrives and is drawn; nothing unmarked is asked for again.
+        provider.Answers[B] = Solid(SKColors.Blue);
+        asked = provider.Asks.Count;
+        Assert.Equal((SKColors.Blue, (ItemMedia?)null), rig.Tick(0.3, ""));
+        Assert.Equal([new MediaRequest(B, 0.3, MediaPlayback.Loop, 0, Live: true, PublicOnly: true)], provider.Asks.Skip(asked));
+    }
+
+    [Fact]
+    public void Marking_the_reference_shown_holds_nothing_of_its_unmarked_picture()
+    {
+        // A quiet second after the last change: the reference stays, only the mark is added. The marked source loads on
+        // its own, drawing the placeholder, never the unmarked source's picture.
+        var provider = new Keyed { Answers = { [A] = Solid(SKColors.Red) }, Loads = r => r.PublicOnly };
+        using var rig = new Rig(provider, Literal(A, marked: false));
+        Assert.Equal((SKColors.Red, (ItemMedia?)null), rig.Tick(0, ""));
+        rig.Runtime.Load(SceneKit.Doc(SceneKit.Json(Literal(A, marked: true)), 60, 40, 5, 5));
+        var asked = provider.Asks.Count;
+        var (pixel, media) = rig.Tick(1.5, "");
+        Assert.Equal([new MediaRequest(A, 1.5, MediaPlayback.Loop, 0, Live: true, PublicOnly: true)], provider.Asks.Skip(asked));
+        Assert.NotEqual(SKColors.Red, pixel);
+        Assert.Equal(Loading, media);
+    }
+
+    [Fact]
+    public void Removing_the_mark_in_a_new_revision_applies_at_once_and_holds_no_marked_picture()
+    {
+        // Marked A, then marked B (taken at once and drawn), then within the second the mark is removed: the unmarked
+        // source is asked for at once, and the marked one's picture isn't held while it loads.
+        var provider = new Keyed { Answers = { [A] = Solid(SKColors.Red), [B] = Solid(SKColors.Lime) }, Loads = r => !r.PublicOnly };
+        using var rig = new Rig(provider, Literal(A, marked: true));
+        Assert.Equal((SKColors.Red, (ItemMedia?)null), rig.Tick(0, ""));
+        rig.Runtime.Load(SceneKit.Doc(SceneKit.Json(Literal(B, marked: true)), 60, 40, 5, 5));
+        Assert.Equal((SKColors.Lime, (ItemMedia?)null), rig.Tick(0.1, ""));
+
+        rig.Runtime.Load(SceneKit.Doc(SceneKit.Json(Literal(B, marked: false)), 60, 40, 5, 5));
+        var asked = provider.Asks.Count;
+        var (pixel, media) = rig.Tick(0.2, "");
+        Assert.Equal([new MediaRequest(B, 0.2, MediaPlayback.Loop, 0, Live: true)], provider.Asks.Skip(asked));
+        Assert.NotEqual(SKColors.Lime, pixel);
+        Assert.Equal(Loading, media);
+    }
+
+    [Fact]
+    public void Changing_reach_and_reference_together_starts_at_most_one_new_fetch_a_second()
+    {
+        // One item across revisions a tenth of a second apart: unmarked A, unmarked B (taken at once and drawn), then a
+        // new address each time with its mark toggled (marked, unmarked, marked, ...) for four seconds. Each change of
+        // reach applies at once and holds nothing, but its new reference waits for the item's turn like any other change:
+        // until then the item asks for nothing and draws the placeholder, never the other reach's picture.
+        var provider = new Keyed { Answers = { [A] = Solid(SKColors.Red), [B] = Solid(SKColors.Lime) } };
+        using var rig = new Rig(provider, Literal(A, marked: false));
+        var firstAsked = new List<int>();
+        var seen = new HashSet<(string, bool)>();
+        for (var i = 0; i <= 40; i++)
+        {
+            var (reference, marked) = i switch
+            {
+                0 => (A, false),
+                1 => (B, false),
+                _ => ($"https://example.test/{i}.png", i % 2 == 0),
+            };
+            if (i > 0) rig.Runtime.Load(SceneKit.Doc(SceneKit.Json(Literal(reference, marked)), 60, 40, 5, 5));
+            var asked = provider.Asks.Count;
+            var (pixel, media) = rig.Tick(i * 0.1, "");
+            foreach (var ask in provider.Asks.Skip(asked).Where(a => a.Live))
+                if (seen.Add((ask.Reference, ask.PublicOnly))) firstAsked.Add(i);
+            if (i < 2) continue;
+            Assert.NotEqual(SKColors.Lime, pixel);
+            Assert.Equal(Loading, media);
+        }
+        // A and B at once (the first reference and the first change), then a new one at most each second, the latest.
+        Assert.Equal([0, 1], firstAsked.Take(2));
+        Assert.True(firstAsked.Count >= 4, $"new references asked at tenths {string.Join(", ", firstAsked)}");
+        for (var k = 2; k < firstAsked.Count; k++)
+            Assert.True(firstAsked[k] - firstAsked[k - 1] >= 10, $"new references asked at tenths {string.Join(", ", firstAsked)}");
     }
 
     [Fact]

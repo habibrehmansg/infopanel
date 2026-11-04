@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using InfoPanel.Core.Tests.Scenes;
 using InfoPanel.Core.Tests.Sensors;
@@ -61,6 +62,18 @@ public sealed class HttpMediaProviderTests
         /// <summary>Every name the fake resolver was asked for.</summary>
         public readonly List<string> Resolved = [];
 
+        /// <summary>The fake interface list: this computer's addresses with their prefix lengths.</summary>
+        public IReadOnlyList<InterfaceAddress> Own = [];
+
+        /// <summary>How often the provider read the interface list.</summary>
+        public int InterfaceReads;
+
+        /// <summary>The port every allowed connection is made to on 127.0.0.1: the test server's unless set.</summary>
+        public int? ConnectPort;
+
+        /// <summary>Each server certificate chain built, as the policy it was built by: downloads off, revocation mode.</summary>
+        public readonly List<(bool DownloadsOff, X509RevocationMode Revocation)> Chains = [];
+
         public Rig(Func<ServedRequest, Stream, CancellationToken, Task> handler, SpecLimits? limits = null, bool loopbackOnly = false, TimeSpan? answerTimeout = null, bool synchronous = true)
         {
             Server = new LocalHttpServer(handler);
@@ -71,7 +84,16 @@ public sealed class HttpMediaProviderTests
                 Time = Time,
                 Limits = limits ?? SpecLimits.Default,
                 LocalNetwork = () => LocalNetwork,
+                Interfaces = () =>
+                {
+                    Interlocked.Increment(ref InterfaceReads);
+                    return Own;
+                },
                 LoopbackOnly = loopbackOnly,
+                ChainBuilt = chain =>
+                {
+                    lock (Chains) Chains.Add((chain!.ChainPolicy.DisableCertificateDownloads, chain.ChainPolicy.RevocationMode));
+                },
                 AnswerTimeout = answerTimeout ?? TimeSpan.FromSeconds(15),
                 UserAgent = "InfoPanel/2.0.0",
                 Resolve = (host, _) =>
@@ -82,7 +104,7 @@ public sealed class HttpMediaProviderTests
                 Connect = (endpoint, token) =>
                 {
                     lock (Connected) Connected.Add(endpoint);
-                    return HttpMediaProvider.ConnectSocketAsync(new IPEndPoint(IPAddress.Loopback, Server.Port), token);
+                    return HttpMediaProvider.ConnectSocketAsync(new IPEndPoint(IPAddress.Loopback, ConnectPort ?? Server.Port), token);
                 },
             });
         }
@@ -104,16 +126,16 @@ public sealed class HttpMediaProviderTests
         }
 
         /// <summary>Asks as a tick does, waits for the fetch it starts, and answers what the next tick gets.</summary>
-        public async Task<ProvidedMedia> Fetch(string address, int refresh = 0, double seconds = 0)
+        public async Task<ProvidedMedia> Fetch(string address, int refresh = 0, double seconds = 0, bool publicOnly = false)
         {
             var answered = NextAnswer(address);
-            Release(Ask(address, refresh, seconds));
+            Release(Ask(address, refresh, seconds, publicOnly: publicOnly));
             await answered.WaitAsync(Wait, Ct);
-            return Ask(address, refresh, seconds);
+            return Ask(address, refresh, seconds, publicOnly: publicOnly);
         }
 
-        public ProvidedMedia Ask(string address, int refresh = 0, double seconds = 0, bool live = true) =>
-            Provider.Get(new MediaRequest(address, seconds, MediaPlayback.Loop, refresh, live));
+        public ProvidedMedia Ask(string address, int refresh = 0, double seconds = 0, bool live = true, bool publicOnly = false) =>
+            Provider.Get(new MediaRequest(address, seconds, MediaPlayback.Loop, refresh, live, publicOnly));
 
         public static void Release(ProvidedMedia media) => media.Sample?.Release();
 
