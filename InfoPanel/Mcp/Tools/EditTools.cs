@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using InfoPanel.Api;
 using InfoPanel.Documents;
 using InfoPanel.Security;
+using InfoPanel.Service;
 using InfoPanel.Spec;
 
 namespace InfoPanel.Mcp.Tools;
@@ -74,7 +75,7 @@ public sealed class PinnedItem(string wanted)
 /// away meanwhile (<see cref="Find"/>'s <c>holdName</c>) when it was found by its name, the revision of that name, which
 /// every rename stamps anew, a rename back included (<see cref="ProfileDocument.ProfileName"/>). <see cref="IsStill"/>
 /// checks both; every check before a write and every commit attempt asks it under the document's lock
-/// (<see cref="ProfileChanges.Apply(string, FoundProfile, McpCall, Func{DocumentState, JsonArray}, Action?)"/>).
+/// (<see cref="ProfileChanges.Apply(string, FoundProfile, McpCall, Func{DocumentState, JsonArray}, Action?, Func{ConflictProblem, bool}?)"/>).
 /// </summary>
 public sealed class FoundProfile
 {
@@ -174,11 +175,15 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
     /// <exception cref="ChangeCutOffException">A call from elsewhere whose cutoff tripped before a commit: nothing was changed.</exception>
     /// <remarks>
     /// <paramref name="beforeWrites"/>, when given, runs once, before the first commit: only once the ops are built and
-    /// the document would take them as it is now (<see cref="ProfileDocument.Check"/>, the commit's own checks): a
-    /// conflict there reads again and rebuilds, as a commit's does, and any other refusal is the call's error, with
-    /// nothing written. A design's files are stored there, so a refused insertion leaves none stored.
+    /// the document would take them as it is now (<see cref="ProfileDocument.Check"/>, the commit's own checks) and, for a
+    /// call from elsewhere, the web-image rule passes every op (<see cref="WebImageRule"/>): a conflict there reads again
+    /// and rebuilds, as a commit's does, and any other refusal is the call's error, with nothing written. A design's files
+    /// are stored there, so a refused insertion leaves none stored; the commit asks the rule again on what it finds.
+    /// <paramref name="isStale"/>, when given, picks out a conflict on a design's own op (the precheck's or a commit's):
+    /// that answers <see cref="Stale"/> at once, with nothing changed and no retry.
     /// </remarks>
-    public ToolChange Apply(string tool, FoundProfile found, McpCall call, Func<DocumentState, JsonArray> build, Action? beforeWrites)
+    public ToolChange Apply(string tool, FoundProfile found, McpCall call, Func<DocumentState, JsonArray> build, Action? beforeWrites,
+        Func<ConflictProblem, bool>? isStale = null)
     {
         var (document, profile) = (found.Document, found.Given);
         void Identity(Document _) => found.IsStill();
@@ -220,6 +225,10 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
                 {
                     if (!stored)
                     {
+                        // The rules for a call from elsewhere too, on every op (every item of a batch, given as a design or
+                        // a scene), on the document as read: a change the commit's guard would refuse stores nothing first.
+                        if (call.FromElsewhere)
+                            RefuseWebImages(state.Document, ops);
                         beforeWrites!();
                         stored = true;
                     }
@@ -244,6 +253,10 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
 
             if (outcome.Conflict != null || outcome.Expired != null)
             {
+                // A conflict on a design's own op: the engine can't rebuild a design it didn't produce, so it answers at
+                // once that nothing changed (stale); the service may build it again on what the document now holds.
+                if (outcome.Conflict is { } conflict && isStale?.Invoke(conflict) == true)
+                    throw new ToolFailure(Stale, "The item's design changed since this change was prepared (stale): nothing was changed.");
                 if (attempt == 0)
                     continue;
                 throw new ToolFailure("conflict", "Someone changed this profile while I worked. Read it again with get_profile and retry.");
@@ -258,6 +271,13 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
             return new ToolChange(document, name, result, changed, changed ? Save(document, name, result.Rev, wasClean) : "");
         }
     }
+
+    /// <summary>The outcome of a design whose base no longer holds inside the same document (docs/2.0/relay.md, "Designs").</summary>
+    public const string Stale = "stale";
+
+    /// <summary>A design built on another document or item: the call ends, nothing changed.</summary>
+    public static ToolFailure BasedElsewhere() =>
+        new("basedOn", "The profile was replaced or the item changed since this change was prepared; nothing was changed.");
 
     /// <summary>
     /// A change from elsewhere that would insert or set a scene holding a provider's media source, or change the bindings
@@ -314,7 +334,8 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
     /// <summary>The engine's 422 as a tool's error: each problem's path (as the tool's arguments name it), code and message.</summary>
     public static ToolFailure Refused(string tool, IReadOnlyList<ValidationErrorBody> errors)
     {
-        var shown = errors.Take(MaxErrorsShown).Select(e => $"{ArgumentPath(e.Path)} {e.Code}: {e.Message}");
+        // add_items' op i inserts its item i: the path names that item.
+        var shown = errors.Take(MaxErrorsShown).Select(e => $"{(tool == AddItemsTool.ToolName ? ItemsPath(e.Path) : ArgumentPath(e.Path))} {e.Code}: {e.Message}");
         var more = errors.Count > MaxErrorsShown ? $"; and {errors.Count - MaxErrorsShown} more" : "";
         return new ToolFailure("invalid",
             $"The engine refused the change: {errors.Count} problem{(errors.Count == 1 ? "" : "s")}: {string.Join("; ", shown)}{more}. Fix them and call {tool} again; get_design_guide has the format.");
@@ -330,14 +351,27 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
     [GeneratedRegex(@"^(/ops/\d+(/item|/set)?|/document(/profile)?)")]
     private static partial Regex RequestPrefix();
 
+    /// <summary>A path in add_items' request as its arguments name it: <c>/ops/3/item/scene/nodes/0/w</c> is <c>items/3/scene/nodes/0/w</c>.</summary>
+    private static string ItemsPath(string path)
+    {
+        var match = OpPrefix().Match(path);
+        return match.Success ? $"items/{match.Groups[1].Value}{path[match.Length..]}" : ArgumentPath(path);
+    }
+
+    [GeneratedRegex(@"^/ops/(\d+)(/item)?")]
+    private static partial Regex OpPrefix();
+
     /// <summary>A new item id, unused in <paramref name="document"/>.</summary>
-    public static string NewItemId(Document document)
+    public static string NewItemId(Document document) => NewItemId(document, new HashSet<string>(StringComparer.Ordinal));
+
+    /// <summary>A new item id, unused in <paramref name="document"/> and not among <paramref name="taken"/>, which it joins.</summary>
+    public static string NewItemId(Document document, ISet<string> taken)
     {
         var used = ItemNames.Flatten(document.Items).Select(i => i.Id).ToHashSet(StringComparer.Ordinal);
         while (true)
         {
             var id = "ai-" + Guid.NewGuid().ToString("N")[..10];
-            if (!used.Contains(id))
+            if (!used.Contains(id) && taken.Add(id))
                 return id;
         }
     }
@@ -452,8 +486,11 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
     public override string Name => "add_item";
     public override ApiScope Scope => ApiScope.Edit;
     public override string Title => "Add an item";
-    public override JsonObject InputSchema => Schema(
-        ("profile", String("The profile's id or exact name."), true),
+    public override JsonObject InputSchema => Schema([("profile", String("The profile's id or exact name."), true), .. ItemMembers()]);
+
+    /// <summary>An item's members as add_item takes them (and each of add_items' items): all but the profile.</summary>
+    internal static (string Name, JsonObject Schema, bool Required)[] ItemMembers() =>
+    [
         ("scene", Object("The item's scene (format infopanel.scene/1): get_design_guide topic scenes has the format."), true),
         ("x", Number("The item's left edge on the canvas, in pixels (0 when absent).", -MaxCoordinate, MaxCoordinate), false),
         ("y", Number("The item's top edge on the canvas, in pixels (0 when absent).", -MaxCoordinate, MaxCoordinate), false),
@@ -462,7 +499,11 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
         ("name", String("The item's name, as the editor's layers show it."), false),
         ("bindings", Object("The scene's inputs bound to sensors: input name to a sensor key from list_sensors, or to {\"key\", \"stat\"}."), false),
         ("group", String("A group's id or exact name to add the item into (the top level when absent)."), false),
-        ("index", Integer("Where among its siblings, 0 first (the end, drawn on top, when absent).", 0, 2000), false));
+        ("index", Integer("Where among its siblings, 0 first (the end, drawn on top, when absent).", 0, 2000), false),
+    ];
+
+    /// <summary>An item's schema as add_items' list takes it: <see cref="ItemMembers"/>, closed.</summary>
+    internal static JsonObject ItemSchema() => Schema(ItemMembers());
 
     public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
     {
@@ -486,59 +527,147 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
         var change = changes.Apply(Name, profile, arguments.Call, state =>
         {
             id = ProfileChanges.NewItemId(state.Document);
-            var item = new JsonObject
-            {
-                ["kind"] = "scene",
-                ["id"] = id,
-                ["placement"] = new JsonObject { ["x"] = arguments.Double("x") ?? 0, ["y"] = arguments.Double("y") ?? 0 },
-            };
-            if (arguments.String("name") is { } name)
-                item["name"] = name;
-            if (design is not null)
-            {
-                // As the design gives them: its box, scene, source and origin.
-                if (design["layout"] is { } layout)
-                    item["layout"] = layout.DeepClone();
-            }
-            else if (arguments.Has("width") || arguments.Has("height"))
-            {
-                var layout = new JsonObject();
-                if (arguments.Double("width") is { } lw)
-                    layout["w"] = lw;
-                if (arguments.Double("height") is { } lh)
-                    layout["h"] = lh;
-                item["layout"] = layout;
-            }
-            if (arguments.Object("bindings") is { } bindings)
-                item["bindings"] = ProfileChanges.Bindings(bindings);
-            if (design is not null)
-            {
-                item["scene"] = design["scene"]!.DeepClone();
-                item["source"] = design["source"]!.DeepClone();
-                if (design["origin"] is { } origin)
-                    item["origin"] = origin.DeepClone();
-            }
-            else
-            {
-                item["scene"] = arguments.Object("scene");
-            }
-
-            var op = new JsonObject { ["op"] = "insert", ["item"] = item };
-            if (group != null)
-            {
-                var parent = group.Find(state.Document);
-                if (parent is not GroupItem)
-                    throw new ToolFailure("notAGroup", $"{ItemNames.Label(parent)} isn't a group (notAGroup): an item goes into a group or the top level.");
-                op["parentId"] = parent.Id;
-            }
-            if (arguments.Integer("index") is { } index)
-                op["index"] = index;
-            return [op];
+            return [Insert(arguments, design, state.Document, group, id)];
         }, files is null ? null : () => Designs.Store(changes, arguments.Call, files));
 
         var label = arguments.String("name") is { } n ? $"\"{n}\" ({id})" : id;
         return Task.FromResult(ToolResult.Text(
             $"Added {label} to {change.Name} at {ProfileChanges.Number(arguments.Double("x") ?? 0)}, {ProfileChanges.Number(arguments.Double("y") ?? 0)}.{ProfileChanges.Warnings(change.Result)} {change.Saving}"));
+    }
+
+    /// <summary>
+    /// The <c>insert</c> op for one item as <paramref name="arguments"/> give it (<see cref="ItemMembers"/>), the new id
+    /// <paramref name="id"/>: the design's box, scene, source and origin when it has <paramref name="design"/>, else the
+    /// scene and box given; into <paramref name="group"/>'s group when given.
+    /// </summary>
+    /// <exception cref="ToolFailure">The group isn't there (<c>notFound</c>, <c>ambiguous</c>) or isn't a group (<c>notAGroup</c>).</exception>
+    internal static JsonObject Insert(ToolArguments arguments, JsonObject? design, Document document, PinnedItem? group, string id)
+    {
+        var item = new JsonObject
+        {
+            ["kind"] = "scene",
+            ["id"] = id,
+            ["placement"] = new JsonObject { ["x"] = arguments.Double("x") ?? 0, ["y"] = arguments.Double("y") ?? 0 },
+        };
+        if (arguments.String("name") is { } name)
+            item["name"] = name;
+        if (design is not null)
+        {
+            // As the design gives them: its box, scene, source and origin.
+            if (design["layout"] is { } layout)
+                item["layout"] = layout.DeepClone();
+        }
+        else if (arguments.Has("width") || arguments.Has("height"))
+        {
+            var layout = new JsonObject();
+            if (arguments.Double("width") is { } lw)
+                layout["w"] = lw;
+            if (arguments.Double("height") is { } lh)
+                layout["h"] = lh;
+            item["layout"] = layout;
+        }
+        if (arguments.Object("bindings") is { } bindings)
+            item["bindings"] = ProfileChanges.Bindings(bindings);
+        if (design is not null)
+        {
+            item["scene"] = design["scene"]!.DeepClone();
+            item["source"] = design["source"]!.DeepClone();
+            if (design["origin"] is { } origin)
+                item["origin"] = origin.DeepClone();
+        }
+        else
+        {
+            item["scene"] = arguments.Object("scene");
+        }
+
+        var op = new JsonObject { ["op"] = "insert", ["item"] = item };
+        if (group != null)
+        {
+            var parent = group.Find(document);
+            if (parent is not GroupItem)
+                throw new ToolFailure("notAGroup", $"{ItemNames.Label(parent)} isn't a group (notAGroup): an item goes into a group or the top level.");
+            op["parentId"] = parent.Id;
+        }
+        if (arguments.Integer("index") is { } index)
+            op["index"] = index;
+        return op;
+    }
+}
+
+/// <summary>
+/// <c>add_items</c>: up to <see cref="MaxItems"/> items, each as <c>add_item</c> adds one, inserted in one commit and one
+/// undo step, all or nothing. From elsewhere (docs/2.0/relay.md, "Designs"), the call's designs give a design per item in
+/// order (null for an item given as a scene), all checked at once before anything is stored.
+/// </summary>
+public sealed class AddItemsTool(ProfileChanges changes) : McpTool
+{
+    public const string ToolName = "add_items";
+
+    /// <summary>The most items one call adds.</summary>
+    public const int MaxItems = 50;
+
+    public override string Name => ToolName;
+    public override ApiScope Scope => ApiScope.Edit;
+    public override string Title => "Add items";
+    public override JsonObject InputSchema => Schema(
+        ("profile", String("The profile's id or exact name."), true),
+        ("items", List($"The items, in order, each as add_item takes one (without profile): 1 to {MaxItems}.", 1, MaxItems, AddItemTool.ItemSchema()), true));
+
+    public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
+    {
+        var elements = arguments.List("items")!;
+        var designs = arguments.Call.Designs;
+        if (designs is not null && designs.Count != elements.Count)
+            throw new ToolFailure("design", $"add_items brought {designs.Count} designs for {elements.Count} items (design): one per item, null for an item given as a scene. Nothing was stored or changed.");
+
+        // Each item's arguments as add_item checks them; a design stands for its item's scene and box.
+        var schema = AddItemTool.ItemSchema();
+        var items = new List<ToolArguments>();
+        var problems = new List<string>();
+        for (var i = 0; i < elements.Count; i++)
+        {
+            try
+            {
+                items.Add(ToolArguments.Check($"item {i}", schema, elements[i], designs?[i] is null ? null : RelayFrames.DesignGives).For(arguments.Call));
+            }
+            catch (ToolFailure failure)
+            {
+                problems.Add(failure.Message);
+            }
+        }
+        if (problems.Count > 0)
+        {
+            throw new ToolFailure("arguments",
+                $"add_items can't take these items (arguments): {string.Join(" ", problems.Take(ProfileChanges.MaxErrorsShown))}{(problems.Count > ProfileChanges.MaxErrorsShown ? $" And {problems.Count - ProfileChanges.MaxErrorsShown} more." : "")} Nothing was changed.");
+        }
+
+        // Found once, before anything else, as add_item's: with a design among them, only while the name still names it.
+        var brought = designs?.OfType<JsonObject>().ToList() ?? [];
+        var profile = FoundProfile.Find(changes.Workspace, arguments.String("profile")!, holdName: brought.Count > 0);
+        IReadOnlyList<byte[]>? files = null;
+        if (brought.Count > 0)
+        {
+            files = Designs.Preflight(changes.Workspace, brought, arguments.Call.Files);
+            changes.Step("preflight");
+        }
+
+        var groups = items.Select(a => a.String("group") is { } wanted ? new PinnedItem(wanted) : null).ToList();
+        var ids = new string[items.Count];
+        var change = changes.Apply(Name, profile, arguments.Call, state =>
+        {
+            var taken = new HashSet<string>(StringComparer.Ordinal);
+            var ops = new JsonArray();
+            for (var i = 0; i < items.Count; i++)
+            {
+                ids[i] = ProfileChanges.NewItemId(state.Document, taken);
+                ops.Add(AddItemTool.Insert(items[i], designs?[i], state.Document, groups[i], ids[i]));
+            }
+            return ops;
+        }, files is null ? null : () => Designs.Store(changes, arguments.Call, files));
+
+        var labels = items.Select((a, i) => a.String("name") is { } n ? $"\"{n}\" ({ids[i]})" : ids[i]);
+        return Task.FromResult(ToolResult.Text(
+            $"Added {items.Count} items to {change.Name} in one change: {string.Join(", ", labels)}.{ProfileChanges.Warnings(change.Result)} {change.Saving}"));
     }
 }
 
@@ -565,17 +694,50 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
 
     public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
     {
-        if (!Changes.Any(arguments.Has))
+        // A design from elsewhere (docs/2.0/relay.md, "Designs") names what it was built on: the document's tag, its
+        // revision and the item. Another tag or item ends the call before anything is stored; the design's op is based on
+        // that revision, the call's other ops on the one read, all in one commit.
+        var brought = arguments.Call.Design;
+        var basedOn = brought?["basedOn"] as JsonObject;
+        if (brought is not null && basedOn is null)
+            throw new ToolFailure("design", "update_item's design needs basedOn {instance, rev, item}: what it was built on (design). Nothing was stored or changed.");
+        if (brought is null && !Changes.Any(arguments.Has))
             throw new ToolFailure("arguments", $"update_item has nothing to change (arguments): give any of {string.Join(", ", Changes)}.");
 
         string? label = null;
         var pinned = new PinnedItem(arguments.String("item")!);
-        var change = changes.Apply(Name, arguments.String("profile")!, arguments.Call, state =>
+        // Found once, before anything else: the change goes to this document, a design's only while the name still names
+        // it (a rename away and back included), as add_item's.
+        var profile = FoundProfile.Find(changes.Workspace, arguments.String("profile")!, holdName: brought is not null);
+        IReadOnlyList<byte[]>? files = null;
+        if (basedOn is not null)
+        {
+            if (profile.Instance != basedOn["instance"]!.GetValue<string>()
+                || pinned.Find(profile.Document.Read().Document).Id != basedOn["item"]!.GetValue<string>())
+                throw ProfileChanges.BasedElsewhere();
+            files = Designs.Preflight(changes.Workspace, [brought!], arguments.Call.Files);
+            changes.Step("preflight");
+        }
+
+        var designOp = -1;
+        var change = changes.Apply(Name, profile, arguments.Call, state =>
         {
             var item = pinned.Find(state.Document);
             label = ItemNames.Label(item);
             var rev = state.Generation.Rev;
             var ops = new JsonArray();
+            if (basedOn is not null)
+            {
+                if (item.Id != basedOn["item"]!.GetValue<string>() || item is not SceneItem)
+                    throw ProfileChanges.BasedElsewhere();
+                var set = new JsonObject { ["op"] = "setDesign", ["id"] = item.Id, ["baseRev"] = basedOn["rev"]!.GetValue<long>() };
+                if (brought!["layout"] is { } layout)
+                    set["layout"] = layout.DeepClone();
+                set["scene"] = brought["scene"]!.DeepClone();
+                set["source"] = brought["source"]!.DeepClone();
+                designOp = ops.Count;
+                ops.Add(set);
+            }
 
             if (arguments.Has("x") || arguments.Has("y") || arguments.Has("rotation"))
             {
@@ -628,7 +790,8 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
                 ops.Add(new JsonObject { ["op"] = "setAttributes", ["id"] = item.Id, ["baseRev"] = rev, ["set"] = set });
             }
             return ops;
-        });
+        }, files is null ? null : () => Designs.Store(changes, arguments.Call, files),
+            conflict => designOp >= 0 && conflict.Conflicts.Any(c => c.Op == designOp));
 
         var what = change.Changed ? $"Changed {label} in {change.Name}.{ProfileChanges.Warnings(change.Result)} {change.Saving}" : $"{label} already was as asked: nothing changed.";
         return Task.FromResult(ToolResult.Text(what));

@@ -31,7 +31,7 @@ public sealed class McpHarnessTests
         var list = await front.RequestAsync("tools/list");
         // Listed without an engine: the executable's own list, every tool with its built-in wording.
         Assert.Equal(["list_profiles", "get_profile", "list_sensors", "list_fonts", "render_preview", "get_design_guide",
-                "create_profile", "add_item", "update_item", "remove_item", "add_asset", "show_on_desktop"],
+                "create_profile", "add_item", "add_items", "update_item", "remove_item", "add_asset", "show_on_desktop"],
             list["result"]!["tools"]!.AsArray().Select(t => t!["name"]!.GetValue<string>()));
         Assert.All(list["result"]!["tools"]!.AsArray(), t => Assert.False(string.IsNullOrEmpty(t!["description"]!.GetValue<string>())));
         Assert.Contains("profile", init["result"]!["instructions"]!.GetValue<string>());

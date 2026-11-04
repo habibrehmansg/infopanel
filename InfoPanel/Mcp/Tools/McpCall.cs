@@ -22,22 +22,28 @@ public sealed class McpCall
 {
     private readonly RelayCutoff? _cutoff;
 
-    private McpCall(McpCallOrigin origin, int? maxChars, RelayCutoff? cutoff, JsonObject? design, IReadOnlyList<string>? files)
+    private McpCall(McpCallOrigin origin, int? maxChars, RelayCutoff? cutoff, JsonObject? design, IReadOnlyList<JsonObject?>? designs,
+        IReadOnlyList<string>? files)
     {
         Origin = origin;
         MaxChars = maxChars;
         _cutoff = cutoff;
         Design = design;
+        Designs = designs;
         Files = files;
     }
 
     /// <summary>A call from an AI app on this computer: no cutoff, no limit beyond the tools' own, never a design.</summary>
-    public static McpCall ThisComputer { get; } = new(McpCallOrigin.ThisComputer, null, null, null, null);
+    public static McpCall ThisComputer { get; } = new(McpCallOrigin.ThisComputer, null, null, null, null, null);
 
     /// <summary>A call from elsewhere, with its relay context: the only kind that brings a design.</summary>
     public static McpCall Elsewhere(RelayCallContext context) => new(McpCallOrigin.Elsewhere, context.MaxChars, context.Cutoff,
-        context.Design is { } design ? JsonNode.Parse(design.GetRawText(), documentOptions: InfoPanel.Spec.SpecJson.DocumentOptions)!.AsObject() : null,
+        context.Design is { } design ? Copy(design) : null,
+        context.Designs is { } designs ? [.. designs.Select(d => d is { } one ? Copy(one) : null)] : null,
         context.Files);
+
+    private static JsonObject Copy(System.Text.Json.JsonElement design) =>
+        JsonNode.Parse(design.GetRawText(), documentOptions: InfoPanel.Spec.SpecJson.DocumentOptions)!.AsObject();
 
     /// <summary>
     /// A design the service produced (<c>layout</c>, <c>source</c>, <c>scene</c>, <c>origin</c>; docs/2.0/relay.md, "Designs"):
@@ -45,11 +51,20 @@ public sealed class McpCall
     /// </summary>
     public JsonObject? Design { get; }
 
+    /// <summary>
+    /// <c>add_items</c>' designs, one per item in order, null for an item given as a scene: only on a call from elsewhere.
+    /// A copy per call; null without them.
+    /// </summary>
+    public IReadOnlyList<JsonObject?>? Designs { get; }
+
     /// <summary>The texts the design needs stored, each under its SHA-256, or null.</summary>
     public IReadOnlyList<string>? Files { get; }
 
-    /// <summary>Whether the call brings a design or files.</summary>
-    public bool BringsDesign => Design is not null || Files is not null;
+    /// <summary>Whether the call brings a design, designs or files.</summary>
+    public bool BringsDesign => Design is not null || Designs is not null || Files is not null;
+
+    /// <summary>Whether the call brings at least one design.</summary>
+    public bool HasDesign => Design is not null || Designs?.Any(d => d is not null) == true;
 
     public McpCallOrigin Origin { get; }
 

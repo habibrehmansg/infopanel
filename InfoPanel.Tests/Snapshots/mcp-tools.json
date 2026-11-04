@@ -281,6 +281,97 @@
       }
     },
     {
+      "name": "add_items",
+      "title": "Add items",
+      "description": "Adds up to 50 items to a profile in one change: items is a list, each item as add_item takes one (scene, x, y, width, height, name, bindings, group, index) without profile. All or nothing: one item the engine refuses refuses them all, and the answer names it by its place in the list. One undoable change for all of them; use it to build a panel of many items.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "string",
+            "description": "The profile's id or exact name.",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "items": {
+            "type": "array",
+            "description": "The items, in order, each as add_item takes one (without profile): 1 to 50.",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "type": "object",
+              "properties": {
+                "scene": {
+                  "type": "object",
+                  "description": "The item's scene (format infopanel.scene/1): get_design_guide topic scenes has the format."
+                },
+                "x": {
+                  "type": "number",
+                  "description": "The item's left edge on the canvas, in pixels (0 when absent).",
+                  "minimum": -100000,
+                  "maximum": 100000
+                },
+                "y": {
+                  "type": "number",
+                  "description": "The item's top edge on the canvas, in pixels (0 when absent).",
+                  "minimum": -100000,
+                  "maximum": 100000
+                },
+                "width": {
+                  "type": "number",
+                  "description": "The item's layout box width, for a scene that reads its box.",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "height": {
+                  "type": "number",
+                  "description": "The item's layout box height, for a scene that reads its box.",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The item's name, as the editor's layers show it.",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "bindings": {
+                  "type": "object",
+                  "description": "The scene's inputs bound to sensors: input name to a sensor key from list_sensors, or to {\"key\", \"stat\"}."
+                },
+                "group": {
+                  "type": "string",
+                  "description": "A group's id or exact name to add the item into (the top level when absent).",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "index": {
+                  "type": "integer",
+                  "description": "Where among its siblings, 0 first (the end, drawn on top, when absent).",
+                  "minimum": 0,
+                  "maximum": 2000
+                }
+              },
+              "required": [
+                "scene"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "profile",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Add items",
+        "readOnlyHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "update_item",
       "title": "Change an item",
       "description": "Changes an item, named by id or exact name: any of its position (x, y, rotation), its box (width, height), its scene (a new scene replaces the old one whole), its bindings (replaced whole), its name and whether it is visible. What isn't given stays. One undoable change.",

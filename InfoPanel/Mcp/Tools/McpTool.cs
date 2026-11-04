@@ -80,6 +80,10 @@ public abstract class McpTool
     /// <summary>A JSON object argument (a scene, bindings): its content is checked by the engine as the API checks it.</summary>
     protected static JsonObject Object(string description) =>
         new() { ["type"] = "object", ["description"] = description };
+
+    /// <summary>A list of <paramref name="minItems"/> to <paramref name="maxItems"/> objects, each as <paramref name="items"/> (a closed object schema).</summary>
+    protected static JsonObject List(string description, int minItems, int maxItems, JsonObject items) =>
+        new() { ["type"] = "array", ["description"] = description, ["minItems"] = minItems, ["maxItems"] = maxItems, ["items"] = items };
 }
 
 /// <summary>
@@ -156,6 +160,16 @@ public sealed class ToolArguments
                     else
                         problems.Add($"'{member.Name}' must be a JSON object");
                 }
+                else if (type == "array")
+                {
+                    // A list of objects, as many as it allows: each is checked against the list's item schema by its tool.
+                    var min = property["minItems"]?.GetValue<int>() ?? 0;
+                    var max = property["maxItems"]!.GetValue<int>();
+                    if (member.Value.ValueKind != JsonValueKind.Array || member.Value.EnumerateArray().Any(e => e.ValueKind != JsonValueKind.Object))
+                        problems.Add($"'{member.Name}' must be a list of JSON objects");
+                    else if (member.Value.GetArrayLength() is var count && (count < min || count > max))
+                        problems.Add($"'{member.Name}' must hold {min} to {max}, not {count}");
+                }
             }
 
             foreach (var required in schema["required"]!.AsArray().Select(r => r!.GetValue<string>()))
@@ -215,6 +229,10 @@ public sealed class ToolArguments
 
     /// <summary>An object argument as a new node (a copy for each call), or null when it wasn't given.</summary>
     public JsonObject? Object(string name) => _objects.TryGetValue(name, out var node) ? node.DeepClone().AsObject() : null;
+
+    /// <summary>A list argument's elements (as checked: objects), or null when it wasn't given.</summary>
+    public IReadOnlyList<JsonElement>? List(string name) =>
+        _arguments.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array ? [.. value.EnumerateArray()] : null;
 
     public static string Number(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 }

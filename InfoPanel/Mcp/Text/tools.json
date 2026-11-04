@@ -25,6 +25,9 @@
     "add_item": {
       "description": "Adds an item that draws scene (format infopanel.scene/1; get_design_guide topic scenes) to a profile at x, y, optionally with a layout box (width, height) for a scene that reads it, a name, bindings (each scene input to a sensor key from list_sensors) and a group to put it in. One undoable change; the engine checks the scene and answers each problem with its path."
     },
+    "add_items": {
+      "description": "Adds up to 50 items to a profile in one change: items is a list, each item as add_item takes one (scene, x, y, width, height, name, bindings, group, index) without profile. All or nothing: one item the engine refuses refuses them all, and the answer names it by its place in the list. One undoable change for all of them; use it to build a panel of many items."
+    },
     "update_item": {
       "description": "Changes an item, named by id or exact name: any of its position (x, y, rotation), its box (width, height), its scene (a new scene replaces the old one whole), its bindings (replaced whole), its name and whether it is visible. What isn't given stays. One undoable change."
     },

@@ -7,6 +7,16 @@
     "late": { "type": "late", "id": "c1" },
     "cancelled": { "type": "cancelled", "id": "c1" },
     "error": { "type": "error", "code": "malformed", "id": "c1" },
+    "item": {
+      "type": "item",
+      "id": "r1",
+      "instance": "AAAAAAAAAAAAAAAAAAAAAA",
+      "rev": 12,
+      "profile": "p-0123456789",
+      "item": { "kind": "scene", "id": "ai-0123456789", "name": "Gauge", "placement": { "x": 10, "y": 20 }, "scene": { "format": "infopanel.scene/1", "nodes": [{ "kind": "rect", "w": 20, "h": 10, "fill": "#ff8800" }] } },
+      "detail": "{\"id\":\"p-0123456789\",\"name\":\"Overview\",\"rev\":12}"
+    },
+    "stale": { "type": "stale", "id": "c3" },
     "bye": { "type": "bye" }
   },
   "relay": {
@@ -28,6 +38,47 @@
         "scene": { "format": "infopanel.scene/1", "inputs": { "v": { "type": "number" } }, "nodes": [{ "kind": "rect", "w": { "op": "input", "name": "v" }, "h": 10, "fill": "#ff8800" }] },
         "origin": { "kind": "local" }
       }
+    },
+    "read": { "type": "read", "id": "r1", "profile": "Overview", "item": "Gauge", "detail": true, "sentAt": 1762214400000, "deadline": 1762214460000, "maxChars": 140000 },
+    "callWithBasedOn": {
+      "type": "call",
+      "id": "c3",
+      "tool": "update_item",
+      "arguments": { "profile": "p-0123456789", "item": "ai-0123456789" },
+      "sentAt": 1762214430000,
+      "deadline": 1762214460000,
+      "files": [],
+      "design": {
+        "layout": { "w": 120, "h": 40 },
+        "source": { "format": "example.widget/1", "data": { "colour": "#ff0000" }, "deps": ["sha256:88226416b4bb8baa201e8d28b3b9eb72a4e8743b4bd7f53d15d7665d92f8368a"] },
+        "scene": { "format": "infopanel.scene/1", "inputs": { "v": { "type": "number" } }, "nodes": [{ "kind": "rect", "w": { "op": "input", "name": "v" }, "h": 10, "fill": "#ff0000" }] },
+        "basedOn": { "instance": "AAAAAAAAAAAAAAAAAAAAAA", "rev": 12, "item": "ai-0123456789" }
+      }
+    },
+    "callWithDesigns": {
+      "type": "call",
+      "id": "c4",
+      "tool": "add_items",
+      "arguments": {
+        "profile": "Overview",
+        "items": [
+          { "x": 10, "y": 20, "name": "Gauge", "bindings": { "v": "plugin:/infopanel.mock/cpu/cpu-load" } },
+          { "x": 10, "y": 70, "name": "Label", "scene": { "format": "infopanel.scene/1", "nodes": [{ "kind": "rect", "w": 120, "h": 2, "fill": "#ffffff" }] } }
+        ]
+      },
+      "sentAt": 1762214400000,
+      "deadline": 1762214460000,
+      "maxChars": 140000,
+      "files": ["{\"package\":\"example.widget\",\"version\":\"1.0.0\"}"],
+      "designs": [
+        {
+          "layout": { "w": 120, "h": 40 },
+          "source": { "format": "example.widget/1", "data": { "colour": "#ff8800" }, "deps": ["sha256:88226416b4bb8baa201e8d28b3b9eb72a4e8743b4bd7f53d15d7665d92f8368a"] },
+          "scene": { "format": "infopanel.scene/1", "inputs": { "v": { "type": "number" } }, "nodes": [{ "kind": "rect", "w": { "op": "input", "name": "v" }, "h": 10, "fill": "#ff8800" }] },
+          "origin": { "kind": "local" }
+        },
+        null
+      ]
     },
     "cancel": { "type": "cancel", "id": "c2" }
   }

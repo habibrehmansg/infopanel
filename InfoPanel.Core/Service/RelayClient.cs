@@ -42,12 +42,22 @@ public sealed record RelayCallContext(string Id, int? MaxChars, RelayCutoff Cuto
     /// <summary>A design the service produced, for the tool to commit (docs/2.0/relay.md, "Designs"), or null.</summary>
     public JsonElement? Design { get; init; }
 
+    /// <summary><c>add_items</c>' designs, one per item in order (null for an item given as a scene), or null.</summary>
+    public IReadOnlyList<JsonElement?>? Designs { get; init; }
+
     /// <summary>The texts the design needs stored, each under its SHA-256, or null.</summary>
     public IReadOnlyList<string>? Files { get; init; }
 }
 
 /// <summary>A relay call's answer: the tool's result, or that its change was stopped before it was made.</summary>
-public sealed record RelayToolAnswer(JsonObject Result, bool Cancelled);
+public sealed record RelayToolAnswer(JsonObject Result, bool Cancelled)
+{
+    /// <summary>A <c>read</c>'s answer, the <c>item</c> frame's members (<c>instance</c>, <c>rev</c>, <c>profile</c>, <c>item</c>, <c>detail</c>), or null for <see cref="Result"/>.</summary>
+    public JsonObject? Item { get; init; }
+
+    /// <summary>The design's base no longer held inside the same document: nothing was changed, answered <c>stale</c>.</summary>
+    public bool Stale { get; init; }
+}
 
 /// <summary>
 /// The only thing a relay call reaches: the engine's tool host, by tool name. Nothing else (the API, settings, tokens,
@@ -57,6 +67,17 @@ public interface IRelayToolHost
 {
     /// <summary>Runs <paramref name="tool"/> for a call from elsewhere, under the engine's rules for such calls.</summary>
     Task<RelayToolAnswer> CallAsync(string tool, JsonElement arguments, RelayCallContext context, CancellationToken ct);
+
+    /// <summary>
+    /// Reads one item of <paramref name="profile"/> for a <c>read</c> frame: the answer's <see cref="RelayToolAnswer.Item"/>,
+    /// or an error result (no such profile or item, or a name more than one has).
+    /// </summary>
+    Task<RelayToolAnswer> ReadAsync(string profile, string item, bool detail, RelayCallContext context, CancellationToken ct) =>
+        Task.FromResult(new RelayToolAnswer(new JsonObject
+        {
+            ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = "This computer doesn't read items for the service (unsupported)." }),
+            ["isError"] = true,
+        }, Cancelled: false));
 }
 
 /// <summary>The relay client's settings: the path on the service, the engine's version, and the limits.</summary>
@@ -772,7 +793,11 @@ public sealed class RelayClient : IAsyncDisposable
                     cutoff?.Trip("cancel");
                     break;
                 case RelayFrame.Call call:
-                    await AdmitAsync(call, wall, monotonic).ConfigureAwait(false);
+                    await AdmitAsync(new Work(call.Id, call.Tool, call.SentAt, call.Deadline, call.MaxChars, call), wall, monotonic).ConfigureAwait(false);
+                    break;
+                case RelayFrame.ReadItem read:
+                    // A read arrives as a call does: counted among the calls at once, late by sentAt + 10 s, cancellable.
+                    await AdmitAsync(new Work(read.Id, "read", read.SentAt, read.Deadline, read.MaxChars, read), wall, monotonic).ConfigureAwait(false);
                     break;
                 case RelayFrame.Refused refused:
                     await SendAsync(RelayFrames.Error(refused.Code, refused.Id)).ConfigureAwait(false);
@@ -780,7 +805,7 @@ public sealed class RelayClient : IAsyncDisposable
             }
         }
 
-        private async Task AdmitAsync(RelayFrame.Call call, DateTimeOffset wall, long monotonic)
+        private async Task AdmitAsync(Work call, DateTimeOffset wall, long monotonic)
         {
             var cutoff = new RelayCutoff(Time);
             bool duplicate;
@@ -812,13 +837,16 @@ public sealed class RelayClient : IAsyncDisposable
             _client.Track(Task.Run(() => RunCallAsync(call, cutoff, reading, wall, monotonic)));
         }
 
+        /// <summary>A call or a read, as admitted: its id, its tool (<c>read</c> for a read, in the logs), its times and limit, and the frame.</summary>
+        private sealed record Work(string Id, string Tool, long SentAt, long? Deadline, int? MaxChars, RelayFrame Frame);
+
         private void Forget(string id)
         {
             lock (_lock)
                 _calls.Remove(id);
         }
 
-        private async Task RunCallAsync(RelayFrame.Call call, RelayCutoff cutoff, Task<RelayReading?> admitted, DateTimeOffset arrivedWall, long arrivedMonotonic)
+        private async Task RunCallAsync(Work call, RelayCutoff cutoff, Task<RelayReading?> admitted, DateTimeOffset arrivedWall, long arrivedMonotonic)
         {
             var logger = _client._logger;
             try
@@ -870,15 +898,31 @@ public sealed class RelayClient : IAsyncDisposable
                 var span = Math.Min(within, (call.Deadline ?? double.MaxValue) - call.SentAt) - waitedMonotonic.TotalMilliseconds;
                 var left = Math.Min(until - RelayClock.RelayNowMs(reading, now), span);
                 cutoff.SetDeadline(TimeSpan.FromMilliseconds(Math.Clamp(left, 0, within)), now);
-                var context = new RelayCallContext(call.Id, call.MaxChars, cutoff) { Design = call.Design, Files = call.Files };
-                var answer = await _client._tools.CallAsync(call.Tool, call.Arguments, context, _client._stop.Token).ConfigureAwait(false);
+                var context = new RelayCallContext(call.Id, call.MaxChars, cutoff)
+                {
+                    Design = (call.Frame as RelayFrame.Call)?.Design,
+                    Designs = (call.Frame as RelayFrame.Call)?.Designs,
+                    Files = (call.Frame as RelayFrame.Call)?.Files,
+                };
+                var answer = call.Frame switch
+                {
+                    RelayFrame.ReadItem read => await _client._tools.ReadAsync(read.Profile, read.Item, read.Detail, context, _client._stop.Token).ConfigureAwait(false),
+                    RelayFrame.Call tool => await _client._tools.CallAsync(tool.Tool, tool.Arguments, context, _client._stop.Token).ConfigureAwait(false),
+                    _ => throw new InvalidOperationException("Only a call or a read is admitted."),
+                };
                 if (answer.Cancelled)
                 {
                     await SendAsync(RelayFrames.Cancelled(call.Id)).ConfigureAwait(false);
                     return;
                 }
 
-                var result = RelayFrames.Result(call.Id, answer.Result);
+                if (answer.Stale)
+                {
+                    await SendAsync(RelayFrames.Stale(call.Id)).ConfigureAwait(false);
+                    return;
+                }
+
+                var result = answer.Item is { } item ? RelayFrames.Item(call.Id, item) : RelayFrames.Result(call.Id, answer.Result);
                 if (RelayFrames.Write(result).Length > RelayFrames.MaxFrameBytes)
                 {
                     result = RelayFrames.Result(call.Id, new JsonObject

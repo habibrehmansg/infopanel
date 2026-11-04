@@ -31,7 +31,12 @@ public sealed class RelayFrameFixtureTests
         Assert.Equal(Engine("cancelled").ToJsonString(), RelayFrames.Cancelled("c1").ToJsonString());
         Assert.Equal(Engine("error").ToJsonString(), RelayFrames.Error("malformed", "c1").ToJsonString());
         Assert.Equal(Engine("bye").ToJsonString(), RelayFrames.Bye().ToJsonString());
-        Assert.Equal(["bye", "cancelled", "error", "hello", "late", "result", "time"], Fixtures["engine"]!.AsObject().Select(p => p.Key).Order());
+        Assert.Equal(Engine("stale").ToJsonString(), RelayFrames.Stale("c3").ToJsonString());
+        var item = Engine("item").DeepClone().AsObject();
+        item.Remove("type");
+        item.Remove("id");
+        Assert.Equal(Engine("item").ToJsonString(), RelayFrames.Item("r1", item).ToJsonString());
+        Assert.Equal(["bye", "cancelled", "error", "hello", "item", "late", "result", "stale", "time"], Fixtures["engine"]!.AsObject().Select(p => p.Key).Order());
     }
 
     [Fact]
@@ -54,6 +59,22 @@ public sealed class RelayFrameFixtureTests
         // Its file is the dep its source names: the text's SHA-256.
         var file = Encoding.UTF8.GetBytes(design.Files![0]);
         Assert.Equal("sha256:" + Convert.ToHexStringLower(SHA256.HashData(file)), given["design"]!["source"]!["deps"]![0]!.GetValue<string>());
-        Assert.Equal(["call", "callWithDesign", "cancel", "time", "welcome"], Fixtures["relay"]!.AsObject().Select(p => p.Key).Order());
+        var read = Assert.IsType<RelayFrame.ReadItem>(Relay("read"));
+        Assert.Equal(new RelayFrame.ReadItem("r1", "Overview", "Gauge", true, 1762214400000, 140000) { Deadline = 1762214460000 }, read);
+
+        var update = Assert.IsType<RelayFrame.Call>(Relay("callWithBasedOn"));
+        Assert.Equal("update_item", update.Tool);
+        Assert.Equal(Fixtures["relay"]!["callWithBasedOn"]!["design"]!.ToJsonString(), update.Design!.Value.GetRawText());
+
+        // add_items: a design per item in order, null for the item given as a scene.
+        var batch = Assert.IsType<RelayFrame.Call>(Relay("callWithDesigns"));
+        var designs = Fixtures["relay"]!["callWithDesigns"]!["designs"]!.AsArray();
+        Assert.Equal("add_items", batch.Tool);
+        Assert.Null(batch.Design);
+        Assert.Equal(designs.Count, batch.Designs!.Count);
+        Assert.Equal(designs[0]!.ToJsonString(), batch.Designs[0]!.Value.GetRawText());
+        Assert.Null(designs[1]);
+        Assert.Null(batch.Designs[1]);
+        Assert.Equal(["call", "callWithBasedOn", "callWithDesign", "callWithDesigns", "cancel", "read", "time", "welcome"], Fixtures["relay"]!.AsObject().Select(p => p.Key).Order());
     }
 }

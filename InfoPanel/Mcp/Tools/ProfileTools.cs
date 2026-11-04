@@ -100,13 +100,143 @@ public sealed class GetProfileTool(Workspace workspace) : McpTool
     {
         var document = ProfileNames.Find(workspace, arguments.String("profile")!);
         var state = document.Read();
+        var wanted = arguments.String("item");
+        return Task.FromResult(ToolResult.Text(Describe(document.Id, state, wanted is null ? null : Resolve(state.Document, wanted), arguments.Call.MaxChars, sourcedWhole: true).ToJsonString()));
+    }
+
+    /// <summary>
+    /// A <c>read</c> frame's answer (docs/2.0/relay.md, "Designs"), from one snapshot of the document: its tag, revision
+    /// and id, the item as the document holds it, and with <paramref name="detail"/> this tool's text for the item, a
+    /// sourced item's without its scene and source, cut to <paramref name="maxChars"/>.
+    /// </summary>
+    /// <exception cref="ToolFailure">No such profile or item (notFound), or a name more than one item has (ambiguous).</exception>
+    internal JsonObject ReadItem(string profile, string wanted, bool detail, int? maxChars)
+    {
+        var document = ProfileNames.Find(workspace, profile);
+        var state = document.Read();
+        var item = Resolve(state.Document, wanted);
+        var answer = new JsonObject
+        {
+            ["instance"] = document.Instance,
+            ["rev"] = state.Generation.Rev,
+            ["profile"] = document.Id,
+            ["item"] = JsonSerializer.SerializeToNode(item, SpecJson.Options),
+        };
+        if (detail)
+        {
+            var summary = Describe(document.Id, state, item, maxChars, sourcedWhole: false);
+            answer["detail"] = maxChars is { } chars ? Shrink(summary, chars) : summary.ToJsonString();
+        }
+
+        return answer;
+    }
+
+    /// <summary>The longest a text of the detail is kept at each round of <see cref="Shrink"/>, the ids apart.</summary>
+    private static readonly int[] ShortenedTo = [64, 16];
+
+    /// <summary>
+    /// <paramref name="summary"/>'s text held to <paramref name="maxChars"/> characters by its structure, never cut as text,
+    /// so it still parses: when it is longer, a <c>cut</c> member says so, and in turn the list of items is left out, then
+    /// the item's scene and source (the read's item holds them whole), then every text but the ids is shortened (names,
+    /// what made the item, each binding's key), then the item's bindings are left out, until it fits. The ids, the size
+    /// and the revision stay whole: for any <c>maxChars</c> the relay sends (at least
+    /// <see cref="InfoPanel.Service.RelayFrames.MinMaxChars"/>), the last round fits.
+    /// </summary>
+    internal static string Shrink(JsonObject summary, int maxChars)
+    {
+        var whole = summary.ToJsonString();
+        if (whole.Length <= maxChars)
+            return whole;
+
+        summary["cut"] = $"The detail is {whole.Length} characters, more than this AI app takes ({maxChars}): the list of items, " +
+            "the item's scene and source, then long texts and its bindings are left out or shortened. The read's item holds it whole.";
+        var item = summary["item"] as JsonObject;
+        List<Action> rounds =
+        [
+            () =>
+            {
+                summary.Remove("items");
+                summary.Remove("more");
+            },
+            () =>
+            {
+                item?.Remove("scene");
+                item?.Remove("source");
+            },
+            .. ShortenedTo.Select(length => (Action)(() => Shorten(summary, length))),
+            () => item?.Remove("bindings"),
+        ];
+        var text = whole;
+        foreach (var round in rounds)
+        {
+            round();
+            text = summary.ToJsonString();
+            if (text.Length <= maxChars)
+                break;
+        }
+
+        return text;
+    }
+
+    /// <summary>Every text in <paramref name="node"/> but the ids and the <c>cut</c> note, longer than <paramref name="length"/>, cut to it with "…".</summary>
+    private static void Shorten(JsonNode? node, int length)
+    {
+        switch (node)
+        {
+            case JsonObject o:
+                foreach (var (key, value) in o.ToList())
+                {
+                    if (key is "id" or "cut")
+                        continue;
+                    if (value is JsonValue v && v.TryGetValue<string>(out var s))
+                    {
+                        if (s.Length > length)
+                            o[key] = s[..(char.IsHighSurrogate(s[length - 1]) ? length - 1 : length)] + "…";
+                    }
+                    else
+                    {
+                        Shorten(value, length);
+                    }
+                }
+                break;
+            case JsonArray a:
+                foreach (var element in a)
+                    Shorten(element, length);
+                break;
+        }
+    }
+
+    /// <summary>The item of <paramref name="doc"/> with the id <paramref name="wanted"/>, else the one item of that name.</summary>
+    /// <exception cref="ToolFailure">None (notFound), or more than one of the name (ambiguous).</exception>
+    private static Item Resolve(Document doc, string wanted)
+    {
+        var all = Flatten(doc.Items).ToList();
+        var item = all.FirstOrDefault(i => i.Id == wanted);
+        if (item == null)
+        {
+            var named = all.Where(i => i.Name == wanted).ToList();
+            if (named.Count > 1)
+                throw new ToolFailure("ambiguous", $"{named.Count} items of {doc.Profile.Name} are named {wanted} (ambiguous): {string.Join(", ", named.Select(i => i.Id))}. Name one by its id.");
+            item = named.FirstOrDefault();
+        }
+        if (item == null)
+            throw new ToolFailure("notFound", $"There's no item {wanted} in {doc.Profile.Name} (notFound). get_profile lists its items.");
+        return item;
+    }
+
+    /// <summary>
+    /// This tool's answer for the profile <paramref name="id"/> as <paramref name="state"/> holds it, with <paramref name="item"/>'s
+    /// detail when given: its scene and source, but a sourced item's only when <paramref name="sourcedWhole"/>. Its text is
+    /// written without serializer options: a node's writer allows 1,000 levels, past the format's 256.
+    /// </summary>
+    private static JsonObject Describe(string id, DocumentState state, Item? item, int? maxChars, bool sourcedWhole)
+    {
         var doc = state.Document;
-        var maxChars = arguments.Call.MaxChars;
         var reply = maxChars is { } chars ? Math.Min(MaxReplyBytes, chars) : MaxReplyBytes;
         var part = maxChars is { } partChars ? Math.Min(MaxPartBytes, partChars / 4) : MaxPartBytes;
         var summary = new JsonObject
         {
-            ["id"] = document.Id,
+            ["id"] = id,
             ["name"] = doc.Profile.Name,
             ["width"] = doc.Profile.Width,
             ["height"] = doc.Profile.Height,
@@ -118,22 +248,10 @@ public sealed class GetProfileTool(Workspace workspace) : McpTool
         var items = new JsonArray();
         summary["items"] = items;
 
-        if (arguments.String("item") is { } wanted)
+        if (item is not null)
         {
-            var all = Flatten(doc.Items).ToList();
-            var item = all.FirstOrDefault(i => i.Id == wanted);
-            if (item == null)
-            {
-                var named = all.Where(i => i.Name == wanted).ToList();
-                if (named.Count > 1)
-                    throw new ToolFailure("ambiguous", $"{named.Count} items of {doc.Profile.Name} are named {wanted} (ambiguous): {string.Join(", ", named.Select(i => i.Id))}. Name one by its id.");
-                item = named.FirstOrDefault();
-            }
-            if (item == null)
-                throw new ToolFailure("notFound", $"There's no item {wanted} in {doc.Profile.Name} (notFound). get_profile lists its items.");
-
             var detail = Summary(item);
-            if (item is SceneItem scene)
+            if (item is SceneItem scene && (sourcedWhole || scene.Source is null))
             {
                 detail["scene"] = Cut(scene.Scene.GetRawText(), "scene", part);
                 if (scene.Source is { } source)
@@ -153,8 +271,7 @@ public sealed class GetProfileTool(Workspace workspace) : McpTool
                 : $"… and {total - listed} more items: the list stops at {MaxReplyBytes / (1024 * 1024)} MiB. Ask for one with item.";
         }
 
-        // Written without serializer options: a node's writer allows 1,000 levels, past the format's 256.
-        return Task.FromResult(ToolResult.Text(summary.ToJsonString()));
+        return summary;
     }
 
     /// <summary>

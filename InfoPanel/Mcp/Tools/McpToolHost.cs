@@ -28,11 +28,11 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
     public static IReadOnlyList<string> ToolNames { get; } =
     [
         "list_profiles", "get_profile", "list_sensors", "list_fonts", "render_preview", "get_design_guide",
-        "create_profile", "add_item", "update_item", "remove_item", "add_asset", "show_on_desktop",
+        "create_profile", "add_item", "add_items", "update_item", "remove_item", "add_asset", "show_on_desktop",
     ];
 
     /// <summary>The tools a call from elsewhere may bring a design to (docs/2.0/relay.md, "Designs").</summary>
-    public static IReadOnlyList<string> DesignTools { get; } = ["add_item"];
+    public static IReadOnlyList<string> DesignTools { get; } = ["add_item", "update_item", "add_items"];
 
     private readonly IReadOnlyDictionary<string, McpTool> _tools;
     private readonly McpText _text;
@@ -64,8 +64,9 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
     /// A test seam: called on the calling thread at each step of a change (<c>preflight</c> once a design's files and
     /// deps are checked, before anything is built or stored; <c>read</c> once the document is read,
     /// <c>write</c> and then <c>locking</c> just before a write goes to take its lock, <c>retry</c> after a conflict,
-    /// before it reads again, <c>committed</c> once the commit applied, before the save), so a test can slip another
-    /// client's change, or a cutoff, in between.
+    /// before it reads again, <c>committed</c> once the commit applied, before the save; for a <c>read</c> frame,
+    /// <c>reading</c> just before it reads and <c>read</c> once it has), so a test can slip another client's change, or a
+    /// cutoff, in between.
     /// </summary>
     internal Action<string>? StepHook { get; set; }
 
@@ -80,6 +81,7 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
         new GetDesignGuideTool(text),
         new CreateProfileTool(changes!),
         new AddItemTool(changes!),
+        new AddItemsTool(changes!),
         new UpdateItemTool(changes!),
         new RemoveItemTool(changes!),
         new AddAssetTool(changes!),
@@ -121,7 +123,59 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
     async Task<RelayToolAnswer> IRelayToolHost.CallAsync(string tool, JsonElement arguments, RelayCallContext context, CancellationToken ct)
     {
         var result = await RunAsync(tool, arguments, McpCall.Elsewhere(context), ct).ConfigureAwait(false);
-        return new RelayToolAnswer(result.ToJson(), result.Outcome == Cancelled);
+        return new RelayToolAnswer(result.ToJson(), result.Outcome == Cancelled) { Stale = result.Outcome == ProfileChanges.Stale };
+    }
+
+    Task<RelayToolAnswer> IRelayToolHost.ReadAsync(string profile, string item, bool detail, RelayCallContext context, CancellationToken ct)
+    {
+        // A read is get_profile's work (a read tool's, on the tool host), answered as the item frame. Its cutoff (cancel,
+        // the connection's close, its deadline) is asked before it reads and again before it answers: tripped, the answer
+        // is cancelled. Its errors are held to the AI app's maxChars as a call's are.
+        var watch = Stopwatch.StartNew();
+        RelayToolAnswer answer;
+        string outcome;
+        try
+        {
+            if (_tools["get_profile"] is not GetProfileTool reader)
+                throw new ToolFailure("unsupported", "This computer doesn't read items for the service (unsupported).");
+            StepHook?.Invoke("reading");
+            JsonObject? read = null;
+            if (!context.Cutoff.IsTripped)
+            {
+                read = reader.ReadItem(profile, item, detail, context.MaxChars);
+                StepHook?.Invoke("read");
+            }
+            if (read is null || context.Cutoff.IsTripped)
+            {
+                answer = new RelayToolAnswer(ToolResult.Error(new ToolFailure(Cancelled,
+                    $"The read was stopped (cancelled: {context.Cutoff.Reason ?? "cancel"}).")).ToJson(), Cancelled: true);
+                outcome = Cancelled;
+            }
+            else
+            {
+                answer = new RelayToolAnswer(new JsonObject(), Cancelled: false) { Item = read };
+                outcome = "item";
+            }
+        }
+        catch (ToolFailure failure)
+        {
+            (answer, outcome) = Failed(ToolResult.Error(failure), context.MaxChars);
+        }
+        catch (IOException ex)
+        {
+            (answer, outcome) = Failed(ToolResult.Error(new ToolFailure("io", $"InfoPanel couldn't read its data folder (io: {ex.Message}). Try again.")), context.MaxChars);
+        }
+
+        _logger.LogInformation("AI app read from elsewhere on {Profile}: {Outcome} in {Milliseconds} ms", profile, outcome, watch.ElapsedMilliseconds);
+        return Task.FromResult(answer);
+    }
+
+    /// <summary>A read's error result, held to <paramref name="maxChars"/> (<see cref="Fit"/>) as a call's is, and its outcome.</summary>
+    private static (RelayToolAnswer, string) Failed(ToolResult result, int? maxChars)
+    {
+        if (maxChars is { } chars)
+            result = Fit(result, chars);
+        return (new RelayToolAnswer(result.ToJson(), Cancelled: false), result.Outcome);
     }
 
     /// <summary>The outcome of a call whose change was stopped before it was made (<see cref="ChangeCutOffException"/>).</summary>
@@ -150,8 +204,15 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
                     throw new ToolFailure("design",
                         $"{tool} doesn't take a design (design): only {string.Join(", ", DesignTools)} does. Nothing was stored or changed.");
                 }
+                // add_items takes a design per item (designs), the others one design.
+                if (tool == AddItemsTool.ToolName ? call.Design is not null : call.Designs is not null)
+                {
+                    throw new ToolFailure("design", tool == AddItemsTool.ToolName
+                        ? "add_items takes designs, one per item in order, not a design (design). Nothing was stored or changed."
+                        : $"{tool} takes a design, not designs (design): only add_items takes one per item. Nothing was stored or changed.");
+                }
                 // Files are a design's: without one, none are checked or stored, so the call is refused before it runs.
-                if (call.Design is null && call.Files is { Count: > 0 })
+                if (!call.HasDesign && call.Files is { Count: > 0 })
                     throw new ToolFailure("design", "Files come only with a design (design): this call brought files and no design. Nothing was stored or changed.");
 
                 var given = call.Design is null ? null : RelayFrames.DesignGives;

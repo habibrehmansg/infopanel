@@ -24,6 +24,7 @@ public sealed class McpToolTests
         ["list_fonts"] = ApiScope.Read,
         ["create_profile"] = ApiScope.Edit,
         ["add_item"] = ApiScope.Edit,
+        ["add_items"] = ApiScope.Edit,
         ["update_item"] = ApiScope.Edit,
         ["remove_item"] = ApiScope.Edit,
         ["add_asset"] = ApiScope.Edit,
@@ -69,8 +70,22 @@ public sealed class McpToolTests
                 Assert.True(properties.ContainsKey(required!.GetValue<string>()), $"{name} requires an argument it doesn't define.");
             foreach (var (member, property) in properties)
             {
-                Assert.Contains(property!["type"]!.GetValue<string>(), new[] { "string", "integer", "number", "boolean", "object" });
+                Assert.Contains(property!["type"]!.GetValue<string>(), new[] { "string", "integer", "number", "boolean", "object", "array" });
                 Assert.False(string.IsNullOrWhiteSpace(property["description"]?.GetValue<string>()), $"{name}.{member} has no description.");
+                if (property["type"]!.GetValue<string>() != "array")
+                    continue;
+                // A list holds a bounded number of closed objects whose members are as the tools' own: described, of these types.
+                Assert.True(property["maxItems"]!.GetValue<int>() > 0, $"{name}.{member} has no bound.");
+                var element = property["items"]!.AsObject();
+                Assert.Equal("object", element["type"]!.GetValue<string>());
+                Assert.False(element["additionalProperties"]!.GetValue<bool>());
+                foreach (var required in element["required"]!.AsArray())
+                    Assert.True(element["properties"]!.AsObject().ContainsKey(required!.GetValue<string>()), $"{name}.{member} requires a member it doesn't define.");
+                foreach (var (inner, innerSchema) in element["properties"]!.AsObject())
+                {
+                    Assert.Contains(innerSchema!["type"]!.GetValue<string>(), new[] { "string", "integer", "number", "boolean", "object" });
+                    Assert.False(string.IsNullOrWhiteSpace(innerSchema["description"]?.GetValue<string>()), $"{name}.{member}.{inner} has no description.");
+                }
             }
         }
     }

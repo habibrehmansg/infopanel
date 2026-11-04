@@ -44,7 +44,10 @@ public sealed class RelayDesignTests
         long? deadline = null, long? sentAt = null)
     {
         var call = rig.Call(id, tool, arguments, sentAt);
-        if (design is not null)
+        // add_items takes a design per item (DesignCalls' first item), null for its item given as a scene.
+        if (design is not null && tool == "add_items")
+            call["designs"] = new JsonArray(design, null);
+        else if (design is not null)
             call["design"] = design;
         if (files is not null)
             call["files"] = new JsonArray([.. files.Select(f => (JsonNode)JsonValue.Create(f))]);
@@ -61,7 +64,24 @@ public sealed class RelayDesignTests
     public static readonly IReadOnlyDictionary<string, Func<JsonObject>> DesignCalls = new Dictionary<string, Func<JsonObject>>
     {
         ["add_item"] = () => new JsonObject { ["profile"] = "P", ["x"] = 5, ["y"] = 6, ["name"] = "Gauge" },
+        ["update_item"] = () => new JsonObject { ["profile"] = "P", ["item"] = "a", ["x"] = 7 },
+        ["add_items"] = () => new JsonObject
+        {
+            ["profile"] = "P",
+            ["items"] = new JsonArray(
+                new JsonObject { ["x"] = 5, ["y"] = 6, ["name"] = "Gauge" },
+                new JsonObject { ["scene"] = TestDocs.InputScene(), ["name"] = "Plain" }),
+        },
     };
+
+    /// <summary>A design for <paramref name="tool"/> on <paramref name="document"/>: <c>update_item</c>'s built on item <c>a</c> as it is now.</summary>
+    private static JsonObject DesignFor(string tool, ProfileDocument document, params string[] deps)
+    {
+        var design = Design(deps);
+        if (tool == "update_item")
+            design["basedOn"] = new JsonObject { ["instance"] = document.Instance, ["rev"] = document.Rev, ["item"] = "a" };
+        return design;
+    }
 
     [Fact]
     public void EveryDesignTool_HasACutoffTestAtEachWrite()
@@ -511,14 +531,17 @@ public sealed class RelayDesignTests
         Assert.Equal(before, engine.Written());
     }
 
-    public static TheoryData<string, int> CutoffsAtEachWrite()
+    public static TheoryData<string, string, int> CutoffsAtEachWrite()
     {
-        var data = new TheoryData<string, int>();
-        foreach (var cutoff in new[] { "cancel", "deadline", "closed", "callsDeadline" })
+        var data = new TheoryData<string, string, int>();
+        foreach (var tool in DesignCalls.Keys)
         {
-            // Writes 1 and 2 store the two files, write 3 is the commit.
-            for (var write = 1; write <= 3; write++)
-                data.Add(cutoff, write);
+            foreach (var cutoff in new[] { "cancel", "deadline", "closed", "callsDeadline" })
+            {
+                // Writes 1 and 2 store the two files, write 3 is the commit.
+                for (var write = 1; write <= 3; write++)
+                    data.Add(tool, cutoff, write);
+            }
         }
 
         return data;
@@ -531,7 +554,7 @@ public sealed class RelayDesignTests
     /// </summary>
     [Theory]
     [MemberData(nameof(CutoffsAtEachWrite))]
-    public async Task ADesign_CutOffBeforeAnyOfItsWrites_MakesNoneFromThereOn(string cutoff, int write)
+    public async Task ADesign_CutOffBeforeAnyOfItsWrites_MakesNoneFromThereOn(string tool, string cutoff, int write)
     {
         using var factory = new EngineFactory();
         var engine = new Engine(factory);
@@ -553,7 +576,8 @@ public sealed class RelayDesignTests
         };
 
         long? deadline = cutoff == "callsDeadline" ? rig.Clocks.RelayNow + 20_000 : null;
-        await peer.SendAsync(DesignCall(rig, "edit", "add_item", DesignCalls["add_item"](), Design(IdOf(Package), IdOf(Second)), [Package, Second], deadline));
+        var before = engine.Written();
+        await peer.SendAsync(DesignCall(rig, "edit", tool, DesignCalls[tool](), DesignFor(tool, document, IdOf(Package), IdOf(Second)), [Package, Second], deadline));
         await paused.Task.WaitAsync(Limit, Ct);
         switch (cutoff)
         {
@@ -580,7 +604,8 @@ public sealed class RelayDesignTests
         Assert.Equal(write > 1, workspace.Blobs.Exists(IdOf(Package)));
         Assert.Equal(write > 2, workspace.Blobs.Exists(IdOf(Second)));
         Assert.Equal(rev, document.Rev);
-        Assert.DoesNotContain(document.Current.Document.Items, i => i.Name == "Gauge");
+        Assert.Equal(before, engine.Written());
+        Assert.DoesNotContain(document.Current.Document.Items, i => i.Name == "Gauge" || (i is SceneItem { Source: not null }));
         if (cutoff != "closed")
             Assert.Equal("""{"type":"cancelled","id":"edit"}""", (await peer.NextAsync(Ct)).ToJsonString());
     }

@@ -33,6 +33,11 @@ public sealed class RelayToolRulesTests
     {
         ["create_profile"] = () => new JsonObject { ["name"] = "Made elsewhere", ["width"] = 100, ["height"] = 100 },
         ["add_item"] = () => new JsonObject { ["profile"] = "P", ["scene"] = TestDocs.InputScene() },
+        ["add_items"] = () => new JsonObject
+        {
+            ["profile"] = "P",
+            ["items"] = new JsonArray(new JsonObject { ["scene"] = TestDocs.InputScene() }, new JsonObject { ["scene"] = TestDocs.InputScene(), ["x"] = 30 }),
+        },
         ["update_item"] = () => new JsonObject { ["profile"] = "P", ["item"] = "a", ["x"] = 55 },
         ["remove_item"] = () => new JsonObject { ["profile"] = "P", ["item"] = "a" },
         ["add_asset"] = () => new JsonObject { ["svg"] = Svg },
@@ -444,6 +449,14 @@ public sealed class RelayToolRulesTests
             {
                 engine.Called.Enqueue(tool);
                 var answer = await ((IRelayToolHost)engine.Host).CallAsync(tool, arguments, context, ct);
+                engine.Answers.Writer.TryWrite((context.Id, answer));
+                return answer;
+            }
+
+            public async Task<RelayToolAnswer> ReadAsync(string profile, string item, bool detail, RelayCallContext context, CancellationToken ct)
+            {
+                engine.Called.Enqueue("read");
+                var answer = await ((IRelayToolHost)engine.Host).ReadAsync(profile, item, detail, context, ct);
                 engine.Answers.Writer.TryWrite((context.Id, answer));
                 return answer;
             }

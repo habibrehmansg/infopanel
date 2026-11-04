@@ -47,8 +47,10 @@ with 1009) and 272 levels deep (the formats' 256 and an envelope, as on the loca
 | `{"type":"hello","protocol":1,"engineVersion":"2.0.1","features":["design"]}` | First, once open. `features` lists what the engine takes beyond the protocol: `design`, a call's design ([below](#designs)). A relay sends a design only to an engine that lists it, and reads the list tolerantly (an entry it doesn't know is ignored) |
 | `{"type":"time","nonce":"‹128 random bits, base64url›"}` | A reading of the relay's clock ([below](#never-late)) |
 | `{"type":"result","id":…,"result":{"content":[…],"isError":false}}` | A call's answer, as MCP's `tools/call` result. One that would be over 9 MiB is an error result saying so |
-| `{"type":"late","id":…}` | The call was sent too long ago; it didn't run |
-| `{"type":"cancelled","id":…}` | The call's change was stopped before it was made: nothing changed |
+| `{"type":"item","id":…,"instance":…,"rev":12,"profile":"‹id›","item":{…},"detail":"‹text›"}` | A `read`'s answer ([below](#designs)) |
+| `{"type":"stale","id":…}` | The design's base no longer holds inside the same document: nothing changed ([below](#designs)) |
+| `{"type":"late","id":…}` | The call (or read) was sent too long ago; it didn't run |
+| `{"type":"cancelled","id":…}` | The call's change was stopped before it was made: nothing changed (for a `read`: it was stopped before it answered) |
 | `{"type":"error","code":…,"id":…}` | A frame the engine didn't take: `unsupported` (a type it doesn't dispatch, or a binary frame), `malformed` (not JSON, too deep, no `type`, a known type missing what it needs, or text anywhere in the frame that doesn't decode, such as an escaped lone surrogate, in a member no type reads too, checked before the frame is dispatched), `busy` (8 calls already run), `duplicate` (a call whose `id` is running). `id` is the frame's, when it had one of 1 to 64 base64url characters |
 | `{"type":"bye"}` | The setting was turned off |
 
@@ -58,10 +60,11 @@ The relay sends:
 |---|---|
 | `{"type":"welcome"}` | `connected`; reads the relay's clock |
 | `{"type":"time","nonce":…,"now":1762214400000}` | The answer to its reading with that nonce: the relay's clock, in ms since 1970 UTC. Another nonce is ignored |
-| `{"type":"call","id":…,"tool":"add_item","arguments":{…},"sentAt":…,"deadline":…,"maxChars":140000}` | Runs the tool ([below](#calls)). `sentAt` is the relay's clock when it sent the call, in ms since 1970 UTC (one past 9999-12-31, what a time holds, is `malformed`; one ahead of the relay's clock still gets at most 60 s, [below](#never-late)); `deadline`, optional, the latest its change may be made, on the same clock (a time as `sentAt` is, else `malformed`; the engine takes the earlier of it and `sentAt` + 60 s, [below](#never-late)); `maxChars`, optional, the most text the AI app takes (brought within 1,000 and 9 MiB). For `add_item` also `design` and `files` ([below](#designs)) |
-| `{"type":"cancel","id":…}` | Trips the call's cutoff: its change stops unmade |
+| `{"type":"call","id":…,"tool":"add_item","arguments":{…},"sentAt":…,"deadline":…,"maxChars":140000}` | Runs the tool ([below](#calls)). `sentAt` is the relay's clock when it sent the call, in ms since 1970 UTC (one past 9999-12-31, what a time holds, is `malformed`; one ahead of the relay's clock still gets at most 60 s, [below](#never-late)); `deadline`, optional, the latest its change may be made, on the same clock (a time as `sentAt` is, else `malformed`; the engine takes the earlier of it and `sentAt` + 60 s, [below](#never-late)); `maxChars`, optional, the most text the AI app takes (brought within 1,000 and 9 MiB). For `add_item` and `update_item` also `design` and `files`, for `add_items` `designs` and `files` ([below](#designs)) |
+| `{"type":"read","id":…,"profile":…,"item":…,"detail":true,"sentAt":…,"deadline":…,"maxChars":140000}` | Reads one item ([below](#designs)): answered `item`, or a `result` with `isError`. It arrives as a call does: counted among the 8, late by `sentAt` + 10 s, cancellable |
+| `{"type":"cancel","id":…}` | Trips the call's cutoff: its change stops unmade (a `read`'s: it answers `cancelled`) |
 
-The engine dispatches only these four types; any other gets `error` `unsupported` and nothing closes, so the relay can
+The engine dispatches only these five types; any other gets `error` `unsupported` and nothing closes, so the relay can
 add types without a new protocol. A protocol the relay can't serve, it closes with 4426.
 
 ## Calls
@@ -94,7 +97,8 @@ add types without a new protocol. A protocol the relay can't serve, it closes wi
 
 ## Designs
 
-A call to `add_item` from elsewhere may bring a design the service produced instead of a `scene`: the item's box, scene,
+A call to `add_item` or `update_item` from elsewhere may bring a design the service produced instead of a `scene` (and
+one to `add_items` a design per item, [below](#designs)): the item's box, scene,
 how it was produced and where it came from, as the document holds them ([document](../../spec/docs/document.md#source-and-origin)),
 with the texts its `source` needs stored. The engine checks it as any item the API is given and never interprets it.
 
@@ -107,9 +111,11 @@ with the texts its `source` needs stored. The engine checks it as any item the A
 - **The frame.** `design` is an object with `source` and `scene`, each an object, and optionally `layout` and `origin`,
   each an object; `files` a list of text. With a design, the arguments hold no `scene`, `width` or `height` (the design
   is the item's scene and box). Anything else is `malformed`.
-- **Only from elsewhere, only to `add_item`.** The local channel's calls carry only arguments, and a `design` or `files`
-  among them isn't one of the tool's. A design or files on a call to another tool, or non-empty `files` without a
-  design, is an error result, `design`, with nothing stored or changed (`files: []` without a design is taken as none).
+- **Only from elsewhere, only to `add_item`, `update_item` and `add_items`.** The local channel's calls carry only
+  arguments, and a `design`, `designs` or `files` among them isn't one of the tool's. A design or files on a call to
+  another tool, `designs` on a call to `add_item` or `update_item`, a `design` on one to `add_items`, or non-empty
+  `files` without a design, is an error result, `design`, with nothing stored or changed (`files: []` without a design
+  is taken as none).
 - **Checked before anything is written:** at most 16 files, each at most 1 MiB as UTF-8; each file's SHA-256
   (`sha256:` and 64 hexadecimal digits, as `POST /api/blobs` names a blob) must be one of the design's `source.deps`,
   and every dep must be one of the files or already stored (as a verified read finds it: a file under the id whose
@@ -117,9 +123,11 @@ with the texts its `source` needs stored. The engine checks it as any item the A
   media source (the web-image rule). The first miss is an error result naming it (`files`, `design`, `missingDep`:
   "add_asset gives an SVG's id", or `webImage`), and nothing is stored or changed. Then the item it would insert is
   built and checked against the profile as it is, by the commit's own checks, applying nothing (its layout, group,
-  index and bindings, and the commit's every other refusal): a conflict (the profile changed since it was read) reads
-  it again and rebuilds once, as a commit's does; any other refusal is the tool's error, and nothing is stored or
-  changed.
+  index and bindings, and the commit's every other refusal), and every change the call makes is held to the web-image
+  rule on the profile as read (an `add_items` item given as a scene, or `update_item`'s bindings for an item showing
+  a web image, included): a conflict (the profile changed since it was read) reads it again and rebuilds once, as a
+  commit's does; any other refusal is the tool's error, and nothing is stored or changed. The commit asks the rule
+  again on the profile as it finds it.
 - **Then the files are stored** as `POST /api/blobs` stores bytes (already-stored bytes are kept as they are), each
   behind the call's cutoff, under the blob store's lock; then the item is inserted as `add_item` inserts one: a new id,
   the call's `x`, `y`, `name`, `bindings`, `group` and `index`, and the design's `layout`, `scene`, `source` and
@@ -129,7 +137,60 @@ with the texts its `source` needs stored. The engine checks it as any item the A
   the commit, the call is an error result, `notFound`, and no profile is changed: every check before the files are
   stored and every commit attempt (a retry's too) asks it under the profile's lock.
 - **Cut off part way:** the files stored before the cutoff stay, unreferenced, and are swept as any such blob is
-  (24 hours after they were stored, [API](../../spec/docs/api.md)); the item isn't added.
+  (24 hours after they were stored, [API](../../spec/docs/api.md)); the item isn't added or changed.
+
+**Adding items by designs.** `add_items` adds up to 50 items in one commit and one undo step, all or nothing, each as
+`add_item` adds one; from elsewhere, `designs` gives a design per item of its `items`, in order, `null` for an item
+given as a `scene`:
+
+```jsonc
+{"type":"call","id":…,"tool":"add_items","arguments":{"profile":"Overview","items":[{"x":10,"y":20},{"x":10,"y":70,"scene":{…}}]},"sentAt":…,"deadline":…,
+ "files":["‹text›"],
+ "designs":[{"layout":{…},"source":{…},"scene":{…},"origin":{…}},null]}
+```
+
+- `designs` is a list as long as `items`, each a design (as above) or `null`, never beside `design`; an item with a
+  design holds no `scene`, `width` or `height`. Anything else is `malformed`.
+- The files and every design are checked together before anything is written, as one design's are (at most 16 files
+  in all; each file a dep of some design), then the insertion of every item is checked against the profile, then the
+  files are stored, then the items are inserted in one commit behind the cutoff, with the profile held as for
+  `add_item`. One item refused (its arguments, its group, its design, or the engine's checks, which name it as
+  `items/‹its place›/…`) refuses the call whole: nothing is stored or changed.
+
+**Reading an item.** A `read` names a profile and an item, each by id or exact name, as `get_profile` does. The answer,
+`item`, holds the ids it resolved (`profile`, and the item's own `id`), the document's tag (`instance`) and revision
+(`rev`), and the item whole as the document holds it, all from one snapshot; with `detail`, also `get_profile`'s text for
+the item from that same snapshot, a sourced item's without its scene and source (the item carries them). With
+`maxChars`, the detail is held within it by its structure, so it still parses as JSON: a longer one gains a `cut`
+member saying so, and loses in turn the list of items, the item's scene and source, the length of every text but
+the ids (names, what made it, each binding), then its bindings; the ids, size and revision stay whole. A profile or
+item it can't resolve, or a name more than one item has, is an error result (`notFound`, `ambiguous`), held to
+`maxChars` as a call's answer is. A read's cutoff is asked before it reads and again before it answers: tripped
+(`cancel`, the connection's close, its deadline), it answers `cancelled`. Later frames name what the read resolved by
+these ids.
+
+**Changing an item by a design.** `update_item`'s design also names what it was built on:
+
+```jsonc
+"design":{"layout":{…},"source":{…},"scene":{…},"basedOn":{"instance":"‹the read's instance›","rev":12,"item":"‹the read's item id›"}}
+```
+
+- `basedOn` is required on `update_item` (without it, an error result `design`) and is an object with `instance` and
+  `item`, each text, and `rev`, a whole number from 0 (else `malformed`).
+- **Another document or item ends the call:** a profile whose tag isn't `basedOn.instance`, or an item the call names
+  that isn't `basedOn.item`, is the error result "The profile was replaced or the item changed since this change was
+  prepared; nothing was changed." (`basedOn`), checked as the call starts, before anything is stored. It is never
+  `stale`. After that the profile is held as `add_item`'s is: deleted, replaced or renamed before the commit, the call
+  is `notFound` with nothing changed.
+- **One commit, one undo step:** the design is set (`setDesign`: its `layout`, `scene` and `source`; the item's `origin`
+  kept) based on `basedOn.rev`, beside the call's other changes (placement, bindings, name, visibility) based on the
+  revision the engine reads, as for any `update_item`, checked against the profile before its files are stored, with
+  the save rule as for any change.
+- **`stale`, never a rebuild:** a conflict on the design's own change (its layout, scene or source changed since
+  `basedOn.rev`), found by the check before the files are stored or by the commit, answers `stale` at once, with
+  nothing changed; the engine can't rebuild a design it didn't produce, so the service may read the item again and
+  build it once more. A move, rename or other change meanwhile doesn't conflict with the design; any other conflict
+  keeps the one retry every change has.
 
 ## Never late
 
@@ -179,7 +240,17 @@ before its write and again past where a check before its lock would have passed 
 and `locking`) and then cut off by `cancel`, its deadline or the connection's close. `InfoPanel.Core.Tests` holds each
 write's guard to its lock (a commit, a create, a blob) with the lock held and the write waiting for it. Designs
 (`RelayDesignTests`): inserted as given, files under their hashes, each refusal with nothing stored, the profile renamed (away, or away and back) at each point up to a retry's commit, and the cutoff
-before each file and the commit (`EveryDesignTool_HasACutoffTestAtEachWrite` fails for a tool that takes a design without
-one). **Frame fixtures:** `InfoPanel.Core.Tests/Fixtures/relay/frames.json` holds one frame of each kind either side
+before each file and the commit for each tool that takes one (`EveryDesignTool_HasACutoffTestAtEachWrite` fails for a
+tool that takes a design without one). Reads (`RelayReadTests`): whole with the ids, the tag and the revision, the
+detail from the same revision and held to `maxChars` by its structure (still JSON, at the longest names, `source.ref`
+and bindings), `notFound` and `ambiguous` as results held to `maxChars`, a read cancelled before it reads or before it
+answers `cancelled` (the tool host's step hook, `reading` and `read`), late reads refused unread.
+Changes by a design (`RelayUpdateDesignTests`): one commit and one undo step with the origin kept, another tag or item
+the error and never `stale`, a design changed meanwhile `stale` with no retry, a move meanwhile not, the profile renamed
+while the design is checked refused, a design beside bindings for an item showing a web image refused with nothing
+stored. Batches (`RelayAddItemsTests`): 50 items in one commit and one undo step, the 51st refused, one bad item
+refusing them all with nothing stored, a web image given as a scene beside a design refused with nothing stored, a
+design per item with `null` for a scene item.
+**Frame fixtures:** `InfoPanel.Core.Tests/Fixtures/relay/frames.json` holds one frame of each kind either side
 sends; `RelayFrameFixtureTests` holds the engine to them (its own written exactly so, the relay's read as what they are),
 so a relay can test its own parsing against the same file.

@@ -160,6 +160,49 @@ public sealed class RelayFramesTests
     }
 
     [Fact]
+    public void ACallsDesigns_AreRead_OnePerItem_NullForAnItemGivenAsAScene()
+    {
+        var call = Assert.IsType<RelayFrame.Call>(Read("""
+            {"type":"call","id":"c","tool":"add_items","arguments":{"profile":"P","items":[{"x":5},{"scene":{}},{"name":"n"}]},"sentAt":5,
+             "files":["one"],
+             "designs":[{"source":{"format":"example.widget/1"},"scene":{"format":"infopanel.scene/1"}},null,{"layout":{"w":10},"source":{},"scene":{}}]}
+            """));
+        Assert.Null(call.Design);
+        Assert.Equal(["one"], call.Files);
+        Assert.Equal(3, call.Designs!.Count);
+        Assert.Equal("""{"source":{"format":"example.widget/1"},"scene":{"format":"infopanel.scene/1"}}""", call.Designs[0]!.Value.GetRawText());
+        Assert.Null(call.Designs[1]);
+        Assert.Equal("""{"layout":{"w":10},"source":{},"scene":{}}""", call.Designs[2]!.Value.GetRawText());
+
+        // Null is absent.
+        Assert.Null(Assert.IsType<RelayFrame.Call>(Read("""{"type":"call","id":"c","tool":"t","sentAt":5,"designs":null}""")).Designs);
+    }
+
+    [Theory]
+    [InlineData("""{"designs":"x"}""")]
+    [InlineData("""{"designs":{}}""")]
+    [InlineData("""{"designs":[5]}""")]
+    [InlineData("""{"designs":[{"scene":{}}]}""")]
+    [InlineData("""{"designs":[{"source":{},"scene":{}}],"design":{"source":{},"scene":{}}}""")]
+    // One per item: as many as the arguments' items, which must be a list.
+    [InlineData("""{"designs":[null,null]}""")]
+    [InlineData("""{"designs":[]}""")]
+    [InlineData("""{"arguments":{"profile":"P"},"designs":[null]}""")]
+    [InlineData("""{"arguments":{"profile":"P","items":{}},"designs":[null]}""")]
+    // A design is its item's scene and box: that item doesn't give them too.
+    [InlineData("""{"arguments":{"profile":"P","items":[{"scene":{}}]},"designs":[{"source":{},"scene":{}}]}""")]
+    [InlineData("""{"arguments":{"profile":"P","items":[{"width":10}]},"designs":[{"source":{},"scene":{}}]}""")]
+    [InlineData("""{"arguments":{"profile":"P","items":[{"height":10}]},"designs":[{"source":{},"scene":{}}]}""")]
+    [InlineData("""{"arguments":{"profile":"P","items":[5]},"designs":[{"source":{},"scene":{}}]}""")]
+    public void DesignsNotAsTheyMustBe_AreMalformed(string members)
+    {
+        var frame = System.Text.Json.Nodes.JsonNode.Parse("""{"type":"call","id":"c","tool":"add_items","sentAt":5,"arguments":{"profile":"P","items":[{}]}}""")!.AsObject();
+        foreach (var (name, value) in System.Text.Json.Nodes.JsonNode.Parse(members)!.AsObject())
+            frame[name] = value?.DeepClone();
+        Assert.Equal(new RelayFrame.Refused("malformed", "c"), Read(frame.ToJsonString()));
+    }
+
+    [Fact]
     public void AReading_CountsOnlyWithin2sOnBothClocks()
     {
         var time = new ManualTimeProvider(new DateTimeOffset(2026, 11, 4, 0, 0, 0, TimeSpan.Zero));
