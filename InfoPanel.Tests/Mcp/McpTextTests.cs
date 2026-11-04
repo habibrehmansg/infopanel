@@ -67,6 +67,42 @@ public sealed class McpTextTests : IDisposable
     }
 
     [Fact]
+    public void TheScenesTopic_NamesTheLogicAndMinMaxOperators_AndTheFontAdvice()
+    {
+        var topic = new McpText(null, McpToolHost.ToolNames.ToHashSet(), _log).Topic("scenes")!;
+        foreach (var op in new[] { "and", "or", "not", "min", "max" })
+            Assert.Contains($"`{op}`", topic);
+        Assert.Contains("list_fonts", topic);
+        Assert.Contains("Inter is bundled", topic);
+    }
+
+    [Fact]
+    public void EveryJsonExpressionInTheScenesTopic_ValidatesAgainstTheExpressionSchema()
+    {
+        var topic = new McpText(null, McpToolHost.ToolNames.ToHashSet(), _log).Topic("scenes")!;
+        // Every inline code span (fenced blocks set aside: the whole scene example) that mentions "op", whatever its
+        // spacing or line breaks, is an expression example and must validate.
+        var inline = System.Text.RegularExpressions.Regex.Replace(topic, @"```[\s\S]*?```", "");
+        var examples = System.Text.RegularExpressions.Regex.Matches(inline, @"`([^`]*)`").Select(m => m.Groups[1].Value)
+            .Where(s => System.Text.RegularExpressions.Regex.IsMatch(s, @"""op""\s*:")).ToList();
+        Assert.True(examples.Count >= 5, $"Only {examples.Count} expression examples found.");
+        foreach (var example in examples)
+        {
+            using var json = JsonDocument.Parse(example);
+            var op = json.RootElement.GetProperty("op").GetString();
+            // The conditions are shown as a node's `visible`, which takes a boolean expression.
+            var def = op is "and" or "or" or "not" ? "boolExpr" : "anyExpr";
+            var result = InfoPanel.Spec.SpecSchemas.Strict.Validate(json.RootElement, InfoPanel.Spec.SpecSchemas.Expression + "#/$defs/" + def);
+            Assert.True(result.IsValid, $"{example} ({def}): {string.Join("; ", result.Errors)}");
+        }
+        // One example for the conditions (or, not) and one for min and max (max) are among them.
+        // Each as the example's own operator, so the conditions were checked as boolean expressions above.
+        var tops = examples.Select(e => { using var j = JsonDocument.Parse(e); return j.RootElement.GetProperty("op").GetString(); }).ToList();
+        foreach (var op in new[] { "or", "not", "max" })
+            Assert.Contains(op, tops);
+    }
+
+    [Fact]
     public void ALiveToolsFile_MergesPerTool_AndIsReadOnEveryCall()
     {
         var text = Text();

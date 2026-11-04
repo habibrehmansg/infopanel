@@ -42,6 +42,15 @@ A profile is a canvas (`width` × `height` pixels, a `background` colour) holdin
   comparisons and `if`, `concat`, `format` (a number as text, with `decimals`), `formatTime` (the clock as text, e.g.
   `"pattern": "HH:mm"`), `time`, `box` (the item's layout box: `{ "op": "box", "field": "w" }`), `steps` (thresholds to
   colours or texts), `value` (a named value) and `state` (a cell that keeps its value between ticks, for smoothing).
+  Conditions combine with `and` and `or` (2 to 16 conditions) and `not` (one): a node's `visible` can be
+  `{ "op": "or", "args": [ { "op": "gt", "args": [ { "op": "input", "name": "cpu" }, 90 ] }, { "op": "gt", "args": [ { "op": "input", "name": "gpu" }, 85 ] } ] }`,
+  shown while either input is above its limit, and `{ "op": "not", "args": [ { "op": "gt", "args": [ { "op": "input", "name": "cpu" }, 90 ] } ] }`
+  is shown while the CPU is at or below its limit. `min` and `max` take 2 to 16 numbers, so two lines drawn on one scale take that scale from the larger
+  of their maxima, `{ "op": "max", "args": [ { "op": "history", "input": "a", "fn": "max", "count": 120 }, { "op": "history", "input": "b", "fn": "max", "count": 120 } ] }`,
+  never their sum (`add`), which would squash both.
+- **Fonts**: Inter is bundled with the engine and looks the same on every computer. Any other family must be one
+  `list_fonts` lists and may be missing on another computer; don't align anything by its glyph widths, give text a box
+  and `align` instead.
 - **The box**: a scene that reads `box` follows its item's `layout` when the item is resized; one that doesn't is drawn
   at its own size.
 - **The preview's checks**: `render_preview` lists text that doesn't fit its box (give text a `w` and, for a value
