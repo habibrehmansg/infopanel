@@ -5,7 +5,7 @@ namespace InfoPanel.Tests.Shell;
 
 /// <summary>
 /// The shell's platform for tests: records the icon, hands out menus as the OS would each time one opens, invokes items
-/// as a click does, and answers prompts from a queue. Nothing is drawn.
+/// as a click does, answers prompts from a queue, and keeps what is copied. Nothing is drawn.
 /// </summary>
 public sealed class FakeShellPlatform : IShellPlatform
 {
@@ -57,6 +57,24 @@ public sealed class FakeShellPlatform : IShellPlatform
     {
         lock (_lock)
             Removed = true;
+    }
+
+    private readonly List<string> _copied = [];
+
+    /// <summary>What was put on the clipboard, in order.</summary>
+    public IReadOnlyList<string> Copied
+    {
+        get
+        {
+            lock (_lock)
+                return [.. _copied];
+        }
+    }
+
+    public void CopyText(string text)
+    {
+        lock (_lock)
+            _copied.Add(text);
     }
 
     /// <summary>The next prompt is answered with the button at <paramref name="index"/>.</summary>

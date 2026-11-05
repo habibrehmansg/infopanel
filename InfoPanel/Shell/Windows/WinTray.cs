@@ -341,11 +341,11 @@ internal sealed class WinTray(IWinTrayNative native, WinStartup startup, uint ta
             on = null;
         }
 
-        var entries = WinTrayMenu.Flatten(_menu!(), on);
+        var entries = WinTrayMenu.Lines(_menu!(), on);
         var command = native.ShowMenu(entries, x, y);
         if (command == 0 || _closed)
             return;
-        var chosen = entries.FirstOrDefault(e => e.Command == command);
+        var chosen = WinTrayMenu.Find(entries, command);
         if (chosen == null)
             return;
 

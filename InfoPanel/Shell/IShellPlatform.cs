@@ -33,6 +33,14 @@ public interface IShellPlatform
 
     /// <summary>The system asks the app to quit (logout, shutdown, the Dock or Activity Monitor): stop without asking.</summary>
     event Action? TerminateRequested;
+
+    /// <summary>
+    /// Puts <paramref name="text"/> on the system's clipboard as plain text (Copy Engine Details). Any thread. A platform
+    /// without a clipboard of its own keeps this default, which does nothing.
+    /// </summary>
+    void CopyText(string text)
+    {
+    }
 }
 
 /// <summary>No menu-bar item: <c>--no-tray</c>, off the main thread (every test host), or an OS without one yet.</summary>

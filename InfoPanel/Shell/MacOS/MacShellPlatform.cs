@@ -9,7 +9,7 @@ namespace InfoPanel.Shell.MacOS;
 /// The menu-bar item on macOS through AppKit (libobjc interop, as <see cref="MacDesktopPlatform"/>): an
 /// <c>NSStatusItem</c> whose button shows <see cref="ShellGlyph"/> as a template image (18 points, drawn at 2×) with the
 /// engine's address as its tooltip, and an <c>NSMenu</c> rebuilt from the engine's model each time it opens
-/// (<c>menuNeedsUpdate:</c>). Prompts are <c>NSAlert</c>s run modally, the app brought forward first (an accessory app
+/// (<c>menuNeedsUpdate:</c>), its submenus and check marks included. Copied text goes to the general <c>NSPasteboard</c>. Prompts are <c>NSAlert</c>s run modally, the app brought forward first (an accessory app
 /// isn't active), one at a time, each from a run-loop timer rather than from the main queue's callback: an alert run
 /// inside a queued callback would hold the main queue, so nothing else posted (closing windows, removing the item, the
 /// engine's stop) could run until someone answered it. The engine's stop (<see cref="Remove"/>) dismisses an open
@@ -34,6 +34,16 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
 
     /// <summary><c>NSEventTypeApplicationDefined</c>, posted to wake the loop after a prompt is dismissed.</summary>
     private const nuint ApplicationDefinedEvent = 15;
+
+    /// <summary><c>NSControlStateValueOn</c>: a menu item's check mark.</summary>
+    private const nint ControlStateOn = 1;
+
+    /// <summary><c>NSPasteboardTypeString</c>'s value.</summary>
+    private const string PlainTextType = "public.utf8-plain-text";
+
+    /// <summary><c>objc_msgSend</c> for a method of two objects that answers a <c>BOOL</c> (<c>setString:forType:</c>).</summary>
+    private static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, byte> SendBoolIdId =
+        (delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, byte>)NativeLibrary.GetExport(NativeLibrary.Load("/usr/lib/libobjc.A.dylib"), "objc_msgSend");
 
     private static readonly Serilog.ILogger Logger = Log.ForContext<MacShellPlatform>();
 
@@ -244,7 +254,17 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
         _ids.Clear();
         if (_menuSource is not { } source)
             return;
-        foreach (var line in source().Items)
+        AddLines(menu, source().Items);
+    }
+
+    /// <summary>
+    /// Adds <paramref name="lines"/> to <paramref name="menu"/>: separators, greyed status lines, actions (each tagged with
+    /// its index in <see cref="_ids"/>, check marks as the model says) and submenus, each an <c>NSMenu</c> of its own built
+    /// now with the rest (only the top menu is rebuilt as it opens, and a submenu is part of it).
+    /// </summary>
+    private void AddLines(IntPtr menu, IReadOnlyList<ShellMenuItem> lines)
+    {
+        foreach (var line in lines)
         {
             if (line.Kind == ShellItemKind.Separator)
             {
@@ -259,11 +279,34 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
             _ids.Add(line.Id);
             if (action != IntPtr.Zero)
                 ObjC.SendVoidId(item, ObjC.Sel("setTarget:"), _target);
+            if (line.Checked)
+                ObjC.SendVoidInt(item, ObjC.Sel("setState:"), ControlStateOn);
+            if (line.Kind == ShellItemKind.Submenu)
+            {
+                var submenu = ObjC.SendId(ObjC.Send(ObjC.Class("NSMenu"), ObjC.Sel("alloc")), ObjC.Sel("initWithTitle:"), ObjC.NSString(line.Label));
+                ObjC.SendVoidBool(submenu, ObjC.Sel("setAutoenablesItems:"), 0);
+                AddLines(submenu, line.Children);
+                ObjC.SendVoidId(item, ObjC.Sel("setSubmenu:"), submenu);
+                ObjC.SendVoid(submenu, ObjC.Sel("release"));
+            }
+
             ObjC.SendVoidBool(item, ObjC.Sel("setEnabled:"), line.Enabled ? (byte)1 : (byte)0);
             ObjC.SendVoidId(menu, ObjC.Sel("addItem:"), item);
             ObjC.SendVoid(item, ObjC.Sel("release"));
         }
     }
+
+    /// <summary>
+    /// Puts <paramref name="text"/> on the general pasteboard as plain text, on the main thread: <c>clearContents</c>, then
+    /// <c>setString:forType:</c> with <c>public.utf8-plain-text</c> (<c>NSPasteboardTypeString</c>).
+    /// </summary>
+    public void CopyText(string text) => loop.Post(() =>
+    {
+        var board = ObjC.Send(ObjC.Class("NSPasteboard"), ObjC.Sel("generalPasteboard"));
+        ObjC.Send(board, ObjC.Sel("clearContents"));
+        if (SendBoolIdId(board, ObjC.Sel("setString:forType:"), ObjC.NSString(text), ObjC.NSString(PlainTextType)) == 0)
+            Logger.Warning("The engine's details couldn't be put on the clipboard");
+    });
 
     [UnmanagedCallersOnly]
     private static void MenuNeedsUpdate(IntPtr self, IntPtr sel, IntPtr menu) => Guard(() => _current?.Rebuild(menu));

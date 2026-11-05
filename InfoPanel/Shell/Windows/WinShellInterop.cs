@@ -83,7 +83,7 @@ internal unsafe struct ACTCTXW
 
 /// <summary>
 /// The Win32 functions the notification-area icon calls (shell32, the menu and icon parts of user32, comctl32's task
-/// dialog, the taskbar's DPI, kernel32's activation contexts): hand-written <c>LibraryImport</c>s with blittable arguments, each returning the raw <c>BOOL</c>, handle or
+/// dialog, the taskbar's DPI, kernel32's activation contexts, the clipboard): hand-written <c>LibraryImport</c>s with blittable arguments, each returning the raw <c>BOOL</c>, handle or
 /// code.
 /// </summary>
 [SupportedOSPlatform("windows")]
@@ -108,6 +108,7 @@ internal static unsafe partial class WinShellInterop
     public const uint MF_STRING = 0x0000;
     public const uint MF_GRAYED = 0x0001;
     public const uint MF_CHECKED = 0x0008;
+    public const uint MF_POPUP = 0x0010;
     public const uint MF_SEPARATOR = 0x0800;
 
     public const uint TPM_LEFTALIGN = 0x0000;
@@ -119,6 +120,9 @@ internal static unsafe partial class WinShellInterop
 
     public const int SM_MENUDROPALIGNMENT = 40;
     public const int SM_CXSMICON = 49;
+
+    public const uint CF_UNICODETEXT = 13;
+    public const uint GMEM_MOVEABLE = 0x0002;
 
     public const uint WM_NULL = 0x0000;
     public const uint MSGFLT_ALLOW = 1;
@@ -220,4 +224,31 @@ internal static unsafe partial class WinShellInterop
     /// <summary>In Common Controls 6 only: called inside <see cref="WinCommonControls.Enter"/>.</summary>
     [LibraryImport(Comctl32)]
     public static partial int TaskDialogIndirect(TASKDIALOGCONFIG* config, int* button, int* radioButton, int* verificationChecked);
+
+    [LibraryImport(User32, SetLastError = true)]
+    public static partial int OpenClipboard(nint owner);
+
+    [LibraryImport(User32, SetLastError = true)]
+    public static partial int EmptyClipboard();
+
+    [LibraryImport(User32, SetLastError = true)]
+    public static partial nint SetClipboardData(uint format, nint memory);
+
+    [LibraryImport(User32, SetLastError = true)]
+    public static partial nint GetClipboardData(uint format);
+
+    [LibraryImport(User32, SetLastError = true)]
+    public static partial int CloseClipboard();
+
+    [LibraryImport(Kernel32, SetLastError = true)]
+    public static partial nint GlobalAlloc(uint flags, nuint bytes);
+
+    [LibraryImport(Kernel32, SetLastError = true)]
+    public static partial void* GlobalLock(nint memory);
+
+    [LibraryImport(Kernel32, SetLastError = true)]
+    public static partial int GlobalUnlock(nint memory);
+
+    [LibraryImport(Kernel32, SetLastError = true)]
+    public static partial nint GlobalFree(nint memory);
 }

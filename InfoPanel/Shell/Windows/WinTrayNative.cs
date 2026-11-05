@@ -85,20 +85,7 @@ internal sealed unsafe class WinTrayNative(nint hwnd) : IWinTrayNative, IWinMess
 
         try
         {
-            foreach (var entry in entries)
-            {
-                if (entry.Flags.HasFlag(WinMenuFlags.Separator))
-                {
-                    AppendMenuW(menu, MF_SEPARATOR, 0, null);
-                    continue;
-                }
-
-                var flags = MF_STRING | (entry.Flags.HasFlag(WinMenuFlags.Disabled) ? MF_GRAYED : 0) | (entry.Flags.HasFlag(WinMenuFlags.Checked) ? MF_CHECKED : 0);
-                fixed (char* text = entry.Label)
-                    AppendMenuW(menu, flags, entry.Command, text);
-                if (entry.Flags.HasFlag(WinMenuFlags.Default))
-                    SetMenuDefaultItem(menu, entry.Command, 0);
-            }
+            Append(menu, entries);
 
             // The menu closes when the user clicks elsewhere only if its window is in the foreground; the null message
             // after it lets the next right click open it again (the documented TrackPopupMenu pattern).
@@ -111,6 +98,47 @@ internal sealed unsafe class WinTrayNative(nint hwnd) : IWinTrayNative, IWinMess
         finally
         {
             DestroyMenu(menu);
+        }
+    }
+
+    /// <summary>
+    /// Appends <paramref name="entries"/> to <paramref name="menu"/>: separators, lines (greyed, checked and the default
+    /// as their flags say) and submenus, each a popup menu of its own appended with <c>MF_POPUP</c>, which the menu then
+    /// owns (<c>DestroyMenu</c> on the menu destroys it too).
+    /// </summary>
+    private static void Append(nint menu, IReadOnlyList<WinMenuEntry> entries)
+    {
+        foreach (var entry in entries)
+        {
+            if (entry.Flags.HasFlag(WinMenuFlags.Separator))
+            {
+                AppendMenuW(menu, MF_SEPARATOR, 0, null);
+                continue;
+            }
+
+            if (entry.Flags.HasFlag(WinMenuFlags.Submenu))
+            {
+                var submenu = CreatePopupMenu();
+                if (submenu == 0)
+                {
+                    Logger.Error("The notification area icon's submenu {Item} couldn't be made ({Error})", entry.Id, Marshal.GetLastPInvokeError());
+                    continue;
+                }
+
+                Append(submenu, entry.Children);
+                int appended;
+                fixed (char* text = entry.Label)
+                    appended = AppendMenuW(menu, MF_STRING | MF_POPUP, (nuint)submenu, text);
+                if (appended == 0)
+                    DestroyMenu(submenu);
+                continue;
+            }
+
+            var flags = MF_STRING | (entry.Flags.HasFlag(WinMenuFlags.Disabled) ? MF_GRAYED : 0) | (entry.Flags.HasFlag(WinMenuFlags.Checked) ? MF_CHECKED : 0);
+            fixed (char* text = entry.Label)
+                AppendMenuW(menu, flags, entry.Command, text);
+            if (entry.Flags.HasFlag(WinMenuFlags.Default))
+                SetMenuDefaultItem(menu, entry.Command, 0);
         }
     }
 

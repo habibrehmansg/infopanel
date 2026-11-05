@@ -332,6 +332,9 @@ try
         sp.GetRequiredService<TimeProvider>(), engineLogger.ForContext<PairingKeys>()));
     builder.Services.AddSingleton(sp => new PairingPasses(settings, sp.GetRequiredService<ServiceCredentials>(), sp.GetRequiredService<PairingKeys>(),
         sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<PairingPasses>>()));
+    // Who holds the credential, asked of the service for the menu's signed-in line (the shell starts and stops it); kept in memory only.
+    builder.Services.AddSingleton(sp => new ServiceHolder(sp.GetRequiredService<ServiceClient>(), sp.GetRequiredService<ServiceCredentials>(),
+        sp.GetRequiredService<TimeProvider>(), engineLogger.ForContext<ServiceHolder>()));
     builder.Services.AddSingleton(recentLog);
     builder.Services.AddSingleton(regionalFormat);
     // The 1.x import: its limits (tests lower them), the 1.x folder, and one import read at a time.

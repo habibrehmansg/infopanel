@@ -6,14 +6,54 @@ for light and dark menu bars. On Windows it is an icon in the notification area,
 
 ## The menu
 
-Click the hexagon. The menu is built afresh each time it opens:
+Click the hexagon. The menu is built afresh from the engine's state each time it opens:
 
-1. "InfoPanel 2.0.0 is running" (grey, not clickable).
+1. "InfoPanel 2.0.0 is running" (grey, not clickable), and under it, grey, who is signed in: "Signed in as ‹name›" while
+   the engine holds a credential for the configured service and knows its holder; "Not signed in" while it holds none,
+   or the service refused the one it holds; nothing while it holds one whose holder isn't known yet. The engine asks
+   the configured service itself, with the credential (below, "Who is signed in").
 2. **Open Editor**: opens the editor in the browser, already signed in (below, "Opening the editor").
-3. **Quit InfoPanel** (⌘Q while the menu is open).
+3. **Show on Desktop ▸**, only while desktop windows are on (not `--no-windows`): each profile that can be opened, in
+   the library's order, with a check mark when its desktop window is on; "No Profiles Yet" (grey) when there are none;
+   past 20, the first 20 and **More in the Editor…**, which opens the editor. Choosing a profile turns its window on or
+   off as the editor's Show on desktop does: one `profile` commit of `window.enabled` (the rest of `window` as the
+   document has it) at the revision it read, read again on a conflict, one undo step; saved at once at that revision
+   when the profile had no unsaved changes, otherwise left unsaved with them. Each line asks for the state opposite the
+   check mark it showed, so a choice made after another client changed the window changes nothing.
+4. **Show Data Folder in Finder** and **Open Logs Folder**: the engine's own folders, as the editor's buttons open
+   them (`POST /api/folders/{folder}/open`). **Copy Engine Details**: what a bug report needs when the editor can't
+   connect, with the labels of the editor's own details, in a fenced block: the engine's version, protocol and
+   system, its build, when it started, the OS version, the architecture, its address and its data folder (the home
+   folder as `~`, its path matched as the home folder's volume compares names: on macOS as the volume says, asked once,
+   in any case when it can't be asked; in any case on Windows; with case elsewhere). Never the token, a
+   link, a profile, a reading or who is signed in.
+5. **Quit InfoPanel** (⌘Q while the menu is open).
+
+Every line has a stable id (`ShellMenu`'s constants; a profile's line `desktop:show:{id}` or `desktop:hide:{id}`), so
+another platform maps its own words to the same lines. Updates come later. Starting the engine never opens the editor:
+it opens only when asked (below, "Opening the editor").
 
 The item's tooltip is the engine's address ("InfoPanel — http://127.0.0.1:5296"), so two engines on one Mac can be told
 apart.
+
+## Who is signed in
+
+The engine learns the credential's holder from the configured service, with the credential itself: `GET
+{service address}/svc/v1/holder`, sent as every request to the service is (only to the address in effect, the credential
+as a bearer token, no redirect followed, with `--offline` only to a service on this computer), answered
+`{"name": string | null, "email": string}`. The line shows the name, else the email, without control characters, and
+past 40 characters its first 39 and "…".
+
+- **When it asks:** while the menu-bar item shows, at start, whenever the credential changes (a client provides one,
+  even the same again, or removes it; the service address changes), and again every 6 hours while it holds one, never
+  more often nor later, whatever a `Retry-After` asks. One request at a time, each bounded at 15 s, its answer read to
+  at most 4 KiB. Should the asking itself fail, the next change asks again. Opening the menu never waits for the
+  credential's store: it reads what the engine last learned.
+- **What it keeps:** the name, in memory only, for the credential it was asked with. An answer that comes after that
+  credential was replaced or removed is never shown for another. A failure (the service unreachable, a 5xx, a malformed
+  answer) keeps the name known for that same credential, else shows no line; a 401 refuses the credential (as for every
+  request), and the line says "Not signed in" until a client provides another.
+- **Never** stored, logged (the log file, the recent entries, `/api/logs`) or copied by Copy Engine Details.
 
 ## Quit
 
@@ -39,13 +79,18 @@ stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in star
   doesn't open a second tab.
 - **Right-click** it (or the menu key): the menu, built afresh each time, in Windows' sentence case (Windows menus stay
   light in dark mode):
-  1. "InfoPanel 2.0.0 is running" (grey);
+  1. "InfoPanel 2.0.0 is running" and who is signed in ("Signed in as ‹name›" or "Not signed in"), both grey;
   2. **Open editor** (bold: what a click does);
-  3. — **Start when I sign in** ✓;
-  4. — **Exit**.
+  3. — **Show on desktop ▸**, a submenu, while desktop windows are on: each profile, checked when its window is on;
+     "No profiles yet" (grey) when there are none; past 20, **More in the editor…**;
+  4. — **Open data folder** · **Open logs folder** · **Copy engine details** (on the clipboard as plain text);
+  5. — **Start when I sign in** ✓;
+  6. — **Exit**.
 
-  The words are the model's menu (`ShellMenu.Build`, the same as macOS's) in Windows' words (`WinShellText`): Open
-  Editor is "Open editor", Quit InfoPanel is "Exit"; an item it doesn't know keeps the model's words.
+  The lines and what each does are the model's menu (`ShellMenu.Build`, the same as macOS's) in Windows' words
+  (`WinShellText`, by each line's id): Open Editor is "Open editor", Show on Desktop "Show on desktop", Show Data
+  Folder in Finder "Open data folder", Quit InfoPanel "Exit", and so on; an item it doesn't know keeps the model's
+  words.
 - **Start when I sign in** is the value `InfoPanel` under the user's Run key
   (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), the engine's own program quoted (under the `dotnet` host:
   the host and the engine's assembly). It is read each time the menu opens, as Task Manager reads it (its Startup apps
@@ -132,15 +177,19 @@ release build). A build from source carries none and behaves as before.
 
 ## How it is built
 
-- One model for every OS (`InfoPanel/Shell/`): `ShellMenu.Build` makes the menu from the engine's state each time the
-  user opens it; `IShellPlatform` is the OS's side (show and remove the icon, hand out menus, report clicks, ask a
-  `ShellPrompt`: a title, a text, buttons, the default and the cancel one); `ShellService` (a hosted service) shows the
-  icon once the server listens, so Open Editor always has a port, removes it when the engine stops, and runs each
-  choice off the UI thread. `NullShellPlatform` is used everywhere the shell is off.
+- One model for every OS (`InfoPanel/Shell/`): `ShellMenu.Build` makes the menu from a `ShellState` (the version, the
+  credential and its holder's name, the profiles with their windows, whether desktop windows are on) each time the
+  user opens it: lines with an id, a label, a kind (action, status, separator, submenu), a check mark and a submenu's
+  lines; `IShellPlatform` is the OS's side (show and remove the icon, hand out menus, report clicks, ask a
+  `ShellPrompt`: a title, a text, buttons, the default and the cancel one; put text on the clipboard, a default that
+  does nothing); `ShellService` (a hosted service) shows the icon once the server listens, so Open Editor always has a
+  port, removes it when the engine stops, and runs each choice off the UI thread. `NullShellPlatform` is used
+  everywhere the shell is off.
 - macOS (`Shell/MacOS/MacShellPlatform.cs`): an `NSStatusItem` through libobjc, as desktop windows are (no binding
   package): the glyph drawn by `ShellGlyph` at 2× as a template image, an `NSMenu` whose delegate rebuilds it
-  (`menuNeedsUpdate:`), an `NSAlert` run modally for prompts (the app brought forward first, since it has no Dock icon),
-  and the application's delegate for the system's quit. Prompts run one at a time from a run-loop timer, never inside
+  (`menuNeedsUpdate:`) with its submenus and check marks (`setState:`), an `NSAlert` run modally for prompts (the app
+  brought forward first, since it has no Dock icon), the general `NSPasteboard` for Copy Engine Details, and the
+  application's delegate for the system's quit. Prompts run one at a time from a run-loop timer, never inside
   a queued main-queue callback, which would hold the queue until the alert is answered: the engine's stop still runs
   while one is open, and closes it as Cancel (`MacShellTests` stops an engine with it open; the host setting
   `Engine__ShellTestPrompt=true` asks it at start, in the `Test` host environment only: `ASPNETCORE_ENVIRONMENT=Test`).
@@ -161,15 +210,21 @@ release build). A build from source carries none and behaves as before.
 
 ## Tests
 
-- `InfoPanel.Tests/Shell/`: the menu model and the glyph; `ShellService` on the engine host with a fake platform
-  (`FakeShellPlatform`) and a recording browser launcher: when the icon comes and goes, Open Editor, Quit with and
-  without unsaved profiles, the prompt's names, a system quit; the choice of what runs (`DesktopHost.Choose`); the
-  flag.
+- `InfoPanel.Tests/Shell/`: the menu model (each state: signed in, not, unknown; no profiles, one, 20,
+  21; checks; desktop windows off; the lines' ids), Copy Engine Details' text (`EngineDetailsTests`) and the glyph;
+  `ShellService` on the engine host with a fake platform (`FakeShellPlatform`, which keeps what is copied), a fake
+  desktop, the engine's recording folder opener and a recording browser launcher: when the icon comes and goes, Open
+  Editor, Quit with and without unsaved profiles, the prompt's names, a system quit (`ShellServiceTests`); Show on
+  Desktop's commit and save, the folders, More in the Editor and the details (`ShellActionTests`); the signed-in line
+  from the service's answer on the engine host (`ShellSignedInTests`); when the engine asks, what it shows, the late
+  answer, the 401, the failures and the bounds (`ServiceHolderTests`); the choice of what runs
+  (`DesktopHost.Choose`); the flag.
 - `InfoPanel.Tests/Hosting/`: the link the engine opens (`WebClientLinkTests`: the built-in origin, the link's choice,
   no browser at start, the logs), the launcher and the redirect files (`BrowserLauncherTests`: the file's mode,
   contents and removal, no token in any argument, Chrome and the fallback per OS), a second launch as a child process
   (`SecondLaunchTests`), and the build property (`WebClientOriginTargetTests`).
-- `InfoPanel.Tests/Shell/Windows/` (any OS): the menu in Windows' words with its commands and default item, Start when
+- `InfoPanel.Tests/Shell/Windows/` (any OS): the menu in Windows' words with its commands and default item, Show on
+  desktop's submenu (its checks, none, 20 and more, a choice in it running the model's id), Start when
   I sign in (the Run value and Task Manager's switch, through a fake registry), a click, a double-click, a right click,
   `TaskbarCreated`, the theme, Exit's dialog in Windows' words, prompts one at a time, the icon's removal
   (`WinTrayTests`, through `FakeTrayNative`); the session's end, its hold over a scripted message queue (a second end
@@ -177,7 +232,8 @@ release build). A build from source carries none and behaves as before.
   empties) and a scale change (`WinTraySystemTests`); the glyph per
   theme and the Win32 structures' sizes and offsets (`WinShellPlatformTests`, `WinCommonControlsTests`). On Windows the
   registry itself, under a key of the test's own (`WinStartupTests`), and `TaskDialogIndirect` inside the engine's
-  Common Controls 6 in the test host, whose manifest isn't the engine's (`WinCommonControlsTests`).
+  Common Controls 6 in the test host, whose manifest isn't the engine's (`WinCommonControlsTests`), and Copy engine
+  details' clipboard outside a signed-in desktop (over SSH; skipped in one, whose clipboard is the user's).
 - `INFOPANEL_SHELL_TESTS=1 dotnet test InfoPanel.slnx --filter FullyQualifiedName~MacShellTests`: the built engine as a
   child process adds a real menu-bar item with `--no-windows`, and removes it and exits 0 on `SIGTERM` (skipped
   otherwise). On Windows, in a signed-in session, `…~WinShellPlatformTests` adds a real tray icon, adds it again on

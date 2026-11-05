@@ -117,6 +117,23 @@ public sealed class ServiceCredentials
     }
 
     /// <summary>
+    /// The credential's state, as <see cref="Status"/> reads it, and its generation, read together; never the credential.
+    /// What a reader learned from a request sent with that generation is about the credential kept while it stays the same.
+    /// </summary>
+    internal (ServiceCredentialState State, long Generation) StateAndGeneration
+    {
+        get
+        {
+            lock (_lock)
+            {
+                var state = _held is not { } held || held.Address != _address() ? ServiceCredentialState.Absent
+                    : held.Rejected ? ServiceCredentialState.Rejected : ServiceCredentialState.Present;
+                return (state, _generation);
+            }
+        }
+    }
+
+    /// <summary>
     /// Whether <paramref name="credential"/> is one the engine keeps: an RFC 6750 token (letters, digits, <c>-._~+/</c>,
     /// then any <c>=</c>), 1 to <see cref="MaxLength"/> characters.
     /// </summary>

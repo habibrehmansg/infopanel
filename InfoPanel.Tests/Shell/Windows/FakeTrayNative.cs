@@ -85,8 +85,10 @@ internal sealed class FakeTrayNative : IWinTrayNative
         OnHold();
     }
 
-    /// <summary>The command of the entry <paramref name="id"/> in <paramref name="entries"/>.</summary>
-    public static uint CommandOf(IReadOnlyList<WinMenuEntry> entries, string id) => entries.Single(e => e.Id == id).Command;
+    /// <summary>The command of the entry <paramref name="id"/> in <paramref name="entries"/> or one of their submenus.</summary>
+    public static uint CommandOf(IReadOnlyList<WinMenuEntry> entries, string id) => All(entries).Single(e => e.Id == id).Command;
+
+    private static IEnumerable<WinMenuEntry> All(IReadOnlyList<WinMenuEntry> entries) => entries.SelectMany(e => new[] { e }.Concat(All(e.Children)));
 }
 
 /// <summary>The registry for tests: values by key and name, as the Run and StartupApproved keys hold them.</summary>

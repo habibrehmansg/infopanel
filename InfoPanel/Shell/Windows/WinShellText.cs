@@ -15,10 +15,19 @@ internal static class WinShellText
     /// <summary>The item the Windows platform adds above Exit.</summary>
     public const string StartAtSignIn = "Start when I sign in";
 
-    /// <summary>The menu's words by item id.</summary>
+    /// <summary>
+    /// The menu's words by item id. The status line, the signed-in line and a profile's line (its name) are already the
+    /// same on Windows, so they keep the model's.
+    /// </summary>
     private static readonly Dictionary<string, string> MenuLabels = new()
     {
         [ShellMenu.OpenEditor] = "Open editor",
+        [ShellMenu.ShowOnDesktop] = "Show on desktop",
+        [ShellMenu.NoProfiles] = "No profiles yet",
+        [ShellMenu.MoreProfiles] = "More in the editor…",
+        [ShellMenu.ShowDataFolder] = "Open data folder",
+        [ShellMenu.OpenLogsFolder] = "Open logs folder",
+        [ShellMenu.CopyEngineDetails] = "Copy engine details",
         [ShellMenu.Quit] = "Exit",
     };
 

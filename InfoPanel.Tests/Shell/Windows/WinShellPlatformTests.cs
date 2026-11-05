@@ -167,6 +167,38 @@ public sealed class WinShellPlatformTests
         }
     }
 
+    [Fact]
+    public async Task CopyText_PutsThePlainTextOnTheClipboard()
+    {
+        // Never in a signed-in desktop, whose clipboard is the user's: over SSH or in a service the window station's
+        // clipboard is its own.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Windows clipboard.");
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.SkipWhen(WinDesktopPlatform.IsInteractiveWindowStation(), "Would replace the signed-in user's clipboard.");
+            await CopiedText();
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task CopiedText()
+    {
+        var thread = new WinUiThread();
+        try
+        {
+            var shell = new WinShellPlatform(thread);
+            const string text = "```\nInfoPanel 2.0.0 · Windows\nData folder: ~\\AppData\\Local\\InfoPanel\\v2 — “ok”\n```";
+
+            shell.CopyText(text);
+
+            Assert.Equal(text.Replace("\n", "\r\n"), await OnThread(thread, () => WinClipboard.GetText(thread.Hwnd)));
+        }
+        finally
+        {
+            thread.Stop(TimeSpan.FromSeconds(5));
+        }
+    }
+
     /// <summary>Reads <paramref name="read"/> on the UI thread, after everything posted before it.</summary>
     [SupportedOSPlatform("windows")]
     private static Task<T> OnThread<T>(WinUiThread thread, Func<T> read)

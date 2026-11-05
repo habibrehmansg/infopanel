@@ -23,13 +23,13 @@ public sealed class WinTrayTests
 
     private WinTray Tray() => new(_native, new WinStartup(_registry, Command), TaskbarCreated, () => _now);
 
-    private WinTray Shown(string version = "2.0.0")
+    private WinTray Shown(string version = "2.0.0", ShellState? state = null)
     {
         var tray = Tray();
         tray.Show(WinShellText.Tooltip(version), () =>
         {
             _menusBuilt++;
-            return ShellMenu.Build(new ShellState(version));
+            return ShellMenu.Build(state ?? new ShellState(version));
         }, id =>
         {
             _invoked.Add(id);
@@ -46,46 +46,140 @@ public sealed class WinTrayTests
 
     private static string[] Labels(IReadOnlyList<WinMenuEntry> entries) => [.. entries.Select(e => e.Label)];
 
+    /// <summary>Every line, the submenus' included, depth first.</summary>
+    private static IEnumerable<WinMenuEntry> All(IReadOnlyList<WinMenuEntry> entries) => entries.SelectMany(e => new[] { e }.Concat(All(e.Children)));
+
+    /// <summary>The engine's state with every line the model has: signed in, desktop windows on, two profiles (one shown).</summary>
+    private static ShellState Full(int profiles = 2) => new("2.0.0")
+    {
+        HasCredential = true,
+        SignedInAs = "Ada Lovelace",
+        DesktopWindows = true,
+        Profiles = [.. Enumerable.Range(1, profiles).Select(i => new ShellProfile($"p{i}", i == 2 ? "Fans & pumps" : $"Profile {i}", Shown: i == 2))],
+    };
+
     [Fact]
     public void TheMenu_IsInWindowsWords_WithStartWhenISignIn_AboveExit()
     {
-        var entries = WinTrayMenu.Flatten(ShellMenu.Build(new ShellState("2.0.0")), startAtSignIn: false);
+        var entries = WinTrayMenu.Lines(ShellMenu.Build(Full()), startAtSignIn: false);
 
-        Assert.Equal(["InfoPanel 2.0.0 is running", "Open editor", "", "Start when I sign in", "", "Exit"], Labels(entries));
-        Assert.Equal(WinMenuFlags.Disabled, entries[0].Flags);
-        Assert.Equal(WinMenuFlags.Default, entries[1].Flags);
-        Assert.Equal(WinMenuFlags.Separator, entries[2].Flags);
-        Assert.Equal(WinMenuFlags.None, entries[3].Flags);
-        Assert.Equal(WinMenuFlags.Separator, entries[4].Flags);
-        Assert.Equal(WinMenuFlags.None, entries[5].Flags);
-        Assert.Equal([ShellMenu.Status, ShellMenu.OpenEditor, "", WinTrayMenu.StartAtSignInId, "", ShellMenu.Quit], entries.Select(e => e.Id));
+        Assert.Equal(
+        [
+            "InfoPanel 2.0.0 is running", "Signed in as Ada Lovelace", "Open editor", "",
+            "Show on desktop", "",
+            "Open data folder", "Open logs folder", "Copy engine details", "",
+            "Start when I sign in", "",
+            "Exit",
+        ], Labels(entries));
+        Assert.Equal(
+        [
+            WinMenuFlags.Disabled, WinMenuFlags.Disabled, WinMenuFlags.Default, WinMenuFlags.Separator,
+            WinMenuFlags.Submenu, WinMenuFlags.Separator,
+            WinMenuFlags.None, WinMenuFlags.None, WinMenuFlags.None, WinMenuFlags.Separator,
+            WinMenuFlags.None, WinMenuFlags.Separator,
+            WinMenuFlags.None,
+        ], entries.Select(e => e.Flags));
+        Assert.Equal(
+        [
+            ShellMenu.Status, ShellMenu.SignedIn, ShellMenu.OpenEditor, "",
+            ShellMenu.ShowOnDesktop, "",
+            ShellMenu.ShowDataFolder, ShellMenu.OpenLogsFolder, ShellMenu.CopyEngineDetails, "",
+            WinTrayMenu.StartAtSignInId, "",
+            ShellMenu.Quit,
+        ], entries.Select(e => e.Id));
+
+        var desktop = entries[4].Children;
+        Assert.Equal(["Profile 1", "Fans && pumps"], Labels(desktop));
+        Assert.Equal([WinMenuFlags.None, WinMenuFlags.Checked], desktop.Select(e => e.Flags));
+        Assert.Equal([ShellMenu.DesktopItem("p1", show: true), ShellMenu.DesktopItem("p2", show: false)], desktop.Select(e => e.Id));
+        Assert.All(entries.Where(e => e.Id != ShellMenu.ShowOnDesktop), e => Assert.Empty(e.Children));
+    }
+
+    [Fact]
+    public void TheSignedInLine_IsGrey_AndSaysNotSignedIn_WithoutACredential_AndIsAbsent_WhileTheNameIsUnknown()
+    {
+        var signedOut = WinTrayMenu.Lines(ShellMenu.Build(new ShellState("2.0.0")), startAtSignIn: false);
+        var unknown = WinTrayMenu.Lines(ShellMenu.Build(new ShellState("2.0.0") { HasCredential = true }), startAtSignIn: false);
+
+        var line = signedOut.Single(e => e.Id == ShellMenu.SignedIn);
+        Assert.Equal(("Not signed in", WinMenuFlags.Disabled), (line.Label, line.Flags));
+        Assert.Equal(["InfoPanel 2.0.0 is running", "Open editor", "", "Open data folder", "Open logs folder", "Copy engine details", "", "Start when I sign in", "", "Exit"], Labels(unknown));
+    }
+
+    [Fact]
+    public void ShowOnDesktop_WithNoProfiles_SaysNoProfilesYet_Greyed()
+    {
+        var entries = WinTrayMenu.Lines(ShellMenu.Build(Full(profiles: 0)), startAtSignIn: false);
+
+        var line = Assert.Single(entries.Single(e => e.Id == ShellMenu.ShowOnDesktop).Children);
+        Assert.Equal((ShellMenu.NoProfiles, "No profiles yet", WinMenuFlags.Disabled), (line.Id, line.Label, line.Flags));
+    }
+
+    [Fact]
+    public void ShowOnDesktop_Past20_ListsTheFirst20_ThenMoreInTheEditor()
+    {
+        var entries = WinTrayMenu.Lines(ShellMenu.Build(Full(profiles: 21)), startAtSignIn: false);
+
+        var desktop = entries.Single(e => e.Id == ShellMenu.ShowOnDesktop).Children;
+        Assert.Equal(22, desktop.Count);
+        Assert.Equal([.. Enumerable.Range(1, 20).Select(i => i == 2 ? ShellMenu.DesktopItem("p2", show: false) : ShellMenu.DesktopItem($"p{i}", show: true))], desktop.Take(20).Select(e => e.Id));
+        Assert.Equal(WinMenuFlags.Separator, desktop[20].Flags);
+        Assert.Equal((ShellMenu.MoreProfiles, "More in the editor…", WinMenuFlags.None), (desktop[21].Id, desktop[21].Label, desktop[21].Flags));
+        Assert.Single(All(entries), e => e.Flags.HasFlag(WinMenuFlags.Checked) && e.Id != WinTrayMenu.StartAtSignInId);
+    }
+
+    [Fact]
+    public void WithoutDesktopWindows_ThereIsNoShowOnDesktop()
+    {
+        var entries = WinTrayMenu.Lines(ShellMenu.Build(Full() with { DesktopWindows = false }), startAtSignIn: false);
+
+        Assert.DoesNotContain(All(entries), e => e.Id == ShellMenu.ShowOnDesktop || e.Flags.HasFlag(WinMenuFlags.Submenu));
+        Assert.Equal(["InfoPanel 2.0.0 is running", "Signed in as Ada Lovelace", "Open editor", "", "Open data folder", "Open logs folder", "Copy engine details", "", "Start when I sign in", "", "Exit"], Labels(entries));
+    }
+
+    [Fact]
+    public void EveryLineTheModelNames_HasWindowsWords()
+    {
+        // The model's own lines (not a profile's name): only the ones already in sentence case keep the model's words.
+        var same = new HashSet<string> { ShellMenu.Status, ShellMenu.SignedIn };
+        var model = new[] { Full(profiles: 21), Full(profiles: 0), new ShellState("2.0.0") }
+            .SelectMany(s => ShellMenu.Build(s).Items)
+            .SelectMany(i => new[] { i }.Concat(i.Children))
+            .Where(i => i.Kind != ShellItemKind.Separator && !ShellMenu.TryReadDesktopItem(i.Id, out _, out _))
+            .ToList();
+
+        Assert.Equal(10, model.Select(i => i.Id).Distinct().Count());
+        Assert.All(model.Where(i => !same.Contains(i.Id)), i => Assert.NotEqual(i.Label, WinShellText.Label(i)));
+        Assert.All(model.Where(i => same.Contains(i.Id)), i => Assert.Equal(i.Label, WinShellText.Label(i)));
     }
 
     [Fact]
     public void OnlyOpenEditor_IsTheDefaultItem()
     {
-        var entries = WinTrayMenu.Flatten(ShellMenu.Build(new ShellState("2.0.0")), startAtSignIn: true);
+        var entries = WinTrayMenu.Lines(ShellMenu.Build(Full()), startAtSignIn: true);
 
-        var defaults = entries.Where(e => e.Flags.HasFlag(WinMenuFlags.Default)).ToList();
+        var defaults = All(entries).Where(e => e.Flags.HasFlag(WinMenuFlags.Default)).ToList();
         Assert.Equal(ShellMenu.OpenEditor, Assert.Single(defaults).Id);
     }
 
     [Fact]
-    public void EachItem_HasItsOwnCommand_AndSeparatorsNone()
+    public void EachItem_HasItsOwnCommand_TheSubmenusToo_AndSeparatorsAndSubmenusNone()
     {
-        var entries = WinTrayMenu.Flatten(ShellMenu.Build(new ShellState("2.0.0")), startAtSignIn: false);
+        var entries = WinTrayMenu.Lines(ShellMenu.Build(Full(profiles: 21)), startAtSignIn: false);
 
-        var items = entries.Where(e => !e.Flags.HasFlag(WinMenuFlags.Separator)).ToList();
+        var all = All(entries).ToList();
+        var items = all.Where(e => !e.Flags.HasFlag(WinMenuFlags.Separator) && !e.Flags.HasFlag(WinMenuFlags.Submenu)).ToList();
+        Assert.Equal(8 + 21, items.Count);
         Assert.All(items, e => Assert.NotEqual(0u, e.Command));
         Assert.Equal(items.Count, items.Select(e => e.Command).Distinct().Count());
-        Assert.All(entries.Where(e => e.Flags.HasFlag(WinMenuFlags.Separator)), e => Assert.Equal(0u, e.Command));
+        Assert.All(all.Where(e => e.Flags.HasFlag(WinMenuFlags.Separator) || e.Flags.HasFlag(WinMenuFlags.Submenu)), e => Assert.Equal(0u, e.Command));
     }
 
     [Fact]
     public void StartWhenISignIn_IsTicked_WhenOn_AndGreyed_WhenItCantBeRead()
     {
-        var on = WinTrayMenu.Flatten(ShellMenu.Build(new ShellState("2.0.0")), startAtSignIn: true).Single(e => e.Id == WinTrayMenu.StartAtSignInId);
-        var unknown = WinTrayMenu.Flatten(ShellMenu.Build(new ShellState("2.0.0")), startAtSignIn: null).Single(e => e.Id == WinTrayMenu.StartAtSignInId);
+        var on = WinTrayMenu.Lines(ShellMenu.Build(new ShellState("2.0.0")), startAtSignIn: true).Single(e => e.Id == WinTrayMenu.StartAtSignInId);
+        var unknown = WinTrayMenu.Lines(ShellMenu.Build(new ShellState("2.0.0")), startAtSignIn: null).Single(e => e.Id == WinTrayMenu.StartAtSignInId);
 
         Assert.Equal(WinMenuFlags.Checked, on.Flags);
         Assert.Equal(WinMenuFlags.Disabled, unknown.Flags);
@@ -102,7 +196,7 @@ public sealed class WinTrayTests
             new(ShellMenu.Quit, "Quit InfoPanel"),
         ]);
 
-        var entries = WinTrayMenu.Flatten(menu, startAtSignIn: false);
+        var entries = WinTrayMenu.Lines(menu, startAtSignIn: false);
 
         Assert.Equal(["Show on Desktop", "Fans && pumps", "", "Start when I sign in", "", "Exit"], Labels(entries));
     }
@@ -110,7 +204,7 @@ public sealed class WinTrayTests
     [Fact]
     public void AMenuWithoutExit_EndsWithStartWhenISignIn()
     {
-        var entries = WinTrayMenu.Flatten(new ShellMenu([new(ShellMenu.OpenEditor, "Open Editor")]), startAtSignIn: false);
+        var entries = WinTrayMenu.Lines(new ShellMenu([new(ShellMenu.OpenEditor, "Open Editor")]), startAtSignIn: false);
 
         Assert.Equal(["Open editor", "", "Start when I sign in"], Labels(entries));
     }
@@ -174,6 +268,27 @@ public sealed class WinTrayTests
         Assert.Equal(3, _menusBuilt);
         Assert.Equal((1800, -30), (_native.Menus[0].X, _native.Menus[0].Y));
         Assert.Equal([ShellMenu.Quit, ShellMenu.OpenEditor], _invoked);
+    }
+
+    [Fact]
+    public void AChoiceInShowOnDesktop_OrAnyNewLine_RunsTheModelsId()
+    {
+        var tray = Shown(state: Full(profiles: 21));
+        string[] picks =
+        [
+            ShellMenu.DesktopItem("p1", show: true), ShellMenu.DesktopItem("p2", show: false), ShellMenu.MoreProfiles,
+            ShellMenu.ShowDataFolder, ShellMenu.OpenLogsFolder, ShellMenu.CopyEngineDetails,
+        ];
+
+        foreach (var pick in picks)
+        {
+            _native.PickCommand = entries => FakeTrayNative.CommandOf(entries, pick);
+            tray.OnMessage(WinTray.CallbackMessage, Anchor(5, 6), Event(WinTray.WM_CONTEXTMENU));
+        }
+
+        Assert.Equal(picks.Length, _native.Menus.Count);
+        Assert.Equal(picks, _invoked);
+        Assert.Empty(_registry.Values);
     }
 
     [Fact]

@@ -21,6 +21,7 @@ namespace InfoPanel.Shell.Windows;
 internal sealed class WinShellPlatform : IShellPlatform
 {
     private static readonly Lazy<uint> TaskbarCreated = new(RegisterTaskbarCreated);
+    private static readonly Serilog.ILogger Logger = Serilog.Log.ForContext<WinShellPlatform>();
 
     private readonly WinUiThread _thread;
     private readonly Lazy<bool> _supported = new(WinDesktopPlatform.IsInteractiveWindowStation);
@@ -49,6 +50,13 @@ internal sealed class WinShellPlatform : IShellPlatform
         if (_thread.Started)
             _thread.Post(() => Tray?.Remove());
     }
+
+    /// <summary>Puts <paramref name="text"/> on the clipboard on the UI thread, owned by its hidden window (Copy engine details).</summary>
+    public void CopyText(string text) => _thread.Post(() =>
+    {
+        if (!WinClipboard.SetText(_thread.Hwnd, text))
+            Logger.Warning("The engine's details couldn't be put on the clipboard");
+    });
 
     public Task<int> ConfirmAsync(ShellPrompt prompt)
     {
