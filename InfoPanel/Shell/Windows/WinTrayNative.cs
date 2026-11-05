@@ -1,7 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using InfoPanel.Desktop.Windows;
-using Microsoft.Win32;
 using Serilog;
 using static InfoPanel.Shell.Windows.WinShellInterop;
 
@@ -25,8 +24,6 @@ internal sealed unsafe class WinTrayNative(nint hwnd) : IWinTrayNative, IWinMess
     /// <summary>The button ids of a prompt's buttons other than Cancel (which is <c>IDCANCEL</c>, so Escape chooses it).</summary>
     private const int FirstButtonId = 100;
 
-    private const string PersonalizeKey = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
-
     private static readonly Serilog.ILogger Logger = Log.ForContext<WinTrayNative>();
 
     /// <summary>The open task dialog's window (one prompt at a time, on the one UI thread), or 0.</summary>
@@ -36,10 +33,10 @@ internal sealed unsafe class WinTrayNative(nint hwnd) : IWinTrayNative, IWinMess
 
     public uint DoubleClickMilliseconds => GetDoubleClickTime();
 
-    public bool AddIcon(string tooltip, bool lightTaskbar)
+    public bool AddIcon(string tooltip)
     {
         var old = _icon;
-        _icon = CreateIcon(lightTaskbar);
+        _icon = CreateIcon();
         var data = Data(NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP);
         var length = Math.Min(tooltip.Length, 127);
         for (var i = 0; i < length; i++)
@@ -58,10 +55,10 @@ internal sealed unsafe class WinTrayNative(nint hwnd) : IWinTrayNative, IWinMess
         return added;
     }
 
-    public bool ModifyIcon(bool lightTaskbar)
+    public bool ModifyIcon()
     {
         var old = _icon;
-        _icon = CreateIcon(lightTaskbar);
+        _icon = CreateIcon();
         var data = Data(NIF_ICON);
         var changed = Shell_NotifyIconW(NIM_MODIFY, &data) != 0;
         Destroy(old);
@@ -228,20 +225,6 @@ internal sealed unsafe class WinTrayNative(nint hwnd) : IWinTrayNative, IWinMess
         return monitor != 0 && GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &x, &y) == 0 && x > 0 ? x : GetDpiForSystem();
     }
 
-    public bool LightTaskbar()
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(PersonalizeKey);
-            return key?.GetValue("SystemUsesLightTheme") is int light && light != 0;
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning(ex, "The taskbar's theme couldn't be read; drawing the icon for a dark one");
-            return false;
-        }
-    }
-
     private static int IdOf(WinPrompt prompt, int answer) => answer == prompt.CancelAnswer ? IDCANCEL : FirstButtonId + answer;
 
     private NOTIFYICONDATAW Data(uint flags) => new()
@@ -254,18 +237,18 @@ internal sealed unsafe class WinTrayNative(nint hwnd) : IWinTrayNative, IWinMess
         HIcon = _icon,
     };
 
-    /// <summary>The glyph at the taskbar's small-icon size (16 pixels at 100 %, 24 at 150 %, 32 at 200 %).</summary>
-    private nint CreateIcon(bool lightTaskbar)
+    /// <summary>The coloured logo at the taskbar's small-icon size (16 pixels at 100 %, 24 at 150 %, 32 at 200 %).</summary>
+    private nint CreateIcon()
     {
         var size = IconPixels();
-        var png = WinTrayGlyph.Png(size, lightTaskbar);
+        var png = WinTrayLogo.Png(size);
         nint icon;
         fixed (byte* bits = png)
             icon = CreateIconFromResourceEx(bits, (uint)png.Length, 1, 0x00030000, size, size, 0);
         if (icon != 0)
             return icon;
 
-        Logger.Warning("The notification area icon's glyph couldn't be made ({Error}); showing the system's", Marshal.GetLastPInvokeError());
+        Logger.Warning("The notification area icon's image couldn't be made ({Error}); showing the system's", Marshal.GetLastPInvokeError());
         return SystemIcon.Value;
     }
 

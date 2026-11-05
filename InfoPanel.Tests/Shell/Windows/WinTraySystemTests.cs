@@ -260,7 +260,7 @@ public sealed class WinTraySystemTests
 
         _native.Pixels = 32;
         Assert.Null(tray.OnMessage(message, 0, 0));
-        Assert.Equal([true], _native.Modifies);
+        Assert.Equal([32], _native.Modifies);
 
         tray.OnMessage(message, 0, 0);
         Assert.Single(_native.Modifies);

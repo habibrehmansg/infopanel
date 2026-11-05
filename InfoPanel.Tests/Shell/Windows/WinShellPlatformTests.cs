@@ -5,6 +5,7 @@ using InfoPanel.Desktop.Windows;
 using InfoPanel.Hosting;
 using InfoPanel.Shell;
 using InfoPanel.Shell.Windows;
+using InfoPanel.Tests.Editing;
 using Microsoft.Extensions.DependencyInjection;
 using SkiaSharp;
 using Xunit;
@@ -13,7 +14,7 @@ namespace InfoPanel.Tests.Shell.Windows;
 
 /// <summary>
 /// The notification-area icon's platform (chosen on Windows unless <c>--no-tray</c>: DesktopHostTests): never in a test
-/// engine, which passes the flag; its glyph for light and dark taskbars; the Win32 structures it
+/// engine, which passes the flag; its icon, the coloured logo at the taskbar's size; the Win32 structures it
 /// passes, at their 64-bit Windows sizes and offsets (on any 64-bit OS); and, on Windows with
 /// <c>INFOPANEL_SHELL_TESTS=1</c> in a signed-in session, the real icon added, added again when Explorer says the
 /// taskbar was created, and removed.
@@ -29,18 +30,70 @@ public sealed class WinShellPlatformTests
         Assert.IsType<NullShellPlatform>(engine.Services.GetRequiredService<IShellPlatform>());
     }
 
-    [Theory]
-    [InlineData(true, 0)]
-    [InlineData(false, 255)]
-    public void TheGlyph_IsDarkOnALightTaskbar_AndWhiteOnADarkOne(bool light, byte channel)
+    [Fact]
+    public void TheIcon_IsDrawnFromTheColouredLogo_TheProgramsArt()
     {
-        using var bitmap = SKBitmap.Decode(WinTrayGlyph.Png(32, light));
+        Assert.Equal(File.ReadAllBytes(LogoFile), WinTrayLogo.Source());
+    }
 
-        Assert.Equal((32, 32), (bitmap.Width, bitmap.Height));
-        var opaque = Enumerable.Range(0, 32 * 32).Select(i => bitmap.GetPixel(i % 32, i / 32)).Where(p => p.Alpha == 255).ToList();
-        Assert.NotEmpty(opaque);
-        Assert.All(opaque, p => Assert.Equal((channel, channel, channel), (p.Red, p.Green, p.Blue)));
-        Assert.Equal(0, bitmap.GetPixel(0, 0).Alpha);
+    [Theory]
+    [InlineData(16)]
+    [InlineData(20)]
+    [InlineData(24)]
+    [InlineData(32)]
+    [InlineData(40)]
+    public void TheIcon_IsTheColouredLogo_AtTheTaskbarsSize_WhateverTheTheme(int pixels)
+    {
+        using var icon = SKBitmap.Decode(WinTrayLogo.Png(pixels));
+        using var logo = SKBitmap.Decode(LogoFile);
+
+        Assert.Equal((pixels, pixels), (icon.Width, icon.Height));
+        Assert.Equal(0, icon.GetPixel(0, 0).Alpha);
+        // In colour, not one tone: the frame's blues and violets and the face's navy.
+        var opaque = Pixels(icon).Where(p => p.Alpha == 255).ToList();
+        Assert.Contains(opaque, p => Math.Max(p.Red, Math.Max(p.Green, p.Blue)) - Math.Min(p.Red, Math.Min(p.Green, p.Blue)) >= 60);
+        var centre = icon.GetPixel(pixels * 4 / 10, pixels / 2);
+        Assert.True(centre.Alpha == 255 && centre.Blue > centre.Red + 20 && centre.Blue < 90, $"the logo's dark face at the centre: {centre}");
+        // Each pixel the logo's own, area-averaged to this size.
+        var difference = 0.0;
+        for (var y = 0; y < pixels; y++)
+        {
+            for (var x = 0; x < pixels; x++)
+            {
+                var (expected, actual) = (Average(logo, x, y, pixels), Premultiplied(icon.GetPixel(x, y)));
+                difference += Enumerable.Range(0, 4).Sum(c => Math.Abs(expected[c] - actual[c])) / 4;
+            }
+        }
+
+        Assert.True(difference / (pixels * pixels) < 12, $"mean difference from the logo {difference / (pixels * pixels):F1}");
+    }
+
+    private static string LogoFile => Path.Combine(LiveEngine.RepoRoot(), "Images", "logo.png");
+
+    private static IEnumerable<SKColor> Pixels(SKBitmap bitmap) =>
+        Enumerable.Range(0, bitmap.Width * bitmap.Height).Select(i => bitmap.GetPixel(i % bitmap.Width, i / bitmap.Width));
+
+    private static double[] Premultiplied(SKColor c) =>
+        [c.Red * c.Alpha / 255.0, c.Green * c.Alpha / 255.0, c.Blue * c.Alpha / 255.0, c.Alpha];
+
+    /// <summary>The premultiplied average of the source pixels whose centres fall in target pixel (x, y) of a square of <paramref name="pixels"/>.</summary>
+    private static double[] Average(SKBitmap source, int x, int y, int pixels)
+    {
+        var scale = (double)source.Width / pixels;
+        var sum = new double[4];
+        var count = 0;
+        for (var sy = (int)Math.Ceiling(y * scale - 0.5); sy + 0.5 <= (y + 1) * scale && sy < source.Height; sy++)
+        {
+            for (var sx = (int)Math.Ceiling(x * scale - 0.5); sx + 0.5 <= (x + 1) * scale && sx < source.Width; sx++)
+            {
+                var p = Premultiplied(source.GetPixel(sx, sy));
+                for (var c = 0; c < 4; c++)
+                    sum[c] += p[c];
+                count++;
+            }
+        }
+
+        return [.. sum.Select(v => v / count)];
     }
 
     [Fact]

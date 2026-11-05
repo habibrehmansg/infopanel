@@ -42,6 +42,11 @@
     <EmbeddedResource Include="Mcp\Text\**\*.json;Mcp\Text\**\*.md" LogicalName="InfoPanel.Mcp.Text/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- The app's coloured logo, the Windows notification-area icon's image (Shell/Windows/WinTrayLogo.cs). -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\Images\logo.png" LogicalName="InfoPanel.Shell.logo.png" Link="Shell\Windows\logo.png" />
+  </ItemGroup>
+
   <!-- The bundled plugins: InfoPanel.Extras is built and its output copied into plugins/InfoPanel.Extras/ beside the
        engine (on build and on publish), where the engine finds it. Copied, not referenced (it is net8.0-windows), and
        not as content, so projects that reference the engine (the tests) don't get a plugins folder. It is built even

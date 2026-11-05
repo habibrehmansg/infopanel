@@ -400,7 +400,7 @@ public sealed class BrowserLauncherTests : IDisposable
     public static TheoryData<BrowserOS, string, string, string[]> DefaultBrowsers => new()
     {
         { BrowserOS.MacOS, "/Applications/Some Browser.app", "open", ["-a", "/Applications/Some Browser.app", "{file}"] },
-        { BrowserOS.Windows, "\"C:\\Program Files\\Browser\\browser.exe\" --single-argument %1", @"C:\Program Files\Browser\browser.exe", ["--single-argument \"{file}\""] },
+        { BrowserOS.Windows, "\"C:\\Program Files\\Browser\\browser.exe\" --single-argument %1", @"C:\Program Files\Browser\browser.exe", ["--single-argument {file}"] },
         { BrowserOS.Linux, "browser --new-window %u", "browser", ["--new-window", "{file}"] },
     };
 
@@ -432,7 +432,11 @@ public sealed class BrowserLauncherTests : IDisposable
     [InlineData("\"C:\\B\\b.exe\" %1", @"C:\B\b.exe", "\"{file}\"")]
     [InlineData("\"C:\\B\\b.exe\" -- \"%L\" %*", @"C:\B\b.exe", "-- \"{file}\"")]
     [InlineData("C:\\B\\b.exe", @"C:\B\b.exe", "\"{file}\"")]
-    [InlineData("\"C:\\B\\b.exe\" --single-argument", @"C:\B\b.exe", "--single-argument \"{file}\"")]
+    [InlineData("\"C:\\B\\b.exe\" --single-argument", @"C:\B\b.exe", "--single-argument {file}")]
+    [InlineData("\"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe\" --single-argument %1", @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", "--single-argument {file}")]
+    [InlineData("\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --single-argument %1", @"C:\Program Files\Google\Chrome\Application\chrome.exe", "--single-argument {file}")]
+    [InlineData("\"C:\\B\\b.exe\" --flag --single-argument %L", @"C:\B\b.exe", "--flag --single-argument {file}")]
+    [InlineData("\"C:\\B\\b.exe\" --not-single-argument %1", @"C:\B\b.exe", "--not-single-argument \"{file}\"")]
     public void OnWindows_TheHttpAssociationsCommand_GetsTheFileForItsArgument(string template, string program, string arguments)
     {
         const string file = @"C:\Users\A User\AppData\Local\InfoPanel\run\0123456789abcdef.open-1.html";

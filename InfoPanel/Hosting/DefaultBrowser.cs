@@ -117,8 +117,9 @@ public static partial class DefaultBrowser
     /// <summary>
     /// The command an association's open command <paramref name="template"/> runs for <paramref name="file"/>: its program
     /// (quoted or up to the first space, environment variables expanded), and the rest as the command line with <c>%1</c>,
-    /// <c>%L</c> and <c>%l</c> the file (quoted unless the template quotes it), <c>%*</c> dropped and <c>%%</c> a percent sign;
-    /// with none of those the file is added at the end. Null for a template with no program.
+    /// <c>%L</c> and <c>%l</c> the file (quoted unless the template quotes it, or after <see cref="SingleArgument"/>),
+    /// <c>%*</c> dropped and <c>%%</c> a percent sign; with none of those the file is added at the end. Null for a template
+    /// with no program.
     /// </summary>
     public static ProcessStartInfo? WindowsCommand(string template, string file)
     {
@@ -161,7 +162,7 @@ public static partial class DefaultBrowser
             switch (rest[++i])
             {
                 case '1' or 'L' or 'l':
-                    arguments.Append(quoted ? file : $"\"{file}\"");
+                    arguments.Append(quoted || AfterSingleArgument(arguments) ? file : $"\"{file}\"");
                     placed = true;
                     break;
                 case '*':
@@ -177,8 +178,23 @@ public static partial class DefaultBrowser
 
         var line = arguments.ToString().Trim();
         if (!placed)
-            line = line.Length == 0 ? $"\"{file}\"" : $"{line} \"{file}\"";
+            line = line.Length == 0 ? $"\"{file}\"" : AfterSingleArgument(arguments) ? $"{line} {file}" : $"{line} \"{file}\"";
         return new ProcessStartInfo(program) { Arguments = line, UseShellExecute = false };
+    }
+
+    /// <summary>
+    /// Chrome's and Edge's switch (their <c>http</c> registrations: <c>--single-argument %1</c>) after which the rest of
+    /// the command line is its one argument, taken as it is: quotes around the file would be part of it, and Edge then
+    /// opens <c>http://"c/…/file.html%22</c>. So the file follows it unquoted, as the shell puts it; spaces are fine there.
+    /// </summary>
+    public const string SingleArgument = "--single-argument";
+
+    /// <summary>Whether the command line so far ends with <see cref="SingleArgument"/> as a word of its own.</summary>
+    private static bool AfterSingleArgument(StringBuilder arguments)
+    {
+        var line = arguments.ToString().TrimEnd();
+        return line.EndsWith(SingleArgument, StringComparison.Ordinal)
+               && (line.Length == SingleArgument.Length || char.IsWhiteSpace(line[^(SingleArgument.Length + 1)]));
     }
 
     // ---- Linux ----------------------------------------------------------------------------------------------------------

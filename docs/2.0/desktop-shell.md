@@ -31,8 +31,8 @@ apart.
 
 ## Windows
 
-The logo's hexagon in the notification area: black on a light taskbar, white on a dark one, at the small-icon size for
-the taskbar's display scale (redrawn when the theme or the scale changes). Its tooltip is "InfoPanel 2.0.0". Each engine has one icon, removed when it
+The app's coloured logo in the notification area, as Windows apps show theirs, the same on a light taskbar and a dark
+one, at the small-icon size for the taskbar's display scale (redrawn when the scale changes). Its tooltip is "InfoPanel 2.0.0". Each engine has one icon, removed when it
 stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in start) adds it again (`TaskbarCreated`).
 
 - **Click** it (or press Enter on it): the editor opens, as the menu's Open editor. The second click of a double-click
@@ -91,7 +91,7 @@ can't run), and the next one is tried.
 | OS | Chrome | The default browser |
 |---|---|---|
 | macOS | `open -b com.google.Chrome <file>` (fails when no app has that id) | `open -a <app> <file>`, the app Launch Services opens `http` links with |
-| Windows | `chrome.exe` as App Paths registers it | the `http` association's command (the user's choice), the file for its `%1` |
+| Windows | `chrome.exe` as App Paths registers it | the `http` association's command (the user's choice), the file for its `%1` (unquoted after Chrome's and Edge's `--single-argument`, which takes the rest of the line as it is) |
 | Linux | `google-chrome-stable` or `google-chrome` on the `PATH` | the `Exec` line of the desktop entry `xdg-settings get default-web-browser` names, the file for its `%u` |
 
 The default browser is named in the command because the file is HTML: opened by its association it would go to
@@ -147,9 +147,9 @@ release build). A build from source carries none and behaves as before.
 - Windows (`Shell/Windows/`): `WinShellPlatform` on the engine's UI thread (`WinUiThread`, the one desktop windows
   use), whose hidden top-level window owns the icon and hears Explorer's broadcasts through a message hook (a
   message-only window wouldn't). `WinTray` is the logic with no Win32 in it (clicks, the menu and its commands, Start
-  when I sign in, `TaskbarCreated`, the theme, prompts one at a time); `WinTrayNative` the Win32 side:
-  `Shell_NotifyIconW` with version 4 callbacks, the glyph from `ShellGlyph` (`WinTrayGlyph`, white for a dark taskbar)
-  as an icon at the taskbar's DPI, an `HMENU` shown with `TrackPopupMenuEx`, and `TaskDialogIndirect`, which needs
+  when I sign in, `TaskbarCreated`, the scale, prompts one at a time); `WinTrayNative` the Win32 side:
+  `Shell_NotifyIconW` with version 4 callbacks, the coloured logo (`WinTrayLogo`: `Images/logo.png`, embedded, scaled
+  down through mipmaps) as an icon at the taskbar's DPI, an `HMENU` shown with `TrackPopupMenuEx`, and `TaskDialogIndirect`, which needs
   Common Controls 6: the engine's application manifest (`InfoPanel/app.manifest`) asks for it, and the build copies it
   into `InfoPanel.exe`; under the `dotnet` host (`dotnet.exe` has its own manifest) `WinCommonControls` activates a
   context made from the same manifest, which the compiler embeds in `InfoPanel.dll`, around the dialog.

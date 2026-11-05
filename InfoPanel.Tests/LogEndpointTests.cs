@@ -223,7 +223,7 @@ public sealed class LogEndpointTests
                 command =>
                 {
                     // What was started, in the error and the one it wraps; nothing opens. The arguments are either list
-                    // (macOS, Linux) or one command line (Windows: the http association's command, the file quoted in it).
+                    // (macOS, Linux) or one command line (Windows: the http association's command, the file in it).
                     // Windows with no usable command opens the file itself by its association: the shell's target is the
                     // file name, with no arguments.
                     var started = string.Join(" ", new[] { command.FileName, command.Arguments }.Concat(command.ArgumentList).Where(s => s.Length > 0));

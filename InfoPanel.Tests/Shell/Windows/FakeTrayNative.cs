@@ -9,11 +9,11 @@ namespace InfoPanel.Tests.Shell.Windows;
 /// </summary>
 internal sealed class FakeTrayNative : IWinTrayNative
 {
-    /// <summary>Each add: the tooltip and whether the icon was drawn for a light taskbar.</summary>
-    public List<(string Tooltip, bool Light)> Adds { get; } = [];
+    /// <summary>Each add: the tooltip and the icon's size in pixels.</summary>
+    public List<(string Tooltip, int Pixels)> Adds { get; } = [];
 
-    /// <summary>Each change of the icon's image: whether it was drawn for a light taskbar.</summary>
-    public List<bool> Modifies { get; } = [];
+    /// <summary>Each change of the icon's image: its size in pixels.</summary>
+    public List<int> Modifies { get; } = [];
 
     public int Deletes { get; private set; }
 
@@ -27,9 +27,6 @@ internal sealed class FakeTrayNative : IWinTrayNative
 
     /// <summary>Whether Explorer takes the icon (false: no taskbar yet, as at a sign-in start).</summary>
     public bool AddSucceeds { get; set; } = true;
-
-    /// <summary>The taskbar's theme as the system reports it.</summary>
-    public bool Light { get; set; } = true;
 
     /// <summary>Picks the command a shown menu returns (0: the menu was dismissed).</summary>
     public Func<IReadOnlyList<WinMenuEntry>, uint> PickCommand { get; set; } = _ => 0;
@@ -51,15 +48,15 @@ internal sealed class FakeTrayNative : IWinTrayNative
     /// <summary>Runs during a hold (a test checks what happened before it).</summary>
     public Action OnHold { get; set; } = () => { };
 
-    public bool AddIcon(string tooltip, bool lightTaskbar)
+    public bool AddIcon(string tooltip)
     {
-        Adds.Add((tooltip, lightTaskbar));
+        Adds.Add((tooltip, Pixels));
         return AddSucceeds;
     }
 
-    public bool ModifyIcon(bool lightTaskbar)
+    public bool ModifyIcon()
     {
-        Modifies.Add(lightTaskbar);
+        Modifies.Add(Pixels);
         return true;
     }
 
@@ -78,8 +75,6 @@ internal sealed class FakeTrayNative : IWinTrayNative
     }
 
     public void DismissPrompt() => Dismissals++;
-
-    public bool LightTaskbar() => Light;
 
     public int IconPixels() => Pixels;
 

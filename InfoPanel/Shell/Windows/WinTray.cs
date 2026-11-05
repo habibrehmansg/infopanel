@@ -5,11 +5,11 @@ namespace InfoPanel.Shell.Windows;
 /// <summary>The notification-area icon's Win32 side (<see cref="WinTrayNative"/>; a fake in tests). UI thread only.</summary>
 internal interface IWinTrayNative
 {
-    /// <summary>Adds the icon (version 4 callbacks) with its tooltip, drawn for the taskbar's theme; false when Explorer refused.</summary>
-    bool AddIcon(string tooltip, bool lightTaskbar);
+    /// <summary>Adds the icon (version 4 callbacks) with its tooltip, the logo at <see cref="IconPixels"/>; false when Explorer refused.</summary>
+    bool AddIcon(string tooltip);
 
-    /// <summary>Redraws the icon for the taskbar's theme.</summary>
-    bool ModifyIcon(bool lightTaskbar);
+    /// <summary>Redraws the icon at <see cref="IconPixels"/>.</summary>
+    bool ModifyIcon();
 
     /// <summary>Removes the icon.</summary>
     void DeleteIcon();
@@ -22,9 +22,6 @@ internal interface IWinTrayNative
 
     /// <summary>Closes the open prompt as Cancel.</summary>
     void DismissPrompt();
-
-    /// <summary>Whether the taskbar is light (the system's light theme).</summary>
-    bool LightTaskbar();
 
     /// <summary>The longest gap between the clicks of a double-click.</summary>
     uint DoubleClickMilliseconds { get; }
@@ -153,7 +150,6 @@ internal sealed class WinTray(IWinTrayNative native, WinStartup startup, uint ta
     private string? _tooltip;
     private Func<ShellMenu>? _menu;
     private Func<string, Task>? _invoked;
-    private bool _light;
     private int _pixels;
     private bool _promptOpen;
     private bool _closed;
@@ -231,12 +227,13 @@ internal sealed class WinTray(IWinTrayNative native, WinStartup startup, uint ta
         }
         else if ((msg is WM_SETTINGCHANGE or WM_DISPLAYCHANGE or WM_DPICHANGED) && Present)
         {
-            // The taskbar's theme, or its display's scale (the icon's size in pixels), changed.
-            var (light, pixels) = (native.LightTaskbar(), native.IconPixels());
-            if (light != _light || pixels != _pixels)
+            // The taskbar's display's scale (the icon's size in pixels) may have changed. Its theme doesn't matter: the
+            // icon is the coloured logo on either.
+            var pixels = native.IconPixels();
+            if (pixels != _pixels)
             {
-                (_light, _pixels) = (light, pixels);
-                native.ModifyIcon(_light);
+                _pixels = pixels;
+                native.ModifyIcon();
             }
         }
 
@@ -300,8 +297,8 @@ internal sealed class WinTray(IWinTrayNative native, WinStartup startup, uint ta
 
     private void Add()
     {
-        (_light, _pixels) = (native.LightTaskbar(), native.IconPixels());
-        if (native.AddIcon(_tooltip!, _light))
+        _pixels = native.IconPixels();
+        if (native.AddIcon(_tooltip!))
         {
             Present = true;
             Additions++;

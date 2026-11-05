@@ -7,7 +7,7 @@ namespace InfoPanel.Tests.Shell.Windows;
 /// <summary>
 /// The notification-area icon's logic on any OS, through <see cref="FakeTrayNative"/> (the Win32 side) and
 /// <see cref="FakeRegistry"/> (the Run value): the menu in Windows' words with its ids, the default item, Start when I
-/// sign in, a left click, a right click, Explorer's restart (<c>TaskbarCreated</c>), the taskbar's theme, Exit's
+/// sign in, a left click, a right click, Explorer's restart (<c>TaskbarCreated</c>), Exit's
 /// prompt, and the icon's removal.
 /// </summary>
 public sealed class WinTrayTests
@@ -133,13 +133,13 @@ public sealed class WinTrayTests
     }
 
     [Fact]
-    public void Show_AddsTheIcon_Once_WithTheTooltip_ForTheTaskbarsTheme()
+    public void Show_AddsTheIcon_Once_WithTheTooltip_AtTheTaskbarsSize()
     {
-        _native.Light = false;
+        _native.Pixels = 24;
         var tray = Shown();
         tray.Show("again", () => throw new InvalidOperationException(), _ => Task.CompletedTask);
 
-        Assert.Equal([("InfoPanel 2.0.0", false)], _native.Adds);
+        Assert.Equal([("InfoPanel 2.0.0", 24)], _native.Adds);
         Assert.True(tray.Present);
     }
 
@@ -229,19 +229,6 @@ public sealed class WinTrayTests
 
         Assert.True(tray.Present);
         Assert.Equal(1, tray.Additions);
-    }
-
-    [Fact]
-    public void TheTaskbarTurningDark_RedrawsTheIcon_AndASettingThatChangesNothing_DoesNot()
-    {
-        var tray = Shown();
-
-        tray.OnMessage(WinTray.WM_SETTINGCHANGE, 0, 0);
-        Assert.Empty(_native.Modifies);
-
-        _native.Light = false;
-        Assert.Null(tray.OnMessage(WinTray.WM_SETTINGCHANGE, 0, 0));
-        Assert.Equal([false], _native.Modifies);
     }
 
     [Fact]
