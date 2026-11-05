@@ -459,6 +459,7 @@ public sealed class SettingsStore
         {
             Check(service, "address", "/service/address", AddressProblem);
             Check(service, "aiApps", "/service/aiApps", BoolProblem);
+            Check(service, "pairing", "/service/pairing", BoolProblem);
         }
 
         if (Container(tree, "proxy", "/proxy") is { } proxy)
@@ -520,7 +521,8 @@ public sealed class SettingsStore
             new MediaSettings(Bool(media?["localNetwork"]) ?? MediaSettings.Default.LocalNetwork),
             new ServiceSettings(
                 service?["address"] is { } address && ServiceAddress.TryNormalize(ElementOf(address).GetString(), out var normal) ? normal : null,
-                Bool(service?["aiApps"]) ?? ServiceSettings.Default.AiApps),
+                Bool(service?["aiApps"]) ?? ServiceSettings.Default.AiApps,
+                Bool(service?["pairing"]) ?? ServiceSettings.Default.Pairing),
             proxy?["hosts"] is JsonArray hosts
                 ? new ProxySettings(ImmutableArray.CreateRange(hosts.Select(h => ElementOf(h).GetString()!)))
                 : ProxySettings.Default,
@@ -657,7 +659,7 @@ public sealed class SettingsStore
                         var settingPointer = pointer + "/" + Escape(setting.Name);
                         if (setting.Name == "address")
                             Leaf(setting.Value, settingPointer, AddressProblem);
-                        else if (setting.Name == "aiApps")
+                        else if (setting.Name is "aiApps" or "pairing")
                             Leaf(setting.Value, settingPointer, BoolProblem);
                         else
                             Unknown(settingPointer);
@@ -748,7 +750,7 @@ public sealed class SettingsStore
                     var service = Child(tree, "service");
                     foreach (var setting in member.Value.EnumerateObject())
                     {
-                        if (setting.Name == "aiApps")
+                        if (setting.Name is "aiApps" or "pairing")
                         {
                             Set(service, setting.Name, setting.Value, e => JsonValue.Create(e.GetBoolean()));
                             continue;

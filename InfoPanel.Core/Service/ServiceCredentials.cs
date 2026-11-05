@@ -138,25 +138,77 @@ public sealed class ServiceCredentials
         return true;
     }
 
+    /// <summary>The longest id of a credential, in characters.</summary>
+    public const int MaxIdLength = 64;
+
+    /// <summary>
+    /// Whether <paramref name="id"/> is an id the engine keeps beside a credential: 1 to <see cref="MaxIdLength"/> ASCII
+    /// letters, digits, <c>_</c> and <c>-</c>.
+    /// </summary>
+    public static bool IsWellFormedId(string? id)
+    {
+        if (id is null || id.Length is 0 or > MaxIdLength)
+            return false;
+        foreach (var c in id)
+        {
+            if (c is not ((>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '_' or '-'))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The id the service gave the credential the engine keeps, as the client provided it beside it (a pairing pass's
+    /// <c>device</c> names it, spec/docs/api.md "Pairing through the configured service"): null when none was provided,
+    /// or no credential is <c>present</c> for the address in effect (none, rejected, or kept for another address).
+    /// </summary>
+    public string? Id
+    {
+        get
+        {
+            lock (_lock)
+                return _held is { Rejected: false } held && held.Address == _address() ? held.Id : null;
+        }
+    }
+
+    /// <summary>
+    /// The address in effect and which credential is kept (a new generation each time one is provided or dropped), read at
+    /// once: a pairing pass's check holds to the service it began with, and refuses the pass when either changed.
+    /// </summary>
+    public (string? Address, long Generation) Binding
+    {
+        get
+        {
+            lock (_lock)
+                return (_address(), _generation);
+        }
+    }
+
     /// <summary>A fingerprint of a credential: the first 16 hexadecimal digits, in lower case, of the SHA-256 of its UTF-8 bytes.</summary>
     public static string Fingerprint(string credential) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(credential)))[..16];
 
-    /// <summary>Keeps <paramref name="credential"/> for the address in effect, in place of any other; its state is then present.</summary>
-    /// <exception cref="ArgumentException">It isn't well formed (<see cref="IsWellFormed"/>).</exception>
+    /// <summary>
+    /// Keeps <paramref name="credential"/> for the address in effect, in place of any other, with the id the service gave it
+    /// (<paramref name="id"/>, or none); its state is then present.
+    /// </summary>
+    /// <exception cref="ArgumentException">It, or the id, isn't well formed (<see cref="IsWellFormed"/>, <see cref="IsWellFormedId"/>).</exception>
     /// <exception cref="NoServiceException">There is no service address: nothing changed.</exception>
     /// <exception cref="ServiceStoreException">
     /// The store refused: the credential kept before stays; or it holds the new one but couldn't make that durable
     /// (<see cref="ServiceStoreException.Applied"/>): the new one is in effect, as a restart would find it.
     /// </exception>
-    public void Put(string credential)
+    public void Put(string credential, string? id = null)
     {
         if (!IsWellFormed(credential))
             throw new ArgumentException("The credential isn't an RFC 6750 token of at most 4,096 characters.", nameof(credential));
+        if (id is not null && !IsWellFormedId(id))
+            throw new ArgumentException("The credential's id isn't 1 to 64 letters, digits, '_' and '-'.", nameof(id));
         using var raise = new RaiseIfChanged(this);
         lock (_lock)
         {
             var address = _address() ?? throw new NoServiceException();
-            var record = new StoredServiceCredential(address, credential, Rejected: false);
+            var record = new StoredServiceCredential(address, credential, Rejected: false, id);
             try
             {
                 _store.Write(record);

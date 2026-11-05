@@ -14,15 +14,16 @@ namespace InfoPanel.Service;
 
 /// <summary>
 /// What a store keeps: the credential a client provided, the service address it was provided for (a change of address,
-/// even one made while the engine was stopped, drops it), and whether the service refused it (401), which lasts across
-/// restarts until a client provides another.
+/// even one made while the engine was stopped, drops it), whether the service refused it (401), which lasts across
+/// restarts until a client provides another, and the id the service gave it, when the client provided one (the
+/// <c>device</c> a pairing pass names, <see cref="ServiceCredentials.Id"/>).
 /// </summary>
-public sealed record StoredServiceCredential(string Address, string Credential, bool Rejected)
+public sealed record StoredServiceCredential(string Address, string Credential, bool Rejected, string? Id = null)
 {
     /// <summary>The most bytes a stored record takes before a store encrypts it: a credential and an address at their limits, with room.</summary>
     public const int MaxBytes = 16_384;
 
-    /// <summary>The record as a store keeps it: <c>{"address":…,"credential":…,"rejected":…}</c> in UTF-8.</summary>
+    /// <summary>The record as a store keeps it: <c>{"address":…,"credential":…,"rejected":…}</c> in UTF-8, with <c>"id"</c> when it has one.</summary>
     public byte[] ToBytes()
     {
         using var buffer = new MemoryStream();
@@ -32,13 +33,18 @@ public sealed record StoredServiceCredential(string Address, string Credential, 
             writer.WriteString("address", Address);
             writer.WriteString("credential", Credential);
             writer.WriteBoolean("rejected", Rejected);
+            if (Id is not null)
+                writer.WriteString("id", Id);
             writer.WriteEndObject();
         }
 
         return buffer.ToArray();
     }
 
-    /// <summary>The record <paramref name="bytes"/> hold, or null when they aren't one (members it doesn't know are ignored).</summary>
+    /// <summary>
+    /// The record <paramref name="bytes"/> hold, or null when they aren't one (members it doesn't know are ignored, and an
+    /// <c>id</c> that isn't one, <see cref="ServiceCredentials.IsWellFormedId"/>, is read as none).
+    /// </summary>
     public static StoredServiceCredential? FromBytes(ReadOnlySpan<byte> bytes)
     {
         try
@@ -55,7 +61,10 @@ public sealed record StoredServiceCredential(string Address, string Credential, 
             }
 
             var value = credential.GetString()!;
-            return ServiceCredentials.IsWellFormed(value) ? new StoredServiceCredential(address.GetString()!, value, rejected.GetBoolean()) : null;
+            var id = root.TryGetProperty("id", out var given) && given.ValueKind == JsonValueKind.String && ServiceCredentials.IsWellFormedId(given.GetString())
+                ? given.GetString()
+                : null;
+            return ServiceCredentials.IsWellFormed(value) ? new StoredServiceCredential(address.GetString()!, value, rejected.GetBoolean(), id) : null;
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
@@ -64,7 +73,7 @@ public sealed record StoredServiceCredential(string Address, string Credential, 
     }
 
     /// <summary>Never the credential: a record's text names only its address and state.</summary>
-    public override string ToString() => $"StoredServiceCredential {{ Address = {Address}, Rejected = {Rejected} }}";
+    public override string ToString() => $"StoredServiceCredential {{ Address = {Address}, Rejected = {Rejected}, Id = {Id} }}";
 }
 
 /// <summary>The store couldn't keep, read or remove the credential (the API's 503 <c>storeUnavailable</c>).</summary>

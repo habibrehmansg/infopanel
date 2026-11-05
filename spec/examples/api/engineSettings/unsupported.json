@@ -6,6 +6,6 @@
   "graphRate": 1000,
   "logLevel": "information",
   "sources": {"libre": {"enabled": true, "storage": true, "storageInterval": 30}, "network": {"publicIp": true}, "weather": {"enabled": true, "units": "auto", "place": null}},
-  "media": {"localNetwork": true}, "service": {"address": null, "aiApps": false}, "proxy": {"hosts": []},
+  "media": {"localNetwork": true}, "service": {"address": null, "aiApps": false, "pairing": false}, "proxy": {"hosts": []},
   "clients": {}
 }

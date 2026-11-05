@@ -42,12 +42,15 @@ public static class ServiceEndpoints
             if (!check.IsValid)
                 return InvalidBody([.. check.Errors.Select(ErrorBody)]);
 
-            // The schema's pattern and length are ServiceCredentials.IsWellFormed's (a trailing line break refused too).
-            var given = SpecJson.Read<ServiceCredentialRequest>(json.RootElement).Credential;
+            // The schema's pattern and length are ServiceCredentials.IsWellFormed's (a trailing line break refused too); the
+            // id's are IsWellFormedId's, checked again for the trailing line break a .NET "$" lets through.
+            var given = SpecJson.Read<ServiceCredentialRequest>(json.RootElement);
+            if (given.Id is { } id && !ServiceCredentials.IsWellFormedId(id))
+                return Invalid("/id", "schema", "An id is 1 to 64 letters, digits, '_' and '-'.");
 
             try
             {
-                service.Put(given);
+                service.Put(given.Credential, given.Id);
             }
             catch (NoServiceException)
             {

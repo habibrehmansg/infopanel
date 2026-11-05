@@ -9,6 +9,7 @@
   "osVersion": "26.1",
   "arch": "arm64",
   "dataDir": "/Users/me/Library/Application Support/InfoPanel/v2",
+  "port": 52345,
   "mock": false,
   "locale": {"tag": "en-GB", "decimalSeparator": ".", "groupSeparator": ","},
   "media": {"providers": ["http", "rtsp"]},

@@ -44,6 +44,11 @@ export interface Session {
    * Length: ≥ 1.
    */
   dataDir: string;
+  /**
+   * The port the engine listens on, on 127.0.0.1 (docs/api.md#session), so a client served from another origin, such as a reverse proxy's on this computer, can name it. The same for the whole run.
+   * Range: 1–65535.
+   */
+  port: number;
   /** Whether the engine's sensors aren't the computer's (docs/api.md#session): it runs in mock mode, started to simulate them, or replays a recording of a computer's sensors, so a client can say its readings aren't real. It changes only when the engine restarts. */
   mock: boolean;
   locale: SessionLocale;
@@ -857,6 +862,29 @@ export interface PairingCodeRequest {
   replaces?: PairingId;
 }
 
+/** POST /auth/pairing/pass (no token): a pass the configured service signed for a client on another computer, exchanged for the run's session token and a lasting pairing (pairingGrant), as a code is, while the `service.pairing` setting is on. Answered 403 pairingPassProblem for a pass the engine refuses (docs/api.md#pairing-through-the-configured-service). */
+export interface PairingPassRequest {
+  /**
+   * The pass as the service gave it: three base64url parts joined by dots (docs/api.md#pairing-through-the-configured-service). A string that isn't one, the empty string included, is refused as `malformed`.
+   * Length: ≤ 4096.
+   */
+  pass: string;
+  /** The client's name, for people, as the pairing is listed. */
+  name: TokenName;
+  /** The pairing the client held before, if any: it is handed over to the new one, which replaces it (docs/api.md#pairing). An id the engine doesn't have changes nothing. */
+  replaces?: PairingId;
+}
+
+/** 403 application/problem+json to POST /auth/pairing/pass: the pass is refused, and `code` says why in one word, with no other detail (docs/api.md#pairing-through-the-configured-service). */
+export interface PairingPassProblem {
+  type?: string;
+  title?: string;
+  detail?: string;
+  status: 403;
+  /** `off`, the `service.pairing` setting is off; `malformed`, it isn't a pass in its form; `signature`, the service lists no key by its `kid`, or its signature doesn't check; `audience`, it isn't for pairing; `expired`, its time has passed; `host`, it is for another name than the one the request came to, or one not in `proxy.hosts`; `device`, it is for another computer than the one whose credential the engine keeps; `replayed`, it was used before. A client treats a code it doesn't know as a refusal. */
+  code: "off" | "malformed" | "signature" | "audience" | "expired" | "host" | "device" | "replayed";
+}
+
 /** A new pairing in a pairingGrant: its pairingInfo members and its secret, which no other answer carries. The client keeps the secret and never sends it (docs/api.md#pairing). */
 export interface CreatedPairing {
   id: PairingId;
@@ -869,7 +897,7 @@ export interface CreatedPairing {
   secret: string;
 }
 
-/** 201 to POST /auth/pairing/code: the run's session token and instance, and the new pairing. `pairing` is absent when the engine can't keep pairings (it couldn't read or write them): the client connects for this run only (docs/api.md#pairing). */
+/** 201 to POST /auth/pairing/code and POST /auth/pairing/pass: the run's session token and instance, and the new pairing. `pairing` is absent when the engine can't keep pairings (it couldn't read or write them): the client connects for this run only (docs/api.md#pairing). */
 export interface PairingGrant {
   pairing?: CreatedPairing;
   /**
@@ -1281,6 +1309,8 @@ export interface SettingsChange {
     address?: string | null;
     /** serviceSettings: whether AI apps elsewhere may use this engine's tools through the configured service; `null` sets it back to its default, off (docs/api.md#ai-apps-elsewhere). */
     aiApps?: boolean | null;
+    /** serviceSettings: whether a client on another computer may pair with this engine through a pass the configured service signed; `null` sets it back to its default, off (docs/api.md#pairing-through-the-configured-service). */
+    pairing?: boolean | null;
   };
   proxy?: {
     /**
@@ -1311,6 +1341,8 @@ export interface ServiceSettings {
   address: ServiceAddress;
   /** Whether AI apps may use this engine's tools through the configured service (AI apps elsewhere): on, the engine keeps a connection open to the service while it has an address and a credential, and answers the tool calls that arrive over it under its own rules (docs/api.md#ai-apps-elsewhere). Off by default. Only the session token changes it. */
   aiApps: boolean;
+  /** Whether a client on another computer may pair with this engine through a pass the configured service signed (pairing through the configured service): on, POST /auth/pairing/pass exchanges a valid pass as POST /auth/pairing/code exchanges a code; off, it refuses every pass (docs/api.md#pairing-through-the-configured-service). Off by default. Only the session token changes it. */
+  pairing: boolean;
 }
 
 /**
@@ -1336,13 +1368,18 @@ export interface ServiceState {
   aiApps: "off" | "connecting" | "connected" | "replaced" | "outdated" | "waiting";
 }
 
-/** PUT /api/service/credential: a credential a client provides for the configured service, which the engine keeps in place of any it has and sends as `Authorization: Bearer {credential}` (docs/api.md#the-configured-service). An RFC 6750 token: letters, digits, `-`, `.`, `_`, `~`, `+` and `/`, then any `=`, at most 4,096 characters. */
+/** PUT /api/service/credential: a credential a client provides for the configured service, which the engine keeps in place of any it has and sends as `Authorization: Bearer {credential}` (docs/api.md#the-configured-service), and the id the service gave it, which the engine keeps beside it. The credential is an RFC 6750 token: letters, digits, `-`, `.`, `_`, `~`, `+` and `/`, then any `=`, at most 4,096 characters. */
 export interface ServiceCredential {
   /**
    * Length: 1–4096.
    * Pattern: `^[A-Za-z0-9._~+/-]+=*$`.
    */
   credential: string;
+  /**
+   * The id the service gave this credential, if it has one: the `device` its pairing passes name (docs/api.md#pairing-through-the-configured-service). 1 to 64 letters, digits, `_` and `-`. Without it, no pass pairs.
+   * Pattern: `^[A-Za-z0-9_-]{1,64}$`.
+   */
+  id?: string;
 }
 
 /** application/problem+json to PUT and DELETE /api/service/credential, and to a PATCH /api/settings that changes the service's address: 409 `noService`, the engine has no service address, so it keeps no credential (docs/api.md#the-configured-service); 503 `storeUnavailable`, the store refused to keep or remove it (for a change of address, the credential kept for the old one) and nothing was changed, or it did but couldn't make that durable: then GET /api/service answers what it holds, and a retry finishes it (a change of address stays refused until then). A client treats a code it doesn't know by the status. */
@@ -4938,6 +4975,24 @@ export interface ApiOperations {
       201: PairingGrant;
       /** The code is unknown, expired or used before (one answer for all three); a second use also removes the pairing the first made. */
       403: Problem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * exchangePairingPass: Exchanges a pass the configured service signed, once, for the run's session token and a lasting pairing.
+   *
+   * docs/api.md#pairing-through-the-configured-service. Only while the service.pairing setting is on. Answered to a client served from another origin with CORS, as /api is.
+   */
+  "POST /auth/pairing/pass": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: PairingPassRequest;
+    responses: {
+      /** The run's session token and instance, and the new pairing with its secret (absent when the engine can't keep pairings), as a code's exchange answers. */
+      201: PairingGrant;
+      /** The pass is refused: `code` says why, in one word (`off` while the setting is off, whatever the body). */
+      403: PairingPassProblem;
       /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
       422: InvalidProblem;
     };

@@ -180,9 +180,41 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         Assert.Equal("off", (await Send(session, "GET", "/api/service", 200)).GetProperty("aiApps").GetString());
         await Send(session, "PATCH", "/api/settings", 422, Body("""{"service":{"aiApps":"on"}}"""));
         await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"aiApps":null}}"""));
+        // Pairing through the configured service (POST /auth/pairing/pass): its switch, set the same way.
+        var pairing = await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"pairing":true}}"""));
+        Assert.True(pairing.GetProperty("service").GetProperty("pairing").GetBoolean());
+        await Send(session, "PATCH", "/api/settings", 422, Body("""{"service":{"pairing":"on"}}"""));
+        await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"pairing":null}}"""));
         await Send(session, "PUT", "/api/service/credential", 422, Body("""{"credential":"tour credential"}"""));
         await Send(session, "DELETE", "/api/service/credential", 204);
         await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"address":null}}"""));
+        // Pairing through the configured service: a pass refused while the switch is off, then, with the service's keys on
+        // a loopback port, a body refused and a pass it signed exchanged for a pairing.
+        await Send(anonymous, "POST", "/auth/pairing/pass", 403, JsonContent.Create(new { pass = "a.b.c", name = "Tour" }));
+        using (var signer = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256))
+        {
+            static string B64(byte[] bytes) => System.Buffers.Text.Base64Url.EncodeToString(bytes);
+            var point = signer.ExportParameters(includePrivateParameters: false).Q;
+            var list = JsonSerializer.SerializeToUtf8Bytes(new { keys = new[] { new { kid = "tour", kty = "EC", crv = "P-256", x = B64(point.X!), y = B64(point.Y!) } } });
+            await using var keys = new InfoPanel.Core.Tests.Images.LocalHttpServer((_, stream, _) =>
+                InfoPanel.Core.Tests.Images.LocalHttpServer.Answer(stream, 200, list, "application/json"));
+            const string host = "tour.tailnet.ts.net";
+            await Send(session, "PATCH", "/api/settings", 200,
+                Body($$$"""{"service":{"address":"http://127.0.0.1:{{{keys.Port}}}","pairing":true},"proxy":{"hosts":["{{{host}}}"]}}"""));
+            await Send(session, "PUT", "/api/service/credential", 204, JsonContent.Create(new { credential = "tour-credential", id = "dev_TOUR" }));
+            await Send(anonymous, "POST", "/auth/pairing/pass", 422, Body("{}"), r => r.Headers.Host = host);
+            var input = B64(Encoding.UTF8.GetBytes("""{"alg":"ES256","kid":"tour","typ":"infopanel-pairing-pass"}""")) + "."
+                + B64(JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    v = 1, aud = "infopanel-pairing", device = "dev_TOUR", host,
+                    nonce = B64(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)), exp = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 60,
+                }));
+            var pass = input + "." + B64(signer.SignData(Encoding.ASCII.GetBytes(input), System.Security.Cryptography.HashAlgorithmName.SHA256));
+            await Send(anonymous, "POST", "/auth/pairing/pass", 201, JsonContent.Create(new { pass, name = "Tour" }), r => r.Headers.Host = host);
+            await Send(session, "DELETE", "/api/service/credential", 204);
+            await Send(session, "PATCH", "/api/settings", 200, Body("""{"service":{"address":null,"pairing":null},"proxy":{"hosts":null}}"""));
+        }
+
         var refusingStore = Path.Combine(factory.Root, "service-store-refuses");
         Directory.CreateDirectory(refusingStore);
         using (var refusing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", refusingStore)

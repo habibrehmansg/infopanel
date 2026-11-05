@@ -90,6 +90,8 @@ public static partial class ReadEndpoints
             OsVersion = OsVersion(),
             Arch = Arch(),
             DataDir = paths.Root,
+            // The port it listens on, for a client served from a proxy's own origin, which can't read it from its address.
+            Port = runtime.Port,
             // Mock mode (--mock, --mock-seed) or a replayed recording (--replay-sensors): not this computer's sensors, for the run.
             Mock = options.SensorsNotReal,
             // The PC's regional format, read once at start-up (the format a profile without a locale draws with).

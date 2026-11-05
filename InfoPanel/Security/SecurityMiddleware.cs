@@ -138,6 +138,7 @@ public static class AuthEndpoints
 
         // Pairing (spec/docs/api.md, "Pairing"): public, with CORS for a client served from another origin (CrossOrigin).
         app.MapPost("/auth/pairing/code", Api.PairingEndpoints.ExchangeCodeAsync);
+        app.MapPost("/auth/pairing/pass", Api.PairingEndpoints.ExchangePassAsync);
         app.MapPost("/auth/pairing/challenge", Api.PairingEndpoints.ChallengeAsync);
         app.MapPost("/auth/pairing/proof", Api.PairingEndpoints.ProveAsync);
     }

@@ -9,6 +9,7 @@
   "osVersion": "10.0.26100",
   "arch": "x64",
   "dataDir": "C:\\Users\\me\\AppData\\Local\\InfoPanel\\v2",
+  "port": 52345,
   "mock": true,
   "locale": {"tag": "en-GB", "decimalSeparator": ".", "groupSeparator": ","},
   "media": {"providers": ["http"]},

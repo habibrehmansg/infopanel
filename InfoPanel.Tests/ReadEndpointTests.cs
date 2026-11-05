@@ -85,6 +85,9 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         var arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
         Assert.Equal(arch is "x64" or "arm64" or "x86" or "arm" ? arch : "other", session.GetProperty("arch").GetString());
         Assert.Matches(TimestampPattern, session.GetProperty("started").GetString());
+
+        // The port the engine listens on, so a page served from a proxy's own origin can name it.
+        Assert.Equal(EngineFactory.Port, session.GetProperty("port").GetInt32());
     }
 
     /// <summary>The schema's <c>timestamp</c>: RFC 3339 in UTC, to the second.</summary>

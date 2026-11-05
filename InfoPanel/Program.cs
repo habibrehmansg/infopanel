@@ -326,6 +326,12 @@ try
     });
     builder.Services.AddSingleton(sp => new ServiceClient(sp.GetRequiredService<ServiceCredentials>(), loopbackOnly: options.Offline,
         sp.GetRequiredService<TimeProvider>()));
+    // Pairing through the configured service: a pass it signed, checked against its public keys (fetched from its address
+    // without a credential, under ServiceClient's rules) and the credential's id, while service.pairing is on.
+    builder.Services.AddSingleton(sp => new PairingKeys(() => sp.GetRequiredService<ServiceCredentials>().Address, loopbackOnly: options.Offline,
+        sp.GetRequiredService<TimeProvider>(), engineLogger.ForContext<PairingKeys>()));
+    builder.Services.AddSingleton(sp => new PairingPasses(settings, sp.GetRequiredService<ServiceCredentials>(), sp.GetRequiredService<PairingKeys>(),
+        sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<PairingPasses>>()));
     builder.Services.AddSingleton(recentLog);
     builder.Services.AddSingleton(regionalFormat);
     // The 1.x import: its limits (tests lower them), the 1.x folder, and one import read at a time.

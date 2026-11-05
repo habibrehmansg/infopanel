@@ -1058,6 +1058,29 @@
         }
       }
     },
+    "/auth/pairing/pass": {
+      "post": {
+        "operationId": "exchangePairingPass",
+        "summary": "Exchanges a pass the configured service signed, once, for the run's session token and a lasting pairing.",
+        "description": "docs/api.md#pairing-through-the-configured-service. Only while the service.pairing setting is on. Answered to a client served from another origin with CORS, as /api is.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pairingPassRequest"}}}
+        },
+        "responses": {
+          "201": {
+            "description": "The run's session token and instance, and the new pairing with its secret (absent when the engine can't keep pairings), as a code's exchange answers.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pairingGrant"}}}
+          },
+          "403": {
+            "description": "The pass is refused: `code` says why, in one word (`off` while the setting is off, whatever the body).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pairingPassProblem"}}}
+          },
+          "422": {"$ref": "#/components/responses/invalid"}
+        }
+      }
+    },
     "/auth/pairing/challenge": {
       "post": {
         "operationId": "pairingChallenge",

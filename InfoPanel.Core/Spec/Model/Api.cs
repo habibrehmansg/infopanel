@@ -26,6 +26,8 @@ public sealed record Session
     /// <summary><c>x64</c>, <c>arm64</c>, <c>x86</c>, <c>arm</c> or <c>other</c>: the architecture the engine runs as.</summary>
     public required string Arch { get; init; }
     public required string DataDir { get; init; }
+    /// <summary>The port the engine listens on (on 127.0.0.1), so a client served from a proxy's own origin can name it.</summary>
+    public required int Port { get; init; }
     /// <summary>Whether the engine runs in mock mode: its sensors are simulated, not the computer's.</summary>
     public required bool Mock { get; init; }
     /// <summary>The PC's regional format as the engine read it when it started.</summary>
@@ -505,6 +507,27 @@ public sealed record PairingCodeRequest
     public string? Replaces { get; init; }
 }
 
+/// <summary><c>POST /auth/pairing/pass</c>: a pass the configured service signed, the client's name, and the pairing it held before, if any.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pairingPassRequest")]
+public sealed record PairingPassRequest
+{
+    public required string Pass { get; init; }
+    public required string Name { get; init; }
+    public string? Replaces { get; init; }
+}
+
+/// <summary>403 to <c>POST /auth/pairing/pass</c>: the one word for why the pass was refused.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pairingPassProblem")]
+public sealed record PairingPassProblem
+{
+    public string? Type { get; init; }
+    public string? Title { get; init; }
+    public string? Detail { get; init; }
+    public required int Status { get; init; }
+    /// <summary><c>off</c>, <c>malformed</c>, <c>signature</c>, <c>audience</c>, <c>expired</c>, <c>host</c>, <c>device</c> or <c>replayed</c>.</summary>
+    public required string Code { get; init; }
+}
+
 /// <summary>
 /// A paired client (the schema's <c>pairingInfo</c>, as listed), or a new one (<c>createdPairing</c>, with its secret in
 /// <see cref="Secret"/>, which only a code's exchange carries).
@@ -843,6 +866,7 @@ public sealed record ServiceSettingsChange : IRemovesMembers
 {
     public string? Address { get; init; }
     public bool? AiApps { get; init; }
+    public bool? Pairing { get; init; }
     /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
     public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
@@ -885,13 +909,14 @@ public sealed record SettingsStatusProblem
 
 /// <summary>
 /// The configured service's settings (<c>serviceSettings</c>, engineSettings' <c>service</c>): its address in effect, or
-/// null; and whether AI apps may use this engine's tools through it.
+/// null; whether AI apps may use this engine's tools through it; and whether a client on another computer may pair through a pass it signed.
 /// </summary>
 [SpecDef("urn:infopanel:api:1#/$defs/serviceSettings")]
 public sealed record ServiceSettingsBody
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Address { get; init; }
     public required bool AiApps { get; init; }
+    public required bool Pairing { get; init; }
 }
 
 // The configured service (GET /api/service, PUT and DELETE /api/service/credential).
@@ -917,6 +942,8 @@ public sealed record ServiceStateBody
 public sealed record ServiceCredentialRequest
 {
     public required string Credential { get; init; }
+    /// <summary>The id the service gave the credential, which its pairing passes name as <c>device</c>; absent when it has none.</summary>
+    public string? Id { get; init; }
 }
 
 /// <summary>409 <c>noService</c> or 503 <c>storeUnavailable</c> to <c>PUT</c> or <c>DELETE /api/service/credential</c>.</summary>

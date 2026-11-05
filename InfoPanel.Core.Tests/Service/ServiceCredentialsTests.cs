@@ -373,6 +373,55 @@ public sealed class ServiceCredentialsTests : IDisposable
     }
 
     [Fact]
+    public void TheCredentialsId_IsKeptBesideIt_AcrossARestart_AndOnlyWhileItIsPresentForTheAddressInEffect()
+    {
+        var service = Open();
+        Assert.Null(service.Id);
+        service.Put(Credential, "dev_ABC123");
+        Assert.Equal("dev_ABC123", service.Id);
+        Assert.Equal("dev_ABC123", Open().Id);
+        // Never the credential beside it in a record's text.
+        Assert.DoesNotContain(Credential, new StoredServiceCredential(Address, Credential, false, "dev_ABC123").ToString());
+
+        // Another credential without one: none, the earlier id gone with its credential.
+        service.Put("another-credential");
+        Assert.Null(service.Id);
+        Assert.Null(Open().Id);
+
+        // Rejected: none while it is.
+        service.Put(Credential, "dev_ABC123");
+        Assert.True(service.TryTake(out _, out _, out _, out var sent));
+        service.Reject(sent);
+        Assert.Null(service.Id);
+        Assert.Null(Open().Id);
+
+        // Another address: none.
+        service.Put(Credential, "dev_ABC123");
+        _address = "https://other.example";
+        Assert.Null(service.Id);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("dev ABC")]
+    [InlineData("dev_ABC\n")]
+    [InlineData("dév_ABC")]
+    public void AnIdOutsideItsForm_IsRefused_AndAStoredOneIsIgnored(string id)
+    {
+        var service = Open();
+        Assert.Throws<ArgumentException>(() => service.Put(Credential, id));
+        Assert.Equal(ServiceCredentialState.Absent, service.Status.Credential);
+        Assert.False(ServiceCredentials.IsWellFormedId(id));
+        Assert.True(ServiceCredentials.IsWellFormedId(new string('a', ServiceCredentials.MaxIdLength)));
+        Assert.False(ServiceCredentials.IsWellFormedId(new string('a', ServiceCredentials.MaxIdLength + 1)));
+
+        File.WriteAllText(FilePath, $$$"""{"address":"{{{Address}}}","credential":"{{{Credential}}}","rejected":false,"id":{{{System.Text.Json.JsonSerializer.Serialize(id)}}}}""");
+        var read = Open();
+        Assert.Equal(ServiceCredentialState.Present, read.Status.Credential);
+        Assert.Null(read.Id);
+    }
+
+    [Fact]
     public void ARejectionOfACredentialAlreadyReplaced_ChangesNothing()
     {
         var service = Open();

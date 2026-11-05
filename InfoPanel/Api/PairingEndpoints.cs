@@ -1,6 +1,7 @@
 using InfoPanel.Documents;
 using InfoPanel.Hosting;
 using InfoPanel.Security;
+using InfoPanel.Settings;
 using InfoPanel.Spec;
 using static InfoPanel.Api.ApiResults;
 
@@ -12,11 +13,12 @@ namespace InfoPanel.Api;
 /// 404 when there is no such pairing listed); both 409 when <c>pairings.json</c> couldn't be read; <c>POST /api/pairings/codes</c>
 /// issues a one-time code for a client on another computer (<c>issuedPairingCode</c>). With no token, under
 /// <c>/auth/pairing</c> (mapped by <see cref="AuthEndpoints.MapAuth"/>): <see cref="ExchangeCodeAsync"/>, a one-time code's
-/// exchange, and the proofs, <see cref="ChallengeAsync"/> and <see cref="ProveAsync"/> (<see cref="PairingProofs"/>). Every answer is <c>Cache-Control: no-store</c>; nothing here logs a code, a secret or the token.
+/// exchange, <see cref="ExchangePassAsync"/>, a pass the configured service signed (<see cref="PairingPasses"/>), and the proofs, <see cref="ChallengeAsync"/> and <see cref="ProveAsync"/> (<see cref="PairingProofs"/>). Every answer is <c>Cache-Control: no-store</c>; nothing here logs a code, a secret or the token.
 /// </summary>
 public static class PairingEndpoints
 {
     private const string CodeRequestSchema = SpecSchemas.Api + "#/$defs/pairingCodeRequest";
+    private const string PassRequestSchema = SpecSchemas.Api + "#/$defs/pairingPassRequest";
     private const string ChallengeRequestSchema = SpecSchemas.Api + "#/$defs/pairingChallengeRequest";
     private const string ProofRequestSchema = SpecSchemas.Api + "#/$defs/pairingProofRequest";
 
@@ -94,6 +96,50 @@ public static class PairingEndpoints
                 Instance = workspace.Instance,
             }, StatusCodes.Status201Created)
             : RefusedCodeProblem();
+    }
+
+    /// <summary>
+    /// <c>POST /auth/pairing/pass</c> (<c>pairingPassRequest</c>): with <c>service.pairing</c> off, 403 <c>off</c> whatever
+    /// the body; else a body over <c>tokenRequestBytes</c>, not JSON or breaking its definition is 422; a pass
+    /// <see cref="PairingPasses"/> refuses is 403 <c>pairingPassProblem</c>, its one word; an accepted one answers 201
+    /// <c>pairingGrant</c> exactly as a code's first use does (the run's session token and instance, and a new pairing,
+    /// none when <c>pairings.json</c> can't be read or written), <c>replaces</c> handing the client's old pairing over.
+    /// </summary>
+    public static async Task<IResult> ExchangePassAsync(HttpRequest request, PairingPasses passes, PairingStore pairings, EngineRuntime runtime,
+        Workspace workspace, SettingsStore settings, ILoggerFactory loggers, HttpContext context, CancellationToken ct)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        // Off first: an engine that doesn't take passes reads nothing of the request.
+        if (!settings.Current.Settings.Service.Pairing)
+            return RefusedPassProblem(PassRefusal.Off);
+        var (body, refused) = await ReadAsync<PairingPassRequest>(request, workspace, PassRequestSchema, ct);
+        if (refused != null)
+            return refused;
+        // The schema's patterns, without the trailing line break a .NET "$" lets through.
+        if (!TokenStore.IsValidName(body!.Name))
+            return Invalid("/name", "schema", "A name is 1 to 64 letters, digits, spaces, dots, underscores and hyphens, without a space at either end.");
+
+        if (await passes.CheckAsync(body.Pass, request.Headers.Host.ToString(), ct) is { } refusal)
+            return RefusedPassProblem(refusal);
+
+        var logger = loggers.CreateLogger(typeof(PairingEndpoints));
+        PairingRecord? created = null;
+        try
+        {
+            created = pairings.Create(body.Name, body.Replaces, runtime.Port);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The client connects for this run, unpaired, as when the file can't be read.
+            logger.LogWarning(ex, "Could not keep a new paired client in {Path}", pairings.FilePath);
+        }
+
+        return Json(new PairingGrant
+        {
+            Pairing = created is null ? null : Info(created) with { Secret = created.Secret },
+            Token = runtime.Token,
+            Instance = workspace.Instance,
+        }, StatusCodes.Status201Created);
     }
 
     /// <summary>
@@ -200,6 +246,18 @@ public static class PairingEndpoints
         {
             return null;
         }
+    }
+
+    private static IResult RefusedPassProblem(PassRefusal refusal)
+    {
+        var word = PairingPasses.Word(refusal);
+        return Problem(new PairingPassProblem
+        {
+            Title = "Forbidden",
+            Status = StatusCodes.Status403Forbidden,
+            Code = word,
+            Detail = $"The pairing pass was refused: {word}.",
+        }, StatusCodes.Status403Forbidden);
     }
 
     private static IResult RefusedCodeProblem() =>
