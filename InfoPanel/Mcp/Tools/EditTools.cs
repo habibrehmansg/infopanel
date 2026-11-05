@@ -1023,37 +1023,85 @@ public sealed class RemoveItemTool(ProfileChanges changes) : McpTool
     }
 }
 
-/// <summary><c>add_asset</c>: an SVG stored as a blob (as <c>POST /api/blobs</c>), for a scene's <c>media</c> node.</summary>
+/// <summary>
+/// <c>add_asset</c>: a picture stored as a blob (as <c>POST /api/blobs</c>), for a scene's <c>media</c> node: an SVG's
+/// text (<c>svg</c>), or a picture file's bytes in base64 (<c>data</c>: PNG, JPEG, GIF, WebP or SVG; never a video).
+/// The bytes stored are the bytes given, checked first, in one guarded write.
+/// </summary>
 public sealed class AddAssetTool(ProfileChanges changes) : McpTool
 {
     public const int MaxSvgCharacters = 8 * 1024 * 1024;
 
     public override string Name => "add_asset";
     public override ApiScope Scope => ApiScope.Edit;
-    public override string Title => "Add an SVG picture";
+    public override string Title => "Add a picture";
     public override JsonObject InputSchema => Schema(
-        ("svg", String("The SVG document's text: shapes, groups, gradients, clip paths and masks; no text, styles, images, scripts or links.", MaxSvgCharacters), true));
+        ("svg", String("The SVG document's text: shapes, groups, gradients, clip paths and masks; no text, styles, images, scripts or links.", MaxSvgCharacters), false),
+        ("data", String("A picture file's bytes in base64 (PNG, JPEG, GIF, WebP or SVG): at most 8,388,608 characters, a file of up to 6 MiB. Give svg or data, not both.", MaxSvgCharacters), false));
 
     public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
     {
-        var bytes = Encoding.UTF8.GetBytes(arguments.String("svg")!);
-        var workspace = changes.Workspace;
-        // Checked before anything is stored: only an SVG the engine can show is kept.
-        var check = MediaValidator.Check(bytes, workspace.Limits);
-        if (check.Errors.Count > 0 || check.Info is not { } media)
-        {
-            var error = check.Errors.FirstOrDefault();
-            throw new ToolFailure(error?.Code ?? "media.format",
-                $"That isn't a picture InfoPanel can show: {error?.Code ?? "media.format"} ({error?.Message ?? "the bytes aren't a media asset"}). Nothing was stored. get_design_guide topic scenes says what an SVG may hold.");
-        }
-        if (media.Format != MediaFormat.Svg)
-            throw new ToolFailure("media.format", "add_asset takes SVG only (media.format). Nothing was stored.");
+        var svg = arguments.String("svg");
+        var data = arguments.String("data");
+        if (svg is not null && data is not null)
+            throw new ToolFailure("arguments", "add_asset takes svg or data, not both (arguments). Nothing was stored.");
+        if (svg is null && data is null)
+            throw new ToolFailure("arguments", "add_asset needs svg (an SVG's text) or data (a picture file's bytes in base64) (arguments).");
 
+        var bytes = svg is not null ? Encoding.UTF8.GetBytes(svg) : Decoded(data!);
+        var workspace = changes.Workspace;
+        // Checked before anything is stored: only a picture the engine can show is kept.
+        var check = MediaValidator.Check(bytes, workspace.Limits);
+        MediaInfo media;
+        if (svg is not null)
+        {
+            if (check.Errors.Count > 0 || check.Info is not { } svgMedia)
+            {
+                var error = check.Errors.FirstOrDefault();
+                throw new ToolFailure(error?.Code ?? "media.format",
+                    $"That isn't a picture InfoPanel can show: {error?.Code ?? "media.format"} ({error?.Message ?? "the bytes aren't a media asset"}). Nothing was stored. get_design_guide topic scenes says what an SVG may hold.");
+            }
+            if (svgMedia.Format != MediaFormat.Svg)
+                throw new ToolFailure("media.format", "add_asset takes SVG only (media.format). Nothing was stored.");
+            media = svgMedia;
+        }
+        else
+        {
+            if (check.Info is { IsVideo: true })
+                throw new ToolFailure("media.format", "add_asset stores pictures, not videos (media.format). Nothing was stored.");
+            if (check.Errors.Count > 0 || check.Info is not { } picture)
+            {
+                var error = check.Errors.FirstOrDefault();
+                throw new ToolFailure(error?.Code ?? "media.format",
+                    $"That isn't a picture InfoPanel can show: {error?.Code ?? "media.format"} ({error?.Message ?? "the bytes aren't a media asset"}). Nothing was stored.");
+            }
+            media = picture;
+        }
+
+        // The one write, whichever was given: the cutoff covers both.
         changes.BeforeWrite();
         var stored = workspace.PutBlob(bytes, arguments.Call.BeforeWrite).Info;
+        var what = media.Format switch
+        {
+            MediaFormat.Png => "PNG picture",
+            MediaFormat.Jpeg => "JPEG picture",
+            MediaFormat.Gif => "GIF picture",
+            MediaFormat.WebP => "WebP picture",
+            _ => "SVG",
+        };
         return Task.FromResult(ToolResult.Text(
-            $"Stored the SVG as {stored.Id} ({media.Width}×{media.Height}, {stored.Bytes} bytes). Show it with a media node in a scene: " +
+            $"Stored the {what} as {stored.Id} ({media.Width}×{media.Height}, {stored.Bytes} bytes). Show it with a media node in a scene: " +
             $"{{\"kind\":\"media\",\"x\":0,\"y\":0,\"w\":{media.Width},\"h\":{media.Height},\"source\":{{\"asset\":\"{stored.Id}\"}}}}"));
+    }
+
+    /// <summary><c>data</c>'s bytes: what <see cref="Convert.TryFromBase64String"/> decodes (whitespace included), else <c>arguments</c>.</summary>
+    private static byte[] Decoded(string data)
+    {
+        var buffer = new byte[(data.Length + 3) / 4 * 3];
+        if (!Convert.TryFromBase64String(data, buffer, out var written))
+            throw new ToolFailure("arguments", "data must be base64 (arguments). Nothing was stored.");
+        Array.Resize(ref buffer, written);
+        return buffer;
     }
 }
 

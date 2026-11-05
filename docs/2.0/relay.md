@@ -73,11 +73,13 @@ add types without a new protocol. A protocol the relay can't serve, it closes wi
   powers, the settings (this switch included), tokens, the log, folders or plugins. A name that isn't a tool is an
   `unknownTool` error result. The tools are the local ones, with their scopes; no profile delete, undo or save.
 - **At most 8 at once;** a ninth is answered `busy`.
+- **Pictures in one call:** `add_asset`'s `data` holds a picture file's bytes in base64, at most 8,388,608 characters,
+  so a 6 MiB picture as base64 fits one call frame.
 - **Web images: refused for now.** A change from elsewhere may not insert or set a scene holding a media source with a
   `provider` (a web image or a camera), nor change the bindings of an item whose scene holds one, since a binding can
-  re-address it: the answer is an error, `webImage`, "Adding pictures from web addresses isn't ready yet for AI apps
-  elsewhere … add_asset takes an SVG". Moving, hiding, renaming or removing such an item works. (`media.localNetwork`
-  is on by default, so without the rule a call could make the engine fetch from the local network.)
+  re-address it: the answer is an error, `webImage`, "An AI app can't add or change a picture from a web address …
+  add_asset stores a picture to show instead". Moving, hiding, renaming or removing such an item works.
+  (`media.localNetwork` is on by default, so without the rule a call could make the engine fetch from the local network.)
 - **Text fits the AI app:** with `maxChars`, `get_profile` lists items within it ("… and N more items: the list stops
   at N characters, the most this AI app takes"), an item's scene and source are cut at a quarter of it, and the whole
   answer is held within it, a picture counted by its data as sent: a picture is kept whole when it leaves 300
@@ -121,7 +123,7 @@ with the texts its `source` needs stored. The engine checks it as any item the A
   and every dep must be one of the files or already stored (as a verified read finds it: a file under the id whose
   bytes don't hash to it isn't); `source.deps` must list blob ids; and the design's scene may not hold a provider's
   media source (the web-image rule). The first miss is an error result naming it (`files`, `design`, `missingDep`:
-  "add_asset gives an SVG's id", or `webImage`), and nothing is stored or changed. Then the item it would insert is
+  "add_asset gives a picture's id", or `webImage`), and nothing is stored or changed. Then the item it would insert is
   built and checked against the profile as it is, by the commit's own checks, applying nothing (its layout, group,
   index and bindings, and the commit's every other refusal), and every change the call makes is held to the web-image
   rule on the profile as read (an `add_items` item given as a scene, or `update_item`'s bindings for an item showing

@@ -102,8 +102,8 @@ public static class WebImageRule
 {
     public const string Code = "webImage";
 
-    public const string Refusal = "Adding pictures from web addresses isn't ready yet for AI apps elsewhere (webImage), nor changing one: nothing was changed. " +
-        "add_asset takes an SVG; moving, hiding or removing such an item works.";
+    public const string Refusal = "An AI app can't add or change a picture from a web address (webImage): nothing was changed. " +
+        "add_asset stores a picture to show instead; moving, hiding or removing such an item works.";
 
     /// <summary>
     /// Whether a commit op inserts or sets a scene that holds a provider's media source: an <c>insert</c>'s item (a scene

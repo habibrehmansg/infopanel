@@ -9,7 +9,9 @@ using InfoPanel.Mcp.Tools;
 using InfoPanel.Security;
 using InfoPanel.Service;
 using InfoPanel.Settings;
+using InfoPanel.Tests.Mcp;
 using Microsoft.Extensions.DependencyInjection;
+using SkiaSharp;
 using Xunit;
 using static InfoPanel.Tests.Relay.RelayRig;
 
@@ -24,6 +26,9 @@ namespace InfoPanel.Tests.Relay;
 public sealed class RelayToolRulesTests
 {
     private const string Svg = """<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8"><rect width="8" height="8" fill="#ff8800"/></svg>""";
+
+    /// <summary>A PNG <c>add_asset</c> takes as <c>data</c>, base64.</summary>
+    private static readonly byte[] Png = McpEditToolTests.Encoded(SKEncodedImageFormat.Png, 8, 8);
 
     /// <summary>
     /// Each edit tool's call, on a profile <c>P</c> holding the items <c>a</c> and <c>b</c>. Every tool that declares
@@ -80,7 +85,25 @@ public sealed class RelayToolRulesTests
     public Task AnEditTool_CutOffWhileItsWriteGoesForItsLock_NeverWrites_AndAnswersCancelled(string tool, string cutoff) =>
         CutOffWhilePaused(tool, cutoff, "locking");
 
-    private static async Task CutOffWhilePaused(string tool, string cutoff, string pauseAt)
+    public static TheoryData<string, string> PausesAndCutoffs()
+    {
+        var data = new TheoryData<string, string>();
+        foreach (var pauseAt in new[] { "write", "locking" })
+        {
+            foreach (var cutoff in new[] { "cancel", "deadline", "closed" })
+                data.Add(pauseAt, cutoff);
+        }
+
+        return data;
+    }
+
+    /// <summary><c>add_asset</c> given a picture's bytes (<c>data</c>) is cut off as its <c>svg</c> is: its one write is guarded.</summary>
+    [Theory]
+    [MemberData(nameof(PausesAndCutoffs))]
+    public Task AddAsset_GivenData_PausedBeforeItsWrite_ThenCutOff_NeverWrites_AndAnswersCancelled(string pauseAt, string cutoff) =>
+        CutOffWhilePaused("add_asset", cutoff, pauseAt, new JsonObject { ["data"] = Convert.ToBase64String(Png) });
+
+    private static async Task CutOffWhilePaused(string tool, string cutoff, string pauseAt, JsonObject? arguments = null)
     {
         using var factory = new EngineFactory();
         var engine = new Engine(factory);
@@ -98,7 +121,7 @@ public sealed class RelayToolRulesTests
             release.Wait(Limit, Ct);
         };
 
-        await peer.SendAsync(rig.Call("edit", tool, EditCalls[tool]()));
+        await peer.SendAsync(rig.Call("edit", tool, arguments ?? EditCalls[tool]()));
         await paused.Task.WaitAsync(RelayRig.Limit, Ct);
         switch (cutoff)
         {
@@ -144,6 +167,50 @@ public sealed class RelayToolRulesTests
     public static TheoryData<string> EditToolNames() => [.. EditCalls.Keys];
 
     [Fact]
+    public async Task AddAsset_GivenData_FromElsewhere_NotCutOff_Writes()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var before = engine.Written();
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+        await peer.SendAsync(rig.Call("edit", "add_asset", new JsonObject { ["data"] = Convert.ToBase64String(Png) }));
+        var result = await peer.ExpectAsync("result", Ct);
+        Assert.False(result["result"]!["isError"]!.GetValue<bool>(), result.ToJsonString());
+        Assert.EndsWith(" | png ", before); // not stored before
+        Assert.EndsWith($" | png {Png.Length}", engine.Written());
+    }
+
+    /// <summary>
+    /// The largest picture <c>add_asset</c> takes, a file of 6 MiB (here a PNG followed by zeros to that size), is
+    /// 8,388,608 characters of base64: its call fits one frame (9 MiB), and the bytes stored are the bytes given.
+    /// </summary>
+    [Fact]
+    public async Task AddAsset_APictureOf6MiB_AsBase64_FitsOneCallFrame_AndIsStoredAsGiven()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var bytes = new byte[6 * 1024 * 1024];
+        McpEditToolTests.Encoded(SKEncodedImageFormat.Png, 64, 64).CopyTo(bytes, 0);
+        var data = Convert.ToBase64String(bytes);
+        Assert.Equal(8_388_608, data.Length);
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+        var call = rig.Call("big", "add_asset", new JsonObject { ["data"] = data });
+        Assert.InRange(Encoding.UTF8.GetByteCount(call.ToJsonString()), 8_388_608, RelayFrames.MaxFrameBytes);
+        await peer.SendAsync(call);
+        var result = (await peer.ExpectAsync("result", Ct))["result"]!;
+        var text = result["content"]![0]!["text"]!.GetValue<string>();
+        Assert.False(result["isError"]!.GetValue<bool>(), text);
+        var id = BlobStore.IdOf(bytes);
+        Assert.StartsWith($"Stored the PNG picture as {id} (64×64, {bytes.Length} bytes). ", text);
+        Assert.Equal(bytes, factory.Services.GetRequiredService<Workspace>().Blobs.ReadHashed(id));
+    }
+
+    private const string WebImageRefusal = "An AI app can't add or change a picture from a web address (webImage): nothing was changed. " +
+        "add_asset stores a picture to show instead; moving, hiding or removing such an item works.";
+
+    [Fact]
     public async Task WebImages_AreRefusedWhenAddedOrChanged_ButAnItemShowingOneCanBeMovedHiddenOrRemoved()
     {
         using var factory = new EngineFactory();
@@ -175,7 +242,7 @@ public sealed class RelayToolRulesTests
             var (text, error) = await Call(tool, arguments);
             Assert.True(error, $"{tool} {arguments.ToJsonString()}: {text}");
             Assert.Contains("(webImage)", text);
-            Assert.Contains("add_asset takes an SVG", text);
+            Assert.Equal(WebImageRefusal, text);
             Assert.Equal(rev, document.Rev);
         }
 
@@ -428,7 +495,7 @@ public sealed class RelayToolRulesTests
 
         public ConcurrentQueue<string> Called { get; } = new();
 
-        /// <summary>What the edit tools write: the profiles, each one's revision and window setting, and whether the SVG is stored.</summary>
+        /// <summary>What the edit tools write: the profiles, each one's revision and window setting, and whether the SVG and the PNG are stored.</summary>
         public string Written()
         {
             var workspace = _factory.Services.GetRequiredService<Workspace>();
@@ -440,7 +507,8 @@ public sealed class RelayToolRulesTests
                     + $":{state.Document.Profile.Window?.Enabled}";
             });
             var blob = workspace.Blobs.StoredSize(BlobStore.IdOf(Encoding.UTF8.GetBytes(Svg)));
-            return string.Join(" | ", profiles) + $" | svg {blob}";
+            var png = workspace.Blobs.StoredSize(BlobStore.IdOf(Png));
+            return string.Join(" | ", profiles) + $" | svg {blob} | png {png}";
         }
 
         private sealed class Recorder(Engine engine) : IRelayToolHost

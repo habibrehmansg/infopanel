@@ -509,7 +509,7 @@
     },
     {
       "name": "add_asset",
-      "title": "Add an SVG picture",
+      "title": "Add a picture",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -518,15 +518,19 @@
             "description": "The SVG document's text: shapes, groups, gradients, clip paths and masks; no text, styles, images, scripts or links.",
             "minLength": 1,
             "maxLength": 8388608
+          },
+          "data": {
+            "type": "string",
+            "description": "A picture file's bytes in base64 (PNG, JPEG, GIF, WebP or SVG): at most 8,388,608 characters, a file of up to 6 MiB. Give svg or data, not both.",
+            "minLength": 1,
+            "maxLength": 8388608
           }
         },
-        "required": [
-          "svg"
-        ],
+        "required": [],
         "additionalProperties": false
       },
       "annotations": {
-        "title": "Add an SVG picture",
+        "title": "Add a picture",
         "readOnlyHint": false,
         "openWorldHint": false
       }

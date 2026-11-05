@@ -7,6 +7,7 @@ using InfoPanel.Spec;
 using InfoPanel.Tests.Preview;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using SkiaSharp;
 using Xunit;
 
 namespace InfoPanel.Tests.Mcp;
@@ -343,6 +344,126 @@ public sealed class McpEditToolTests
         Assert.True(badError);
         Assert.Contains("media.", bad);
         Assert.Null(Workspace(factory).Blobs.StoredSize(BlobStore.IdOf(Encoding.UTF8.GetBytes(words)))); // nothing stored
+    }
+
+    /// <summary>A <paramref name="width"/>×<paramref name="height"/> picture SkiaSharp encodes as <paramref name="format"/>.</summary>
+    internal static byte[] Encoded(SKEncodedImageFormat format, int width, int height)
+    {
+        using var bitmap = new SKBitmap(width, height);
+        bitmap.Erase(new SKColor(0x22, 0x88, 0xcc));
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(format, 90);
+        return data.ToArray();
+    }
+
+    private static byte[] Picture(string format) => format switch
+    {
+        "PNG" => Encoded(SKEncodedImageFormat.Png, 40, 20),
+        "JPEG" => Encoded(SKEncodedImageFormat.Jpeg, 40, 20),
+        "WebP" => Encoded(SKEncodedImageFormat.Webp, 40, 20),
+        "GIF" => File.ReadAllBytes(Path.Combine(InfoPanel.Tests.Editing.LiveEngine.RepoRoot(), "InfoPanel.Core.Tests", "Fixtures", "assets", "blink.gif")),
+        _ => throw new ArgumentOutOfRangeException(nameof(format)),
+    };
+
+    private static int BlobFiles(EngineFactory factory) =>
+        Directory.Exists(Workspace(factory).Blobs.Paths.BlobsDirectory)
+            ? Directory.EnumerateFiles(Workspace(factory).Blobs.Paths.BlobsDirectory, "*", SearchOption.AllDirectories).Count()
+            : 0;
+
+    [Theory]
+    [InlineData("PNG", 40, 20)]
+    [InlineData("JPEG", 40, 20)]
+    [InlineData("WebP", 40, 20)]
+    [InlineData("GIF", 48, 32)]
+    public async Task AddAsset_StoresAPictureGivenAsBase64_ItsBytesAsGiven_AndAnswersItsFormatIdAndSize(string format, int width, int height)
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var bytes = Picture(format);
+        var (text, error) = await Call(host, "add_asset", new JsonObject { ["data"] = Convert.ToBase64String(bytes) });
+        Assert.False(error, text);
+        var id = BlobStore.IdOf(bytes);
+        Assert.Equal(
+            $"Stored the {format} picture as {id} ({width}×{height}, {bytes.Length} bytes). Show it with a media node in a scene: " +
+            $"{{\"kind\":\"media\",\"x\":0,\"y\":0,\"w\":{width},\"h\":{height},\"source\":{{\"asset\":\"{id}\"}}}}", text);
+        Assert.Equal(bytes.Length, Workspace(factory).Blobs.StoredSize(id));
+        Assert.Equal(bytes, Workspace(factory).Blobs.ReadHashed(id));
+    }
+
+    /// <summary>The answer to <c>svg</c>, word for word: the service reads its first sentence.</summary>
+    [Fact]
+    public async Task AddAsset_AnswersAnSvg_WordForWord()
+    {
+        using var factory = new EngineFactory();
+        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32"><rect width="64" height="32" fill="#ff8800"/></svg>""";
+        var (text, error) = await Call(Host(factory), "add_asset", new JsonObject { ["svg"] = svg });
+        Assert.False(error, text);
+        var id = BlobStore.IdOf(Encoding.UTF8.GetBytes(svg));
+        Assert.Equal(
+            $"Stored the SVG as {id} (64×32, 134 bytes). Show it with a media node in a scene: " +
+            $"{{\"kind\":\"media\",\"x\":0,\"y\":0,\"w\":64,\"h\":32,\"source\":{{\"asset\":\"{id}\"}}}}", text);
+    }
+
+    [Fact]
+    public async Task AddAsset_TakesAnSvgAsBase64Too_AndBase64WithWhitespace_AnsweringAsForSvg()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32"><rect width="64" height="32" fill="#ff8800"/></svg>""";
+        var bytes = Encoding.UTF8.GetBytes(svg);
+        var (text, error) = await Call(host, "add_asset", new JsonObject { ["data"] = Convert.ToBase64String(bytes, Base64FormattingOptions.InsertLineBreaks) + "\n" });
+        Assert.False(error, text);
+        var id = BlobStore.IdOf(bytes);
+        Assert.StartsWith($"Stored the SVG as {id} (64×32, {bytes.Length} bytes). ", text);
+        Assert.Equal(bytes, Workspace(factory).Blobs.ReadHashed(id));
+    }
+
+    [Fact]
+    public async Task AddAsset_RefusesAVideo_BothOrNeither_BadBase64_AndBytesThatArentAPicture_StoringNothing()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8"><rect width="8" height="8" fill="#ff8800"/></svg>""";
+        var png = Picture("PNG");
+        var video = VideoFixture.Read("clip-h264.mp4");
+        var html = Encoding.UTF8.GetBytes("<!doctype html><html><body><img src=\"x.png\"></body></html>");
+        var before = BlobFiles(factory);
+
+        foreach (var (arguments, expected) in new (JsonObject, string)[]
+        {
+            (new JsonObject { ["data"] = Convert.ToBase64String(video) }, "add_asset stores pictures, not videos (media.format). Nothing was stored."),
+            (new JsonObject { ["svg"] = svg, ["data"] = Convert.ToBase64String(png) }, "add_asset takes svg or data, not both (arguments). Nothing was stored."),
+            (new JsonObject(), "add_asset needs svg (an SVG's text) or data (a picture file's bytes in base64) (arguments)."),
+            (new JsonObject { ["data"] = "%%%" }, "data must be base64 (arguments). Nothing was stored."),
+            (new JsonObject { ["data"] = Convert.ToBase64String(png).Replace('+', '-').Replace('/', '_').TrimEnd('=') + "-_" }, "data must be base64 (arguments). Nothing was stored."),
+        })
+        {
+            var (text, error) = await Call(host, "add_asset", arguments);
+            Assert.True(error, $"{arguments.ToJsonString()[..Math.Min(80, arguments.ToJsonString().Length)]}: {text}");
+            Assert.Equal(expected, text);
+        }
+
+        var (page, pageError) = await Call(host, "add_asset", new JsonObject { ["data"] = Convert.ToBase64String(html) });
+        Assert.True(pageError, page);
+        Assert.StartsWith("That isn't a picture InfoPanel can show: media.", page);
+        Assert.EndsWith(". Nothing was stored.", page);
+        Assert.DoesNotContain("get_design_guide", page);
+
+        Assert.Equal(before, BlobFiles(factory));
+        foreach (var bytes in new[] { Encoding.UTF8.GetBytes(svg), png, video, html })
+            Assert.Null(Workspace(factory).Blobs.StoredSize(BlobStore.IdOf(bytes)));
+    }
+
+    [Fact]
+    public void AddAsset_ListsSvgAndData_NeitherRequired_DataUpToAFileOf6MiBInBase64()
+    {
+        using var factory = new EngineFactory();
+        var tool = Host(factory).All.Single(t => t.Name == "add_asset");
+        Assert.Equal("Add a picture", tool.Title);
+        var schema = tool.InputSchema;
+        Assert.Empty(schema["required"]!.AsArray());
+        Assert.Equal(["svg", "data"], schema["properties"]!.AsObject().Select(p => p.Key).ToArray());
+        Assert.Equal((6 * 1024 * 1024 + 2) / 3 * 4, schema["properties"]!["data"]!["maxLength"]!.GetValue<int>()); // 6 MiB as base64
     }
 
     [Fact]

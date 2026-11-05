@@ -66,7 +66,7 @@ public static class Designs
             if (!stored.ContainsKey(dep) && workspace.Blobs.StoredSize(dep) is null)
             {
                 throw new ToolFailure("missingDep",
-                    $"The design needs {dep}, which isn't stored and isn't among its files (missingDep): add_asset gives an SVG's id. {NothingDone}");
+                    $"The design needs {dep}, which isn't stored and isn't among its files (missingDep): add_asset gives a picture's id. {NothingDone}");
             }
         }
 
