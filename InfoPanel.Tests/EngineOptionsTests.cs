@@ -229,6 +229,20 @@ public class EngineOptionsTests
         Assert.Contains("--allow-origin", EngineCommandLine.Usage);
     }
 
+    /// <summary>
+    /// AI apps reach the engine through the configured service (docs/2.0/relay.md), turned on from the paired client, and
+    /// that service supplies the tools' wording: <c>--mcp</c> and <c>--mcp-text</c> are refused as any argument the engine
+    /// doesn't know, and the help names neither.
+    /// </summary>
+    [Fact]
+    public void McpAndMcpText_AreRefused_AsUnknownArguments()
+    {
+        Assert.Equal("Unknown argument '--mcp'.", EngineCommandLine.Parse(["--mcp"]).Error);
+        Assert.Equal("Unknown argument '--mcp'.", EngineCommandLine.Parse(["--mcp", "--data-dir", "/d"]).Error);
+        Assert.Equal("Unknown argument '--mcp-text'.", EngineCommandLine.Parse(["--mcp-text", "/d"]).Error);
+        Assert.DoesNotContain("--mcp", EngineCommandLine.Usage);
+    }
+
     [Fact]
     public void Fresh_WithoutDataDir_IsRejected()
     {

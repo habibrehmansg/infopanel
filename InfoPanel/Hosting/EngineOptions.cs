@@ -96,15 +96,6 @@ public sealed partial class EngineOptions
     /// </summary>
     public string? RunDir { get; init; }
 
-    /// <summary>
-    /// The live text folder for AI apps (<c>--mcp-text</c>): tool wording, guide topics and the rest, read on every call
-    /// over the built-in text; null for the built-in text only.
-    /// </summary>
-    public string? McpText { get; init; }
-
-    /// <summary>Be the MCP server an AI app starts (<c>--mcp</c>), not the engine.</summary>
-    public bool Mcp { get; init; }
-
     /// <summary>Start no plugin hosts (<c>--no-plugins</c>): the <c>plugins</c> source stays empty.</summary>
     public bool NoPlugins { get; init; }
 
@@ -302,11 +293,6 @@ public sealed partial class EngineOptions
         if (webRoot != null && !Directory.Exists(webRoot))
             problems.Add($"--web-root '{webRoot}' does not exist.");
 
-        var mcpText = Value(section, "McpText");
-        if (mcpText != null && !Directory.Exists(mcpText))
-            problems.Add($"--mcp-text '{mcpText}' does not exist.");
-        var mcp = Flag(section, "Mcp", "--mcp", problems);
-
         var runDir = Value(section, "RunDir");
         string? fullRunDir = null;
         if (runDir != null)
@@ -387,8 +373,6 @@ public sealed partial class EngineOptions
             Mock = mock,
             Offline = offline,
             RunDir = fullRunDir,
-            McpText = mcpText == null ? null : Path.GetFullPath(mcpText),
-            Mcp = mcp,
             NoPlugins = noPlugins,
             BundledPlugins = bundledPlugins == null ? null : Path.GetFullPath(bundledPlugins),
             H264 = h264,

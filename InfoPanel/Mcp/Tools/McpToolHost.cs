@@ -14,20 +14,19 @@ namespace InfoPanel.Mcp.Tools;
 
 /// <summary>
 /// The tools AI apps call, run inside the engine on the same code paths as the API (the workspace, the render service,
-/// the sensor hub), each with the scope it declares, never the session's. It answers the local channel
-/// (<see cref="ILocalChannelHandler"/>): the list with each tool's wording from the text layers (<see cref="McpText"/>),
-/// and calls, every failure a result with <c>isError</c>. Each call is logged with its tool, its profile, its outcome and
-/// how long it took, never its arguments. It is also the only thing a call from elsewhere reaches
-/// (<see cref="IRelayToolHost"/>, docs/2.0/relay.md): the same tools, with the call's context (<see cref="McpCall"/>):
+/// the sensor hub), each with the scope it declares, never the session's: the list (names and input schemas; their
+/// wording is the configured service's), and calls, every failure a result with <c>isError</c>. Each call is logged with
+/// its tool, its profile, its outcome and how long it took, never its arguments. It is the only thing a call from elsewhere
+/// reaches (<see cref="IRelayToolHost"/>, docs/2.0/relay.md): the same tools, with the call's context (<see cref="McpCall"/>):
 /// its cutoff asked under every write's lock, web images refused, its answer held to the AI app's <c>maxChars</c>, and its log
 /// line marked "from elsewhere".
 /// </summary>
-public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
+public sealed class McpToolHost : IRelayToolHost
 {
     /// <summary>The tools, in the order they are listed.</summary>
     public static IReadOnlyList<string> ToolNames { get; } =
     [
-        "list_profiles", "get_profile", "list_sensors", "list_fonts", "render_preview", "get_design_guide",
+        "list_profiles", "get_profile", "list_sensors", "list_fonts", "render_preview",
         "create_profile", "add_item", "add_items", "update_item", "remove_item", "add_asset", "show_on_desktop",
     ];
 
@@ -42,7 +41,7 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
         ILogger<McpToolHost> logger)
     {
         _logger = logger;
-        _text = new McpText(options.McpText, ToolNames.ToHashSet(), logger);
+        _text = new McpText(logger);
         var changes = new ProfileChanges(workspace, () => StepHook);
         // Why no desktop window opens on this engine, or null when windows open (the window manager's Enabled).
         var noWindow = options.NoWindows ? ShowOnDesktopTool.WindowsOff : desktop.IsSupported ? null : ShowOnDesktopTool.Unsupported;
@@ -57,7 +56,7 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
         _tools = Tools(null, null, null, text, null, null).ToDictionary(t => t.Name, StringComparer.Ordinal);
     }
 
-    /// <summary>The text layers the tools read.</summary>
+    /// <summary>The preview checks' thresholds the tools read.</summary>
     public McpText Text => _text;
 
     /// <summary>
@@ -78,7 +77,6 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
         new ListSensorsTool(sensors!),
         new ListFontsTool(),
         new RenderPreviewTool(workspace!, render!, text),
-        new GetDesignGuideTool(text),
         new CreateProfileTool(changes!),
         new AddItemTool(changes!),
         new AddItemsTool(changes!),
@@ -92,30 +90,17 @@ public sealed class McpToolHost : ILocalChannelHandler, IRelayToolHost
     public IReadOnlyCollection<McpTool> All => [.. ToolNames.Select(n => _tools[n])];
 
     /// <summary>
-    /// The list with the built-in wording only: what the front answers while no engine runs. Built from the same tools,
-    /// so it lists exactly what an engine would.
+    /// The list with no engine behind it: the committed snapshot's source. Built from the same tools, so it lists exactly
+    /// what an engine would.
     /// </summary>
-    public static JsonObject BuiltInList() => BuiltInList(null, NullLogger.Instance);
-
-    /// <summary>
-    /// <see cref="BuiltInList()"/> with the text of the live folder <paramref name="live"/> over the built-in wording, read
-    /// through the same layers as an engine reads it (<see cref="McpText"/>: containment, caps, a bad file skipped and
-    /// logged): what the front answers before an engine runs, from the folder the engine would start with.
-    /// </summary>
-    public static JsonObject BuiltInList(string? live, ILogger logger) =>
-        new McpToolHost(new McpText(live, ToolNames.ToHashSet(), logger)).List();
+    public static JsonObject BuiltInList() => new McpToolHost(new McpText(NullLogger.Instance)).List();
 
     public Task<JsonObject> ListAsync(CancellationToken ct) => Task.FromResult(List());
 
-    private JsonObject List()
+    private JsonObject List() => new()
     {
-        var wording = _text.Tools();
-        return new JsonObject
-        {
-            ["tools"] = new JsonArray([.. ToolNames.Select(n => (JsonNode)_tools[n].Listing(wording.Descriptions.GetValueOrDefault(n, "")))]),
-            ["instructions"] = wording.Instructions,
-        };
-    }
+        ["tools"] = new JsonArray([.. ToolNames.Select(n => (JsonNode)_tools[n].Listing())]),
+    };
 
     public async Task<JsonObject> CallAsync(string tool, JsonElement arguments, CancellationToken ct) =>
         (await RunAsync(tool, arguments, McpCall.ThisComputer, ct).ConfigureAwait(false)).ToJson();

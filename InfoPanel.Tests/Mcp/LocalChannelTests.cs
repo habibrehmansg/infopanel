@@ -144,9 +144,13 @@ public sealed class LocalChannelTests : IDisposable
         File.WriteAllText(endpoint.SocketPath!, "not a socket");
         await using var again = Start(data);
         await using var second = await Connect(again);
-        Assert.Equal(1, (await second.SendAsync(new JsonObject { ["op"] = "list" }, Ct))["tools"]!.AsArray().Count);
+        Assert.True((await second.SendAsync(new JsonObject { ["op"] = LocalChannel.OpenEditorOp }, Ct))["opened"]!.GetValue<bool>());
     }
 
+    /// <summary>
+    /// The channel speaks version 2 since it stopped carrying tool lists and calls: a companion of version 1 (an AI app's
+    /// front from before) is refused at its hello, and so is an AI app's front of any version.
+    /// </summary>
     [Fact]
     public async Task TheHello_NamesTheEngine_AndAnotherChannelVersionOrClientIsRefused()
     {
@@ -154,50 +158,60 @@ public sealed class LocalChannelTests : IDisposable
             return;
 
         await using var server = Start(Data("a"));
-        await using (var client = await Connect(server))
+        await using (var client = await LocalChannelClient.TryConnectAsync(server.Endpoint, TimeSpan.FromSeconds(5), Ct, client: LocalChannel.LaunchClient))
         {
-            Assert.Equal(1, client.Hello["channel"]!.GetValue<int>());
+            Assert.Equal(2, client!.Hello["channel"]!.GetValue<int>());
             Assert.False(string.IsNullOrEmpty(client.Hello["engineVersion"]!.GetValue<string>()));
             Assert.False(string.IsNullOrEmpty(client.Hello["engineBuild"]!.GetValue<string>()));
         }
 
-        var (version, versionClosed) = await RawHello(server, """{"channel":2,"client":"mcp"}""");
-        Assert.Equal(1, version["channel"]!.GetValue<int>());
-        Assert.Contains("channel 2", version["refused"]!.GetValue<string>());
+        var (version, versionClosed) = await RawHello(server, """{"channel":1,"client":"launch"}""");
+        Assert.Equal(2, version["channel"]!.GetValue<int>());
+        Assert.Contains("channel 1", version["refused"]!.GetValue<string>());
         Assert.True(versionClosed);
 
-        var (client2, clientClosed) = await RawHello(server, """{"channel":1,"client":"someone"}""");
-        Assert.Equal("unknown client", client2["refused"]!.GetValue<string>());
-        Assert.True(clientClosed);
+        foreach (var someone in new[] { "someone", "mcp" })
+        {
+            var (client2, clientClosed) = await RawHello(server, $$"""{"channel":2,"client":"{{someone}}"}""");
+            Assert.Equal("unknown client", client2["refused"]!.GetValue<string>());
+            Assert.True(clientClosed);
+        }
     }
 
+    /// <summary>
+    /// A launch's requests are answered in order on its connection: <c>open-editor</c> opens the editor, and anything else
+    /// (the tool list and calls channel 1 carried included) is an error that opens nothing.
+    /// </summary>
     [Fact]
-    public async Task AnswersComeInOrderOnAConnection_ListAndCallReachTheHandler()
+    public async Task ALaunchsRequests_AreAnsweredInOrder_OnlyOpenEditorOpensTheEditor()
     {
         if (OperatingSystem.IsWindows())
             return;
 
-        var handler = new FakeHandler();
-        await using var server = Start(Data("a"), handler);
+        var editor = new FakeEditor { Slow = true };
+        await using var server = Start(Data("a"), editor);
         using var socket = await RawConnect(server);
         await using var stream = new NetworkStream(socket);
-        await stream.WriteAsync(Encoding.UTF8.GetBytes("""{"channel":1,"client":"mcp"}""" + "\n"), Ct);
-        // Two requests at once: the first one's handler takes longer, but its answer still comes first.
+        await stream.WriteAsync(Encoding.UTF8.GetBytes("""{"channel":2,"client":"launch"}""" + "\n"), Ct);
+        // Three requests at once: the first one takes longer, but its answer still comes first.
         await stream.WriteAsync(Encoding.UTF8.GetBytes(
-            """{"id":"a","op":"call","tool":"slow","arguments":{"n":1}}""" + "\n" +
+            """{"id":"a","op":"open-editor"}""" + "\n" +
             """{"id":"b","op":"list"}""" + "\n" +
-            """{"id":"c","op":"nonsense"}""" + "\n"), Ct);
+            """{"id":"c","op":"call","tool":"list_profiles","arguments":{}}""" + "\n"), Ct);
         var reader = new LineReader(stream, 1 << 20);
         Assert.NotNull(await reader.ReadLineAsync(Ct)); // hello
         var first = JsonNode.Parse((await reader.ReadLineAsync(Ct))!)!;
         var second = JsonNode.Parse((await reader.ReadLineAsync(Ct))!)!;
         var third = JsonNode.Parse((await reader.ReadLineAsync(Ct))!)!;
         Assert.Equal("a", first["id"]!.GetValue<string>());
-        Assert.Equal("slow:{\"n\":1}", first["content"]![0]!["text"]!.GetValue<string>());
+        Assert.True(first["opened"]!.GetValue<bool>());
         Assert.Equal("b", second["id"]!.GetValue<string>());
-        Assert.Equal("fake", second["tools"]![0]!["name"]!.GetValue<string>());
+        Assert.Equal("unknown op 'list'", second["error"]!.GetValue<string>());
+        Assert.Null(second["tools"]);
         Assert.Equal("c", third["id"]!.GetValue<string>());
-        Assert.Contains("unknown op", third["error"]!.GetValue<string>());
+        Assert.Equal("unknown op 'call'", third["error"]!.GetValue<string>());
+        Assert.Null(third["content"]);
+        Assert.Equal(1, editor.Opened);
     }
 
     [Fact]
@@ -211,10 +225,10 @@ public sealed class LocalChannelTests : IDisposable
 
         using var socket = await RawConnect(server);
         await using var stream = new NetworkStream(socket);
-        await stream.WriteAsync(Encoding.UTF8.GetBytes("""{"channel":1,"client":"mcp"}""" + "\n"), Ct);
+        await stream.WriteAsync(Encoding.UTF8.GetBytes("""{"channel":2,"client":"launch"}""" + "\n"), Ct);
         var reader = new LineReader(stream, 1 << 20);
         Assert.NotNull(await reader.ReadLineAsync(Ct));
-        var big = """{"id":1,"op":"call","tool":"x","arguments":{"s":""" + "\"" + new string('x', 5000) + "\"}}\n";
+        var big = """{"id":1,"op":"open-editor","pad":""" + "\"" + new string('x', 5000) + "\"}\n";
         try
         {
             await stream.WriteAsync(Encoding.UTF8.GetBytes(big), Ct);
@@ -226,28 +240,41 @@ public sealed class LocalChannelTests : IDisposable
         Assert.Null(await ReadOrEnd(reader));
 
         // A line within the cap is answered on the other connection.
-        var answer = await other.SendAsync(new JsonObject { ["op"] = "call", ["tool"] = "x", ["arguments"] = new JsonObject { ["s"] = new string('y', 3000) } }, Ct);
-        Assert.False(answer["isError"]!.GetValue<bool>());
+        var answer = await other.SendAsync(new JsonObject { ["op"] = LocalChannel.OpenEditorOp, ["pad"] = new string('y', 3000) }, Ct);
+        Assert.True(answer["opened"]!.GetValue<bool>());
     }
 
     /// <summary>
-    /// Codex p1 #8: an answer longer than a line may be is never sent (the companion would take the engine for gone): it is
-    /// an error result that says so, and the connection goes on.
+    /// A launch's request within the cap whose answer is over it (the error echoes the op) gets a short error instead, which
+    /// echoes nothing large, and the connection goes on: a line over the cap would make the client take the engine for gone.
     /// </summary>
     [Fact]
-    public async Task AnAnswerOverTheCap_IsAnErrorResultInstead_AndTheConnectionGoesOn()
+    public async Task AnAnswerOverTheCap_IsAShortErrorInstead_AndTheConnectionGoesOn()
     {
         if (OperatingSystem.IsWindows())
             return;
 
-        await using var server = Start(Data("a"), options: new LocalChannelServerOptions { MaxLineBytes = 4096 });
-        await using var client = await Connect(server);
-        var big = await client.SendAsync(new JsonObject { ["op"] = "call", ["tool"] = "big" }, Ct);
-        Assert.True(big["isError"]!.GetValue<bool>());
-        Assert.Contains("too long to send", big["content"]![0]!["text"]!.GetValue<string>());
+        var editor = new FakeEditor();
+        await using var server = Start(Data("a"), editor, new LocalChannelServerOptions { MaxLineBytes = 4096 });
+        using var socket = await RawConnect(server);
+        await using var stream = new NetworkStream(socket);
+        await stream.WriteAsync(Encoding.UTF8.GetBytes("""{"channel":2,"client":"launch"}""" + "\n"), Ct);
+        var reader = new LineReader(stream, 1 << 20);
+        Assert.NotNull(await reader.ReadLineAsync(Ct)); // hello
 
-        var next = await client.SendAsync(new JsonObject { ["op"] = "call", ["tool"] = "x" }, Ct);
-        Assert.Equal("x:{}", next["content"]![0]!["text"]!.GetValue<string>());
+        var op = new string('x', 4070); // the request is 4086 bytes, the error that echoes the op is more than 4096
+        await stream.WriteAsync(Encoding.UTF8.GetBytes($$"""{"id":1,"op":"{{op}}"}""" + "\n" + """{"id":2,"op":"open-editor"}""" + "\n"), Ct);
+        var raw = (await reader.ReadLineAsync(Ct))!;
+        Assert.True(raw.Length < 1024);
+        var tooLong = JsonNode.Parse(raw)!;
+        Assert.Equal(1, tooLong["id"]!.GetValue<int>());
+        Assert.Contains("too long", tooLong["error"]!.GetValue<string>());
+        Assert.DoesNotContain("xxxx", tooLong.ToJsonString());
+
+        var next = JsonNode.Parse((await reader.ReadLineAsync(Ct))!)!;
+        Assert.Equal(2, next["id"]!.GetValue<int>());
+        Assert.True(next["opened"]!.GetValue<bool>());
+        Assert.Equal(1, editor.Opened);
     }
 
     [Fact]
@@ -282,7 +309,7 @@ public sealed class LocalChannelTests : IDisposable
             });
             clients.Add(ninth!);
             foreach (var client in clients)
-                Assert.Equal(1, (await client.SendAsync(new JsonObject { ["op"] = "list" }, Ct))["tools"]!.AsArray().Count);
+                Assert.True((await client.SendAsync(new JsonObject { ["op"] = LocalChannel.OpenEditorOp }, Ct))["opened"]!.GetValue<bool>());
         }
         finally
         {
@@ -297,21 +324,20 @@ public sealed class LocalChannelTests : IDisposable
         if (OperatingSystem.IsWindows())
             return;
 
-        var handler = new FakeHandler();
-        await using var server = Start(Data("a"), handler);
+        var editor = new FakeEditor { Slow = true };
+        await using var server = Start(Data("a"), editor);
         await using var keep = await Connect(server);
 
-        // One companion sends a slow call and goes away mid-answer.
+        // One launch asks to open the editor, which takes a while, and goes away mid-answer.
         var dropped = await RawConnect(server);
         var stream = new NetworkStream(dropped, ownsSocket: true);
-        await stream.WriteAsync(Encoding.UTF8.GetBytes("""{"channel":1,"client":"mcp"}""" + "\n" + """{"id":1,"op":"call","tool":"slow"}""" + "\n"), Ct);
-        await handler.SlowStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await stream.WriteAsync(Encoding.UTF8.GetBytes("""{"channel":2,"client":"launch"}""" + "\n" + """{"id":1,"op":"open-editor"}""" + "\n"), Ct);
+        await editor.SlowStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
         dropped.Close(0);
         await stream.DisposeAsync();
 
-        var answer = await keep.SendAsync(new JsonObject { ["op"] = "call", ["tool"] = "x" }, Ct);
-        Assert.Equal("x:{}", answer["content"]![0]!["text"]!.GetValue<string>());
-        Assert.True(keep.IsAlive);
+        var answer = await keep.SendAsync(new JsonObject { ["op"] = LocalChannel.OpenEditorOp }, Ct);
+        Assert.True(answer["opened"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -393,72 +419,8 @@ public sealed class LocalChannelTests : IDisposable
         Assert.Null(await LocalChannelClient.TryConnectAsync(LocalChannel.EndpointFor(Path.Combine(_root, "absent"), Data("b")), TimeSpan.FromSeconds(2), Ct));
     }
 
-    /// <summary>
-    /// Codex p2 #3: on a volume that folds case, the front hashed <c>Later</c> while it didn't exist; <c>later</c> was
-    /// made before the front's link was. The link doesn't settle on that hash because the folder exists by then: it
-    /// works the channel out on first use, and settles only once that worked (a failed try is tried again next call).
-    /// </summary>
-    [Fact]
-    public async Task ALinkMadeAfterItsFolderAppeared_WorksTheChannelOutOnFirstUse_AndSettlesOnlyOnceThatWorked()
-    {
-        if (!OperatingSystem.IsMacOS())
-            return;
-        var probe = Data("case-probe");
-        if (!Directory.Exists(Path.Combine(_root, "CASE-PROBE")))
-            return; // a volume that keeps case apart: two spellings are two folders
-        Assert.True(Directory.Exists(probe));
-
-        var given = Path.Combine(_root, "Later");
-        var stale = LocalChannel.EndpointFor(Run, given); // the folder isn't there yet: the spelling as given
-        var made = Data("later");
-        await using var server = Start(made);
-        Assert.NotEqual(stale.Name, server.Endpoint.Name);
-
-        var tries = 0;
-        var launcher = new NoEngineStarts();
-        await using var link = new InfoPanel.Mcp.Front.EngineLink(new InfoPanel.Mcp.Front.EngineLinkOptions
-        {
-            Endpoint = stale,
-            Rehash = () => tries++ == 0 ? throw new IOException("can't read the folder's spelling now") : LocalChannel.EndpointFor(Run, given),
-            Paths = new InfoPanel.Persistence.DataPaths(given),
-            StartTimeout = TimeSpan.Zero,
-            BuiltInList = _ => new JsonObject(),
-        }, launcher, TextWriter.Null);
-        using var empty = JsonDocument.Parse("{}");
-
-        // The first try fails (nothing answers on the stale channel, so a start is tried); the next works it out and
-        // finds the engine on the folder's own channel.
-        var answer = await link.CallAsync("fake", empty.RootElement, Ct);
-        Assert.False(answer["isError"]!.GetValue<bool>(), answer.ToJsonString());
-        Assert.Contains(answer["content"]!.AsArray(), c => c!["text"]!.GetValue<string>() == "fake:{}");
-        Assert.Equal(2, tries);
-        Assert.Equal(1, launcher.Starts);
-
-        // Settled: worked out once, never again.
-        answer = await link.CallAsync("fake", empty.RootElement, Ct);
-        Assert.False(answer["isError"]!.GetValue<bool>(), answer.ToJsonString());
-        Assert.Equal(2, tries);
-
-        // The canonicalisation the front settles on refuses what it can't read whole, rather than hash it as given.
-        Assert.Throws<IOException>(() => LocalChannel.StoredEndpointFor(Run, Path.Combine(_root, "absent")));
-        Assert.Throws<IOException>(() => LocalChannel.StoredEndpointFor(Run, Path.Combine(_root, "absent", "deeper")));
-        Assert.Equal(server.Endpoint.Name, LocalChannel.StoredEndpointFor(Run, given).Name);
-    }
-
-    /// <summary>A launcher whose engine finds the folder in use (exit 3) at once.</summary>
-    private sealed class NoEngineStarts : InfoPanel.Mcp.Front.IEngineLauncher
-    {
-        public int Starts { get; private set; }
-
-        public InfoPanel.Mcp.Front.StartedEngine Start(IReadOnlyList<string> args)
-        {
-            Starts++;
-            return new InfoPanel.Mcp.Front.StartedEngine(null, () => 3);
-        }
-    }
-
-    private LocalChannelServer Start(string data, ILocalChannelHandler? handler = null, LocalChannelServerOptions? options = null) =>
-        LocalChannelServer.Start(LocalChannel.EndpointFor(Run, data), handler ?? new FakeHandler(), NullLogger.Instance, options);
+    private LocalChannelServer Start(string data, FakeEditor? editor = null, LocalChannelServerOptions? options = null) =>
+        LocalChannelServer.Start(LocalChannel.EndpointFor(Run, data), NullLogger.Instance, options, (editor ?? new FakeEditor()).OpenAsync);
 
     private static async Task<LocalChannelClient> Connect(LocalChannelServer server) =>
         await LocalChannelClient.TryConnectAsync(server.Endpoint, TimeSpan.FromSeconds(5), Ct) ?? throw new InvalidOperationException("No channel.");
@@ -506,31 +468,26 @@ public sealed class LocalChannelTests : IDisposable
         }
     }
 
-    /// <summary>One tool, <c>fake</c>; a call answers <c>{tool}:{arguments}</c>, the tool <c>slow</c> after 300 ms.</summary>
-    private sealed class FakeHandler : ILocalChannelHandler
+    /// <summary>What a launch's <c>open-editor</c> runs: counts the opens; <see cref="Slow"/>, each takes 300 ms.</summary>
+    private sealed class FakeEditor
     {
+        private int _opened;
+
+        public bool Slow { get; init; }
+
+        public int Opened => Volatile.Read(ref _opened);
+
         public TaskCompletionSource SlowStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task<JsonObject> ListAsync(CancellationToken ct) =>
-            Task.FromResult(new JsonObject { ["tools"] = new JsonArray(new JsonObject { ["name"] = "fake" }), ["instructions"] = "test" });
-
-        public async Task<JsonObject> CallAsync(string tool, JsonElement arguments, CancellationToken ct)
+        public async Task OpenAsync(CancellationToken ct)
         {
-            if (tool == "slow")
+            if (Slow)
             {
                 SlowStarted.TrySetResult();
                 await Task.Delay(300, ct);
             }
 
-            return new JsonObject
-            {
-                ["content"] = new JsonArray(new JsonObject
-                {
-                    ["type"] = "text",
-                    ["text"] = tool == "big" ? new string('x', 8000) : $"{tool}:{arguments.GetRawText()}",
-                }),
-                ["isError"] = false,
-            };
+            Interlocked.Increment(ref _opened);
         }
     }
 }

@@ -83,12 +83,4 @@ public sealed class DesktopChoiceTests
         Assert.True(Options("--no-tray", "--port", "5199").NoTray);
         Assert.Contains("--no-tray", EngineCommandLine.Usage);
     }
-
-    [Fact]
-    public void TheLaunchRecord_KeepsNoTray()
-    {
-        Assert.Contains("--no-tray", LaunchRecord.ArgumentsOf(Options("--no-tray")));
-        Assert.DoesNotContain("--no-tray", LaunchRecord.ArgumentsOf(Options()));
-        Assert.Contains("--no-tray", LaunchRecord.Allowed);
-    }
 }

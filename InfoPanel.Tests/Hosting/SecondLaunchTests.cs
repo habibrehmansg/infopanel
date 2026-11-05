@@ -71,25 +71,32 @@ public sealed class SecondLaunchTests
         Assert.Empty(browser.Links);
     }
 
+    /// <summary>
+    /// The channel serves a second launch: it opens the editor for one, answers no tool list or call (AI apps reach the
+    /// engine through the configured service, docs/2.0/relay.md), and refuses an AI app's front at its hello.
+    /// </summary>
     [Fact]
-    public async Task TheChannel_OpensTheEditorOnlyForALaunch_NotForAnAiAppsFront()
+    public async Task TheChannel_OpensTheEditorForALaunch_AnswersNoToolListOrCall_AndRefusesAnAiAppsFront()
     {
         using var engine = new EngineFactory();
         var browser = new RecordingBrowserLauncher();
         using var first = First(engine, browser);
         var endpoint = await WaitForChannel(first);
 
-        await using (var front = await LocalChannelClient.TryConnectAsync(endpoint, TimeSpan.FromSeconds(5), Ct))
-        {
-            var answer = await front!.SendAsync(new JsonObject { ["op"] = "open-editor" }, Ct);
-            Assert.NotNull(answer["error"]);
-        }
+        var front = await Assert.ThrowsAsync<LocalChannelException>(() => LocalChannelClient.TryConnectAsync(endpoint, TimeSpan.FromSeconds(5), Ct, client: "mcp"));
+        Assert.Equal("unknown client", front.Message);
         await using (var launch = await LocalChannelClient.TryConnectAsync(endpoint, TimeSpan.FromSeconds(5), Ct, client: LocalChannel.LaunchClient))
         {
-            var list = await launch!.SendAsync(new JsonObject { ["op"] = "list" }, Ct);
-            Assert.NotNull(list["error"]);
+            foreach (var op in new[] { "list", "call" })
+            {
+                var refused = await launch!.SendAsync(new JsonObject { ["op"] = op, ["tool"] = "list_profiles", ["arguments"] = new JsonObject() }, Ct);
+                Assert.NotNull(refused["error"]);
+                Assert.Null(refused["tools"]);
+                Assert.Null(refused["content"]);
+            }
+
             Assert.Empty(browser.Links);
-            var answer = await launch.SendAsync(new JsonObject { ["op"] = "open-editor" }, Ct);
+            var answer = await launch!.SendAsync(new JsonObject { ["op"] = "open-editor" }, Ct);
             Assert.True(answer["opened"]!.GetValue<bool>());
         }
 

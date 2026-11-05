@@ -111,7 +111,7 @@ with the texts its `source` needs stored. The engine checks it as any item the A
 - **The frame.** `design` is an object with `source` and `scene`, each an object, and optionally `layout` and `origin`,
   each an object; `files` a list of text. With a design, the arguments hold no `scene`, `width` or `height` (the design
   is the item's scene and box). Anything else is `malformed`.
-- **Only from elsewhere, only to `add_item`, `update_item` and `add_items`.** The local channel's calls carry only
+- **Only from elsewhere, only to `add_item`, `update_item` and `add_items`.** A call made on this computer carries only
   arguments, and a `design`, `designs` or `files` among them isn't one of the tool's. A design or files on a call to
   another tool, `designs` on a call to `add_item` or `update_item`, a `design` on one to `add_items`, or non-empty
   `files` without a design, is an error result, `design`, with nothing stored or changed (`files: []` without a design

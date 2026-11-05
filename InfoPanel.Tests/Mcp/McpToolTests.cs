@@ -20,7 +20,6 @@ public sealed class McpToolTests
         ["get_profile"] = ApiScope.Read,
         ["list_sensors"] = ApiScope.Read,
         ["render_preview"] = ApiScope.Read,
-        ["get_design_guide"] = ApiScope.Read,
         ["list_fonts"] = ApiScope.Read,
         ["create_profile"] = ApiScope.Edit,
         ["add_item"] = ApiScope.Edit,
@@ -42,7 +41,7 @@ public sealed class McpToolTests
     }
 
     [Fact]
-    public async Task EveryTool_DeclaresReadOrEdit_HasBuiltInText_AndAValidClosedSchema()
+    public async Task EveryTool_DeclaresReadOrEdit_HasNoWording_AndAValidClosedSchema()
     {
         using var factory = new EngineFactory();
         var host = Host(factory);
@@ -54,13 +53,14 @@ public sealed class McpToolTests
         }
 
         var list = await host.ListAsync(Ct);
-        Assert.False(string.IsNullOrWhiteSpace(list["instructions"]!.GetValue<string>()));
+        // The tools' descriptions and the instructions are the service's to give, not the engine's.
+        Assert.Null(list["instructions"]);
         var builtIn = McpToolHost.BuiltInList();
-        Assert.Equal(list.ToJsonString(), builtIn.ToJsonString()); // no live folder: the engine lists the built-in text
+        Assert.Equal(list.ToJsonString(), builtIn.ToJsonString());
         foreach (var listed in list["tools"]!.AsArray())
         {
             var name = listed!["name"]!.GetValue<string>();
-            Assert.True(listed["description"]!.GetValue<string>().Length > 40, $"{name} has no built-in description.");
+            Assert.Null(listed["description"]);
             Assert.Equal(Scopes[name] == ApiScope.Read, listed["annotations"]!["readOnlyHint"]!.GetValue<bool>());
             var schema = listed["inputSchema"]!.AsObject();
             Assert.Equal("object", schema["type"]!.GetValue<string>());

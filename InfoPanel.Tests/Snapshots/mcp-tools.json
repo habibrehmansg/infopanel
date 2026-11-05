@@ -3,7 +3,6 @@
     {
       "name": "list_profiles",
       "title": "List profiles",
-      "description": "Lists the profiles (dashboards): id, name, size in pixels, status (ok, or why it can't be opened) and whether it has unsaved changes. Name a profile to the other tools by its id or its exact name.",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -19,7 +18,6 @@
     {
       "name": "get_profile",
       "title": "Read a profile",
-      "description": "Reads one profile: its name, size, revision and items. Each item has its id, name, kind (scene or group), position (x, y), box (w, h) when it has one, visibility, sensor bindings (input name to sensor key) and what made it. Give item (an item's id or exact name) to also get that item's scene and source.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -50,7 +48,6 @@
     {
       "name": "list_sensors",
       "title": "List sensors",
-      "description": "Lists the sensors this computer has: key (what a binding names), name, group, unit, status (live, stale, simulated, unavailable, denied, missing) and current value. query keeps the sensors whose key, name or group contains every word of it, e.g. \"cpu temp\". At most limit (200 by default).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -79,7 +76,6 @@
     {
       "name": "list_fonts",
       "title": "List fonts",
-      "description": "Lists the font families a scene's text can use: the bundled ones (Inter, always there) first, then the computer's. A computer can have hundreds: give query (part of a name, any case) to list only the matching ones. A family that isn't listed is drawn in Inter.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -102,7 +98,6 @@
     {
       "name": "render_preview",
       "title": "Preview a profile",
-      "description": "Draws a profile as it shows now and returns the picture (PNG) with the checks' findings: text that doesn't fit its box, items past the canvas, items whose boxes overlap, text with low contrast, and what the checks couldn't look at. width is the picture's width in pixels (the profile's own, at most 1200, by default); the height follows the profile's proportions. The checks are heuristics: look at the picture too.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -131,38 +126,8 @@
       }
     },
     {
-      "name": "get_design_guide",
-      "title": "Design guide",
-      "description": "The guide to making panels. With no arguments, the list of topics, palettes and examples. topic is a topic's id from that list (for example scenes, the scene format in short) or palettes; example is an example's id.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "topic": {
-            "type": "string",
-            "description": "A topic's id from the list (or palettes).",
-            "minLength": 1,
-            "maxLength": 64
-          },
-          "example": {
-            "type": "string",
-            "description": "An example's id from the list.",
-            "minLength": 1,
-            "maxLength": 64
-          }
-        },
-        "required": [],
-        "additionalProperties": false
-      },
-      "annotations": {
-        "title": "Design guide",
-        "readOnlyHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
       "name": "create_profile",
       "title": "Create a profile",
-      "description": "Creates an empty profile (a canvas of width × height pixels, with an optional background colour) and saves it at once; answers its id. Items added after it are separate changes, each saved as it is made, so a build that stops halfway leaves a saved, unfinished profile.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -207,7 +172,6 @@
     {
       "name": "add_item",
       "title": "Add an item",
-      "description": "Adds an item that draws scene (format infopanel.scene/1; get_design_guide topic scenes) to a profile at x, y, optionally with a layout box (width, height) for a scene that reads it, a name, bindings (each scene input to a sensor key from list_sensors) and a group to put it in. One undoable change; the engine checks the scene and answers each problem with its path.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -283,7 +247,6 @@
     {
       "name": "add_items",
       "title": "Add items",
-      "description": "Adds up to 50 items to a profile in one change: items is a list, each item as add_item takes one (scene, x, y, width, height, name, bindings, group, index) without profile. All or nothing: one item the engine refuses refuses them all, and the answer names it by its place in the list. One undoable change for all of them; use it to build a panel of many items.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -374,7 +337,6 @@
     {
       "name": "update_item",
       "title": "Change an item",
-      "description": "Changes an item, named by id or exact name: any of its position (x, y, rotation), its box (width, height), its scene (a new scene replaces the old one whole), its bindings (replaced whole), its name and whether it is visible. What isn't given stays. One undoable change.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -454,7 +416,6 @@
     {
       "name": "remove_item",
       "title": "Remove an item",
-      "description": "Removes an item (a group with everything in it) from a profile. One change the editor's Undo brings back.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -486,7 +447,6 @@
     {
       "name": "add_asset",
       "title": "Add an SVG picture",
-      "description": "Stores an SVG picture and answers its asset id and size, ready for a scene's media node ({\"kind\":\"media\",\"source\":{\"asset\":\"sha256:…\"}}). SVG only: shapes, groups, gradients, clip paths and masks; no text, styles, images, scripts or links.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -511,7 +471,6 @@
     {
       "name": "show_on_desktop",
       "title": "Show on the desktop",
-      "description": "Shows a profile on the desktop in a window of its own (show true, the default), or closes that window (show false). Its other window settings stay as they are. The answer says when this engine can't open a window (started with --no-windows, or a computer it can't show windows on yet); the setting is kept.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -537,6 +496,5 @@
         "openWorldHint": false
       }
     }
-  ],
-  "instructions": "InfoPanel draws dashboards of a computer's sensors (temperatures, loads, clocks, media) on desktop windows and small displays. Each dashboard is a profile: a canvas of a fixed size holding items, and each item draws a scene (shapes, text, sensor values). Use list_profiles to see the profiles, get_profile to read one, list_sensors to find sensor keys and their current values, and render_preview to see a profile as a picture with checks for text that doesn't fit, items past the canvas, overlapping items and low contrast. To make a panel: create_profile, then add_item for each item (a scene; get_design_guide topic scenes has the format), add_asset for SVG pictures, update_item and remove_item to change it, render_preview to look at it and fix what the checks find, and show_on_desktop to put it on screen. Each change is one step the editor can undo, and is saved unless someone has unsaved changes in the editor. A tool that fails says why and what to do next."
+  ]
 }

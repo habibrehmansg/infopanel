@@ -25,7 +25,6 @@ public static class EngineCommandLine
         ["--web-root"] = "WebRoot",
         ["--token"] = "Token",
         ["--mock-seed"] = "MockSeed",
-        ["--mcp-text"] = "McpText",
         ["--bundled-plugins"] = "BundledPlugins",
         ["--h264"] = "H264",
         ["--ffmpeg"] = "Ffmpeg",
@@ -42,7 +41,6 @@ public static class EngineCommandLine
         ["--fresh"] = "Fresh",
         ["--mock"] = "Mock",
         ["--offline"] = "Offline",
-        ["--mcp"] = "Mcp",
         ["--no-plugins"] = "NoPlugins",
         ["--scrub"] = "Scrub",
     };
@@ -89,12 +87,6 @@ public static class EngineCommandLine
           --mock                Mock sensors, and simulated values for sensors no source has
           --mock-seed <n>       Seed for the mock sensors (implies --mock)
           --offline             Media providers connect only to this computer (tests)
-          --mcp-text <dir>      A folder of tool wording, guide topics and other text for AI apps,
-                                read on every call over the built-in text
-          --mcp                 Be the MCP server an AI app starts (stdin and stdout): it talks to
-                                the engine on the data folder, starting it when it isn't running.
-                                Takes only --data-dir; the engine it starts gets the flags of the
-                                folder's last start (its launch record) and --no-browser
           --no-plugins          Start no plugin hosts
           --bundled-plugins <dir>
                                 The bundled plugins' folder (default: plugins next to the engine)

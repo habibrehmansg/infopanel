@@ -45,21 +45,20 @@ public sealed class LocalChannelException(string message, bool closed = false) :
 /// at its path first; a companion never removes anything. A companion trusts the channel only when the run folder is this
 /// user's and no one else's to write in, and the process at the other end of the socket is this user's (its user id, as
 /// the system says it); the engine never takes over a run folder another user owns.</item>
-/// <item><b>Protocol.</b> JSON lines. The companion's hello <c>{"channel":1,"client":"mcp"}</c> (at most
-/// <see cref="MaxHelloBytes"/>, within <see cref="HelloTimeout"/>); the engine's <c>{"channel":1,"engineVersion",
-/// "engineBuild","pid"}</c>, or <c>{"channel":1,"refused":"…"}</c> for another channel version, a client it doesn't know
-/// or too many connections, and the connection is closed. Then requests <c>{"id","op":"list"}</c> → <c>{"id","tools",
-/// "instructions"}</c> and <c>{"id","op":"call","tool","arguments"}</c> → <c>{"id","content","isError"}</c>, answered in
-/// order on each connection. A second launch of the engine says hello as <c>"launch"</c> and may only ask
-/// <c>{"id","op":"open-editor"}</c> → <c>{"id","opened":true}</c> (the engine opens the editor as its menu does); an AI app's
-/// front may not ask that, nor a launch for tools. Lines are at most <see cref="MaxLineBytes"/>; a longer one closes that connection, and an
-/// answer that would be longer is sent as an error result that says so. At most
-/// <see cref="MaxConnections"/> connections at once.</item>
+/// <item><b>Protocol.</b> JSON lines. The companion's hello <c>{"channel":2,"client":"launch"}</c> (at most
+/// <see cref="MaxHelloBytes"/>, within <see cref="HelloTimeout"/>); the engine's <c>{"channel":2,"engineVersion",
+/// "engineBuild","pid"}</c>, or <c>{"channel":2,"refused":"…"}</c> for another channel version, a client it doesn't know
+/// or too many connections, and the connection is closed. A second launch of the engine is the one client: it may ask
+/// <c>{"id","op":"open-editor"}</c> → <c>{"id","opened":true}</c> (the engine opens the editor as its menu does); any
+/// other request is answered <c>{"id","error"}</c>, in order on each connection. (Channel 1 also carried AI apps' tool
+/// list and calls; AI apps now reach the engine through the configured service, docs/2.0/relay.md.) Lines are at most
+/// <see cref="MaxLineBytes"/>; a longer one closes that connection, and an answer that would be longer is sent as a short
+/// error. At most <see cref="MaxConnections"/> connections at once.</item>
 /// </list>
 /// </summary>
 public static class LocalChannel
 {
-    public const int Version = 1;
+    public const int Version = 2;
 
     /// <summary>The longest line either side sends (a preview picture, base64, fits).</summary>
     public const int MaxLineBytes = 32 * 1024 * 1024;
@@ -70,9 +69,6 @@ public static class LocalChannel
 
     /// <summary>The longest socket path, in UTF-8 bytes: macOS's <c>sun_path</c> holds 104 with its terminating zero.</summary>
     public const int MaxSocketPathBytes = 103;
-
-    /// <summary>The companion the front of an AI app is (the only one wired so far).</summary>
-    public const string McpClient = "mcp";
 
     /// <summary>The companion a second launch of the engine is (<see cref="SecondLaunch"/>): it may only ask <see cref="OpenEditorOp"/>.</summary>
     public const string LaunchClient = "launch";
@@ -90,19 +86,11 @@ public static class LocalChannel
     /// stores it (<see cref="AsStored"/>), so on a volume that folds case every spelling of one folder names one channel,
     /// while a volume that keeps case apart keeps two folders apart; case folded on Windows.
     /// </summary>
-    public static string HashOf(string dataRoot) => HashOf(dataRoot, whole: false);
-
-    /// <param name="whole">
-    /// Refuse a path that isn't there whole, or whose stored spelling can't be read (<see cref="IOException"/>), rather
-    /// than hash a spelling that may not be the folder's own.
-    /// </param>
-    private static string HashOf(string dataRoot, bool whole)
+    public static string HashOf(string dataRoot)
     {
         var real = Path.TrimEndingDirectorySeparator(DataFolder.ResolveRealPath(Path.GetFullPath(dataRoot)));
         if (OperatingSystem.IsMacOS())
-            real = AsStored(real, whole);
-        else if (whole && !Directory.Exists(real))
-            throw new IOException($"{real} isn't there.");
+            real = AsStored(real);
         if (OperatingSystem.IsWindows())
             real = real.ToUpperInvariant();
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(real)))[..16];
@@ -113,16 +101,14 @@ public static class LocalChannel
     /// which on macOS returns each name's stored spelling), and the rest, not made yet, as given: once it is made with that
     /// spelling the whole path reads the same. A path whose stored spelling can't be read is kept as it is.
     /// </summary>
-    private static string AsStored(string path, bool whole)
+    private static string AsStored(string path)
     {
         var existing = path;
         while (!Path.Exists(existing) && Path.GetDirectoryName(existing) is { } parent)
             existing = parent;
-        if (whole && existing != path)
-            throw new IOException($"{path} isn't there.");
         var buffer = new byte[4096]; // PATH_MAX is 1024
         if (realpath(existing, buffer) == IntPtr.Zero)
-            return whole ? throw new IOException($"The stored spelling of {path} can't be read.") : path;
+            return path;
         var stored = Encoding.UTF8.GetString(buffer, 0, Array.IndexOf(buffer, (byte)0) is var end && end >= 0 ? end : buffer.Length);
         return Path.TrimEndingDirectorySeparator(stored + path[existing.Length..]);
     }
@@ -132,19 +118,10 @@ public static class LocalChannel
 
     /// <summary>The channel of the data folder <paramref name="dataRoot"/> in <paramref name="runDirectory"/>.</summary>
     /// <exception cref="LocalChannelException">The socket's path would be over <see cref="MaxSocketPathBytes"/> bytes.</exception>
-    public static LocalChannelEndpoint EndpointFor(string runDirectory, string dataRoot) => EndpointFor(runDirectory, dataRoot, whole: false);
-
-    /// <summary>
-    /// <see cref="EndpointFor(string, string)"/> of a data folder that exists, hashed from its stored spelling whole
-    /// (what a front settles on once the folder exists: <c>EngineLinkOptions.Rehash</c>).
-    /// </summary>
-    /// <exception cref="IOException">The folder isn't there whole, or its stored spelling can't be read.</exception>
-    public static LocalChannelEndpoint StoredEndpointFor(string runDirectory, string dataRoot) => EndpointFor(runDirectory, dataRoot, whole: true);
-
-    private static LocalChannelEndpoint EndpointFor(string runDirectory, string dataRoot, bool whole)
+    public static LocalChannelEndpoint EndpointFor(string runDirectory, string dataRoot)
     {
         var run = Path.GetFullPath(runDirectory);
-        var hash = HashOf(dataRoot, whole);
+        var hash = HashOf(dataRoot);
         if (OperatingSystem.IsWindows())
             return new LocalChannelEndpoint(run, hash, null, $"InfoPanel-{hash}");
 
@@ -249,11 +226,8 @@ public static class LocalChannel
     }
 
     /// <summary>
-    /// How deeply every JSON message on the channel and on the MCP transport is read and written: the formats'
-    /// <c>jsonDepth</c> (a document or request body, 256 levels) and the envelope around a tool's arguments (an MCP
-    /// request puts them three levels down, a channel call two), with room to spare (Codex p2 #7). Bounded, so a message
-    /// can't nest without end; content deeper than the formats allow reaches the engine, which refuses it with
-    /// <c>limit.jsonDepth</c>.
+    /// How deeply every JSON message on the channel is read and written: the formats' <c>jsonDepth</c> (256 levels) with
+    /// room to spare, as the relay's frames are (Codex p2 #7). Bounded, so a message can't nest without end.
     /// </summary>
     public const int MessageDepth = InfoPanel.Spec.SpecJson.SchemaDepth + 16;
 
@@ -397,16 +371,6 @@ public sealed class LineReader(Stream stream, int maxBytes)
     }
 }
 
-/// <summary>What a companion asks the engine through the channel: the tools, and a call to one.</summary>
-public interface ILocalChannelHandler
-{
-    /// <summary><c>{"tools":[…],"instructions":"…"}</c>.</summary>
-    Task<JsonObject> ListAsync(CancellationToken ct);
-
-    /// <summary><c>{"content":[…],"isError":…}</c>; a failure is a result too.</summary>
-    Task<JsonObject> CallAsync(string tool, JsonElement arguments, CancellationToken ct);
-}
-
 /// <summary>The channel's limits (tests lower them).</summary>
 public sealed class LocalChannelServerOptions
 {
@@ -417,12 +381,11 @@ public sealed class LocalChannelServerOptions
 
 /// <summary>
 /// The engine's side of the channel (<see cref="LocalChannel"/>): listens at an endpoint and answers each connection's
-/// requests through an <see cref="ILocalChannelHandler"/>. Only the engine holding the data folder's lock starts one.
+/// requests. Only the engine holding the data folder's lock starts one.
 /// </summary>
 public sealed class LocalChannelServer : IAsyncDisposable
 {
     private readonly LocalChannelEndpoint _endpoint;
-    private readonly ILocalChannelHandler _handler;
     private readonly Func<CancellationToken, Task>? _openEditor;
     private readonly ILogger _logger;
     private readonly LocalChannelServerOptions _options;
@@ -432,11 +395,10 @@ public sealed class LocalChannelServer : IAsyncDisposable
     private Task _accepting = Task.CompletedTask;
     private int _disposed;
 
-    private LocalChannelServer(LocalChannelEndpoint endpoint, ILocalChannelHandler handler, Func<CancellationToken, Task>? openEditor, ILogger logger,
+    private LocalChannelServer(LocalChannelEndpoint endpoint, Func<CancellationToken, Task>? openEditor, ILogger logger,
         LocalChannelServerOptions options, Socket? listener)
     {
         _endpoint = endpoint;
-        _handler = handler;
         _openEditor = openEditor;
         _logger = logger;
         _options = options;
@@ -453,7 +415,7 @@ public sealed class LocalChannelServer : IAsyncDisposable
     /// <exception cref="IOException">The socket can't be bound.</exception>
     /// <exception cref="SocketException">The socket can't be bound.</exception>
     /// <param name="openEditor">What a launch's <see cref="LocalChannel.OpenEditorOp"/> runs; null: it is refused.</param>
-    public static LocalChannelServer Start(LocalChannelEndpoint endpoint, ILocalChannelHandler handler, ILogger logger, LocalChannelServerOptions? options = null,
+    public static LocalChannelServer Start(LocalChannelEndpoint endpoint, ILogger logger, LocalChannelServerOptions? options = null,
         Func<CancellationToken, Task>? openEditor = null)
     {
         options ??= new LocalChannelServerOptions();
@@ -479,7 +441,7 @@ public sealed class LocalChannelServer : IAsyncDisposable
             }
         }
 
-        var server = new LocalChannelServer(endpoint, handler, openEditor, logger, options, listener);
+        var server = new LocalChannelServer(endpoint, openEditor, logger, options, listener);
         server._accepting = listener != null ? server.AcceptSocketsAsync(listener) : server.AcceptPipesAsync();
         return server;
     }
@@ -600,7 +562,7 @@ public sealed class LocalChannelServer : IAsyncDisposable
 
             if (hello == null)
                 return;
-            if (HelloRefusal(hello, out var client) is { } refusal)
+            if (HelloRefusal(hello) is { } refusal)
             {
                 await stream.WriteAsync(LocalChannel.Line(new JsonObject { ["channel"] = LocalChannel.Version, ["refused"] = refusal }), ct).ConfigureAwait(false);
                 return;
@@ -617,15 +579,15 @@ public sealed class LocalChannelServer : IAsyncDisposable
             reader.MaxBytes = _options.MaxLineBytes;
             while (await reader.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
             {
-                var answer = LocalChannel.Line(await AnswerAsync(line, client, ct).ConfigureAwait(false));
-                // An answer longer than a line may be would close the companion's side, which would take the engine for
-                // gone: it gets an error result that says so instead.
+                var answer = LocalChannel.Line(await AnswerAsync(line, ct).ConfigureAwait(false));
+                // An answer over a line's cap would make the client take the engine for gone: it gets a short error instead.
                 if (answer.Length - 1 > _options.MaxLineBytes)
                 {
-                    _logger.LogWarning("A local channel answer of {Bytes} bytes is over the {Max} a line may be; an error result was sent instead",
+                    _logger.LogWarning("A local channel answer of {Bytes} bytes is over the {Max} a line may be; a short error was sent instead",
                         answer.Length - 1, _options.MaxLineBytes);
-                    answer = LocalChannel.Line(TooLong(line, answer.Length - 1, _options.MaxLineBytes));
+                    answer = LocalChannel.Line(TooLong(line));
                 }
+
                 await stream.WriteAsync(answer, ct).ConfigureAwait(false);
             }
         }
@@ -639,36 +601,9 @@ public sealed class LocalChannelServer : IAsyncDisposable
         }
     }
 
-    /// <summary>The error result for a request whose answer is <paramref name="bytes"/> long, over <paramref name="max"/>.</summary>
-    private static JsonObject TooLong(byte[] request, int bytes, int max)
+    /// <summary>Why a hello is refused (another channel version, a client this engine doesn't know), or null.</summary>
+    private static string? HelloRefusal(byte[] line)
     {
-        JsonNode? id = null;
-        try
-        {
-            using var json = JsonDocument.Parse(request, LocalChannel.MessageOptions);
-            if (json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("id", out var given))
-                id = JsonNode.Parse(given.GetRawText(), documentOptions: LocalChannel.MessageOptions);
-        }
-        catch (JsonException)
-        {
-        }
-
-        return new JsonObject
-        {
-            ["id"] = id,
-            ["content"] = new JsonArray(new JsonObject
-            {
-                ["type"] = "text",
-                ["text"] = $"InfoPanel's answer was too long to send ({bytes} bytes; at most {max}). Ask for less: one item, or a smaller picture.",
-            }),
-            ["isError"] = true,
-        };
-    }
-
-    /// <summary>Why a hello is refused (another channel version, a client this engine doesn't know), or null and the client.</summary>
-    private static string? HelloRefusal(byte[] line, out string client)
-    {
-        client = "";
         try
         {
             using var json = JsonDocument.Parse(line, LocalChannel.MessageOptions);
@@ -677,10 +612,8 @@ public sealed class LocalChannelServer : IAsyncDisposable
                 return "not a hello";
             if (version != LocalChannel.Version)
                 return $"channel {version} isn't spoken here; this engine speaks channel {LocalChannel.Version}";
-            if (!root.TryGetProperty("client", out var name) || name.ValueKind != JsonValueKind.String
-                || name.GetString() is not (LocalChannel.McpClient or LocalChannel.LaunchClient))
+            if (!root.TryGetProperty("client", out var name) || name.ValueKind != JsonValueKind.String || name.GetString() != LocalChannel.LaunchClient)
                 return "unknown client";
-            client = name.GetString()!;
             return null;
         }
         catch (JsonException)
@@ -689,10 +622,9 @@ public sealed class LocalChannelServer : IAsyncDisposable
         }
     }
 
-    private async Task<JsonObject> AnswerAsync(byte[] line, string client, CancellationToken ct)
+    private async Task<JsonObject> AnswerAsync(byte[] line, CancellationToken ct)
     {
         JsonNode? id = null;
-        string? tool = null;
         try
         {
             using var json = JsonDocument.Parse(line, LocalChannel.MessageOptions);
@@ -702,38 +634,12 @@ public sealed class LocalChannelServer : IAsyncDisposable
             if (root.TryGetProperty("id", out var idElement))
                 id = JsonNode.Parse(idElement.GetRawText(), documentOptions: LocalChannel.MessageOptions);
             var op = root.TryGetProperty("op", out var opElement) && opElement.ValueKind == JsonValueKind.String ? opElement.GetString() : null;
-            // A launch only opens the editor; an AI app's front never does.
-            if (client == LocalChannel.LaunchClient || op == LocalChannel.OpenEditorOp)
-            {
-                if (client != LocalChannel.LaunchClient || op != LocalChannel.OpenEditorOp)
-                    return Error(id, $"op '{op}' isn't for a {client} client");
-                if (_openEditor == null)
-                    return Error(id, "this engine can't open the editor");
-                await _openEditor(ct).ConfigureAwait(false);
-                return new JsonObject { ["id"] = id, ["opened"] = true };
-            }
-
-            JsonObject answer;
-            switch (op)
-            {
-                case "list":
-                    answer = await _handler.ListAsync(ct).ConfigureAwait(false);
-                    break;
-                case "call":
-                    if (!root.TryGetProperty("tool", out var toolElement) || toolElement.ValueKind != JsonValueKind.String)
-                        return Error(id, "a call names its tool");
-                    tool = toolElement.GetString()!;
-                    var arguments = root.TryGetProperty("arguments", out var args) && args.ValueKind != JsonValueKind.Null
-                        ? args.Clone()
-                        : JsonDocument.Parse("{}").RootElement.Clone();
-                    answer = await _handler.CallAsync(tool, arguments, ct).ConfigureAwait(false);
-                    break;
-                default:
-                    return Error(id, $"unknown op '{op}'");
-            }
-
-            answer["id"] = id;
-            return answer;
+            if (op != LocalChannel.OpenEditorOp)
+                return Error(id, $"unknown op '{op}'");
+            if (_openEditor == null)
+                return Error(id, "this engine can't open the editor");
+            await _openEditor(ct).ConfigureAwait(false);
+            return new JsonObject { ["id"] = id, ["opened"] = true };
         }
         catch (JsonException)
         {
@@ -741,20 +647,28 @@ public sealed class LocalChannelServer : IAsyncDisposable
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "The local channel's {Tool} call failed", tool ?? "list");
-            return new JsonObject
-            {
-                ["id"] = id,
-                ["content"] = new JsonArray(new JsonObject
-                {
-                    ["type"] = "text",
-                    ["text"] = $"InfoPanel hit an error ({ex.GetType().Name}). Its log has the details; ask again, and if it repeats, restart InfoPanel.",
-                }),
-                ["isError"] = true,
-            };
+            _logger.LogError(ex, "The local channel couldn't open the editor");
+            return Error(id, "the editor couldn't be opened");
         }
 
         static JsonObject Error(JsonNode? id, string message) => new() { ["id"] = id?.DeepClone(), ["error"] = message };
+    }
+
+    /// <summary>The error sent in place of an answer over a line's cap: it echoes the request's number id (the client's) and nothing else of it.</summary>
+    private static JsonObject TooLong(byte[] request)
+    {
+        JsonNode? id = null;
+        try
+        {
+            using var json = JsonDocument.Parse(request, LocalChannel.MessageOptions);
+            if (json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("id", out var given) && given.ValueKind == JsonValueKind.Number)
+                id = JsonNode.Parse(given.GetRawText(), documentOptions: LocalChannel.MessageOptions);
+        }
+        catch (JsonException)
+        {
+        }
+
+        return new JsonObject { ["id"] = id, ["error"] = "the answer was too long to send" };
     }
 
     /// <summary>Stops listening, closes every connection and removes the socket.</summary>
@@ -830,10 +744,10 @@ public sealed class LocalChannelClient : IAsyncDisposable
     /// and before any hello when the channel isn't this user's: a run folder that isn't
     /// this user's alone (<see cref="LocalChannel.CheckRunDirectory"/>), or a peer of another user.
     /// <paramref name="peerOf"/> stands in for the system's answer to who the peer is (<see cref="UnixIdentity.PeerOf"/>) in tests;
-    /// <paramref name="client"/> is the companion it says it is (an AI app's front unless said).
+    /// <paramref name="client"/> is the companion it says it is (a launch unless said).
     /// </summary>
     public static async Task<LocalChannelClient?> TryConnectAsync(LocalChannelEndpoint endpoint, TimeSpan timeout, CancellationToken ct,
-        Func<Socket, uint?>? peerOf = null, string client = LocalChannel.McpClient)
+        Func<Socket, uint?>? peerOf = null, string client = LocalChannel.LaunchClient)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
         limit.CancelAfter(timeout);
@@ -901,27 +815,6 @@ public sealed class LocalChannelClient : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// False once the engine is known to have closed the connection (a Unix socket that reads as ended); a pipe, or a
-    /// socket that can't tell, counts as alive until a request fails.
-    /// </summary>
-    public bool IsAlive
-    {
-        get
-        {
-            if (_socket == null)
-                return _stream is PipeStream { IsConnected: true };
-            try
-            {
-                return !(_socket.Poll(0, SelectMode.SelectRead) && _socket.Available == 0);
-            }
-            catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
-            {
-                return false;
-            }
-        }
-    }
-
     /// <summary>Sends <paramref name="request"/> (an <c>id</c> is added) and returns the engine's answer to it.</summary>
     /// <exception cref="IOException">The connection failed or closed before the answer came.</exception>
     public async Task<JsonObject> SendAsync(JsonObject request, CancellationToken ct)
@@ -965,7 +858,6 @@ public sealed class LocalChannelService(
     IHostApplicationLifetime lifetime,
     EngineOptions options,
     DataPaths paths,
-    ILocalChannelHandler handler,
     EditorOpener editor,
     ILogger<LocalChannelService> logger) : IHostedService
 {
@@ -996,18 +888,8 @@ public sealed class LocalChannelService(
         {
             var endpoint = LocalChannel.EndpointFor(options.RunDir ?? LocalChannel.DefaultRunDirectory(), paths.Root);
             LocalChannel.CreateRunDirectory(endpoint.RunDirectory);
-            // This start's flags, for an engine an AI app starts later on the same folder (LaunchRecord).
-            try
-            {
-                LaunchRecord.Write(LaunchRecord.PathFor(endpoint), options);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                logger.LogWarning(ex, "Could not write the launch record for AI apps: {Message}", ex.Message);
-            }
-
             // A second launch asks it to open the editor, off the channel's thread.
-            var server = LocalChannelServer.Start(endpoint, handler, logger, openEditor: ct => Task.Run(editor.Open, ct));
+            var server = LocalChannelServer.Start(endpoint, logger, openEditor: ct => Task.Run(editor.Open, ct));
             lock (_lock)
             {
                 if (!_stopped)
@@ -1023,11 +905,11 @@ public sealed class LocalChannelService(
                 return;
             }
 
-            logger.LogInformation("AI apps on this computer can reach this engine through {Channel}", endpoint.Name);
+            logger.LogInformation("A second launch on this data folder reaches this engine through {Channel}", endpoint.Name);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SocketException or ArgumentException)
         {
-            logger.LogWarning(ex, "The local channel couldn't be opened, so AI apps can't reach this engine: {Message}", ex.Message);
+            logger.LogWarning(ex, "The local channel couldn't be opened, so a second launch can't reach this engine: {Message}", ex.Message);
         }
     }
 

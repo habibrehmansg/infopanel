@@ -83,13 +83,11 @@ never goes there. The engine writes it into a private redirect file, a small HTM
 `InfoPanel.AllowOrigin` (`InfoPanel/WebClientOrigin.targets`) and is the default for `--allow-origin` when no such flag
 is given. It is checked as the flag is, so a bad value stops start-up with exit 2 (a release pipeline's smoke run
 catches it). Any `--allow-origin` replaces it (development: `--allow-origin <origin>` with no `--web-root` behaves as a
-release build). A build from source carries none and behaves as before. A launch record leaves it out, so an engine an
-AI app starts takes its own build's.
+release build). A build from source carries none and behaves as before.
 
 ## Flags
 
-- `--no-tray`: no menu-bar item. Every test that starts the engine as a child process passes it; an engine an AI app
-  starts gets it from the folder's launch record when the last start had it.
+- `--no-tray`: no menu-bar item. Every test that starts the engine as a child process passes it.
 - `--no-windows`: no desktop windows. The menu-bar item stays.
 - `--no-browser`: a second launch doesn't ask the running engine to open the editor.
 - `--allow-origin <origin>`: a web client on another origin; with no web root and one such origin, the editor that
@@ -117,7 +115,7 @@ AI app starts takes its own build's.
 - `InfoPanel.Tests/Shell/`: the menu model and the glyph; `ShellService` on the engine host with a fake platform
   (`FakeShellPlatform`) and a recording browser launcher: when the icon comes and goes, Open Editor, Quit with and
   without unsaved profiles, the prompt's names, a system quit; the choice of what runs (`DesktopHost.Choose`); the
-  flag and the launch record.
+  flag.
 - `InfoPanel.Tests/Hosting/`: the link the engine opens (`WebClientLinkTests`: the built-in origin, the link's choice,
   no browser at start, the logs), the launcher and the redirect files (`BrowserLauncherTests`: the file's mode,
   contents and removal, no token in any argument, Chrome and the fallback per OS), a second launch as a child process

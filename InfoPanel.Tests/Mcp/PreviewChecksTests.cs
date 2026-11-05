@@ -417,30 +417,4 @@ public sealed class PreviewChecksTests
         Assert.DoesNotContain("No problems found", checks);
         Assert.DoesNotContain("Not checked", checks);
     }
-
-    [Fact]
-    public async Task TheThresholds_AreReadLive_FromTheTextFolder()
-    {
-        using var engine = new EngineFactory();
-        var live = Path.Combine(engine.Root, "mcp-text");
-        Directory.CreateDirectory(live);
-        File.WriteAllText(Path.Combine(live, "checks.json"), """{"canvasTolerance": 5, "overlapMin": 0.5, "contrastMin": 2}""");
-        using var factory = engine.WithWebHostBuilder(b => b.UseSetting("Engine:McpText", live));
-        var doc = Doc(400, 400, "#ffffff",
-            Item("Over", 353, 300, Rect(50, 20, "#000000")),
-            Item("A", 10, 10, Rect(100, 50, "#ff0000")),
-            Item("B", 60, 30, Rect(100, 50, "#00ff00")),
-            Item("Grey3", 10, 150, Text("MMMM", "#949494", 40, 800)));
-        var loose = await Checks(factory, doc);
-        Assert.Equal("", LineAbout(loose, "Over"));
-        Assert.Equal("", LineAbout(loose, "A"));
-        Assert.Equal("", LineAbout(loose, "Grey3"));
-
-        File.WriteAllText(Path.Combine(live, "checks.json"), """{"canvasTolerance": 1, "overlapMin": 0.1, "contrastMin": 4.5}""");
-        doc["id"] = TestDocs.NewId();
-        var strict = await Checks(factory, doc);
-        Assert.NotEqual("", LineAbout(strict, "Over"));
-        Assert.NotEqual("", LineAbout(strict, "A"));
-        Assert.NotEqual("", LineAbout(strict, "Grey3"));
-    }
 }

@@ -69,13 +69,6 @@ public sealed class WebClientLinkTests
         Assert.Contains(errors, e => e.Contains("InfoPanelAllowOrigin") && e.Contains(builtIn));
     }
 
-    [Fact]
-    public void TheLaunchRecord_LeavesOutTheOriginABuildCarries_ButKeepsAFlag()
-    {
-        Assert.DoesNotContain("--allow-origin", LaunchRecord.ArgumentsOf(Load("https://client.example", out _)!));
-        Assert.Contains("--allow-origin", LaunchRecord.ArgumentsOf(Load("https://client.example", out _, "--allow-origin", "https://other.example")!));
-    }
-
     // ---- the link ---------------------------------------------------------------------------------------------------
 
     [Fact]

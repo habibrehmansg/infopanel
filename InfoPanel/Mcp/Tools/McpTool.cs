@@ -43,11 +43,10 @@ public abstract class McpTool
     public abstract Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct);
 
     /// <summary>The tool as <c>tools/list</c> lists it.</summary>
-    public JsonObject Listing(string description) => new()
+    public JsonObject Listing() => new()
     {
         ["name"] = Name,
         ["title"] = Title,
-        ["description"] = description,
         ["inputSchema"] = InputSchema.DeepClone(),
         ["annotations"] = new JsonObject
         {

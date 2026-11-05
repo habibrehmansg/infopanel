@@ -6,8 +6,8 @@ using Xunit;
 namespace InfoPanel.Tests.Mcp;
 
 /// <summary>
-/// The engine's built-in MCP tool list (<see cref="McpToolHost.BuiltInList()"/>: names, closed input schemas, the built-in
-/// wording and the instructions, never a <c>--mcp-text</c> folder's overrides) against the committed snapshot
+/// The engine's MCP tool list (<see cref="McpToolHost.BuiltInList()"/>: names and closed input schemas; their wording is
+/// the configured service's) against the committed snapshot
 /// <c>InfoPanel.Tests/Snapshots/mcp-tools.json</c>, so a client can copy the list and a change to a tool shows up as a
 /// reviewed diff. <c>UPDATE_SNAPSHOTS=1 dotnet test InfoPanel.slnx --filter McpToolListSnapshot</c> rewrites it.
 /// </summary>

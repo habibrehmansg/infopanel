@@ -51,11 +51,6 @@ if (parsed.Error != null)
     return 2;
 }
 
-// --mcp: the MCP server an AI app starts, a front that relays to the engine on the data folder (starting it when needed).
-// It opens nothing in the data folder and writes only the protocol to stdout.
-if (parsed.Settings.TryGetValue($"{EngineOptions.Section}:Mcp", out var mcpFlag) && bool.TryParse(mcpFlag, out var mcp) && mcp)
-    return await InfoPanel.Mcp.Front.McpFront.RunAsync(parsed, InfoPanel.Mcp.Tools.McpToolHost.BuiltInList);
-
 // When this run started (the session's `started`): before anything else it does.
 var started = DateTimeOffset.UtcNow;
 
@@ -533,14 +528,12 @@ try
     builder.Services.AddSingleton<IFolderOpener>(sp => new FolderOpener(sp.GetRequiredService<ILogger<FolderOpener>>()));
     builder.Services.AddHostedService<SensorService>();
     builder.Services.AddHostedService<EngineLifetime>();
-    // The data folder's local channel, for companions on this computer (an AI app's front): opened once the engine is up.
-    // The tools AI apps call through it, run here with read or edit, never the session's powers.
-    builder.Services.AddSingleton<InfoPanel.Mcp.Tools.McpToolHost>();
-    builder.Services.AddSingleton<ILocalChannelHandler>(sp => sp.GetRequiredService<InfoPanel.Mcp.Tools.McpToolHost>());
+    // The data folder's local channel, for a second launch on this computer: opened once the engine is up.
     builder.Services.AddSingleton<LocalChannelService>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<LocalChannelService>());
     // AI apps elsewhere (docs/2.0/relay.md): with service.aiApps on, one connection to the configured service's relay, under
-    // ServiceClient's rules; its calls reach the tool host and nothing else.
+    // ServiceClient's rules; its calls reach the tool host and nothing else. The tools run here with read or edit, never the session's powers.
+    builder.Services.AddSingleton<InfoPanel.Mcp.Tools.McpToolHost>();
     builder.Services.AddSingleton(sp => new RelayClient(sp.GetRequiredService<ServiceCredentials>(), sp.GetRequiredService<InfoPanel.Mcp.Tools.McpToolHost>(),
         new RelayOptions { EngineVersion = ReadEndpoints.EngineVersion(), LoopbackOnly = options.Offline }, sp.GetRequiredService<TimeProvider>(),
         engineLogger.ForContext<RelayClient>()));
