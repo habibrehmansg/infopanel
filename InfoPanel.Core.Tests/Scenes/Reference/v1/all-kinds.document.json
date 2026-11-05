@@ -7609,7 +7609,7 @@
         "w": 48
       },
       "bindings": {
-        "v": {
+        "item_when1": {
           "key": "libre:/amdcpu/0/fan/1",
           "stat": "max"
         }
@@ -7617,8 +7617,8 @@
       "scene": {
         "format": "infopanel.scene/1",
         "inputs": {
-          "v": {
-            "label": "Value",
+          "item_when1": {
+            "label": "Show when 1",
             "type": "number"
           }
         },
@@ -7626,53 +7626,43 @@
           {
             "children": [
               {
-                "h": 48,
-                "id": "image",
-                "kind": "media",
-                "source": {
-                  "asset": "sha256:a734e9ea7e45149b532550ec7450468ae76ff813aef8ae6f6c51ae2733a4a169"
-                },
-                "w": 48
-              },
-              {
-                "fill": "#00000080",
-                "h": 48,
-                "kind": "rect",
-                "w": 48
+                "children": [
+                  {
+                    "h": 48,
+                    "id": "image",
+                    "kind": "media",
+                    "source": {
+                      "asset": "sha256:a734e9ea7e45149b532550ec7450468ae76ff813aef8ae6f6c51ae2733a4a169"
+                    },
+                    "w": 48
+                  },
+                  {
+                    "fill": "#00000080",
+                    "h": 48,
+                    "kind": "rect",
+                    "w": 48
+                  }
+                ],
+                "id": "frame",
+                "kind": "group"
               }
             ],
-            "id": "frame",
+            "id": "item_options",
             "kind": "group",
             "visible": {
               "args": [
                 {
-                  "args": [
-                    false,
-                    {
-                      "args": [
-                        {
-                          "field": "status",
-                          "name": "v",
-                          "op": "input"
-                        },
-                        "unbound"
-                      ],
-                      "op": "eq"
-                    }
-                  ],
-                  "op": "and"
+                  "field": "available",
+                  "name": "item_when1",
+                  "op": "input"
                 },
                 {
                   "args": [
                     {
-                      "field": "available",
-                      "name": "v",
-                      "op": "input"
-                    },
-                    {
                       "args": [
                         {
-                          "name": "v",
+                          "field": "value",
+                          "name": "item_when1",
                           "op": "input"
                         },
                         20.5
@@ -7682,7 +7672,8 @@
                     {
                       "args": [
                         {
-                          "name": "v",
+                          "field": "value",
+                          "name": "item_when1",
                           "op": "input"
                         },
                         80
@@ -7693,7 +7684,7 @@
                   "op": "and"
                 }
               ],
-              "op": "or"
+              "op": "and"
             }
           }
         ]
@@ -7784,6 +7775,10 @@
           "t": {
             "label": "Image URL",
             "type": "text"
+          },
+          "v": {
+            "label": "Value",
+            "type": "number"
           }
         },
         "nodes": [
@@ -7821,6 +7816,10 @@
           "t": {
             "label": "Image URL",
             "type": "text"
+          },
+          "v": {
+            "label": "Value",
+            "type": "number"
           }
         },
         "nodes": [
@@ -7859,6 +7858,9 @@
       "bindings": {
         "t": {
           "key": "plugin:/infopanel.mock/media/cover-url"
+        },
+        "v": {
+          "key": "plugin:/infopanel.mock/media/cover-url"
         }
       },
       "scene": {
@@ -7867,6 +7869,10 @@
           "t": {
             "label": "Image URL",
             "type": "text"
+          },
+          "v": {
+            "label": "Value",
+            "type": "number"
           }
         },
         "nodes": [

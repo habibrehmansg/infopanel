@@ -19,6 +19,9 @@
       "bindings": {
         "t": {
           "key": "plugin:/golden/camera"
+        },
+        "v": {
+          "key": "plugin:/golden/camera"
         }
       },
       "scene": {
@@ -27,6 +30,10 @@
           "t": {
             "label": "Image URL",
             "type": "text"
+          },
+          "v": {
+            "label": "Value",
+            "type": "number"
           }
         },
         "nodes": [

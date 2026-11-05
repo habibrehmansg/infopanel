@@ -21,15 +21,15 @@
         "w": 64
       },
       "bindings": {
-        "v": {
+        "item_when1": {
           "key": "plugin:/golden/fan/rpm"
         }
       },
       "scene": {
         "format": "infopanel.scene/1",
         "inputs": {
-          "v": {
-            "label": "Value",
+          "item_when1": {
+            "label": "Show when 1",
             "type": "number"
           }
         },
@@ -37,47 +37,37 @@
           {
             "children": [
               {
-                "h": 64,
-                "id": "image",
-                "kind": "media",
-                "source": {
-                  "asset": "sha256:a734e9ea7e45149b532550ec7450468ae76ff813aef8ae6f6c51ae2733a4a169"
-                },
-                "w": 64
+                "children": [
+                  {
+                    "h": 64,
+                    "id": "image",
+                    "kind": "media",
+                    "source": {
+                      "asset": "sha256:a734e9ea7e45149b532550ec7450468ae76ff813aef8ae6f6c51ae2733a4a169"
+                    },
+                    "w": 64
+                  }
+                ],
+                "id": "frame",
+                "kind": "group"
               }
             ],
-            "id": "frame",
+            "id": "item_options",
             "kind": "group",
             "visible": {
               "args": [
                 {
-                  "args": [
-                    false,
-                    {
-                      "args": [
-                        {
-                          "field": "status",
-                          "name": "v",
-                          "op": "input"
-                        },
-                        "unbound"
-                      ],
-                      "op": "eq"
-                    }
-                  ],
-                  "op": "and"
+                  "field": "available",
+                  "name": "item_when1",
+                  "op": "input"
                 },
                 {
                   "args": [
                     {
-                      "field": "available",
-                      "name": "v",
-                      "op": "input"
-                    },
-                    {
                       "args": [
                         {
-                          "name": "v",
+                          "field": "value",
+                          "name": "item_when1",
                           "op": "input"
                         },
                         1000
@@ -87,7 +77,8 @@
                     {
                       "args": [
                         {
-                          "name": "v",
+                          "field": "value",
+                          "name": "item_when1",
                           "op": "input"
                         },
                         2000
@@ -98,7 +89,7 @@
                   "op": "and"
                 }
               ],
-              "op": "or"
+              "op": "and"
             }
           }
         ]
