@@ -76,6 +76,8 @@ public class EngineFactory : WebApplicationFactory<Program>
         builder.UseSetting("Engine:Token", Token);
         builder.UseSetting("Engine:Port", Port.ToString());
         builder.UseSetting("Engine:NoBrowser", "true");
+        // No notification-area icon (on Windows the icon needs no main thread, so nothing else would keep it off).
+        builder.UseSetting("Engine:NoTray", "true");
         builder.UseSetting("Engine:MockSeed", "42");
         // Media providers connect only to this computer: no test engine reaches the network.
         builder.UseSetting("Engine:Offline", "true");

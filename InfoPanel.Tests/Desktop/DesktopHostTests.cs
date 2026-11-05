@@ -8,8 +8,8 @@ namespace InfoPanel.Tests.Desktop;
 
 /// <summary>
 /// The desktop chosen per OS (an injected OS) and per <c>--no-windows</c>: on Windows, windows on the engine's own UI
-/// thread whatever thread the entry point is on, off with <c>--no-windows</c>, and no tray yet; on Linux nothing, saying
-/// so; on macOS as before.
+/// thread whatever thread the entry point is on, off with <c>--no-windows</c>, and the notification-area icon there too,
+/// off with <c>--no-tray</c>; on Linux nothing, saying so; on macOS as before.
 /// </summary>
 public sealed class DesktopHostTests
 {
@@ -23,20 +23,23 @@ public sealed class DesktopHostTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void OnWindows_WindowsRun_OnAnyThread_WithoutATrayYet(bool mainThread)
+    public void OnWindows_WindowsAndTheIconRun_OnAnyThread(bool mainThread)
     {
         var choice = Choose(Options(), DesktopOS.Windows, mainThread);
 
         Assert.True(choice.Windows);
-        Assert.False(choice.Tray);
+        Assert.True(choice.Tray);
         Assert.True(choice.Loop);
     }
 
     [Fact]
-    public void OnWindows_NoWindows_RunsNothing()
+    public void OnWindows_NoWindows_KeepsTheIconAndTheLoop_NoTray_KeepsTheWindows_AndBothRunNothing()
     {
-        Assert.Equal(default, Choose(Options("--no-windows"), DesktopOS.Windows, mainThread: true));
+        Assert.Equal(new Choice(Windows: false, Tray: true), Choose(Options("--no-windows"), DesktopOS.Windows, mainThread: true));
+        Assert.True(Choose(Options("--no-windows"), DesktopOS.Windows, mainThread: true).Loop);
         Assert.Null(UnsupportedMessage(Options("--no-windows"), DesktopOS.Windows));
+        Assert.Equal(new Choice(Windows: true, Tray: false), Choose(Options("--no-tray"), DesktopOS.Windows, mainThread: true));
+        Assert.Equal(default, Choose(Options("--no-windows", "--no-tray"), DesktopOS.Windows, mainThread: true));
     }
 
     [Fact]

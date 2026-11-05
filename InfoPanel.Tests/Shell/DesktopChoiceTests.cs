@@ -69,8 +69,15 @@ public sealed class DesktopChoiceTests
     [Fact]
     public void TheTestHost_HasNoShell()
     {
-        // The test runner's thread isn't the process main thread: no AppKit, no menu-bar item.
+        // The test runner's thread isn't the process main thread: no AppKit, no menu-bar item. On Windows the icon needs
+        // no main thread: it is made (test engines pass --no-tray instead), but nothing shows until the engine shows it.
         var host = DesktopHost.Create(Options());
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal("WinShellPlatform", host.Shell.GetType().Name);
+            return;
+        }
 
         Assert.IsType<NullShellPlatform>(host.Shell);
         Assert.False(host.Shell.IsSupported);

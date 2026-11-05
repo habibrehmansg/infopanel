@@ -14,6 +14,9 @@
          folder, web root and 1.x import paths resolve as they do in the caller's shell (a test runner that starts the
          engine from its own folder can pass a relative data folder and web root). -->
     <EnableDefaultRunWorkingDirectory>false</EnableDefaultRunWorkingDirectory>
+    <!-- Windows: asInvoker, and Common Controls 6 for the notification-area icon's task dialog (copied into the
+         apphost, InfoPanel.exe, when it is built on Windows). -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

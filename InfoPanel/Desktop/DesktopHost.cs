@@ -3,6 +3,7 @@ using InfoPanel.Desktop.Windows;
 using InfoPanel.Hosting;
 using InfoPanel.Shell;
 using InfoPanel.Shell.MacOS;
+using InfoPanel.Shell.Windows;
 
 namespace InfoPanel.Desktop;
 
@@ -14,13 +15,14 @@ namespace InfoPanel.Desktop;
 /// <c>--no-windows</c>, and the menu-bar item (<see cref="MacShellPlatform"/>) unless <c>--no-tray</c>. When either is on,
 /// <see cref="RunAsync"/> runs the host on a worker thread and the AppKit loop on the calling (main) thread until the host
 /// has stopped.</item>
-/// <item>Windows: desktop windows (<see cref="WinDesktopPlatform"/>) unless <c>--no-windows</c>, on the engine's own UI
-/// thread (<see cref="WinUiThread"/>), started on first use; the host runs on the calling thread, and once it has stopped
-/// (its windows closed) the UI thread is stopped too. No notification-area icon yet: <see cref="NullShellPlatform"/>.</item>
+/// <item>Windows: desktop windows (<see cref="WinDesktopPlatform"/>) unless <c>--no-windows</c>, and the notification-area
+/// icon (<see cref="WinShellPlatform"/>) unless <c>--no-tray</c>, both on the engine's own UI thread
+/// (<see cref="WinUiThread"/>), started on first use; the host runs on the calling thread, and once it has stopped (its
+/// windows closed, its icon removed) the UI thread is stopped too.</item>
 /// <item>Otherwise (Linux, both flags, or an entry point run off the main thread on macOS by a test host):
 /// <see cref="NullDesktopPlatform"/> and <see cref="NullShellPlatform"/>, and the host runs on the calling thread.</item>
 /// </list>
-/// Test engines replace the platform, so the Windows UI thread never starts in them.
+/// Test engines replace the platform and pass <c>--no-tray</c>, so the Windows UI thread never starts in them.
 /// </summary>
 public sealed class DesktopHost
 {
@@ -62,13 +64,12 @@ public sealed class DesktopHost
 
     /// <summary>
     /// The choice for <paramref name="options"/> on <paramref name="os"/> and this thread: on macOS only the main thread
-    /// runs either; on Windows windows run on the engine's own UI thread, whichever thread this is (no tray yet); nothing
-    /// elsewhere.
+    /// runs either; on Windows both run on the engine's own UI thread, whichever thread this is; nothing elsewhere.
     /// </summary>
     internal static Choice Choose(EngineOptions options, DesktopOS os, bool mainThread) => os switch
     {
         DesktopOS.MacOS => mainThread ? new Choice(!options.NoWindows, !options.NoTray) : default,
-        DesktopOS.Windows => new Choice(!options.NoWindows, false),
+        DesktopOS.Windows => new Choice(!options.NoWindows, !options.NoTray),
         _ => default,
     };
 
@@ -86,10 +87,12 @@ public sealed class DesktopHost
             }
         }
 
-        if (OperatingSystem.IsWindows() && Choose(options, DesktopOS.Windows, mainThread: true).Windows)
+        if (OperatingSystem.IsWindows() && Choose(options, DesktopOS.Windows, mainThread: true) is { Loop: true } windowsChoice)
         {
             var thread = new WinUiThread();
-            return new DesktopHost(new WinDesktopPlatform(thread), new NullShellPlatform(), thread);
+            IDesktopPlatform windows = windowsChoice.Windows ? new WinDesktopPlatform(thread) : new NullDesktopPlatform(null);
+            IShellPlatform shell = windowsChoice.Tray ? new WinShellPlatform(thread) : new NullShellPlatform();
+            return new DesktopHost(windows, shell, thread);
         }
 
         return new DesktopHost(new NullDesktopPlatform(UnsupportedMessage(options, CurrentOS)), new NullShellPlatform(), null);

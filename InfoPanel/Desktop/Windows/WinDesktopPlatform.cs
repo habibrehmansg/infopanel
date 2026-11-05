@@ -76,7 +76,7 @@ internal sealed class WinDesktopPlatform : IDesktopPlatform
     }
 
     /// <summary>Whether this process's window station is the interactive one (<c>WSF_VISIBLE</c>).</summary>
-    private static unsafe bool IsInteractiveWindowStation()
+    internal static unsafe bool IsInteractiveWindowStation()
     {
         var station = Win32.GetProcessWindowStation();
         if (station == 0)

@@ -706,6 +706,7 @@ public class EngineStartupTests
             builder.UseSetting("Engine:Token", EngineFactory.Token);
             builder.UseSetting("Engine:Port", port.ToString());
             builder.UseSetting("Engine:NoBrowser", "true");
+            builder.UseSetting("Engine:NoTray", "true");
             builder.UseSetting("Engine:MockSeed", "42");
             builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(extra));
         }

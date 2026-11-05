@@ -1,8 +1,8 @@
-# The desktop shell: the menu-bar item
+# The desktop shell: the menu-bar item and the tray icon
 
 The engine has no window of its own. On macOS its face is an item in the menu bar: the logo's hexagon, which macOS tints
-for light and dark menu bars. Windows (a tray icon by the clock) and Linux (a status icon where the desktop shows one)
-come later; there the engine runs as before, and the shell is off.
+for light and dark menu bars. On Windows it is an icon in the notification area, by the clock (below, "Windows"). Linux
+(a status icon where the desktop shows one) comes later; there the engine runs as before, and the shell is off.
 
 ## The menu
 
@@ -28,6 +28,39 @@ apart.
   since a logout can't wait on a browser. AppKit is told to wait (`NSTerminateLater`) until the engine has stopped, then
   the quit goes on.
 - `SIGTERM` and Ctrl-C in a terminal stop it as before.
+
+## Windows
+
+The logo's hexagon in the notification area: black on a light taskbar, white on a dark one, at the small-icon size for
+the taskbar's display scale (redrawn when the theme or the scale changes). Its tooltip is "InfoPanel 2.0.0". Each engine has one icon, removed when it
+stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in start) adds it again (`TaskbarCreated`).
+
+- **Click** it (or press Enter on it): the editor opens, as the menu's Open editor. The second click of a double-click
+  doesn't open a second tab.
+- **Right-click** it (or the menu key): the menu, built afresh each time, in Windows' sentence case (Windows menus stay
+  light in dark mode):
+  1. "InfoPanel 2.0.0 is running" (grey);
+  2. **Open editor** (bold: what a click does);
+  3. — **Start when I sign in** ✓;
+  4. — **Exit**.
+
+  The words are the model's menu (`ShellMenu.Build`, the same as macOS's) in Windows' words (`WinShellText`): Open
+  Editor is "Open editor", Quit InfoPanel is "Exit"; an item it doesn't know keeps the model's words.
+- **Start when I sign in** is the value `InfoPanel` under the user's Run key
+  (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), the engine's own program quoted (under the `dotnet` host:
+  the host and the engine's assembly). It is read each time the menu opens, as Task Manager reads it (its Startup apps
+  switch, under `…\Explorer\StartupApproved\Run`, can turn it off), so the menu shows what Task Manager shows. Ticking it
+  writes the value and clears that switch; unticking removes both. The engine never runs as administrator, so the Run
+  value, not a scheduled task, starts it.
+- **Exit** is Quit: with unsaved profiles a dialog (a task dialog) asks first: "Exit InfoPanel?", the same text, and
+  **Open editor** (Enter), **Exit without saving** and **Cancel** (Escape, or closing it). The engine's stop closes it as
+  Cancel.
+- **Signing out or shutting down** stops the engine the same way without asking, as macOS's system quit: Windows' end
+  of the session (`WM_ENDSESSION`) is held until the engine has stopped, at most 4 s from the first (Windows offers to
+  end an app that takes 5): the engine is asked to stop once, and another end, even one that arrives while the first is
+  held, or a queue of messages that never empties, doesn't extend the wait. Console shutdown events don't reach a
+  process that has loaded user32, so the icon's window hears it.
+- Not shown when the process's window station isn't interactive (a service, a shell started over SSH).
 
 ## Opening the editor
 
@@ -90,8 +123,9 @@ release build). A build from source carries none and behaves as before.
 
 ## Flags
 
-- `--no-tray`: no menu-bar item. Every test that starts the engine as a child process passes it.
-- `--no-windows`: no desktop windows. The menu-bar item stays.
+- `--no-tray`: no menu-bar item or tray icon. Every test that starts the engine as a child process passes it, and so
+  does every test engine in process (`EngineFactory`).
+- `--no-windows`: no desktop windows. The menu-bar item or tray icon stays.
 - `--no-browser`: a second launch doesn't ask the running engine to open the editor.
 - `--allow-origin <origin>`: a web client on another origin; with no web root and one such origin, the editor that
   opens, through its code link. Replaces the origin a release build carries.
@@ -110,8 +144,20 @@ release build). A build from source carries none and behaves as before.
   a queued main-queue callback, which would hold the queue until the alert is answered: the engine's stop still runs
   while one is open, and closes it as Cancel (`MacShellTests` stops an engine with it open; the host setting
   `Engine__ShellTestPrompt=true` asks it at start, in the `Test` host environment only: `ASPNETCORE_ENVIRONMENT=Test`).
+- Windows (`Shell/Windows/`): `WinShellPlatform` on the engine's UI thread (`WinUiThread`, the one desktop windows
+  use), whose hidden top-level window owns the icon and hears Explorer's broadcasts through a message hook (a
+  message-only window wouldn't). `WinTray` is the logic with no Win32 in it (clicks, the menu and its commands, Start
+  when I sign in, `TaskbarCreated`, the theme, prompts one at a time); `WinTrayNative` the Win32 side:
+  `Shell_NotifyIconW` with version 4 callbacks, the glyph from `ShellGlyph` (`WinTrayGlyph`, white for a dark taskbar)
+  as an icon at the taskbar's DPI, an `HMENU` shown with `TrackPopupMenuEx`, and `TaskDialogIndirect`, which needs
+  Common Controls 6: the engine's application manifest (`InfoPanel/app.manifest`) asks for it, and the build copies it
+  into `InfoPanel.exe`; under the `dotnet` host (`dotnet.exe` has its own manifest) `WinCommonControls` activates a
+  context made from the same manifest, which the compiler embeds in `InfoPanel.dll`, around the dialog.
+  The menu's lines are `WinTrayMenu.Flatten` (ids, the default item, the platform's own Start when I sign in above
+  Exit); the Run value is `WinStartup` over a registry seam.
 - Threads: AppKit runs on the process main thread. `DesktopHost` starts its loop when desktop windows **or** the
-  menu-bar item are on, and runs the host on a worker. Off the main thread (every test host) neither is created.
+  menu-bar item are on, and runs the host on a worker. Off the main thread (every test host) neither is created. On
+  Windows both run on the engine's UI thread, whatever thread starts the engine; test engines pass `--no-tray`.
 
 ## Tests
 
@@ -123,7 +169,17 @@ release build). A build from source carries none and behaves as before.
   no browser at start, the logs), the launcher and the redirect files (`BrowserLauncherTests`: the file's mode,
   contents and removal, no token in any argument, Chrome and the fallback per OS), a second launch as a child process
   (`SecondLaunchTests`), and the build property (`WebClientOriginTargetTests`).
+- `InfoPanel.Tests/Shell/Windows/` (any OS): the menu in Windows' words with its commands and default item, Start when
+  I sign in (the Run value and Task Manager's switch, through a fake registry), a click, a double-click, a right click,
+  `TaskbarCreated`, the theme, Exit's dialog in Windows' words, prompts one at a time, the icon's removal
+  (`WinTrayTests`, through `FakeTrayNative`); the session's end, its hold over a scripted message queue (a second end
+  dispatched inside it, one sent to it with a message queued behind, a hold that starts late, a queue that never
+  empties) and a scale change (`WinTraySystemTests`); the glyph per
+  theme and the Win32 structures' sizes and offsets (`WinShellPlatformTests`, `WinCommonControlsTests`). On Windows the
+  registry itself, under a key of the test's own (`WinStartupTests`), and `TaskDialogIndirect` inside the engine's
+  Common Controls 6 in the test host, whose manifest isn't the engine's (`WinCommonControlsTests`).
 - `INFOPANEL_SHELL_TESTS=1 dotnet test InfoPanel.slnx --filter FullyQualifiedName~MacShellTests`: the built engine as a
   child process adds a real menu-bar item with `--no-windows`, and removes it and exits 0 on `SIGTERM` (skipped
-  otherwise).
-- The menu and the alert themselves are checked by hand.
+  otherwise). On Windows, in a signed-in session, `…~WinShellPlatformTests` adds a real tray icon, adds it again on
+  `TaskbarCreated` and removes it.
+- The menus and the alert or dialog themselves are checked by hand.
