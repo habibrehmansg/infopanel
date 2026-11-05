@@ -1,133 +1,77 @@
-# InfoPanel
-
-<p align=center>
-  <a href="https://www.infopanel.net">
-    <img src="Images/logo.png" width=60/>
-  </a>
+<p align="center">
+  <a href="https://www.infopanel.net"><img src="Images/logo.png" width="60" alt="InfoPanel"></a>
 </p>
 
-<p align=center>InfoPanel is a powerful desktop visualization software that transforms how you monitor your system. It displays hardware information on your desktop or external displays as sensor panels, with special support for USB LCD panels like BeadaPanel and Turing Smart Screen/Turzx.</span>
+<h1 align="center">InfoPanel</h1>
 
-<br />
+<p align="center">InfoPanel turns your computer's sensors into panels you design, on the desktop, a second display and (later in 2.0) USB LCD panels.</p>
 
-[Releases][release] | [Reddit][reddit] | [Website][website] | [HWiNFO Forum][forum] | [Discord][discord] | [Microsoft Store][msstore]
+> [!NOTE]
+> **This is the `2.0.x` branch: InfoPanel 2.0, in development and not released.** InfoPanel 1.x, the Windows app, is the current release: get it from [Releases][release] or the [Microsoft Store][msstore]; its code and README are on branch [`1.4.x`][1.4.x]. If you use 1.x, keep using it for now. 2.0 reads your 1.x profiles and settings and never changes them, and USB panels aren't in 2.0 yet.
 
-![build status](https://github.com/habibrehmansg/infopanel/actions/workflows/dotnet-desktop.yml/badge.svg?branch=main) 
+2.0 is one engine for Windows and macOS. It reads the sensors, draws every panel with Skia, and listens on this computer only (127.0.0.1) for the editor in your browser; what you edit is the engine's own picture of the panel, so the preview is what the panel shows.
 
-## InfoPanel 2.0 (branch `2.0.x`, in development)
+## What works today (as of 2026-11-05)
 
-This branch is InfoPanel 2.0: one cross-platform engine for Windows and macOS that renders your screens with the same Skia code that drives the panels and serves an API and live preview on localhost for an editor in your browser. The editor's preview is the engine's own output, so what you edit is what the panel shows. 2.0 reads 1.x profiles and `.infopanel` exports. It is not released yet: sensors are read on macOS only so far (CPU, GPU, memory, temperatures, fans, power, battery, disk and network, as a normal user; HWiNFO and LibreHardwareMonitor come back as Windows adapters; `--mock` shows mock sensors instead), active screens show as desktop windows on macOS only so far, and panels and plugins are not connected yet.
+| | macOS | Windows |
+|---|---|---|
+| Sensors | The Mac's own (CPU, GPU, memory, temperatures, fans, power, battery, disks, network), without administrator rights | [HWiNFO][hwinfo] (with Shared Memory Support on), HWiNFO's gadget values, LibreHardwareMonitor (with the PawnIO driver; every sensor once [set up to read them all](#windows-sensors-from-source)) |
+| Clock, drives, network (the public address too) | Yes | Yes |
+| Weather | Yes, from the configured service¹ | Yes, from the configured service¹ |
+| 1.x plugins (sensors, texts, tables) | Yes² | Yes |
+| Panels on the desktop | Yes | Yes |
+| Menu-bar item | Yes | Later (a tray icon) |
+| USB LCD panels | Later | Later |
+| 1.x profiles and settings | Read, never changed | Read, never changed |
 
-InfoPanel 1.x, the Windows app described below, keeps shipping from branch [`1.4.x`](https://github.com/habibrehmansg/infopanel/tree/1.4.x).
+¹ A build from source has no configured service by default, so its weather stays off. ² A plugin built on a Windows-only library runs on Windows only (the bundled Volume and System Info among them). Linux isn't supported yet: the code has Linux paths (the clock, drives and network; the preview's video through ffmpeg), but no Linux build is tested, and it reads no hardware sensors and opens no desktop windows.
 
-To run 2.0 from source on macOS or Windows, install the [.NET 10 SDK](https://dotnet.microsoft.com/download), then from the repo root:
+**[Documentation](docs/2.0/README.md) · [Run from source](#run-from-source) · [Website][website] · [Discord][discord] · [Reddit][reddit]**
+
+## Run from source
+
+Install the [.NET 10 SDK](https://dotnet.microsoft.com/download), then from the repository's root:
 
 ```bash
-dotnet run --project InfoPanel -c Release                 # the API only: no web client is built from this repo
-dotnet run --project InfoPanel -c Release -- --web-root <folder>   # serves a built web client from <folder> and opens it in your browser
+dotnet run --project InfoPanel -c Release                          # the API and the live preview
+dotnet run --project InfoPanel -c Release -- --web-root <folder>   # also serves a built web client from <folder>
+dotnet run --project InfoPanel -- --help                           # every flag
 ```
 
-Without `--web-root`, an engine serves the `wwwroot` folder next to it if that folder contains an `index.html`. Profiles are kept in `~/Library/Application Support/InfoPanel/v2` on macOS and `%LOCALAPPDATA%\InfoPanel\v2` on Windows as 2.0 documents (`profiles/{id}/document.json`), with the media they use stored by content hash in `blobs/`; the first start stores an example profile (on macOS, a panel of the Mac's own sensors). 1.x profiles aren't imported yet, and the engine never reads or changes a 1.x data folder. The engine listens on 127.0.0.1 only. The API and live preview need the token in the sign-in link the engine prints (or opens); the web client's files, the sign-in link and the health check are open to local requests.
+This repository builds the engine, not a web client. Without `--web-root` (or a `wwwroot` folder with an `index.html` next to the engine) it serves the API and the live preview only, for a client of your own: [`spec/`](spec/README.md) has the formats and the API. With a web client, the engine prints a sign-in link to the console; it never opens a browser by itself. The menu-bar item's **Open Editor** (macOS) opens the editor, and so does starting InfoPanel again while it runs ([the desktop shell](docs/2.0/desktop-shell.md)).
 
-### The live preview as video, and ffmpeg
+The engine keeps its profiles, media, settings and logs in `~/Library/Application Support/InfoPanel/v2` on macOS and `%LOCALAPPDATA%\InfoPanel\v2` on Windows, or the folder `--data-dir` names ([the data folder](docs/2.0/data-folder.md)). It reads 1.x's data folder (`%LOCALAPPDATA%\InfoPanel`, or `--v1-dir <folder>`) but never writes to it ([1.x import](spec/docs/import.md)).
 
-A client can ask for the live preview as H.264 video instead of PNG images. The engine encodes it with the computer's hardware encoder where it has one: VideoToolbox on macOS, and on Windows Media Foundation, the graphics chip's own encoder (AMD, Intel or NVIDIA), checked with a short test encode the first time a preview asks for video. Windows uses its graphics chip's encoder only: a PC without a working one keeps the preview as images. So may a PC whose graphics chip drives no display (no monitor and no Remote Desktop session, as on a headless PC that drives only USB panels): Windows then makes a software adapter the default, and the chip's encoder can refuse to start there. A monitor, an HDMI dummy plug or a Remote Desktop session brings video back. On macOS and Linux the engine falls back to ffmpeg, if ffmpeg is installed: the engine runs the ffmpeg it finds as a separate program and doesn't include one. Without either, the preview stays images. To use ffmpeg, install a build with libx264 (the usual packages have it):
+Video files and RTSP cameras in a panel need FFmpeg's libraries, which a build from source doesn't include (HTTP MJPEG cameras work without them); the preview as video uses the computer's hardware encoder, or ffmpeg on macOS ([video](docs/2.0/video.md)).
 
-- **macOS:** `brew install ffmpeg` ([Homebrew](https://brew.sh)).
-- **Linux, Raspberry Pi OS:** `sudo apt install ffmpeg` (or your distribution's package).
+### Windows sensors from source
 
-The engine looks for ffmpeg once, the first time a preview asks for video: at the path given with `--ffmpeg <path>` if there is one, otherwise on the `PATH` the engine was started with, then in `/opt/homebrew/bin` and `/usr/local/bin`, where an app started from the Dock or Finder doesn't look. It checks that ffmpeg really encodes with a tiny test before using it, and logs which ffmpeg it found and its version. `--h264 software` uses ffmpeg even where there is a hardware encoder (on Windows, which has no software encoder, it leaves the preview as images; `--ffmpeg` is refused there), and `--h264 off` turns video off.
+- **HWiNFO:** turn on Shared Memory Support in HWiNFO's settings (the free version's shared memory stops after 12 hours). Readings ticked "Report value in Gadget" in HWiNFO are read too.
+- **LibreHardwareMonitor** runs in the engine's sensor helper, which only a Windows publish includes: `dotnet publish InfoPanel -c Release -r win-x64`, then run the engine from the publish folder (`dotnet run` and a plain build have no `sensor-helper` folder).
+- **PawnIO** is the driver LibreHardwareMonitor needs for the CPU's temperatures, clocks and power and the board's fans and voltages. A build from source doesn't include its installer, so the engine doesn't offer to install it: install it from [pawnio.eu](https://pawnio.eu).
+- **Every sensor:** some need administrator rights even with PawnIO. The engine never elevates itself; it can set up a task that runs its sensor helper as SYSTEM, which needs the engine installed under Program Files ([reading all sensors](spec/docs/api.md#reading-all-sensors)).
 
-For development and tests, see [`CLAUDE.md`](CLAUDE.md). What still has to come over from 1.x is in [`PORTING.md`](PORTING.md).
+## Documentation
 
-## Features
-
-- **Multiple Data Sources**: 
-  - HWiNFO integration via Shared Memory (SHM) for extensive hardware monitoring
-  - LibreHardwareMonitor for additional sensor data without requiring HWiNFO
-  - Extensible plugin system with built-in and third-party plugins
-
-- **Display Options**:
-  - Desktop overlay with customizable transparency and positioning
-  - External display support for monitors
-  - USB LCD panel support including BeadaPanel via WinUSB API
-  - Multiple visualization types: text, gauges, graphs, bars, donuts, and images
-
-- **Advanced Visualization**:
-  - GIF animation support for dynamic visualizations
-  - High refresh rates for smooth updates
-  - Customizable layouts, colors, and fonts
-  - Multiple profiles for different use cases or displays
-
-- **Plugin System**:
-  - Built-in system information plugins (CPU, memory, network, drives)
-  - Weather built into the engine
-  - Support for third-party plugins
-  - Sensor data tables with customizable formatting
-
-![InfoPanel](./Images/infopanel-design-view.png)
-
-## Supported Hardware
-
-- All hardware sensors exposed by HWiNFO
-- CPU, GPU, RAM, storage, and network monitoring via LibreHardwareMonitor
-- BeadaPanel USB LCD panels (all models supported)
-- TuringPanel/TURZX displays (Models A, C, and E)
-- Any standard monitor or display
-
-For detailed information about supported panels and recommendations, see our [Display Panels Guide](PANELS.md).
-
-## Usage
-
-1. Install either HWiNFO (with Shared Memory support enabled) or use the built-in LibreHardwareMonitor integration
-2. Install InfoPanel from the [Microsoft Store][msstore] or the [website][website]
-3. Configure your display profile with sensors, gauges, and visualizations
-4. Customize layouts with drag-and-drop interface
-5. Connect USB displays or position on your desktop
-6. (Optional) Install additional plugins for enhanced functionality
+[The documentation index](docs/2.0/README.md) lists every page: the data folder, the desktop shell, plugins, video, weather, AI apps; then the formats and the engine API in [`spec/`](spec/README.md), for client authors; then the pages for contributors.
 
 ## Plugins
 
-InfoPanel features a robust plugin system that extends its capabilities:
+2.0 runs 1.x plugins: the SDK is the same, and the engine reads their sensors, texts and tables, so a 1.x profile bound to a plugin reads it live. How the engine finds and runs them: [plugins](docs/2.0/plugins.md). Writing one: [the plugin guide](PLUGINS.md) and [its architecture](PLUGIN-ARCHITECTURE.md). Community plugins: [the plugin registry](PLUGIN-REGISTRY.md).
 
-### Built-in Plugins
-- **System Info Plugin**: CPU usage, memory usage, process statistics, and system uptime
-- **Volume Plugin**: Audio volume control and monitoring
+## InfoPanel 1.x
 
-### Community Plugins
-- [InfoPanel Spotify Plugin](https://github.com/F3NN3X/InfoPanel.Spotify) - Displays currently playing tracks and album art from Spotify
-- [InfoPanel FPS Plugin](https://github.com/F3NN3X/InfoPanel.FPS) - Shows FPS and performance metrics for gaming sessions
-- [InfoPanel YouTube Live Plugin](https://github.com/fweepa/InfoPanel.YoutubeLivePlugin) - Plays a YouTube Live stream in your panel
+InfoPanel 1.x is the Windows app released today, with USB LCD panels (BeadaPanel, Turing Smart Screen/Turzx and others). Its features, supported hardware and [display panels guide][panels] are on branch [`1.4.x`][1.4.x]. Get it from [Releases][release] or the [Microsoft Store][msstore]; it has a thread on the [HWiNFO forum][forum].
 
-To browse all available community plugins or submit your own, see the [Plugin Registry](PLUGIN-REGISTRY.md).
+## Contributing and security
 
-### Plugin Development
-InfoPanel provides a comprehensive API for plugin development that allows access to:
-- Sensor data creation and publishing
-- Custom visualizations
-- Data tables for complex information
-- Configuration interfaces
+Issues are welcome; 2.0 takes no pull requests until its first release ([contributing](CONTRIBUTING.md)). To report a vulnerability, see [security](SECURITY.md).
 
-For detailed instructions on developing plugins, see our [Plugin Development Guide](PLUGINS.md).
-
-## Demo
-![InfoPanel Demo](./Images/beadapanel-demo-1.gif)
-
-*A demonstration of InfoPanel in action on a BeadaPanel USB LCD*
-
-## Development
-
-InfoPanel 1.x is built with C# and WPF for a modern Windows UI experience (2.0 is described above). The architecture features:
-
-- Modular design with MVVM pattern
-- Extensible plugin system
-- DirectX acceleration for UI elements
-- High-performance graphics rendering for external displays
-- Cross-device synchronization
-
-## License
+## Licence
 
 InfoPanel is licensed under GPL 3.0 - see the [license file][license] for details.
+
+Third-party components: [LICENSES.md](LICENSES.md). The formats in `spec/`: [`spec/LICENSE`](spec/LICENSE).
 
 ---
 
@@ -143,4 +87,7 @@ References
 [discord]: https://discord.gg/aNGeJxjE7Q
 [msstore]: https://apps.microsoft.com/store/detail/XPFP7C8H5446ZD
 [release]: https://github.com/habibrehmansg/infopanel/releases
-[license]: https://github.com/habibrehmansg/infopanel/blob/main/LICENSE
+[1.4.x]: https://github.com/habibrehmansg/infopanel/tree/1.4.x
+[panels]: https://github.com/habibrehmansg/infopanel/blob/1.4.x/PANELS.md
+[hwinfo]: https://www.hwinfo.com
+[license]: LICENSE
