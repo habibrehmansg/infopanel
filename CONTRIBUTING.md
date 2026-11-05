@@ -7,7 +7,7 @@ Thanks for helping. InfoPanel has two lines of work, on two branches:
 
 ## Contributor agreement
 
-Pull requests, to either branch, will need the contributor agreement, [`CLA.md`](CLA.md), signed once through CLA Assistant, which comments on the pull request with a link to sign it. The agreement is a draft and isn't open for signature yet. If part of a contribution isn't your own work (code from another project, say), say so in the pull request and name where it comes from and its licence.
+Pull requests, to either branch, need the contributor agreement, [`CLA.md`](CLA.md), signed once through CLA Assistant, which comments on the pull request with a link to sign it. You keep the copyright in your contribution and give Habib Rehman a broad licence to use and license it, including under other terms; it also stays available under InfoPanel's licence. If part of a contribution isn't your own work (code from another project, say), say so in the pull request and name where it comes from and its licence.
 
 ## Issues
 

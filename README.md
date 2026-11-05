@@ -75,7 +75,7 @@ The formats and the API contract in `spec/` (its schemas, documentation and gene
 
 Third-party components: [LICENSES.md](LICENSES.md).
 
-Contributions are covered by the contributor agreement, [`CLA.md`](CLA.md), a draft that isn't open for signature yet.
+Contributions need the contributor agreement, [`CLA.md`](CLA.md): you keep the copyright in your contribution and give Habib Rehman a broad licence to use and license it, including under other terms.
 
 ---
 

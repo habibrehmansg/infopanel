@@ -1,8 +1,8 @@
 # Contributor agreement
 
-By signing this agreement, you assign the copyright in your contribution to InfoPanel to Habib Rehman, who licenses it back to you. It is the Harmony Individual Contributor Assignment Agreement, version 1.0, filled in for InfoPanel. This agreement is a draft: it isn't open for signature yet.
+By signing this agreement, you keep the copyright in your contribution and give Habib Rehman a broad licence to use and license it, including under other terms; it also stays available under InfoPanel's licence. It is the Harmony Individual Contributor License Agreement, version 1.0, filled in for InfoPanel.
 
-## Harmony Individual Contributor Assignment Agreement
+## Harmony Individual Contributor License Agreement
 
 Thank you for your interest in contributing to InfoPanel (https://github.com/habibrehmansg/infopanel), a project of Habib Rehman ("We" or "Us").
 
@@ -28,15 +28,11 @@ This contributor agreement ("Agreement") documents the rights granted by contrib
 
 ### 2. Grant of Rights
 
-#### 2.1 Copyright Assignment
+#### 2.1 Copyright License
 
-(a) At the time the Contribution is Submitted, You assign to Us all right, title, and interest worldwide in all Copyright covering the Contribution; provided that this transfer is conditioned upon compliance with Section 2.3.
+(a) You retain ownership of the Copyright in Your Contribution and have the same rights to use or license the Contribution which You would have had without entering into the Agreement.
 
-(b) To the extent that any of the rights in Section 2.1(a) cannot be assigned by You to Us, You grant to Us a perpetual, worldwide, exclusive, royalty-free, transferable, irrevocable license under such non-assigned rights, with rights to sublicense through multiple tiers of sublicensees, to practice such non-assigned rights, including, but not limited to, the right to reproduce, modify, display, perform and distribute the Contribution; provided that this license is conditioned upon compliance with Section 2.3.
-
-(c) To the extent that any of the rights in Section 2.1(a) can neither be assigned nor licensed by You to Us, You irrevocably waive and agree never to assert such rights against Us, any of our successors in interest, or any of our licensees, either direct or indirect; provided that this agreement not to assert is conditioned upon compliance with Section 2.3.
-
-(d) Upon such transfer of rights to Us, to the maximum extent possible, We immediately grant to You a perpetual, worldwide, non-exclusive, royalty-free, transferable, irrevocable license under such rights covering the Contribution, with rights to sublicense through multiple tiers of sublicensees, to reproduce, modify, display, perform, and distribute the Contribution. The intention of the parties is that this license will be as broad as possible and to provide You with rights as similar as possible to the owner of the rights that You transferred. This license back is limited to the Contribution and does not provide any rights to the Material.
+(b) To the maximum extent permitted by the relevant law, You grant to Us a perpetual, worldwide, non-exclusive, transferable, royalty-free, irrevocable license under the Copyright covering the Contribution, with the right to sublicense such rights through multiple tiers of sublicensees, to reproduce, modify, display, perform and distribute the Contribution as part of the Material; provided that this license is conditioned upon compliance with Section 2.3.
 
 #### 2.2 Patent License
 
@@ -52,7 +48,7 @@ In addition, We may use the following licenses for Media in the Contribution: th
 
 2.5 Our Rights. You acknowledge that We are not obligated to use Your Contribution as part of the Material and may decide to include any Contribution We consider appropriate.
 
-2.6 Reservation of Rights. Any rights not expressly assigned or licensed under this section are expressly reserved by You.
+2.6 Reservation of Rights. Any rights not expressly licensed under this section are expressly reserved by You.
 
 ### 3. Agreement
 
@@ -68,11 +64,11 @@ You confirm that:
 
 ### 4. Disclaimer
 
-EXCEPT FOR THE EXPRESS WARRANTIES IN SECTION 3, THE CONTRIBUTION IS PROVIDED "AS IS". MORE PARTICULARLY, ALL EXPRESS OR IMPLIED WARRANTIES INCLUDING, WITHOUT LIMITATION, ANY IMPLIED WARRANTY OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE EXPRESSLY DISCLAIMED BY YOU TO US AND BY US TO YOU. TO THE EXTENT THAT ANY SUCH WARRANTIES CANNOT BE DISCLAIMED, SUCH WARRANTY IS LIMITED IN DURATION TO THE MINIMUM PERIOD PERMITTED BY LAW.
+EXCEPT FOR THE EXPRESS WARRANTIES IN SECTION 3, THE CONTRIBUTION IS PROVIDED "AS IS". MORE PARTICULARLY, ALL EXPRESS OR IMPLIED WARRANTIES INCLUDING, WITHOUT LIMITATION, ANY IMPLIED WARRANTY OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE EXPRESSLY DISCLAIMED BY YOU TO US. TO THE EXTENT THAT ANY SUCH WARRANTIES CANNOT BE DISCLAIMED, SUCH WARRANTY IS LIMITED IN DURATION TO THE MINIMUM PERIOD PERMITTED BY LAW.
 
 ### 5. Consequential Damage Waiver
 
-TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL YOU OR US BE LIABLE FOR ANY LOSS OF PROFITS, LOSS OF ANTICIPATED SAVINGS, LOSS OF DATA, INDIRECT, SPECIAL, INCIDENTAL, CONSEQUENTIAL AND EXEMPLARY DAMAGES ARISING OUT OF THIS AGREEMENT REGARDLESS OF THE LEGAL OR EQUITABLE THEORY (CONTRACT, TORT OR OTHERWISE) UPON WHICH THE CLAIM IS BASED.
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL YOU BE LIABLE FOR ANY LOSS OF PROFITS, LOSS OF ANTICIPATED SAVINGS, LOSS OF DATA, INDIRECT, SPECIAL, INCIDENTAL, CONSEQUENTIAL AND EXEMPLARY DAMAGES ARISING OUT OF THIS AGREEMENT REGARDLESS OF THE LEGAL OR EQUITABLE THEORY (CONTRACT, TORT OR OTHERWISE) UPON WHICH THE CLAIM IS BASED.
 
 ### 6. Miscellaneous
 
@@ -103,6 +99,6 @@ Address: ________________________
 
 ---
 
-Harmony Individual Contributor Assignment Agreement (HA-CAA-I) Version 1.0 July 4, 2011, from [Harmony Agreements](https://www.harmonyagreements.org/agreements.html), with its fill-ins completed and the fifth outbound licence option chosen in Section 2.3.
+Harmony Individual Contributor License Agreement (HA-CLA-I) Version 1.0 July 4, 2011, from [Harmony Agreements](https://www.harmonyagreements.org/agreements.html), with its fill-ins completed and the fifth outbound licence option (Option Five) chosen in Section 2.3.
 
 This work is licensed under a [Creative Commons Attribution 3.0 Unported License](http://creativecommons.org/licenses/by/3.0/).
