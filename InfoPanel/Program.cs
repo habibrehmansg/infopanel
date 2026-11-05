@@ -279,12 +279,11 @@ try
         kestrel.Listen(IPAddress.Loopback, port);
     });
     builder.Services.Insert(0, ServiceDescriptor.Transient<IStartupFilter, SecurityHeadersStartupFilter>());
-    builder.Services.Configure<HostFilteringOptions>(o =>
-    {
-        o.AllowedHosts = ["localhost", "127.0.0.1", "[::1]"];
-        o.AllowEmptyHosts = false;
-        o.IncludeFailureMessage = false;
-    });
+    // The host rule, next: the loopback names and the proxy.hosts setting, read at each request (Security/HostRule.cs).
+    // ASP.NET's own host filtering is left open, whatever configuration says, so the rule alone decides.
+    builder.Services.AddSingleton(new HostRule(settings));
+    builder.Services.Insert(1, ServiceDescriptor.Transient<IStartupFilter, HostRuleStartupFilter>());
+    builder.Services.Configure<HostFilteringOptions>(o => o.AllowedHosts = ["*"]);
     builder.Services.AddProblemDetails();
     builder.Services.ConfigureHttpJsonOptions(json =>
     {

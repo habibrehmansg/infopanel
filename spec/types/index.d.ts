@@ -1111,6 +1111,7 @@ export interface EngineSettingsOk {
   sources: SettingsSources;
   media: MediaSettings;
   service: ServiceSettings;
+  proxy: ProxySettings;
   /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
   clients: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean };
 }
@@ -1140,6 +1141,7 @@ export interface EngineSettingsProblem {
   sources: SettingsSources;
   media: MediaSettings;
   service: ServiceSettings;
+  proxy: ProxySettings;
   /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
   clients: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean };
 }
@@ -1194,6 +1196,23 @@ export interface MediaSettings {
   localNetwork: boolean;
 }
 
+/** The names a reverse proxy on this computer reaches the engine by (docs/api.md#where-requests-come-from). */
+export interface ProxySettings {
+  /**
+   * The names the engine answers besides `localhost`, `127.0.0.1` and `[::1]`: a request whose `Host` is one of them, in any case and on any port, is answered as one to a loopback name. Empty by default.
+   * Items: ≤ 8.
+   * Unique items.
+   */
+  hosts: ProxyHost[];
+}
+
+/**
+ * A name a reverse proxy on this computer reaches the engine by: a DNS name in lower case, two labels or more, each 1 to 63 of `a-z`, `0-9` and `-`, neither starting nor ending with `-`, the last starting with a letter (so never an IP address), at most 253 characters, without a trailing dot, a port or a wildcard. An internationalised name is given in its `xn--` form.
+ * Length: ≤ 253.
+ * Pattern: `^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`.
+ */
+export type ProxyHost = string;
+
 /** How much the engine logs: the least severe entries it writes to its log, from `debug` (everything) through `information` and `warning` to `error` (errors only). A client shows a level it doesn't know by its name. */
 export type LogLevel = "debug" | "information" | "warning" | "error";
 
@@ -1203,7 +1222,7 @@ export type LogLevel = "debug" | "information" | "warning" | "error";
  */
 export type ClientName = string;
 
-/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `media`, `service` and `clients` are merged member by member, each client's preferences set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
+/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `media`, `service`, `proxy` and `clients` are merged member by member, each client's preferences and `proxy.hosts` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
 export interface SettingsChange {
   /**
    * Frames a second, 1 to 60 (engineSettings).
@@ -1250,6 +1269,14 @@ export interface SettingsChange {
     address?: string | null;
     /** serviceSettings: whether AI apps elsewhere may use this engine's tools through the configured service; `null` sets it back to its default, off (docs/api.md#ai-apps-elsewhere). */
     aiApps?: boolean | null;
+  };
+  proxy?: {
+    /**
+     * proxySettings: the names a reverse proxy on this computer reaches the engine by, set whole; `null` sets them back to none. A change applies from the next request.
+     * Items: ≤ 8.
+     * Unique items.
+     */
+    hosts?: ProxyHost[] | null;
   };
   /** Client preferences to set, each whole, or to remove (`null`), by client name; the other clients' are kept. */
   clients?: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean | null };

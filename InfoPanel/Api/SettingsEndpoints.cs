@@ -93,6 +93,7 @@ public static class SettingsEndpoints
             },
             Media = new MediaSettingsBody { LocalNetwork = settings.Media.LocalNetwork },
             Service = new ServiceSettingsBody { Address = settings.Service.Address ?? defaultServiceAddress, AiApps = settings.Service.AiApps },
+            Proxy = new ProxySettingsBody { Hosts = settings.Proxy.Hosts },
             Clients = settings.Clients,
         };
     }

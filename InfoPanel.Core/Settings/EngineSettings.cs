@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Text.Json;
 using InfoPanel.Spec;
 
@@ -85,6 +86,44 @@ public static class SettingsLimits
         "error" => EngineLogLevel.Error,
         _ => null,
     };
+
+    /// <summary>The most names <c>proxy.hosts</c> holds.</summary>
+    public const int ProxyHosts = 8;
+
+    /// <summary>The longest name in <c>proxy.hosts</c>, and the longest of a name's labels.</summary>
+    public const int ProxyHostLength = 253, ProxyHostLabelLength = 63;
+
+    /// <summary>
+    /// Whether <paramref name="name"/> may be one of <c>proxy.hosts</c>: a DNS name in lower case, as the schema's
+    /// <c>proxyHost</c> pattern has it: two labels or more, each 1–63 of <c>a–z 0–9 -</c> neither starting nor ending with
+    /// <c>-</c>, the last starting with a letter (so no IP literal), at most 253 characters, no trailing dot. No wildcard,
+    /// port, upper case or other text (an internationalised name in its <c>xn--</c> form); <c>localhost</c>, one label, isn't one.
+    /// </summary>
+    public static bool IsProxyHost(string name)
+    {
+        if (name.Length is 0 or > ProxyHostLength)
+            return false;
+
+        var labels = name.Split('.');
+        if (labels.Length < 2)
+            return false;
+        foreach (var label in labels)
+        {
+            if (label.Length is 0 or > ProxyHostLabelLength || label[0] == '-' || label[^1] == '-')
+                return false;
+            foreach (var c in label)
+            {
+                if (c is not ((>= 'a' and <= 'z') or (>= '0' and <= '9') or '-'))
+                    return false;
+            }
+        }
+
+        return labels[^1][0] is >= 'a' and <= 'z';
+    }
+
+    /// <summary>Whether <paramref name="names"/> may be <c>proxy.hosts</c>: at most 8 names, each one (<see cref="IsProxyHost"/>), none twice.</summary>
+    public static bool AreProxyHosts(IReadOnlyCollection<string> names) =>
+        names.Count <= ProxyHosts && names.All(IsProxyHost) && names.Distinct(StringComparer.Ordinal).Count() == names.Count;
 
     /// <summary>Whether <paramref name="name"/> is a valid client name.</summary>
     public static bool IsClientName(string name)
@@ -181,6 +220,15 @@ public sealed record ServiceSettings(string? Address, bool AiApps = false)
 }
 
 /// <summary>
+/// The names a reverse proxy on this computer reaches the engine by (<c>proxy.hosts</c>): the engine answers a request
+/// whose <c>Host</c> is one of them as it answers a loopback name (<c>InfoPanel.Security.HostRule</c>). None by default.
+/// </summary>
+public sealed record ProxySettings(IReadOnlyList<string> Hosts)
+{
+    public static ProxySettings Default { get; } = new(ImmutableArray<string>.Empty);
+}
+
+/// <summary>
 /// The engine settings in effect: each set value, or its default. <see cref="Clients"/> holds each client's own
 /// preferences, opaque to the engine.
 /// </summary>
@@ -193,6 +241,7 @@ public sealed record EngineSettings(
     WeatherSettings Weather,
     MediaSettings Media,
     ServiceSettings Service,
+    ProxySettings Proxy,
     IReadOnlyDictionary<string, JsonElement> Clients)
 {
     public static EngineSettings Default { get; } = new(
@@ -204,6 +253,7 @@ public sealed record EngineSettings(
         WeatherSettings.Default,
         MediaSettings.Default,
         ServiceSettings.Default,
+        ProxySettings.Default,
         ImmutableDictionary<string, JsonElement>.Empty);
 
     /// <summary>The time between the sensor history's samples.</summary>

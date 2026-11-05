@@ -5,7 +5,8 @@ using Microsoft.Net.Http.Headers;
 namespace InfoPanel.Security;
 
 /// <summary>
-/// The engine's request checks, after host filtering:
+/// The engine's request checks, after the refusal of requests from the internet and the host rule
+/// (<see cref="HostRuleStartupFilter"/>):
 /// <list type="bullet">
 /// <item>An <c>Origin</c> header, when present on any request (any method, WebSocket upgrades included), must be
 /// <c>http://127.0.0.1:{port}</c>, <c>http://localhost:{port}</c> or a <c>--dev-origin</c>; otherwise 403.</item>

@@ -708,8 +708,17 @@ public sealed record EngineSettingsBody
     public required SettingsSources Sources { get; init; }
     public required MediaSettingsBody Media { get; init; }
     public required ServiceSettingsBody Service { get; init; }
+    public required ProxySettingsBody Proxy { get; init; }
     /// <summary>Each client's preferences by client name, as the client set them.</summary>
     public required IReadOnlyDictionary<string, JsonElement> Clients { get; init; }
+}
+
+/// <summary>The names a reverse proxy on this computer reaches the engine by (<c>proxySettings</c>, engineSettings' <c>proxy</c>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/proxySettings")]
+public sealed record ProxySettingsBody
+{
+    /// <summary>At most 8 lower-case DNS names; empty by default.</summary>
+    public required IReadOnlyList<string> Hosts { get; init; }
 }
 
 /// <summary>The settings of the engine's sensor sources (<c>settingsSources</c>, engineSettings' <c>sources</c>).</summary>
@@ -769,6 +778,7 @@ public sealed record SettingsChange : IRemovesMembers
     public SettingsChangeSources? Sources { get; init; }
     public MediaSettingsChange? Media { get; init; }
     public ServiceSettingsChange? Service { get; init; }
+    public ProxySettingsChange? Proxy { get; init; }
     public IReadOnlyDictionary<string, JsonElement>? Clients { get; init; }
     /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
@@ -821,6 +831,16 @@ public sealed record ServiceSettingsChange : IRemovesMembers
 {
     public string? Address { get; init; }
     public bool? AiApps { get; init; }
+    /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
+
+/// <summary>The proxy's names to set, whole; <c>null</c> goes back to none (<see cref="IRemovesMembers"/>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/proxy")]
+public sealed record ProxySettingsChange : IRemovesMembers
+{
+    public IReadOnlyList<string>? Hosts { get; init; }
     /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
     public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);

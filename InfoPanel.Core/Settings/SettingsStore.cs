@@ -157,8 +157,8 @@ public sealed class SettingsStore
 
     /// <summary>
     /// Merges <paramref name="change"/> into the settings and writes them: a member's value sets it, <c>null</c> removes it
-    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>sources.weather</c>, <c>media</c>, <c>service</c> and <c>clients</c> merge member by member, and each
-    /// <c>clients</c> member is set or removed whole. Unknown members are refused.
+    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>sources.weather</c>, <c>media</c>, <c>service</c>, <c>proxy</c> and <c>clients</c> merge member by member, and each
+    /// <c>clients</c> member and <c>proxy.hosts</c> is set or removed whole. Unknown members are refused.
     /// </summary>
     /// <returns>The settings in effect afterwards (the same version when nothing changed).</returns>
     /// <exception cref="SettingsUnavailableException">The file couldn't be read at start-up (checked first).</exception>
@@ -461,6 +461,9 @@ public sealed class SettingsStore
             Check(service, "aiApps", "/service/aiApps", BoolProblem);
         }
 
+        if (Container(tree, "proxy", "/proxy") is { } proxy)
+            Check(proxy, "hosts", "/proxy/hosts", HostsProblem);
+
         if (Container(tree, "clients", "/clients") is { } clients)
         {
             var kept = 0;
@@ -493,6 +496,7 @@ public sealed class SettingsStore
         var weather = (tree["sources"] as JsonObject)?["weather"] as JsonObject;
         var media = tree["media"] as JsonObject;
         var service = tree["service"] as JsonObject;
+        var proxy = tree["proxy"] as JsonObject;
         var clients = ImmutableDictionary.CreateBuilder<string, JsonElement>(StringComparer.Ordinal);
         if (tree["clients"] is JsonObject stored)
         {
@@ -517,6 +521,9 @@ public sealed class SettingsStore
             new ServiceSettings(
                 service?["address"] is { } address && ServiceAddress.TryNormalize(ElementOf(address).GetString(), out var normal) ? normal : null,
                 Bool(service?["aiApps"]) ?? ServiceSettings.Default.AiApps),
+            proxy?["hosts"] is JsonArray hosts
+                ? new ProxySettings(ImmutableArray.CreateRange(hosts.Select(h => ElementOf(h).GetString()!)))
+                : ProxySettings.Default,
             clients.ToImmutable());
 
         static int? Int(JsonNode? node) => node is null ? null : SpecJson.ReadInt32(ElementOf(node));
@@ -657,6 +664,19 @@ public sealed class SettingsStore
                     }
 
                     break;
+                case "proxy":
+                    if (!Object(member.Value, pointer))
+                        break;
+                    foreach (var setting in member.Value.EnumerateObject())
+                    {
+                        var settingPointer = pointer + "/" + Escape(setting.Name);
+                        if (setting.Name == "hosts")
+                            HostsErrors(setting.Value, settingPointer, errors);
+                        else
+                            Unknown(settingPointer);
+                    }
+
+                    break;
                 case "clients":
                     if (!Object(member.Value, pointer))
                         break;
@@ -740,6 +760,13 @@ public sealed class SettingsStore
 
                     PruneIfEmpty(tree, "service");
                     break;
+                case "proxy":
+                    // The list is set whole, its names as given (already lower case: the check refuses any other).
+                    var proxy = Child(tree, "proxy");
+                    foreach (var setting in member.Value.EnumerateObject())
+                        Set(proxy, setting.Name, setting.Value, e => new JsonArray([.. e.EnumerateArray().Select(h => (JsonNode?)JsonValue.Create(h.GetString()))]));
+                    PruneIfEmpty(tree, "proxy");
+                    break;
                 case "clients":
                     var clients = Child(tree, "clients");
                     foreach (var client in member.Value.EnumerateObject())
@@ -804,6 +831,51 @@ public sealed class SettingsStore
         e.ValueKind == JsonValueKind.String && ServiceAddress.TryNormalize(e.GetString(), out _)
             ? null
             : "isn't a service address: an origin without a path, https, or http on a loopback host";
+
+    /// <summary>
+    /// <c>proxy.hosts</c> in the file: a list of at most 8 names, each a lower-case DNS name and none twice
+    /// (<see cref="SettingsLimits.AreProxyHosts"/>); a list with any other is dropped whole.
+    /// </summary>
+    private static string? HostsProblem(JsonElement e) =>
+        e.ValueKind == JsonValueKind.Array && e.EnumerateArray().All(h => h.ValueKind == JsonValueKind.String)
+            && SettingsLimits.AreProxyHosts([.. e.EnumerateArray().Select(h => h.GetString()!)])
+            ? null
+            : $"isn't a list of at most {SettingsLimits.ProxyHosts} lower-case DNS names, each once";
+
+    /// <summary>
+    /// A change's <c>proxy.hosts</c> (<c>null</c> sets it back to none), as the schema's <c>settingsChange</c> checks it: a
+    /// list (else at the list), at most 8 names and none twice (at the list), each a name (<see cref="SettingsLimits.IsProxyHost"/>,
+    /// at the name).
+    /// </summary>
+    private static void HostsErrors(JsonElement value, string pointer, List<SpecError> errors)
+    {
+        if (value.ValueKind == JsonValueKind.Null)
+            return;
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            errors.Add(new SpecError(pointer, "schema", "The value isn't a list of names."));
+            return;
+        }
+
+        if (value.GetArrayLength() > SettingsLimits.ProxyHosts)
+            errors.Add(new SpecError(pointer, "schema", $"The list has {value.GetArrayLength()} names; at most {SettingsLimits.ProxyHosts} are kept."));
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var twice = false;
+        var i = 0;
+        foreach (var host in value.EnumerateArray())
+        {
+            if (host.ValueKind != JsonValueKind.String || !SettingsLimits.IsProxyHost(host.GetString()!))
+                errors.Add(new SpecError($"{pointer}/{i}", "schema",
+                    "The value isn't a DNS name in lower case: two labels or more of a–z, 0–9 and '-', the last starting with a letter, at most 253 characters, no trailing dot."));
+            else if (!names.Add(host.GetString()!))
+                twice = true;
+            i++;
+        }
+
+        if (twice)
+            errors.Add(new SpecError(pointer, "schema", "The list names a host twice."));
+    }
 
     private static string? LogLevelProblem(JsonElement e) =>
         e.ValueKind == JsonValueKind.String && SettingsLimits.LogLevelNamed(e.GetString()) != null

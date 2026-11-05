@@ -5,14 +5,12 @@ using InfoPanel.Hosting;
 using InfoPanel.Security;
 using InfoPanel.Spec;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace InfoPanel.Tests.Contract;
@@ -98,8 +96,9 @@ internal sealed class ContractCheckFilter(ContractLog log) : IStartupFilter
 /// The host tests' check of every response against spec/openapi.json (test-only; the engine has no such code). The
 /// response is buffered, then checked before it goes to the client:
 /// <list type="bullet">
-/// <item>The security layer answers before any operation: a <c>Host</c> the engine refuses gets 400 with no body, an
-/// <c>Origin</c> it refuses 403 <c>problem</c>, and a cross-origin preflight 204 with no body.</item>
+/// <item>The security layer answers before any operation: a <c>Host</c> the engine refuses gets 400 with no body, a
+/// request marked as from the internet and an <c>Origin</c> it refuses 403 <c>problem</c>, and a cross-origin preflight
+/// 204 with no body.</item>
 /// <item>A request that reaches an operation (the endpoint routing chose, or else the operation whose method and path
 /// template it fills) gets a status the operation declares, with its required headers, one of its media types and, for
 /// JSON, a body valid against the declared schema, through the engine's validator. Any other status fails.</item>
@@ -125,6 +124,9 @@ internal static class ContractCheck
     public static async Task RunAsync(HttpContext context, RequestDelegate next, ContractLog log)
     {
         var response = context.Response;
+        // The host rule's decision as the request enters, when the engine makes it: the request may change the names it
+        // checks (a change to proxy.hosts made through the name it removes is answered).
+        var hostAllowed = context.RequestServices.GetRequiredService<HostRule>().Allows(context.Request.Headers.Host.ToString());
         if (IsUpgrade(context))
         {
             // Unbuffered: an accepted upgrade's headers go out when the socket is accepted (on a TestServer through the
@@ -159,7 +161,7 @@ internal static class ContractCheck
                     // A refusal went out, then the pipeline threw (its client went away, say): the client has the
                     // refusal, so it is checked all the same, and the exception goes on.
                     response.Body = passing;
-                    CheckRefusal(context, copy, log);
+                    CheckRefusal(context, copy, log, hostAllowed);
                     throw;
                 }
                 finally
@@ -167,7 +169,7 @@ internal static class ContractCheck
                     response.Body = passing;
                 }
 
-                if (CheckRefusal(context, copy, log) is { } refused)
+                if (CheckRefusal(context, copy, log, hostAllowed) is { } refused)
                     throw new ContractViolationException(refused);
                 return;
             }
@@ -190,7 +192,7 @@ internal static class ContractCheck
         }
 
         var body = buffer.ToArray();
-        if (!context.RequestAborted.IsCancellationRequested && Check(context, body, log) is { } violation)
+        if (!context.RequestAborted.IsCancellationRequested && Check(context, body, log, hostAllowed) is { } violation)
         {
             log.Violated(violation);
             throw new ContractViolationException(violation);
@@ -212,7 +214,7 @@ internal static class ContractCheck
     /// Checks an upgrade's response that went out unbuffered, unless it is the socket's 101, and records what breaks the
     /// contract: the violation, or the check's own exception (it can't go to a client that already has its answer).
     /// </summary>
-    private static string? CheckRefusal(HttpContext context, CopyingStream copy, ContractLog log)
+    private static string? CheckRefusal(HttpContext context, CopyingStream copy, ContractLog log, bool hostAllowed)
     {
         if (context.Response.StatusCode == StatusCodes.Status101SwitchingProtocols)
             return null;
@@ -221,7 +223,7 @@ internal static class ContractCheck
         {
             refused = copy.Overflowed
                 ? $"A refused upgrade ({context.Request.Method} {context.Request.Path}) answered over {MaxRefusalBytes} bytes."
-                : Check(context, copy.Copied, log);
+                : Check(context, copy.Copied, log, hostAllowed);
         }
         catch (Exception e)
         {
@@ -311,7 +313,7 @@ internal static class ContractCheck
             && string.Equals(protocol, "websocket", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? Check(HttpContext context, byte[] body, ContractLog log)
+    private static string? Check(HttpContext context, byte[] body, ContractLog log, bool hostAllowed)
     {
         var request = context.Request;
         var services = context.RequestServices;
@@ -327,8 +329,9 @@ internal static class ContractCheck
             return violation;
         }
 
-        var hosts = services.GetRequiredService<IOptions<HostFilteringOptions>>().Value.AllowedHosts;
-        if (!hosts.Contains(request.Host.Host, StringComparer.OrdinalIgnoreCase))
+        if (request.Headers.ContainsKey(HostRuleStartupFilter.FunnelHeader))
+            return Security("a request from the internet", StatusCodes.Status403Forbidden, problem: true);
+        if (!hostAllowed)
             return Security($"a request for the host '{request.Host}'", StatusCodes.Status400BadRequest, problem: false);
         if (request.Headers.TryGetValue("Origin", out var origins))
         {
