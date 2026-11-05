@@ -72,10 +72,11 @@ public readonly record struct CanvasBox(double X, double Y, double W, double H);
 /// <see cref="Colors"/>, its spans' colours (0xRRGGBBAA, straight alpha) when every span is filled with a single colour,
 /// else null (a gradient or a composed paint), <see cref="Opacity"/>, its own opacity times its groups', and
 /// <see cref="Blended"/>, whether a group it is in composites with a blend mode other than normal (its colour on what is
-/// below is then no longer its colour and opacity).
+/// below is then no longer its colour and opacity); <see cref="Blurred"/>, whether a group it is in blurs it (a glow
+/// or a shadow may be drawn as a blurred copy under the text).
 /// </summary>
 public sealed record TextReport(string ItemId, string Text, CanvasBox Box, TextFit Fit, IReadOnlyList<uint>? Colors = null, double Opacity = 1,
-    bool Blended = false, IReadOnlyList<CanvasBox>? Lines = null);
+    bool Blended = false, IReadOnlyList<CanvasBox>? Lines = null, bool Blurred = false);
 
 /// <summary>
 /// One tick of one document generation (spec/docs/identity.md, "The tick snapshot"): the clock, every input, the text
@@ -92,7 +93,7 @@ public sealed class TickSnapshot : IDisposable
     private readonly SnapItem[] _items;
     private readonly MediaSample[] _samples;
     private readonly IDisposable[] _owned;
-    private readonly Lazy<IReadOnlyList<ItemBounds>> _bounds;
+    private readonly Lazy<IReadOnlyList<ItemBounds>> _bounds, _boundsWithoutEffects;
     private readonly Lazy<IReadOnlyList<TextReport>> _texts;
     private readonly double _drawBudgetMs;
     private readonly TimeProvider _drawTime;
@@ -114,7 +115,8 @@ public sealed class TickSnapshot : IDisposable
         _owned = owned;
         Diagnostics = diagnostics;
         _drawBudgetMs = drawBudgetMs;
-        _bounds = new Lazy<IReadOnlyList<ItemBounds>>(() => BoundsOf(_items), LazyThreadSafetyMode.ExecutionAndPublication);
+        _bounds = new Lazy<IReadOnlyList<ItemBounds>>(() => BoundsOf(_items, effects: true), LazyThreadSafetyMode.ExecutionAndPublication);
+        _boundsWithoutEffects = new Lazy<IReadOnlyList<ItemBounds>>(() => BoundsOf(_items, effects: false), LazyThreadSafetyMode.ExecutionAndPublication);
         _texts = new Lazy<IReadOnlyList<TextReport>>(() => TextsOf(_items), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
@@ -140,6 +142,9 @@ public sealed class TickSnapshot : IDisposable
     /// <summary>Every visible item's measured frame and ink (spec/docs/geometry.md), in document order, from this tick.</summary>
     public IReadOnlyList<ItemBounds> Bounds => _bounds.Value;
 
+    /// <summary>As <see cref="Bounds"/>, each ink without its effects (blur, shadow, glow): its outlines and strokes (not part of the API).</summary>
+    public IReadOnlyList<ItemBounds> BoundsWithoutEffects => _boundsWithoutEffects.Value;
+
     /// <summary>Every drawn text node of every visible item, in drawing order, from this tick's layouts (not part of the API).</summary>
     public IReadOnlyList<TextReport> Texts => _texts.Value;
 
@@ -154,11 +159,11 @@ public sealed class TickSnapshot : IDisposable
                     foreach (var child in g.Children) Item(child);
                     break;
                 case SnapScene { Nodes: { } nodes } s:
-                    foreach (var node in nodes) Node(s.Id, node, s.World, 1, false);
+                    foreach (var node in nodes) Node(s.Id, node, s.World, 1, false, false);
                     break;
             }
         }
-        void Node(string id, RNode node, SKMatrix matrix, double opacity, bool blended)
+        void Node(string id, RNode node, SKMatrix matrix, double opacity, bool blended, bool blurred)
         {
             if (node.Opacity <= 0) return; // not drawn
             opacity *= node.Opacity;
@@ -167,7 +172,8 @@ public sealed class TickSnapshot : IDisposable
                 case RGroup g:
                     var inner = g.Matrix.IsIdentity ? matrix : matrix.PreConcat(g.Matrix);
                     blended |= g.Blend != SKBlendMode.SrcOver;
-                    foreach (var child in g.Children) Node(id, child, inner, opacity, blended);
+                    blurred |= g.Effects.Any(e => e.Kind == EffectKind.Blur && e.Sigma > 0);
+                    foreach (var child in g.Children) Node(id, child, inner, opacity, blended, blurred);
                     break;
                 case RText t:
                     var lines = new List<CanvasBox>(t.Lines.Length);
@@ -190,7 +196,7 @@ public sealed class TickSnapshot : IDisposable
                         }
                         if (!colors.Contains(solid)) colors.Add(solid);
                     }
-                    result.Add(new TextReport(id, text, new CanvasBox(box.Left, box.Top, box.Width, box.Height), t.Fit, colors, opacity, blended, lines));
+                    result.Add(new TextReport(id, text, new CanvasBox(box.Left, box.Top, box.Width, box.Height), t.Fit, colors, opacity, blended, lines, blurred));
                     break;
             }
         }
@@ -350,15 +356,15 @@ public sealed class TickSnapshot : IDisposable
 
     // ---- bounds ------------------------------------------------------------------------------------------------
 
-    private static IReadOnlyList<ItemBounds> BoundsOf(SnapItem[] roots)
+    private static IReadOnlyList<ItemBounds> BoundsOf(SnapItem[] roots, bool effects)
     {
         var result = new List<ItemBounds>();
-        foreach (var item in roots) Measure(item, result);
+        foreach (var item in roots) Measure(item, result, effects);
         return result;
     }
 
-    /// <summary>The item's frame and ink in its local coordinates (null: no bounds), adding its bounds and its descendants' to <paramref name="result"/>.</summary>
-    private static (SKRect Frame, SKRect Ink)? Measure(SnapItem item, List<ItemBounds> result)
+    /// <summary>The item's frame and ink (with its effects, or without) in its local coordinates (null: no bounds), adding its bounds and its descendants' to <paramref name="result"/>.</summary>
+    private static (SKRect Frame, SKRect Ink)? Measure(SnapItem item, List<ItemBounds> result, bool effects)
     {
         switch (item)
         {
@@ -375,7 +381,7 @@ public sealed class TickSnapshot : IDisposable
                     frame = new SKRect(
                         s.LayoutW is null ? box.Left : 0, s.LayoutH is null ? box.Top : 0,
                         s.LayoutW is { } w ? (float)w : box.Right, s.LayoutH is { } h ? (float)h : box.Bottom);
-                    ink = extent.Ink;
+                    ink = effects ? extent.Ink : extent.Box;
                 }
                 else
                 {
@@ -390,7 +396,7 @@ public sealed class TickSnapshot : IDisposable
                 SKRect? frame = null, ink = null;
                 foreach (var child in g.Children)
                 {
-                    if (Measure(child, result) is not { } c) continue;
+                    if (Measure(child, result, effects) is not { } c) continue;
                     var f = SceneBounds.Map(child.Local, c.Frame);
                     var k = SceneBounds.Map(child.Local, c.Ink);
                     frame = frame is { } fa ? SKRect.Union(fa, f) : f;

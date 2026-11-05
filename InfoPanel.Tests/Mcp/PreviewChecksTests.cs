@@ -158,6 +158,152 @@ public sealed class PreviewChecksTests
         Assert.Equal("", LineAbout(checks, "C"));
     }
 
+    /// <summary>
+    /// A background item drawn first, its box the whole canvas, whose glyphs don't reach its edges: the items above it
+    /// in its box aren't overlaps (it holds them by its box and is drawn below), though its ink box doesn't hold them.
+    /// </summary>
+    [Fact]
+    public async Task ABackgroundDrawnFirst_HoldsTheItemsInItsBox_WhereverItsInkReaches()
+    {
+        using var factory = new EngineFactory();
+        var backdrop = TestDocs.Scene("backdrop", 0, 0, Scene(Rect(360, 140, "#003300", x: 20, y: 30)),
+            new JsonObject { ["name"] = "Backdrop", ["layout"] = new JsonObject { ["w"] = 400, ["h"] = 200 } });
+        var checks = await Checks(factory, Doc(400, 200, "#000000",
+            backdrop, // drawn 20–380 × 30–170
+            Item("Status", 0, 160, Rect(400, 40, "#00ff41")), // 22 % of its ink box, past its sides
+            Item("Corner", 5, 5, Rect(40, 40, "#ffffff")))); // 23 %, past its top left
+        Assert.Equal("", LineAbout(checks, "Backdrop"));
+        Assert.Contains("The checks found nothing", checks);
+    }
+
+    /// <summary>
+    /// An item drawn first whose drawing covers a quarter of its box (not a card or a backdrop) holds the next item's
+    /// box in its own, yet their drawings collide (30 % of the smaller): still an overlap (Codex r1 #1).
+    /// </summary>
+    [Fact]
+    public async Task ASparseItemDrawnFirst_HoldingTheOthersBox_StillOverlapsWhereTheyDraw()
+    {
+        using var factory = new EngineFactory();
+        var checks = await Checks(factory, Doc(600, 300, "#000000",
+            TestDocs.Scene("a", 10, 10, Scene(Rect(100, 50, "#ff0000")),
+                new JsonObject { ["name"] = "A", ["layout"] = new JsonObject { ["w"] = 200, ["h"] = 100 } }),
+            Item("B", 60, 30, Rect(100, 50, "#00ff00"))));
+        Assert.Contains("\"B\"", LineAbout(checks, "A"));
+        Assert.Contains("30 % of the smaller", LineAbout(checks, "A"));
+    }
+
+    /// <summary>
+    /// A ring item (a ring in a group clipped to its box and turned 135°) inside a card drawn first: the card holds it
+    /// by their boxes, though the turned square around the ring reaches past the card. Card and ring as reported, but for
+    /// the ring's `visible` (shown once its sensor has a reading: a test engine has none yet).
+    /// </summary>
+    [Fact]
+    public async Task ARingInsideACardDrawnFirst_IsntAnOverlap()
+    {
+        using var factory = new EngineFactory();
+        var card = JsonNode.Parse("""
+            {"format": "infopanel.scene/1", "nodes": [{"fill": "#251a45ff", "h": 272, "id": "shape", "kind": "rect", "r": 24, "stroke": {"paint": "#f2d58f55", "width": 2}, "w": 245}]}
+            """)!.AsObject();
+        var ring = JsonNode.Parse("""
+            {"format": "infopanel.scene/1", "inputs": {"v": {"label": "Value", "type": "number"}}, "nodes": [{"children": [{"cx": {"args": [{"args": [{"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, 1], "op": "sub"}, 1], "op": "add"}, "cy": {"args": [{"args": [{"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, 1], "op": "sub"}, 1], "op": "add"}, "fill": "#b8a1ff38", "inner": {"args": [{"args": [{"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, 1], "op": "sub"}, {"args": [{"args": [14, 0], "op": "max"}, {"args": [{"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, 1], "op": "sub"}], "op": "min"}], "op": "sub"}, "kind": "arc", "r": {"args": [{"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, 1], "op": "sub"}, "sweep": 270}, {"cx": {"args": [{"args": [{"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, 1], "op": "sub"}, 1], "op": "add"}, "cy": {"args": [{"args": [{"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, 1], "op": "sub"}, 1], "op": "add"}, "fill": "#ff9fd0ff", "id": "value", "inner": {"args": [{"args": [{"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, 1], "op": "sub"}, {"args": [{"args": [14, 0], "op": "max"}, {"args": [{"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, 1], "op": "sub"}], "op": "min"}], "op": "sub"}, "kind": "arc", "r": {"args": [{"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, 1], "op": "sub"}, "sweep": {"name": "sweep", "op": "value"}, "visible": {"args": [{"name": "pct", "op": "value"}, 0], "op": "gt"}}], "clip": {"h": 196, "kind": "rect", "w": 196}, "id": "ring", "kind": "group", "transform": [{"angle": 135, "cx": {"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, "cy": {"args": [{"args": [196, 2], "op": "div"}], "op": "floor"}, "type": "rotate"}]}], "state": {"shown": {"init": {"args": [{"args": [{"args": [{"count": 1, "fn": "last", "input": "v", "op": "history"}, 0, 100], "op": "norm"}, 0, 1], "op": "clamp"}, 100], "op": "mul"}, "next": {"args": [{"name": "shown", "op": "state"}, {"args": [{"args": [{"args": [{"args": [{"args": [{"count": 1, "fn": "last", "input": "v", "op": "history"}, 0, 100], "op": "norm"}, 0, 1], "op": "clamp"}, 100], "op": "mul"}, {"name": "shown", "op": "state"}], "op": "sub"}, {"args": [1, {"args": [{"args": [{"args": [{"op": "dt"}], "op": "neg"}, 0.3], "op": "div"}], "op": "exp"}], "op": "sub"}], "op": "mul"}], "op": "add"}}}, "values": {"cnt": {"count": 1, "fn": "count", "input": "v", "op": "history"}, "pct": {"args": [{"args": [{"name": "shown", "op": "state"}], "op": "floor"}, 0, 100], "op": "clamp"}, "sweep": {"args": [{"args": [{"name": "pct", "op": "value"}, 270], "op": "mul"}, 100], "op": "div"}}}
+            """)!.AsObject();
+        var checks = await Checks(factory, Doc(800, 480, "#160f2b",
+            TestDocs.Scene("card", 16, 16, card, new JsonObject { ["name"] = "CPU card", ["layout"] = new JsonObject { ["w"] = 245, ["h"] = 272 } }),
+            TestDocs.Scene("ring", 41, 40, ring, new JsonObject
+            {
+                ["name"] = "CPU busy ring",
+                ["layout"] = new JsonObject { ["w"] = 196, ["h"] = 196 },
+                ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = "plugin:/infopanel.macos/cpu/load" } },
+            })));
+        Assert.Equal("", LineAbout(checks, "CPU card"));
+        Assert.Equal("", LineAbout(checks, "CPU busy ring"));
+    }
+
+    /// <summary>
+    /// A glow drawn as a blurred copy of the text under it (12 px: it reaches 36 px) and one drawn as a glow effect:
+    /// neither is the text's extent (not past the canvas, not overlapping the items it reaches) nor text to read (the
+    /// copy's contrast isn't measured); the text itself is measured against what is under it, and a dim one still fails.
+    /// </summary>
+    [Fact]
+    public async Task AGlow_IsNotTheTextsExtent_NorItsContrast()
+    {
+        using var factory = new EngineFactory();
+        JsonObject Glowing(string text, string fill, string glow) => new()
+        {
+            ["kind"] = "group",
+            ["children"] = new JsonArray(
+                new JsonObject
+                {
+                    ["kind"] = "group",
+                    ["effects"] = new JsonArray(new JsonObject { ["type"] = "blur", ["sigma"] = 12 }),
+                    ["children"] = new JsonArray(Text(text, glow, 40, 800)),
+                },
+                Text(text, fill, 40, 800)),
+        };
+        var checks = await Checks(factory, Doc(600, 300, "#000000",
+            Item("Hero", 32, 60, Glowing("87", "#00ff41", "#00ff4180")), // 4 px of glow past the left edge
+            Item("Aura", 300, 60, new JsonObject
+            {
+                ["kind"] = "group",
+                ["effects"] = new JsonArray(new JsonObject { ["type"] = "glow", ["sigma"] = 12, ["color"] = "#00ff41" }),
+                ["children"] = new JsonArray(Text("87", "#00ff41", 40, 800)),
+            }),
+            Item("Bar", 0, 30, Rect(600, 20, "#00ff41")), // 10 px above both texts: in their glows
+            Item("Dim", 32, 200, Glowing("87", "#333333", "#ffffff80"))));
+        Assert.Equal("", LineAbout(checks, "Hero"));
+        Assert.Equal("", LineAbout(checks, "Aura"));
+        var dim = LineAbout(checks, "Dim");
+        Assert.Contains("contrast", dim);
+        Assert.Contains("#333333 on #000000", dim);
+        Assert.Single(checks.Split('\n'), l => l.Contains("\"Dim\""));
+    }
+
+    /// <summary>
+    /// A lone label in a blurred group, with no sharp copy over it, is text to read: its contrast is still measured
+    /// (Codex r1 #2: about 1.29:1 on black), and so is one whose sharp copy is drawn elsewhere; a shadow drawn as a
+    /// blurred copy a few pixels off, under its sharp text, isn't.
+    /// </summary>
+    [Fact]
+    public async Task ABlurredLabel_WithNoSharpCopyOverIt_KeepsItsContrastCheck()
+    {
+        using var factory = new EngineFactory();
+        JsonObject Blurred(JsonObject text) => new()
+        {
+            ["kind"] = "group",
+            ["effects"] = new JsonArray(new JsonObject { ["type"] = "blur", ["sigma"] = 0.1 }),
+            ["children"] = new JsonArray(text),
+        };
+        var checks = await Checks(factory, Doc(400, 300, "#000000",
+            Item("Soft", 20, 20, Blurred(Text("CPU", "#202020", 24))),
+            Item("Apart", 20, 80, Blurred(Text("CPU", "#202020", 24)), Text("CPU", "#ffffff", 24, more: new JsonObject { ["y"] = 40 })),
+            Item("Shadowed", 20, 200, Blurred(Text("CPU", "#000000", 24, more: new JsonObject { ["x"] = 3, ["y"] = 3 })), Text("CPU", "#ffffff", 24))));
+        var soft = LineAbout(checks, "Soft");
+        Assert.Contains("contrast", soft);
+        Assert.Contains("#202020 on #000000", soft);
+        Assert.Contains("#202020 on #000000", LineAbout(checks, "Apart"));
+        Assert.Equal("", LineAbout(checks, "Shadowed"));
+    }
+
+    /// <summary>
+    /// A dim blurred label with a sharp white copy of it drawn 40 px to its right, their lines crossing: the copy isn't
+    /// over it (a shadow sits a few pixels off, not 40), so the label is text to read, about 1.29:1 on black (Codex r2 #2).
+    /// </summary>
+    [Fact]
+    public async Task ABlurredLabel_WithItsSharpCopyFarOff_KeepsItsContrastCheck()
+    {
+        using var factory = new EngineFactory();
+        var checks = await Checks(factory, Doc(400, 200, "#000000",
+            Item("Shifted", 20, 20, new JsonObject
+            {
+                ["kind"] = "group",
+                ["effects"] = new JsonArray(new JsonObject { ["type"] = "blur", ["sigma"] = 0.1 }),
+                ["children"] = new JsonArray(Text("CPU", "#202020", 24)),
+            }, Text("CPU", "#ffffff", 24, more: new JsonObject { ["x"] = 40 }))));
+        var shifted = LineAbout(checks, "Shifted");
+        Assert.Contains("1.3:1", shifted);
+        Assert.Contains("#202020 on #000000", shifted);
+    }
+
     [Fact]
     public async Task LowContrast_ComposedWithOpacity_AgainstWhatIsUnderTheTextWithoutText()
     {

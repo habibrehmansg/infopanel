@@ -59,10 +59,14 @@ public sealed record PreviewCheckReport(IReadOnlyList<string> Problems, IReadOnl
 /// <list type="number">
 /// <item><b>Text that doesn't fit its box</b>, as the layout knows it (<see cref="TickSnapshot.Texts"/>): cut with "…",
 /// lines left out, clipped, drawn past its box, shrunk to its fit minimum.</item>
-/// <item><b>Past the canvas:</b> an item's ink more than <c>canvasTolerance</c> pixels outside the canvas.</item>
-/// <item><b>Overlap:</b> two visible items whose ink boxes overlap by more than <c>overlapMin</c> of the smaller,
-/// unless one contains the other and is drawn below it (a card behind its content). Boxes, not shapes.</item>
-/// <item><b>Contrast:</b> each solid-colour text node, its colour composited with its own and its groups' opacity,
+/// <item><b>Past the canvas:</b> an item's ink (without its effects: a glow or shadow isn't its extent) more than
+/// <c>canvasTolerance</c> pixels outside the canvas.</item>
+/// <item><b>Overlap:</b> two visible items whose ink boxes (without effects) overlap by more than <c>overlapMin</c> of the
+/// smaller, unless one contains the other and is drawn below it (a card behind its content): by their ink boxes, or, when
+/// the one below draws over more than <see cref="CardFill"/> of its frame (a card or a backdrop whose drawing doesn't
+/// reach its edges), by their frames. Boxes, not shapes.</item>
+/// <item><b>Contrast:</b> each solid-colour text node but a blurred copy under the same text of the same item, of its size
+/// and a few pixels off at most (a glow or a shadow, not text to read: the text over it is checked), its colour composited with its own and its groups' opacity,
 /// against the pixels under its lines (each where it is drawn) in the same tick drawn without text: the colour covering at least
 /// <see cref="DominantShare"/> of them, else the worst covering at least <see cref="MinorShare"/>; below
 /// <c>contrastMin</c> (WCAG's ratio) is a problem.</item>
@@ -78,6 +82,13 @@ public static class PreviewChecks
     public const int MaxPairs = 10_000;
     public const double DominantShare = 0.7;
     public const double MinorShare = 0.1;
+
+    /// <summary>
+    /// The share of its frame an item's ink box (without effects) covers above which it holds, by its frame, the items
+    /// drawn over it in its frame. A card or a backdrop draws over most of its frame; an item drawing over half of it or
+    /// less leaves room in its frame for another item to collide with its drawing, which its frame can't tell.
+    /// </summary>
+    public const double CardFill = 0.5;
 
     private const int MaxQuoted = 40;
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
@@ -104,10 +115,11 @@ public static class PreviewChecks
         var notChecked = new List<string>();
         Fit(snapshot, Label, problems);
 
-        // The visible scene items' ink boxes, in drawing order (a group's box is its items').
-        var scenes = snapshot.Bounds
+        // The visible scene items' ink boxes without their effects (a glow or shadow isn't the item's extent) and their
+        // frames, in drawing order (a group's box is its items').
+        var scenes = snapshot.BoundsWithoutEffects
             .Where(b => items.TryGetValue(b.Id, out var item) && item is SceneItem)
-            .Select(b => (b.Id, Box: InkBox(b)))
+            .Select(b => (b.Id, Box: InkBox(b.Ink, b.Rotation), Frame: InkBox(b.Frame, b.Rotation)))
             .ToList();
         Canvas(scenes, snapshot.Width, snapshot.Height, thresholds.CanvasTolerance, Label, problems);
         Overlap(scenes, thresholds.OverlapMin, Label, problems, notChecked);
@@ -135,9 +147,9 @@ public static class PreviewChecks
         }
     }
 
-    private static void Canvas(List<(string Id, Box Box)> scenes, int width, int height, double tolerance, Func<string, string> label, List<string> problems)
+    private static void Canvas(List<(string Id, Box Box, Box Frame)> scenes, int width, int height, double tolerance, Func<string, string> label, List<string> problems)
     {
-        foreach (var (id, box) in scenes)
+        foreach (var (id, box, _) in scenes)
         {
             var past = new[] { ("left", -box.Left), ("top", -box.Top), ("right", box.Right - width), ("bottom", box.Bottom - height) }.MaxBy(e => e.Item2);
             if (past.Item2 > tolerance)
@@ -145,7 +157,7 @@ public static class PreviewChecks
         }
     }
 
-    private static void Overlap(List<(string Id, Box Box)> scenes, double overlapMin, Func<string, string> label, List<string> problems, List<string> notChecked)
+    private static void Overlap(List<(string Id, Box Box, Box Frame)> scenes, double overlapMin, Func<string, string> label, List<string> problems, List<string> notChecked)
     {
         var compared = 0;
         for (var i = 0; i < scenes.Count; i++)
@@ -154,7 +166,7 @@ public static class PreviewChecks
             {
                 if (++compared > MaxPairs)
                 {
-                    foreach (var (id, _) in scenes.Skip(i))
+                    foreach (var (id, _, _) in scenes.Skip(i))
                         notChecked.Add($"{label(id)} (its overlaps: past the {MaxPairs.ToString("N0", Invariant)} item pairs the overlap check compares)");
                     return;
                 }
@@ -164,7 +176,10 @@ public static class PreviewChecks
                 if (smaller <= 0)
                     continue;
                 var share = below.Overlap(above) / smaller;
-                if (share <= overlapMin || below.Contains(above)) // a card under its content isn't an overlap
+                // A card under its content isn't an overlap: by their ink, or by their frames when the one below is a card
+                // or a backdrop (its drawing not reaching its edges; a turned ring's box reaching past its card).
+                var frame = scenes[i].Frame;
+                if (share <= overlapMin || below.Contains(above) || (below.Overlap(frame) > CardFill * frame.Area && frame.Contains(scenes[j].Frame)))
                     continue;
                 var how = above.Contains(below) ? $", and {label(scenes[j].Id)} is drawn over all of {label(scenes[i].Id)}" : "";
                 problems.Add($"{label(scenes[i].Id)} and {label(scenes[j].Id)} overlap (their boxes; the drawn shapes may not): {Percent(share)} of the smaller{how}. " +
@@ -195,8 +210,11 @@ public static class PreviewChecks
         var stride = bitmap.RowBytes;
 
         long sampled = 0;
-        foreach (var text in texts)
+        for (var index = 0; index < texts.Count; index++)
         {
+            var text = texts[index];
+            if (text.Blurred && UnderItsSharpCopy(texts, index))
+                continue; // a glow or a shadow, not text to read: the text over it is checked
             var name = $"{label(text.ItemId)}: text {Quote(text.Text)}";
             if (text.Colors is not { } colors)
             {
@@ -279,6 +297,32 @@ public static class PreviewChecks
         }
     }
 
+    /// <summary>
+    /// Whether a sharp copy of the text, in the same item, is drawn after it over it (an item's texts are adjacent): the
+    /// same text, its box the same size within a pixel and at most <see cref="ShadowOffset"/> off in each direction.
+    /// </summary>
+    private static bool UnderItsSharpCopy(IReadOnlyList<TextReport> texts, int index)
+    {
+        var copy = texts[index];
+        var b = copy.Box;
+        var reach = ShadowOffset(copy);
+        for (var k = index + 1; k < texts.Count && texts[k].ItemId == copy.ItemId; k++)
+        {
+            var a = texts[k].Box;
+            if (!texts[k].Blurred && texts[k].Text == copy.Text && Math.Abs(a.W - b.W) <= 1 && Math.Abs(a.H - b.H) <= 1 &&
+                Math.Abs(a.X - b.X) <= reach && Math.Abs(a.Y - b.Y) <= reach)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// How far a shadow or a glow drawn as a blurred copy may sit from its text: a quarter of a line's height (about the
+    /// font's size), at least 4 px.
+    /// </summary>
+    private static double ShadowOffset(TextReport text) =>
+        Math.Max(4, (text.Lines is { Count: > 0 } lines ? lines.Max(l => l.H) : text.Box.H) / 4);
+
     /// <summary>A straight-alpha 0xRRGGBBAA colour at <paramref name="opacity"/> over an opaque 0xRRGGBB one, in sRGB as renderers blend.</summary>
     private static uint Composite(uint color, double opacity, uint background)
     {
@@ -306,12 +350,11 @@ public static class PreviewChecks
     }
 
     /// <summary>A bounds rectangle (its centre, size and rotation) as the axis-aligned box around it.</summary>
-    private static Box InkBox(ItemBounds bounds)
+    private static Box InkBox(BoundsRect ink, double rotation)
     {
-        var ink = bounds.Ink;
         var cx = ink.X + ink.W / 2;
         var cy = ink.Y + ink.H / 2;
-        var radians = bounds.Rotation * Math.PI / 180;
+        var radians = rotation * Math.PI / 180;
         var (cos, sin) = (Math.Abs(Math.Cos(radians)), Math.Abs(Math.Sin(radians)));
         var hw = (ink.W * cos + ink.H * sin) / 2;
         var hh = (ink.W * sin + ink.H * cos) / 2;
