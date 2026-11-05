@@ -53,7 +53,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `POST /api/pairings/codes` | | 201 `issuedPairingCode`: a one-time code for a client on another computer ([below](#pairing)) |
 | `GET /ws` | | The preview socket: 101, then `serverMessage`s and frames ([below](#the-preview-socket)) |
 | `GET /healthz` | | 200 `ok` as `text/plain`, without a token |
-| `GET /auth/{token}` | | 302 to `/#token={token}`; 401 for any token but the session token ([below](#signing-in)) |
+| `GET /auth/{token}` | | 302 to `/#token={token}` (with `?then=`, `&then=` after it); 401 for any token but the session token ([below](#signing-in)) |
 | `POST /auth/pairing/code` | `pairingCodeRequest` | 201 `pairingGrant`; 403 `problem` for a code that is unknown, expired or used; 422 `invalidProblem` ([below](#pairing)) |
 | `POST /auth/pairing/pass` | `pairingPassRequest` | 201 `pairingGrant`; 403 `pairingPassProblem` for a pass the engine refuses; 422 `invalidProblem` ([below](#pairing-through-the-configured-service)) |
 | `POST /auth/pairing/challenge` | `pairingChallengeRequest` | `pairingChallenge`; 404 `problem` for a pairing the engine doesn't have; 422 `invalidProblem` ([below](#the-proofs)) |
@@ -98,6 +98,8 @@ A request without a token, or with one the engine doesn't know or has revoked, i
 ### Signing in
 
 `GET /auth/{token}` with the session token answers 302 to `/#token={token}`, so a browser opened from the sign-in link lands on the client with the token in the fragment, which is never sent to a server. Any other token, an integration token included, is answered 401 with a short `text/plain` explanation. Neither answer is cached (`Cache-Control: no-store`), and no cookie is set.
+
+A sign-in link may name the client's page to open at, as the query `then`: the engine knows one, `#/settings/engine` (the client's engine settings), which its menu's Edit from Another Computer… opens. With exactly that `then`, once (compared exactly, after URL-decoding), the answer is 302 to `/#token={token}&then=%23%2Fsettings%2Fengine`: the page after the token, URL-encoded, as the engine spells it. Any other `then`, or more than one, is left out of the answer, which is then `/#token={token}`. The client opens at that page once it has taken the token, and keeps neither in its address. A code link the engine opens ([pairing](#pairing)) carries the page the same way, as its last member: `{origin}/#engine=…&code=…&then=%23%2Fsettings%2Fengine`. A client that doesn't know the member, or the page, ignores it.
 
 `GET /healthz` answers 200 with the text `ok` (`text/plain`) to anyone: a client can poll it to see that the engine runs before it has a token.
 

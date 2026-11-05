@@ -12,7 +12,9 @@ Click the hexagon. The menu is built afresh from the engine's state each time it
    the engine holds a credential for the configured service and knows its holder; "Not signed in" while it holds none,
    or the service refused the one it holds; nothing while it holds one whose holder isn't known yet. The engine asks
    the configured service itself, with the credential (below, "Who is signed in").
-2. **Open Editor**: opens the editor in the browser, already signed in (below, "Opening the editor").
+2. **Open Editor**: opens the editor in the browser, already signed in (below, "Opening the editor"). **Edit from
+   Another Computer…**, under it: the same, at the editor's engine settings, where another computer is set up to edit
+   this one (the link's `then`, below).
 3. **Show on Desktop ▸**, only while desktop windows are on (not `--no-windows`): each profile that can be opened, in
    the library's order, with a check mark when its desktop window is on; "No Profiles Yet" (grey) when there are none;
    past 20, the first 20 and **More in the Editor…**, which opens the editor. Choosing a profile turns its window on or
@@ -80,7 +82,7 @@ stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in star
 - **Right-click** it (or the menu key): the menu, built afresh each time, in Windows' sentence case (Windows menus stay
   light in dark mode):
   1. "InfoPanel 2.0.0 is running" and who is signed in ("Signed in as ‹name›" or "Not signed in"), both grey;
-  2. **Open editor** (bold: what a click does);
+  2. **Open editor** (bold: what a click does) · **Edit from another computer…**;
   3. — **Show on desktop ▸**, a submenu, while desktop windows are on: each profile, checked when its window is on;
      "No profiles yet" (grey) when there are none; past 20, **More in the editor…**;
   4. — **Open data folder** · **Open logs folder** · **Copy engine details** (on the clipboard as plain text);
@@ -88,7 +90,8 @@ stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in star
   6. — **Exit**.
 
   The lines and what each does are the model's menu (`ShellMenu.Build`, the same as macOS's) in Windows' words
-  (`WinShellText`, by each line's id): Open Editor is "Open editor", Show on Desktop "Show on desktop", Show Data
+  (`WinShellText`, by each line's id): Open Editor is "Open editor", Edit from Another Computer… "Edit from another
+  computer…", Show on Desktop "Show on desktop", Show Data
   Folder in Finder "Open data folder", Quit InfoPanel "Exit", and so on; an item it doesn't know keeps the model's
   words.
 - **Start when I sign in** is the value `InfoPanel` under the user's Run key
@@ -112,7 +115,7 @@ stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in star
 The engine stays headless: it never opens a browser by itself, however it was started. It opens the editor only when
 asked:
 
-- the menu's **Open Editor** (and the Quit alert's);
+- the menu's **Open Editor** (and the Quit alert's), and its **Edit from Another Computer…**, at a page;
 - a **second launch**: starting InfoPanel again on a data folder an engine holds. The new process asks the running engine,
   over the folder's local channel (as a `launch` companion, which may ask nothing else), to open the editor, prints
   "InfoPanel is already running; opened the editor", and exits 3. With `--no-browser` it asks nothing. When nothing
@@ -125,7 +128,17 @@ cross origin allowed, the engine opens that origin's code link (`{origin}/#engin
 a web client on another origin, which exchanges the code for the run's token and a lasting pairing
 ([api.md, "Pairing"](../../spec/docs/api.md#pairing)). The code is new for each open, usable once within 2 minutes, and
 the session token is never in the link (`EngineRuntime.EditorLinkFor`, `EditorOpener`). Otherwise it opens the sign-in
-link (`/auth/{token}`) to the web client it serves. The console prints only the links that lead somewhere: the sign-in
+link (`/auth/{token}`) to the web client it serves.
+
+**At a page.** Edit from Another Computer… opens the same link with the client's page to open at, its engine settings
+(`#/settings/engine`, `EditorRoutes`), URL-encoded as `then`: the code link's last member
+(`{origin}/#engine=…&code=…&then=%23%2Fsettings%2Fengine`), or the sign-in link's query (`/auth/{token}?then=…`), whose
+redirect hands it on after the token (`/#token=…&then=…`; [api.md, "Signing in"](../../spec/docs/api.md#signing-in)).
+The page is a constant the engine knows, never a caller's: the redirect carries only that one, as the engine spells it,
+and leaves any other out. The client opens at it once the code is exchanged (after the reload that follows) or the token
+taken, and keeps neither the link nor `then` in its address; a client that doesn't know the member ignores it.
+
+The console prints only the links that lead somewhere: the sign-in
 link only when a web client is served here, and each allowed origin's pairing link, which carries the token
 (`{origin}/#engine=http://127.0.0.1:{port}&token={token}`).
 

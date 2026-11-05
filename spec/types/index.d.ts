@@ -4952,10 +4952,13 @@ export interface ApiOperations {
       /** The token from the sign-in link the engine prints. */
       token: string;
     };
-    query: { [key: string]: never };
+    query: {
+      /** The client's page the link lands on: only `#/settings/engine`, once; any other is ignored. */
+      then?: string;
+    };
     request: never;
     responses: {
-      /** To /#token={token}. */
+      /** To /#token={token}, and with then, to /#token={token}&then=%23%2Fsettings%2Fengine. */
       302: null;
       /** Any token but the session token. */
       401: "text/plain";

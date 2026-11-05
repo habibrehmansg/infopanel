@@ -15,7 +15,7 @@ public sealed class ShellMenuTests
     private static ShellMenuItem Item(ShellMenu menu, string id) => Assert.Single(menu.Items, i => i.Id == id);
 
     [Fact]
-    public void TheMenu_InOrder_StatusAccountOpenEditor_ShowOnDesktop_TheFolders_Details_AndQuit()
+    public void TheMenu_InOrder_StatusAccountOpenEditor_EditFromAnotherComputer_ShowOnDesktop_TheFolders_Details_AndQuit()
     {
         var menu = ShellMenu.Build(State(new ShellProfile("a", "Desk overlay", Shown: true)));
 
@@ -24,6 +24,7 @@ public sealed class ShellMenuTests
             (ShellMenu.Status, "InfoPanel 2.0.0-dev is running", ShellItemKind.Status),
             (ShellMenu.SignedIn, "Signed in as ann@example.com", ShellItemKind.Status),
             (ShellMenu.OpenEditor, "Open Editor", ShellItemKind.Action),
+            (ShellMenu.EditFromAnotherComputer, "Edit from Another Computer…", ShellItemKind.Action),
             ("", "", ShellItemKind.Separator),
             (ShellMenu.ShowOnDesktop, "Show on Desktop", ShellItemKind.Submenu),
             ("", "", ShellItemKind.Separator),
@@ -72,6 +73,25 @@ public sealed class ShellMenuTests
 
         Assert.DoesNotContain(menu.Items, i => i.Id == ShellMenu.SignedIn);
         Assert.Equal(ShellMenu.OpenEditor, menu.Items[1].Id);
+    }
+
+    /// <summary>Edit from Another Computer… is always there, an action right below Open Editor, whatever the state.</summary>
+    [Fact]
+    public void EditFromAnotherComputer_FollowsOpenEditor_InEveryState()
+    {
+        foreach (var state in new[]
+                 {
+                     new ShellState("2.0.0"),
+                     new ShellState("2.0.0") { HasCredential = true },
+                     State() with { DesktopWindows = false },
+                     State(Profiles(21)),
+                 })
+        {
+            var ids = ShellMenu.Build(state).Items.Select(i => i.Id).ToList();
+            Assert.Equal(ids.IndexOf(ShellMenu.OpenEditor) + 1, ids.IndexOf(ShellMenu.EditFromAnotherComputer));
+            var line = Item(ShellMenu.Build(state), ShellMenu.EditFromAnotherComputer);
+            Assert.Equal(("Edit from Another Computer…", ShellItemKind.Action, true, (string?)null), (line.Label, line.Kind, line.Enabled, line.KeyEquivalent));
+        }
     }
 
     [Fact]
@@ -137,8 +157,8 @@ public sealed class ShellMenuTests
         var menu = ShellMenu.Build(State(new ShellProfile("a", "Desk overlay", Shown: true)) with { DesktopWindows = false });
 
         Assert.DoesNotContain(menu.Items, i => i.Id == ShellMenu.ShowOnDesktop);
-        // No two separators in a row: the folders follow Open Editor's.
-        Assert.Equal([ShellMenu.Status, ShellMenu.SignedIn, ShellMenu.OpenEditor, "", ShellMenu.ShowDataFolder], menu.Items.Take(5).Select(i => i.Id));
+        // No two separators in a row: the folders follow the editor's lines' separator.
+        Assert.Equal([ShellMenu.Status, ShellMenu.SignedIn, ShellMenu.OpenEditor, ShellMenu.EditFromAnotherComputer, "", ShellMenu.ShowDataFolder], menu.Items.Take(6).Select(i => i.Id));
     }
 
     [Theory]

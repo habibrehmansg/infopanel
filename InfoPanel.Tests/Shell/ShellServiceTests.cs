@@ -94,6 +94,26 @@ public sealed class ShellServiceTests : IDisposable
         Assert.False(Stopping);
     }
 
+    /// <summary>
+    /// Edit from Another Computer… opens the sign-in link with the engine settings page as its <c>then</c>, and the link
+    /// lands there: the sign-in's redirect carries the page after the token.
+    /// </summary>
+    [Fact]
+    public async Task EditFromAnotherComputer_OpensTheSignInLink_ThatLandsOnTheEngineSettings()
+    {
+        await WaitUntil(() => _shell.Icon != null);
+
+        await _shell.ClickAsync(ShellMenu.EditFromAnotherComputer);
+
+        var link = Assert.Single(_browser.Opened);
+        Assert.Equal($"http://127.0.0.1:{EngineFactory.Port}/auth/{EngineFactory.Token}?then=%23%2Fsettings%2Fengine", link);
+        using var client = _factory.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false });
+        using var response = await client.GetAsync(new Uri(link).PathAndQuery, Ct);
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal($"/#token={EngineFactory.Token}&then=%23%2Fsettings%2Fengine", response.Headers.Location?.OriginalString);
+        Assert.False(Stopping);
+    }
+
     [Fact]
     public async Task Quit_WithNothingUnsaved_StopsTheEngine_WithoutAsking()
     {

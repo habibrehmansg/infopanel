@@ -1019,6 +1019,13 @@
           "required": true,
           "description": "The token from the sign-in link the engine prints.",
           "schema": {"type": "string"}
+        },
+        {
+          "name": "then",
+          "in": "query",
+          "required": false,
+          "description": "The client's page the link lands on: only `#/settings/engine`, once; any other is ignored.",
+          "schema": {"type": "string"}
         }
       ],
       "get": {
@@ -1028,8 +1035,8 @@
         "security": [],
         "responses": {
           "302": {
-            "description": "To /#token={token}.",
-            "headers": {"Location": {"description": "/#token={token}", "required": true, "schema": {"type": "string"}}}
+            "description": "To /#token={token}, and with then, to /#token={token}&then=%23%2Fsettings%2Fengine.",
+            "headers": {"Location": {"description": "/#token={token}, or /#token={token}&then=%23%2Fsettings%2Fengine", "required": true, "schema": {"type": "string"}}}
           },
           "401": {"description": "Any token but the session token.", "content": {"text/plain": {}}}
         }

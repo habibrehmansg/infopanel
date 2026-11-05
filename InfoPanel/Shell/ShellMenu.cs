@@ -66,6 +66,7 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
     public const string Status = "status";
     public const string SignedIn = "signed-in";
     public const string OpenEditor = "open-editor";
+    public const string EditFromAnotherComputer = "edit-from-another-computer";
     public const string ShowOnDesktop = "show-on-desktop";
     public const string NoProfiles = "no-profiles";
     public const string MoreProfiles = "more-profiles";
@@ -81,7 +82,8 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
 
     /// <summary>
     /// "InfoPanel {version} is running"; the signed-in line ("Signed in as {name}" while a credential is held and its name is
-    /// known, "Not signed in" without one or when the service refused it, none while the name isn't known); Open Editor; Show on Desktop with each profile
+    /// known, "Not signed in" without one or when the service refused it, none while the name isn't known); Open Editor; Edit
+    /// from Another Computer… (the editor at its engine settings); Show on Desktop with each profile
     /// (when desktop windows are on); Show Data Folder in Finder, Open Logs Folder, Copy Engine Details; Quit InfoPanel (⌘Q).
     /// </summary>
     public static ShellMenu Build(ShellState state)
@@ -92,6 +94,7 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
         else if (state.SignedInAs is { } name)
             items.Add(new(SignedIn, $"Signed in as {name}", ShellItemKind.Status));
         items.Add(new(OpenEditor, "Open Editor"));
+        items.Add(new(EditFromAnotherComputer, "Edit from Another Computer…"));
         items.Add(Separator());
         if (state.DesktopWindows)
         {

@@ -10,5 +10,9 @@ namespace InfoPanel.Hosting;
 /// </summary>
 public sealed class EditorOpener(EngineRuntime runtime, BrowserLauncher browser, PairingCodes codes)
 {
-    public void Open() => browser.Open(runtime.EditorLinkFor(codes.Mint));
+    /// <summary>The editor at its own start.</summary>
+    public void Open() => Open(then: null);
+
+    /// <param name="then">The page the editor opens at, one of <see cref="EditorRoutes.Known"/> (the menu's Edit from Another Computer…); null: its own start.</param>
+    public void Open(string? then) => browser.Open(runtime.EditorLinkFor(codes.Mint, then));
 }

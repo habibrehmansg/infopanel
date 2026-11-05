@@ -65,7 +65,7 @@ public sealed class WinTrayTests
 
         Assert.Equal(
         [
-            "InfoPanel 2.0.0 is running", "Signed in as Ada Lovelace", "Open editor", "",
+            "InfoPanel 2.0.0 is running", "Signed in as Ada Lovelace", "Open editor", "Edit from another computer…", "",
             "Show on desktop", "",
             "Open data folder", "Open logs folder", "Copy engine details", "",
             "Start when I sign in", "",
@@ -73,7 +73,7 @@ public sealed class WinTrayTests
         ], Labels(entries));
         Assert.Equal(
         [
-            WinMenuFlags.Disabled, WinMenuFlags.Disabled, WinMenuFlags.Default, WinMenuFlags.Separator,
+            WinMenuFlags.Disabled, WinMenuFlags.Disabled, WinMenuFlags.Default, WinMenuFlags.None, WinMenuFlags.Separator,
             WinMenuFlags.Submenu, WinMenuFlags.Separator,
             WinMenuFlags.None, WinMenuFlags.None, WinMenuFlags.None, WinMenuFlags.Separator,
             WinMenuFlags.None, WinMenuFlags.Separator,
@@ -81,14 +81,14 @@ public sealed class WinTrayTests
         ], entries.Select(e => e.Flags));
         Assert.Equal(
         [
-            ShellMenu.Status, ShellMenu.SignedIn, ShellMenu.OpenEditor, "",
+            ShellMenu.Status, ShellMenu.SignedIn, ShellMenu.OpenEditor, ShellMenu.EditFromAnotherComputer, "",
             ShellMenu.ShowOnDesktop, "",
             ShellMenu.ShowDataFolder, ShellMenu.OpenLogsFolder, ShellMenu.CopyEngineDetails, "",
             WinTrayMenu.StartAtSignInId, "",
             ShellMenu.Quit,
         ], entries.Select(e => e.Id));
 
-        var desktop = entries[4].Children;
+        var desktop = entries[5].Children;
         Assert.Equal(["Profile 1", "Fans && pumps"], Labels(desktop));
         Assert.Equal([WinMenuFlags.None, WinMenuFlags.Checked], desktop.Select(e => e.Flags));
         Assert.Equal([ShellMenu.DesktopItem("p1", show: true), ShellMenu.DesktopItem("p2", show: false)], desktop.Select(e => e.Id));
@@ -103,7 +103,7 @@ public sealed class WinTrayTests
 
         var line = signedOut.Single(e => e.Id == ShellMenu.SignedIn);
         Assert.Equal(("Not signed in", WinMenuFlags.Disabled), (line.Label, line.Flags));
-        Assert.Equal(["InfoPanel 2.0.0 is running", "Open editor", "", "Open data folder", "Open logs folder", "Copy engine details", "", "Start when I sign in", "", "Exit"], Labels(unknown));
+        Assert.Equal(["InfoPanel 2.0.0 is running", "Open editor", "Edit from another computer…", "", "Open data folder", "Open logs folder", "Copy engine details", "", "Start when I sign in", "", "Exit"], Labels(unknown));
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public sealed class WinTrayTests
         var entries = WinTrayMenu.Lines(ShellMenu.Build(Full() with { DesktopWindows = false }), startAtSignIn: false);
 
         Assert.DoesNotContain(All(entries), e => e.Id == ShellMenu.ShowOnDesktop || e.Flags.HasFlag(WinMenuFlags.Submenu));
-        Assert.Equal(["InfoPanel 2.0.0 is running", "Signed in as Ada Lovelace", "Open editor", "", "Open data folder", "Open logs folder", "Copy engine details", "", "Start when I sign in", "", "Exit"], Labels(entries));
+        Assert.Equal(["InfoPanel 2.0.0 is running", "Signed in as Ada Lovelace", "Open editor", "Edit from another computer…", "", "Open data folder", "Open logs folder", "Copy engine details", "", "Start when I sign in", "", "Exit"], Labels(entries));
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public sealed class WinTrayTests
             .Where(i => i.Kind != ShellItemKind.Separator && !ShellMenu.TryReadDesktopItem(i.Id, out _, out _))
             .ToList();
 
-        Assert.Equal(10, model.Select(i => i.Id).Distinct().Count());
+        Assert.Equal(11, model.Select(i => i.Id).Distinct().Count());
         Assert.All(model.Where(i => !same.Contains(i.Id)), i => Assert.NotEqual(i.Label, WinShellText.Label(i)));
         Assert.All(model.Where(i => same.Contains(i.Id)), i => Assert.Equal(i.Label, WinShellText.Label(i)));
     }
@@ -169,7 +169,7 @@ public sealed class WinTrayTests
 
         var all = All(entries).ToList();
         var items = all.Where(e => !e.Flags.HasFlag(WinMenuFlags.Separator) && !e.Flags.HasFlag(WinMenuFlags.Submenu)).ToList();
-        Assert.Equal(8 + 21, items.Count);
+        Assert.Equal(9 + 21, items.Count);
         Assert.All(items, e => Assert.NotEqual(0u, e.Command));
         Assert.Equal(items.Count, items.Select(e => e.Command).Distinct().Count());
         Assert.All(all.Where(e => e.Flags.HasFlag(WinMenuFlags.Separator) || e.Flags.HasFlag(WinMenuFlags.Submenu)), e => Assert.Equal(0u, e.Command));

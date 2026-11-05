@@ -17,6 +17,34 @@ public sealed record EditorLink(string Url, bool WebClient)
 }
 
 /// <summary>
+/// The client's pages a link the engine opens may land on (its <c>then</c>, docs/2.0/desktop-shell.md, "Opening the
+/// editor"): fixed here, never taken from a caller. A client that doesn't know the member, or the page, ignores it.
+/// </summary>
+public static class EditorRoutes
+{
+    /// <summary>The client's engine settings, where another computer is set up to edit this one (the menu's Edit from Another Computer…).</summary>
+    public const string EngineSettings = "#/settings/engine";
+
+    /// <summary>Every page a link may land on.</summary>
+    public static IReadOnlyList<string> Known { get; } = [EngineSettings];
+
+    /// <summary>The known page <paramref name="value"/> is (compared exactly), or null.</summary>
+    public static string? Find(string? value)
+    {
+        foreach (var route in Known)
+        {
+            if (string.Equals(value, route, StringComparison.Ordinal))
+                return route;
+        }
+
+        return null;
+    }
+
+    /// <summary>The <c>then</c> member or query for a known page: <c>then={the page, URL-encoded}</c>.</summary>
+    internal static string Member(string route) => $"then={Uri.EscapeDataString(route)}";
+}
+
+/// <summary>
 /// What the running engine is: its loopback port, session token, allowed origins and when it started. The port is
 /// chosen before the server starts (a free one when <c>--port 0</c>) so the allowed origins are known when the
 /// pipeline is built; <see cref="EngineLifetime"/> confirms it from the server once it is listening.
@@ -68,10 +96,20 @@ public sealed class EngineRuntime
     /// here and exactly one cross origin allowed, that origin's code link (a release build's configured web client) with a
     /// new one-time pairing code from <paramref name="newCode"/>, asked for only then (<see cref="CodeUrlFor"/>: the session
     /// token is never in it); otherwise the sign-in link (<see cref="AuthUrl"/>), to the web client served here.
+    /// <paramref name="then"/>, one of <see cref="EditorRoutes.Known"/>, is the page the client opens at: the code link's
+    /// last member (<c>&amp;then=…</c>), or the sign-in link's query (<c>?then=…</c>), which its redirect hands on after
+    /// the token. Any other page is refused before a code is minted.
     /// </summary>
-    public EditorLink EditorLinkFor(Func<string> newCode) => !WebRootServed && CrossOrigins.Count == 1
-        ? new EditorLink(CodeUrlFor(CrossOrigins[0], newCode()), WebClient: true)
-        : new EditorLink(AuthUrl, WebClient: false);
+    public EditorLink EditorLinkFor(Func<string> newCode, string? then = null)
+    {
+        string? member = null;
+        if (then is not null)
+            member = EditorRoutes.Member(EditorRoutes.Find(then) ?? throw new ArgumentException("Not a page a link may land on.", nameof(then)));
+
+        return !WebRootServed && CrossOrigins.Count == 1
+            ? new EditorLink(CodeUrlFor(CrossOrigins[0], newCode()) + (member is null ? "" : $"&{member}"), WebClient: true)
+            : new EditorLink(AuthUrl + (member is null ? "" : $"?{member}"), WebClient: false);
+    }
 
     /// <summary>
     /// The code link for a cross-origin client: its own origin with the engine's URL and a one-time pairing code in the

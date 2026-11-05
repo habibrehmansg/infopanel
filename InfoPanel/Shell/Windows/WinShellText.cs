@@ -22,6 +22,7 @@ internal static class WinShellText
     private static readonly Dictionary<string, string> MenuLabels = new()
     {
         [ShellMenu.OpenEditor] = "Open editor",
+        [ShellMenu.EditFromAnotherComputer] = "Edit from another computer…",
         [ShellMenu.ShowOnDesktop] = "Show on desktop",
         [ShellMenu.NoProfiles] = "No profiles yet",
         [ShellMenu.MoreProfiles] = "More in the editor…",
