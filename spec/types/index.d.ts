@@ -881,6 +881,18 @@ export interface PairingGrant {
   instance: InstanceId;
 }
 
+/** 201 to POST /api/pairings/codes (the session token only): a one-time code for a client on another computer, which it exchanges once at POST /auth/pairing/code, as a code from a link the engine opened (docs/api.md#pairing). */
+export interface IssuedPairingCode {
+  code: PairingCode;
+  /** When the code stops being usable, 2 minutes after it was issued (to the second, rounded down). */
+  expires: Timestamp;
+  /**
+   * The origins of the clients served from elsewhere that the engine accepts, which may exchange the code from another computer: the engine's own origins and its development origins aren't listed. Empty when it accepts none.
+   * Unique items.
+   */
+  origins: string[];
+}
+
 /**
  * A nonce of the pairing proofs, Np (the client's) or Ne (the engine's): 32 random bytes as 43 base64url characters, new for every challenge (docs/api.md#pairing).
  * Pattern: `^[A-Za-z0-9_-]{43}$`.
@@ -4816,6 +4828,24 @@ export interface ApiOperations {
       403: ScopeProblem;
       /** The engine couldn't read its paired clients at start; it keeps none this run (docs/api.md#pairing). */
       409: Problem;
+    };
+  };
+  /**
+   * issuePairingCode: Issues a one-time pairing code for a client on another computer.
+   *
+   * docs/api.md#pairing. The code is exchanged once, within 2 minutes, at POST /auth/pairing/code.
+   */
+  "POST /api/pairings/codes": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The code, when it stops being usable, and the origins a client may exchange it from. */
+      201: IssuedPairingCode;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
     };
   };
   /**

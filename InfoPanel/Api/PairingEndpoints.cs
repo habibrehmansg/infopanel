@@ -9,7 +9,8 @@ namespace InfoPanel.Api;
 /// <summary>
 /// Pairing (spec/docs/api.md, "Pairing"). For the session token only: <c>GET /api/pairings</c> lists the paired clients
 /// without secrets (<c>pairingInfo</c>), <c>DELETE /api/pairings/{id}</c> removes one and the pairings it replaced (204,
-/// 404 when there is no such pairing listed); both 409 when <c>pairings.json</c> couldn't be read. With no token, under
+/// 404 when there is no such pairing listed); both 409 when <c>pairings.json</c> couldn't be read; <c>POST /api/pairings/codes</c>
+/// issues a one-time code for a client on another computer (<c>issuedPairingCode</c>). With no token, under
 /// <c>/auth/pairing</c> (mapped by <see cref="AuthEndpoints.MapAuth"/>): <see cref="ExchangeCodeAsync"/>, a one-time code's
 /// exchange, and the proofs, <see cref="ChallengeAsync"/> and <see cref="ProveAsync"/> (<see cref="PairingProofs"/>). Every answer is <c>Cache-Control: no-store</c>; nothing here logs a code, a secret or the token.
 /// </summary>
@@ -33,6 +34,18 @@ public static class PairingEndpoints
         {
             context.Response.Headers.CacheControl = "no-store";
             return pairings.Readable ? Json(pairings.List().Select(Info).ToList()) : Unreadable(pairings);
+        }).RequireScope(ApiScope.Session);
+
+        // A one-time code for a client on another computer, from the same store, limits and lifetime as the code link's,
+        // exchanged once at POST /auth/pairing/code. Logged as issued, never with the code.
+        api.MapPost("/codes", (PairingCodes codes, EngineRuntime runtime, ILoggerFactory loggers, HttpContext context) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            var code = codes.Mint(out var expires);
+            loggers.CreateLogger(typeof(PairingEndpoints)).LogInformation("A pairing code was issued for a client on another computer, usable once until {Expires}",
+                TokenStore.Format(expires));
+            return Json(new IssuedPairingCode { Code = code, Expires = TokenStore.Format(expires), Origins = runtime.CrossOrigins },
+                StatusCodes.Status201Created);
         }).RequireScope(ApiScope.Session);
 
         api.MapDelete("/{id}", (string id, PairingStore pairings, HttpContext context) =>

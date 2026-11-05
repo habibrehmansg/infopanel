@@ -968,6 +968,22 @@
         "instance": { "$ref": "#/$defs/instanceId", "description": "This run of the engine, as the session's `instance`." }
       }
     },
+    "issuedPairingCode": {
+      "description": "201 to POST /api/pairings/codes (the session token only): a one-time code for a client on another computer, which it exchanges once at POST /auth/pairing/code, as a code from a link the engine opened (docs/api.md#pairing).",
+      "type": "object",
+      "required": ["code", "expires", "origins"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "$ref": "#/$defs/pairingCode" },
+        "expires": { "$ref": "#/$defs/timestamp", "description": "When the code stops being usable, 2 minutes after it was issued (to the second, rounded down)." },
+        "origins": {
+          "description": "The origins of the clients served from elsewhere that the engine accepts, which may exchange the code from another computer: the engine's own origins and its development origins aren't listed. Empty when it accepts none.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
     "pairingNonce": { "description": "A nonce of the pairing proofs, Np (the client's) or Ne (the engine's): 32 random bytes as 43 base64url characters, new for every challenge (docs/api.md#pairing).", "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
     "pairingProof": { "description": "A pairing proof, E, C or A: an HMAC-SHA256 as 43 base64url characters (docs/api.md#pairing).", "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
     "pairingChallengeRequest": {

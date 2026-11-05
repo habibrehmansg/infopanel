@@ -528,6 +528,18 @@ public sealed record PairingGrant
     public required string Instance { get; init; }
 }
 
+/// <summary>
+/// 201 to <c>POST /api/pairings/codes</c>: a one-time code for a client on another computer, when it stops being usable,
+/// and the origins a client may exchange it from.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/issuedPairingCode")]
+public sealed record IssuedPairingCode
+{
+    public required string Code { get; init; }
+    public required string Expires { get; init; }
+    public required IReadOnlyList<string> Origins { get; init; }
+}
+
 /// <summary><c>POST /auth/pairing/challenge</c>: the pairing and the client's nonce Np (43 base64url characters).</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/pairingChallengeRequest")]
 public sealed record PairingChallengeRequest

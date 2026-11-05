@@ -941,6 +941,22 @@
         }
       }
     },
+    "/api/pairings/codes": {
+      "post": {
+        "operationId": "issuePairingCode",
+        "summary": "Issues a one-time pairing code for a client on another computer.",
+        "description": "docs/api.md#pairing. The code is exchanged once, within 2 minutes, at POST /auth/pairing/code.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "201": {
+            "description": "The code, when it stops being usable, and the origins a client may exchange it from.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/issuedPairingCode"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"}
+        }
+      }
+    },
     "/api/pairings/{id}": {
       "parameters": [
         {"name": "id", "in": "path", "required": true, "description": "The pairing's id (pairingId).", "schema": {"type": "string"}}

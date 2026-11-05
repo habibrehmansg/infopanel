@@ -101,10 +101,11 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(anonymous, "GET", $"/auth/{EngineFactory.Token}", 302);
         await Send(anonymous, "GET", "/auth/not-the-token", 401);
 
-        // Pairings: a code exchanged once (a second use refused), listed and removed; refused while pairings.json can't be
-        // read (an engine of its own, started on a file it can't read).
+        // Pairings: a code a session issues for a client on another computer, exchanged once (a second use refused); another
+        // from a link, listed and removed; refused while pairings.json can't be read (an engine of its own, started on a
+        // file it can't read).
         var codes = factory.Services.GetRequiredService<InfoPanel.Security.PairingCodes>();
-        var code = codes.Mint();
+        var code = (await Send(session, "POST", "/api/pairings/codes", 201)).GetProperty("code").GetString()!;
         await Send(anonymous, "POST", "/auth/pairing/code", 201, JsonContent.Create(new { code, name = "Tour" }));
         await Send(anonymous, "POST", "/auth/pairing/code", 403, JsonContent.Create(new { code, name = "Tour" }));
         await Send(anonymous, "POST", "/auth/pairing/code", 422, Body("{}"));

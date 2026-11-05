@@ -58,13 +58,18 @@ public sealed class PairingCodes(TimeProvider time, Func<string, bool> pairingEx
     }
 
     /// <summary>A new code, usable once within <see cref="Lifetime"/>.</summary>
-    public string Mint()
+    public string Mint() => Mint(out _);
+
+    /// <summary>A new code, usable once until <paramref name="expires"/> (<see cref="Lifetime"/> from now).</summary>
+    public string Mint(out DateTimeOffset expires)
     {
         var code = PairingStore.Base64Url(RandomNumberGenerator.GetBytes(CodeBytes));
         lock (_lock)
         {
             Prune();
-            _entries.Add(new Entry(Encoding.ASCII.GetBytes(code), time.GetUtcNow()));
+            var minted = time.GetUtcNow();
+            expires = minted + Lifetime;
+            _entries.Add(new Entry(Encoding.ASCII.GetBytes(code), minted));
             while (_entries.Count(e => !e.Used) > MaxOutstanding)
                 _entries.Remove(_entries.First(e => !e.Used));
         }

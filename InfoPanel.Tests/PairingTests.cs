@@ -8,6 +8,7 @@ using InfoPanel.Security;
 using InfoPanel.Tests.Desktop;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog.Events;
@@ -878,5 +879,186 @@ public class PairingEndpointTests(EngineFactory factory) : IClassFixture<EngineF
         Assert.False(grant.TryGetProperty("pairing", out _));
         Assert.Equal(EngineFactory.Token, grant.GetProperty("token").GetString());
         Assert.Equal("{ not json", File.ReadAllText(file));
+    }
+
+    // POST /api/pairings/codes: a session mints a one-time code for a client on another computer.
+
+    private static async Task<(string Code, string Expires, string[] Origins)> Issue(HttpClient session)
+    {
+        using var issued = await session.PostAsync("/api/pairings/codes", null, Ct);
+        Assert.Equal(HttpStatusCode.Created, issued.StatusCode);
+        var body = await issued.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        return (body.GetProperty("code").GetString()!, body.GetProperty("expires").GetString()!,
+            [.. body.GetProperty("origins").EnumerateArray().Select(o => o.GetString()!)]);
+    }
+
+    private static Task<HttpResponseMessage> ExchangeFrom(HttpClient client, string origin, string code)
+    {
+        var post = new HttpRequestMessage(HttpMethod.Post, "/auth/pairing/code")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { code, name = "Chrome elsewhere" }), Encoding.UTF8, "application/json"),
+        };
+        post.Headers.Add("Origin", origin);
+        return client.SendAsync(post, Ct);
+    }
+
+    [Fact]
+    public async Task AnIssuedCode_Is201_NoStore_WithItsExpiryAndTheCrossOrigins_AndExchangesOnceFromOne()
+    {
+        using var session = factory.CreateApiClient();
+        var before = DateTimeOffset.UtcNow;
+        using var issued = await session.PostAsync("/api/pairings/codes", null, Ct);
+        var after = DateTimeOffset.UtcNow;
+        Assert.Equal(HttpStatusCode.Created, issued.StatusCode);
+        Assert.Equal("no-store", issued.Headers.CacheControl?.ToString());
+        var body = await issued.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        Assert.Equal(["code", "expires", "origins"], body.EnumerateObject().Select(p => p.Name).Order());
+        var code = body.GetProperty("code").GetString()!;
+        Assert.Matches("^[A-Za-z0-9_-]{22}$", code);
+        var expiresText = body.GetProperty("expires").GetString()!;
+        Assert.Matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", expiresText);
+        var expires = DateTimeOffset.Parse(expiresText, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.InRange(expires, before + PairingCodes.Lifetime - TimeSpan.FromSeconds(1), after + PairingCodes.Lifetime);
+        // The cross origins only: not the engine's own loopback origins, nor a dev origin (it gets no CORS).
+        Assert.Equal([EngineFactory.CrossOrigin], body.GetProperty("origins").EnumerateArray().Select(o => o.GetString()!));
+
+        // A second code is a new one.
+        Assert.NotEqual(code, (await Issue(session)).Code);
+
+        using var anonymous = factory.CreateRawClient();
+        using (var granted = await ExchangeFrom(anonymous, EngineFactory.CrossOrigin, code))
+        {
+            Assert.Equal(HttpStatusCode.Created, granted.StatusCode);
+            Assert.Equal(EngineFactory.CrossOrigin, granted.Headers.GetValues("Access-Control-Allow-Origin").Single());
+            var grant = await granted.Content.ReadFromJsonAsync<JsonElement>(Ct);
+            Assert.Equal(EngineFactory.Token, grant.GetProperty("token").GetString());
+            Assert.Contains(grant.GetProperty("pairing").GetProperty("id").GetString()!, await ListedIds());
+        }
+
+        using var again = await ExchangeFrom(anonymous, EngineFactory.CrossOrigin, code);
+        Assert.Equal(HttpStatusCode.Forbidden, again.StatusCode);
+        Assert.Equal(PairingEndpoints.RefusedCode, (await again.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task IssuingACode_IsTheSessionTokensOnly()
+    {
+        using var anonymous = factory.CreateRawClient();
+        using (var none = await anonymous.PostAsync("/api/pairings/codes", null, Ct))
+            Assert.Equal(HttpStatusCode.Unauthorized, none.StatusCode);
+
+        using var session = factory.CreateApiClient();
+        foreach (var scopes in new[] { new[] { "read" }, ["edit"], ["read", "edit"] })
+        {
+            using var created = await session.PostAsJsonAsync("/api/tokens", new { name = "codes-" + string.Join("-", scopes), scopes }, Ct);
+            var token = (await created.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("token").GetString();
+            using var integration = factory.CreateRawClient();
+            integration.DefaultRequestHeaders.Authorization = new("Bearer", token);
+            using var refused = await integration.PostAsync("/api/pairings/codes", null, Ct);
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+            var problem = await refused.Content.ReadFromJsonAsync<JsonElement>(Ct);
+            Assert.Equal("session", problem.GetProperty("scope").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task AnIssuedCode_IsAnyOtherCode_ItCountsTowardTheEightOutstanding_AndLastsTwoMinutes()
+    {
+        var clock = new ManualTime(new DateTimeOffset(2026, 11, 5, 9, 30, 0, TimeSpan.Zero));
+        var data = Path.Combine(factory.Root, $"pairing-codes-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(data);
+        using var engine = factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Engine:DataDir", data);
+            b.ConfigureTestServices(services => services.AddSingleton(sp =>
+                new PairingCodes(clock, id => sp.GetRequiredService<PairingStore>().Find(id) is not null)));
+        });
+        using var session = engine.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
+        session.DefaultRequestHeaders.Authorization = new("Bearer", EngineFactory.Token);
+        using var anonymous = engine.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
+        var codes = engine.Services.GetRequiredService<PairingCodes>();
+
+        // Its time: two minutes from issuing, as the code link's.
+        var (timely, expires, _) = await Issue(session);
+        Assert.Equal("2026-11-05T09:32:00Z", expires);
+        var (late, _, _) = await Issue(session);
+        clock.Advance(PairingCodes.Lifetime - TimeSpan.FromSeconds(1));
+        using (var granted = await ExchangeFrom(anonymous, EngineFactory.CrossOrigin, timely))
+            Assert.Equal(HttpStatusCode.Created, granted.StatusCode);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        using (var expired = await ExchangeFrom(anonymous, EngineFactory.CrossOrigin, late))
+            Assert.Equal(HttpStatusCode.Forbidden, expired.StatusCode);
+
+        // The same store as the code link's: issued and minted codes share the 8, the oldest dropped.
+        var (oldest, _, _) = await Issue(session);
+        var newer = new List<string>();
+        for (var i = 0; i < PairingCodes.MaxOutstanding / 2; i++)
+            newer.Add(codes.Mint());
+        for (var i = 0; i < PairingCodes.MaxOutstanding / 2; i++)
+            newer.Add((await Issue(session)).Code);
+        using (var dropped = await ExchangeFrom(anonymous, EngineFactory.CrossOrigin, oldest))
+            Assert.Equal(HttpStatusCode.Forbidden, dropped.StatusCode);
+        // A minted code is still taken, and an issued one at the end.
+        using (var minted = await ExchangeFrom(anonymous, EngineFactory.CrossOrigin, newer[0]))
+            Assert.Equal(HttpStatusCode.Created, minted.StatusCode);
+        using (var last = await ExchangeFrom(anonymous, EngineFactory.CrossOrigin, newer[^1]))
+            Assert.Equal(HttpStatusCode.Created, last.StatusCode);
+    }
+
+    [Fact]
+    public async Task IssuingACode_IsLogged_AndNoLogHoldsTheCode()
+    {
+        using var session = factory.CreateApiClient();
+        var recent = factory.Services.GetRequiredService<RecentLog>();
+        var from = recent.After(0).Select(e => e.Seq).DefaultIfEmpty(0).Max();
+        var (code, _, _) = await Issue(session);
+        using (var anonymous = factory.CreateRawClient())
+        using (var granted = await ExchangeFrom(anonymous, EngineFactory.CrossOrigin, code))
+            Assert.Equal(HttpStatusCode.Created, granted.StatusCode);
+
+        var entries = recent.After(from);
+        Assert.Contains(entries, e => e.Level == "information" && e.Message.Contains("pairing code was issued", StringComparison.Ordinal));
+        var logged = string.Join("\n", recent.After(0).Select(e => e.Message + e.Exception));
+        foreach (var file in Directory.GetFiles(Path.Combine(factory.DataDir, "logs")))
+        {
+            using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            logged += "\n" + new StreamReader(stream).ReadToEnd();
+        }
+
+        Assert.DoesNotContain(code, logged);
+        Assert.DoesNotContain(EngineFactory.Token, logged);
+        // GET /api/logs answers the same entries: none carries the code.
+        using var logs = await session.GetAsync("/api/logs?after=0", Ct);
+        Assert.DoesNotContain(code, await logs.Content.ReadAsStringAsync(Ct));
+    }
+
+    [Fact]
+    public void TheCodes_AreOutOfReachOfTheMcpToolsAndTheRelay()
+    {
+        // Every tool a call from elsewhere reaches declares read or edit; issuing a code needs the session.
+        var host = factory.Services.GetRequiredService<InfoPanel.Mcp.Tools.McpToolHost>();
+        Assert.NotEmpty(host.All);
+        Assert.All(host.All, t => Assert.True(t.Scope is ApiScope.Read or ApiScope.Edit, t.Name));
+        Assert.DoesNotContain(InfoPanel.Mcp.Tools.McpToolHost.ToolNames, n => n.Contains("pair", StringComparison.OrdinalIgnoreCase));
+
+        // Nothing the tools or the relay client are built from, or hold, reaches the codes, the pairings, the run's token
+        // or the services (from which anything could be asked for).
+        Type[] forbidden = [typeof(PairingCodes), typeof(PairingStore), typeof(EngineRuntime), typeof(IServiceProvider), typeof(HttpClient)];
+        var relay = typeof(InfoPanel.Service.RelayClient);
+        var types = typeof(InfoPanel.Mcp.Tools.McpToolHost).Assembly.GetTypes()
+            .Where(t => t.Namespace is { } ns && (ns == "InfoPanel.Mcp" || ns.StartsWith("InfoPanel.Mcp.", StringComparison.Ordinal)))
+            .Concat(relay.Assembly.GetTypes().Where(t => t == relay || t.FullName!.StartsWith(relay.FullName + "+", StringComparison.Ordinal)))
+            .ToList();
+        Assert.Contains(typeof(InfoPanel.Mcp.Tools.McpToolHost), types);
+        Assert.Contains(relay, types);
+        const System.Reflection.BindingFlags All = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static
+            | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
+        var reaching = types
+            .SelectMany(t => t.GetConstructors(All).SelectMany(c => c.GetParameters()).Select(p => (t, p.ParameterType))
+                .Concat(t.GetFields(All).Select(f => (t, f.FieldType))))
+            .Where(m => forbidden.Any(f => f.IsAssignableFrom(m.Item2) || (m.Item2.IsGenericType && m.Item2.GetGenericArguments().Any(f.IsAssignableFrom))))
+            .Select(m => $"{m.t.FullName}: {m.Item2}")
+            .ToList();
+        Assert.Empty(reaching);
     }
 }
