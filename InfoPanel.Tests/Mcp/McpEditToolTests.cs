@@ -586,4 +586,497 @@ public sealed class McpEditToolTests
         Assert.True(error);
         Assert.Contains("There's no profile Nope", text);
     }
+
+    // Groups through the tools: add_items' group entry (children), update_item's group and index.
+
+    /// <summary>The items' tree as names (an item without one by its id), a group's children in brackets.</summary>
+    private static string Tree(IEnumerable<Item> items) =>
+        string.Join(", ", items.Select(i => (i.Name ?? i.Id) + (i is GroupItem g ? $"[{Tree(g.Children)}]" : "")));
+
+    private static string Tree(ProfileDocument document) => Tree(document.Read().Document.Items);
+
+    private static Item Named(ProfileDocument document, string name) => Flatten(document.Read().Document.Items).Single(i => i.Name == name);
+
+    private static JsonObject Child(string name, double x, double y) => new() { ["name"] = name, ["scene"] = TestDocs.Rect(), ["x"] = x, ["y"] = y };
+
+    /// <summary><paramref name="count"/> scene children, named <c>Child 0</c> on.</summary>
+    private static JsonArray Children(int count) => new([.. Enumerable.Range(0, count).Select(i => (JsonNode)Child($"Child {i}", i, 0))]);
+
+    [Fact]
+    public async Task AddItems_AGroupEntry_IsInsertedWithItsChildren_InOneCommit_AndOneUndoStepTakesItBack()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var document = Seed(factory, "Pane");
+        var before = document.Rev;
+
+        var (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Pane",
+            ["items"] = new JsonArray(
+                new JsonObject { ["name"] = "Background", ["scene"] = TestDocs.Rect(), ["width"] = 400, ["height"] = 200 },
+                new JsonObject
+                {
+                    ["name"] = "CPU",
+                    ["x"] = 20,
+                    ["y"] = 30,
+                    ["children"] = new JsonArray(Child("CPU card", 0, 0), Child("CPU title", 16, 12), Child("CPU temperature", 16, 48)),
+                }),
+        });
+        Assert.False(error, text);
+        Assert.Equal(before + 1, document.Rev); // one commit
+        Assert.Equal("a, b, Background, CPU[CPU card, CPU title, CPU temperature]", Tree(document));
+        var group = Assert.IsType<GroupItem>(Named(document, "CPU"));
+        Assert.StartsWith("ai-", group.Id);
+        Assert.Equal((20d, 30d), (group.Placement.X, group.Placement.Y));
+        // The children's x, y are as given: from the group's x, y, as the document stores them.
+        Assert.Equal([(0d, 0d), (16d, 12d), (16d, 48d)], group.Children.Select(c => (c.Placement.X, c.Placement.Y)));
+        Assert.All(group.Children, c => Assert.StartsWith("ai-", c.Id));
+        Assert.Contains($"\"CPU\" ({group.Id}, a group of 3: \"CPU card\" ({group.Children[0].Id})", text);
+        Assert.StartsWith("Added 2 items to Pane in one change", text);
+        Assert.Contains(SavedItems(document), i => i.Id == group.Children[2].Id);
+
+        // get_profile lists it nested, its children's x, y as stored.
+        var (summary, summaryError) = await Call(host, "get_profile", new JsonObject { ["profile"] = "Pane" });
+        Assert.False(summaryError, summary);
+        var listed = JsonNode.Parse(summary)!["items"]!.AsArray().Single(i => i!["name"]?.GetValue<string>() == "CPU")!;
+        Assert.Equal("group", listed["kind"]!.GetValue<string>());
+        Assert.Equal(["CPU card", "CPU title", "CPU temperature"], listed["children"]!.AsArray().Select(c => c!["name"]!.GetValue<string>()));
+        Assert.Equal(48, listed["children"]![2]!["y"]!.GetValue<double>());
+
+        // One undo step takes the whole call back.
+        Assert.NotNull(document.Undo(new HistoryRequest { Instance = document.Instance, BaseRev = document.Rev }).Result);
+        Assert.Equal("a, b", Tree(document));
+    }
+
+    [Fact]
+    public async Task AddItems_AnEmptyGroup_AndAGroupIntoAnExistingGroup_AtAnIndex()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = Workspace(factory);
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Nest", 400, 200, TestDocs.Group("card", TestDocs.Scene("x1"), TestDocs.Scene("x2"))));
+        var document = workspace.Find(id).Document!;
+
+        var (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Nest",
+            ["items"] = new JsonArray(
+                new JsonObject { ["name"] = "Empty", ["children"] = new JsonArray() },
+                new JsonObject { ["name"] = "Inner", ["group"] = "card", ["index"] = 1, ["x"] = 5, ["children"] = new JsonArray(Child("Dot", 1, 2)) }),
+        });
+        Assert.False(error, text);
+        Assert.Equal("card[x1, Inner[Dot], x2], Empty[]", Tree(document));
+        Assert.Contains("\"Empty\" (", text);
+        Assert.Contains("an empty group", text);
+        Assert.Equal((0d, 0d), (Named(document, "Empty").Placement.X, Named(document, "Empty").Placement.Y)); // 0 when absent
+        Assert.Equal(5d, Named(document, "Inner").Placement.X);
+    }
+
+    [Fact]
+    public async Task AddItems_AGroupWhoseChildrenWouldPassEightLevels_IsRefused_ByTheEngine()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = Workspace(factory);
+        // Groups seven deep: an item in the deepest is at level 8, a group there may hold nothing.
+        var deepest = TestDocs.Group("g7", TestDocs.Scene("leaf"));
+        for (var level = 6; level >= 1; level--)
+            deepest = TestDocs.Group($"g{level}", deepest);
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Deep", 400, 200, deepest));
+        var document = workspace.Find(id).Document!;
+        var before = document.Rev;
+
+        var (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Deep",
+            ["items"] = new JsonArray(new JsonObject { ["name"] = "Too deep", ["group"] = "g7", ["children"] = new JsonArray(Child("Dot", 0, 0)) }),
+        });
+        Assert.True(error, text);
+        Assert.Contains("limit.itemDepth", text);
+        Assert.Contains("items/0 limit.itemDepth", text);
+        Assert.Equal(before, document.Rev);
+
+        // An empty group there is within the limit.
+        (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Deep",
+            ["items"] = new JsonArray(new JsonObject { ["name"] = "Just fits", ["group"] = "g7", ["children"] = new JsonArray() }),
+        });
+        Assert.False(error, text);
+    }
+
+    [Fact]
+    public async Task AddItems_CountsAGroupsChildren_FiftyAddAndFiftyOneAreRefused_BeforeAnything()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var document = Seed(factory, "Cap");
+        var before = document.Rev;
+
+        // A group of 50 children is 51 items: refused, though the list holds 2 entries and the group 50 children.
+        var (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Cap",
+            ["items"] = new JsonArray(new JsonObject { ["name"] = "Big", ["children"] = Children(50) }),
+        });
+        Assert.True(error, text);
+        Assert.Contains("add_items takes at most 50 items in a call, a group's children counted: these are 51. Send the rest in another call.", text);
+        Assert.Contains("(arguments)", text);
+        Assert.Equal(before, document.Rev);
+
+        // A group of 49 children and one more item: 51 too.
+        (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Cap",
+            ["items"] = new JsonArray(new JsonObject { ["name"] = "Big", ["children"] = Children(49) }, Child("One more", 0, 0)),
+        });
+        Assert.True(error, text);
+        Assert.Contains("these are 51", text);
+        Assert.Equal(before, document.Rev);
+
+        // A group of 48 and one more item: 50, added.
+        (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Cap",
+            ["items"] = new JsonArray(new JsonObject { ["name"] = "Big", ["children"] = Children(48) }, Child("One more", 0, 0)),
+        });
+        Assert.False(error, text);
+        Assert.Equal(before + 1, document.Rev);
+        Assert.Equal(48, Assert.IsType<GroupItem>(Named(document, "Big")).Children.Count);
+    }
+
+    public static TheoryData<string, string, string> BadGroupEntries() => new()
+    {
+        // A group has no scene, box or bindings: its children have them.
+        { "group scene", """{"name":"G","scene":{"format":"infopanel.scene/1","nodes":[]},"children":[]}""", "item 1 is a group (children): give scene, width, height and bindings to its children." },
+        { "group width", """{"name":"G","width":10,"children":[]}""", "item 1 is a group (children)" },
+        { "group height", """{"name":"G","height":10,"children":[]}""", "item 1 is a group (children)" },
+        { "group bindings", """{"name":"G","bindings":{"v":"k"},"children":[]}""", "item 1 is a group (children)" },
+        // A child is an item as add_items takes one, without group, index or children.
+        { "child children", """{"name":"G","children":[{"scene":{"format":"infopanel.scene/1","nodes":[]},"children":[]}]}""", "items/1/children/0 can't take these arguments (arguments): 'children' isn't one of its arguments" },
+        { "child group", """{"name":"G","children":[{"scene":{"format":"infopanel.scene/1","nodes":[]},"group":"a"}]}""", "items/1/children/0 can't take these arguments (arguments): 'group' isn't one of its arguments" },
+        { "child index", """{"name":"G","children":[{"scene":{"format":"infopanel.scene/1","nodes":[]},"index":0}]}""", "items/1/children/0 can't take these arguments (arguments): 'index' isn't one of its arguments" },
+        { "child no scene", """{"name":"G","children":[{"name":"c"}]}""", "items/1/children/0 can't take these arguments (arguments): 'scene' is required" },
+        { "children not a list", """{"name":"G","children":{}}""", "'children' must be a list of JSON objects" },
+        // An entry is a scene item or a group.
+        { "neither", """{"name":"N","x":4}""", "item 1 needs scene, or children for a group." },
+    };
+
+    [Theory]
+    [MemberData(nameof(BadGroupEntries))]
+    public async Task AddItems_ABadGroupEntry_IsRefusedByItsPath_AndNothingIsAdded(string which, string entry, string expected)
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var document = Seed(factory, "Bad");
+        var before = document.Rev;
+        var (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Bad",
+            ["items"] = new JsonArray(Child("Fine", 0, 0), JsonNode.Parse(entry)),
+        });
+        Assert.True(error, $"{which}: {text}");
+        Assert.Contains(expected, text);
+        Assert.Contains("Nothing was changed.", text);
+        Assert.Equal(before, document.Rev);
+    }
+
+    [Fact]
+    public async Task AddItems_AChildsSceneTheEngineRefuses_IsNamedByItsPath()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var document = Seed(factory, "Path");
+        var before = document.Rev;
+        var bad = Child("Bad", 0, 0);
+        bad["scene"] = TestDocs.InvalidScene();
+        var (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Path",
+            ["items"] = new JsonArray(Child("Fine", 0, 0), new JsonObject { ["name"] = "G", ["children"] = new JsonArray(Child("c0", 0, 0), Child("c1", 0, 0), bad) }),
+        });
+        Assert.True(error, text);
+        Assert.Contains("items/1/children/2/scene/nodes/0/w ref.input", text);
+        Assert.DoesNotContain("/ops/", text);
+        Assert.Equal(before, document.Rev);
+    }
+
+    [Fact]
+    public async Task UpdateItem_MovesAnItem_IntoAGroup_KeepingItsNumbers_OrPlacedByTheXAndYGiven_InOneCommit()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = Workspace(factory);
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Move", 400, 200,
+            TestDocs.Scene("a", 10, 20), TestDocs.Scene("b", 30, 40), TestDocs.Group("card", TestDocs.Scene("x1"), TestDocs.Scene("x2")), TestDocs.Group("other")));
+        var document = workspace.Find(id).Document!;
+
+        // Into a group: at its end, the numbers kept.
+        var before = document.Rev;
+        var (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = "Move", ["item"] = "a", ["group"] = "card" });
+        Assert.False(error, text);
+        Assert.Equal(before + 1, document.Rev);
+        Assert.Equal("b, card[x1, x2, a], other[]", Tree(document));
+        Assert.Equal((10d, 20d), (ItemOf(document, "a").Placement.X, ItemOf(document, "a").Placement.Y));
+
+        // With x, y and an index: one commit, placed by the numbers given, in the new parent.
+        before = document.Rev;
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "b", ["group"] = "card", ["index"] = 0, ["x"] = 3, ["y"] = 4 });
+        Assert.False(error, text);
+        Assert.Equal(before + 1, document.Rev);
+        Assert.Equal("card[b, x1, x2, a], other[]", Tree(document));
+        Assert.Equal((3d, 4d), (ItemOf(document, "b").Placement.X, ItemOf(document, "b").Placement.Y));
+
+        // Between groups, and out to the top level ("").
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "x1", ["group"] = "other" });
+        Assert.False(error, text);
+        Assert.Equal("card[b, x2, a], other[x1]", Tree(document));
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "a", ["group"] = "" });
+        Assert.False(error, text);
+        Assert.Equal("card[b, x2], other[x1], a", Tree(document));
+        Assert.Equal((10d, 20d), (ItemOf(document, "a").Placement.X, ItemOf(document, "a").Placement.Y));
+
+        // A group into a group, its children with it.
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "other", ["group"] = "card", ["index"] = 1 });
+        Assert.False(error, text);
+        Assert.Equal("card[b, other[x1], x2], a", Tree(document));
+
+        // One undo step takes one move back.
+        Assert.NotNull(document.Undo(new HistoryRequest { Instance = document.Instance, BaseRev = document.Rev }).Result);
+        Assert.Equal("card[b, x2], other[x1], a", Tree(document));
+    }
+
+    [Fact]
+    public async Task UpdateItem_IndexAlone_ReordersWithinItsParent_AtTheTopLevelAndInAGroup()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = Workspace(factory);
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Order", 400, 200,
+            TestDocs.Scene("a"), TestDocs.Scene("b"), TestDocs.Scene("c"), TestDocs.Group("card", TestDocs.Scene("x1"), TestDocs.Scene("x2"), TestDocs.Scene("x3"))));
+        var document = workspace.Find(id).Document!;
+
+        // On top: past the last, the end.
+        var (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "a", ["index"] = 2000 });
+        Assert.False(error, text);
+        Assert.Equal("b, c, card[x1, x2, x3], a", Tree(document));
+        // To the back: 0.
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "card", ["index"] = 0 });
+        Assert.False(error, text);
+        Assert.Equal("card[x1, x2, x3], b, c, a", Tree(document));
+        // Within a group: it stays in it.
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "x1", ["index"] = 2000 });
+        Assert.False(error, text);
+        Assert.Equal("card[x2, x3, x1], b, c, a", Tree(document));
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "x3", ["index"] = 0 });
+        Assert.False(error, text);
+        Assert.Equal("card[x3, x2, x1], b, c, a", Tree(document));
+
+        // Naming its own parent without an index changes nothing (no reorder by accident), at the top level too.
+        var before = document.Rev;
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "x3", ["group"] = "card" });
+        Assert.False(error, text);
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "b", ["group"] = "" });
+        Assert.False(error, text);
+        Assert.Equal(before, document.Rev);
+        Assert.Equal("card[x3, x2, x1], b, c, a", Tree(document));
+        Assert.Contains("already was as asked", text);
+    }
+
+    [Fact]
+    public async Task UpdateItem_IntoAnItemThatIsntAGroup_OrIntoItself_IsRefused_AndChangesNothing()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = Workspace(factory);
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Cycle", 400, 200,
+            TestDocs.Scene("a"), TestDocs.Group("outer", TestDocs.Group("inner", TestDocs.Scene("x1")))));
+        var document = workspace.Find(id).Document!;
+        var before = document.Rev;
+
+        var (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "outer", ["group"] = "a", ["x"] = 5 });
+        Assert.True(error, text);
+        Assert.Contains("a isn't a group (notAGroup): an item goes into a group or the top level.", text);
+
+        foreach (var into in new[] { "outer", "inner" })
+        {
+            (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "outer", ["group"] = into, ["x"] = 5 });
+            Assert.True(error, text);
+            Assert.Contains("outer can't go into itself or a group inside it (op.cycle): nothing was changed.", text);
+        }
+        Assert.Equal(before, document.Rev);
+        Assert.Equal("a, outer[inner[x1]]", Tree(document));
+        Assert.Equal(0d, ItemOf(document, "outer").Placement.X);
+
+        // A group's group and index change it; its scene still doesn't.
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "inner", ["group"] = "", ["index"] = 0 });
+        Assert.False(error, text);
+        Assert.Equal("inner[x1], a, outer[]", Tree(document));
+        (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "inner" });
+        Assert.True(error, text);
+        Assert.Contains("group, index", text); // "nothing to change" names them
+    }
+
+    /// <summary>Another client's commit inserting <c>c</c> at the front of group <c>g</c>, at the tool's first write.</summary>
+    private static Action<string> InsertsAtTheFrontOfG(ProfileDocument document, Action wrote) => step =>
+    {
+        if (step != "write")
+            return;
+        wrote();
+        TestDocs.Commit(document, new JsonObject { ["op"] = "insert", ["parentId"] = "g", ["index"] = 0, ["item"] = TestDocs.Scene("c") });
+    };
+
+    /// <summary>
+    /// Codex MC2 r1 E1: <c>g[a,b]</c>; update_item names a's own group without an index while another client would insert
+    /// <c>c</c> at the front just before the tool's write. Naming the current parent without an index is no move: the call
+    /// writes nothing (no commit, no undo step), so it can't put <c>a</c> back at a place read before the insert.
+    /// </summary>
+    [Fact]
+    public async Task UpdateItem_NamingItsOwnGroupWithoutAnIndex_WritesNothing_AndMakesNoUndoStep()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = Workspace(factory);
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Front", 400, 200, TestDocs.Group("g", TestDocs.Scene("a"), TestDocs.Scene("b"))));
+        var document = workspace.Find(id).Document!;
+        var before = document.Rev;
+        Assert.False(document.CanUndo);
+        var writes = 0;
+        host.StepHook = InsertsAtTheFrontOfG(document, () => writes++);
+
+        var (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "a", ["group"] = "g" });
+        Assert.False(error, text);
+        Assert.Contains("already was as asked: nothing changed.", text);
+        Assert.Equal(0, writes);
+        Assert.Equal(before, document.Rev);
+        Assert.False(document.CanUndo);
+        Assert.Equal("g[a, b]", Tree(document));
+    }
+
+    /// <summary>
+    /// Codex MC2 r1 E1, the same sequence with a change beside the group: the change is written, and the sibling inserted
+    /// at the front meanwhile stays at the front (<c>g[c,A,b]</c>, not <c>g[A,c,b]</c>); one undo step takes the rename back.
+    /// </summary>
+    [Fact]
+    public async Task UpdateItem_NamingItsOwnGroupWithoutAnIndex_KeepsASiblingInsertedAtTheFrontMeanwhile()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = Workspace(factory);
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Front", 400, 200, TestDocs.Group("g", TestDocs.Scene("a"), TestDocs.Scene("b"))));
+        var document = workspace.Find(id).Document!;
+        var writes = 0;
+        host.StepHook = InsertsAtTheFrontOfG(document, () => writes++);
+
+        var (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "a", ["group"] = "g", ["name"] = "A" });
+        Assert.False(error, text);
+        Assert.Equal(1, writes);
+        Assert.Equal("g[c, A, b]", Tree(document));
+
+        Assert.NotNull(document.Undo(new HistoryRequest { Instance = document.Instance, BaseRev = document.Rev }).Result);
+        Assert.Equal("g[c, a, b]", Tree(document));
+    }
+
+    /// <summary>
+    /// Codex MC2 r1 E2: a malformed binding (not a key or {key, stat}) in a group's child, or in an entry, is refused by
+    /// its path, so the caller can tell which item it is; nothing is changed.
+    /// </summary>
+    [Fact]
+    public async Task AddItems_AMalformedBinding_InAChildOrAnEntry_IsNamedByItsPath()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var document = Seed(factory, "Bind");
+        var before = document.Rev;
+
+        var (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Bind",
+            ["items"] = new JsonArray(new JsonObject
+            {
+                ["name"] = "G",
+                ["children"] = new JsonArray(new JsonObject { ["scene"] = TestDocs.InputScene(), ["bindings"] = new JsonObject { ["v"] = 5 } }),
+            }),
+        });
+        Assert.True(error, text);
+        Assert.Contains("items/0/children/0/bindings/v", text);
+        Assert.Contains("(arguments)", text);
+        Assert.Contains("Nothing was changed.", text);
+        Assert.Equal(before, document.Rev);
+
+        (text, error) = await Call(host, "add_items", new JsonObject
+        {
+            ["profile"] = "Bind",
+            ["items"] = new JsonArray(Child("Fine", 0, 0), new JsonObject { ["scene"] = TestDocs.InputScene(), ["bindings"] = new JsonObject { ["v"] = true } }),
+        });
+        Assert.True(error, text);
+        Assert.Contains("items/1/bindings/v", text);
+        Assert.Equal(before, document.Rev);
+    }
+
+    /// <summary>
+    /// Codex MC2e r2 F1: <c>g[a,b]</c>; update_item names a's own group without an index (no ops to write) and the profile
+    /// is deleted after the tool read it: the call is <c>notFound</c>, never "nothing changed" on a profile that is gone.
+    /// </summary>
+    [Fact]
+    public async Task UpdateItem_WithNothingToWrite_OnAProfileDeletedAfterTheRead_IsNotFound()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = Workspace(factory);
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Gone", 400, 200, TestDocs.Group("g", TestDocs.Scene("a"), TestDocs.Scene("b"))));
+        var writes = 0;
+        host.StepHook = step =>
+        {
+            if (step == "read")
+                Assert.True(workspace.DeleteWithItsTag(id));
+            else if (step == "write")
+                writes++;
+        };
+
+        var (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "a", ["group"] = "g" });
+        Assert.True(error, text);
+        Assert.Contains("(notFound)", text);
+        Assert.Contains(id, text);
+        Assert.DoesNotContain("already was as asked", text);
+        Assert.Equal(0, writes);
+        Assert.Null(workspace.Find(id).Document);
+    }
+
+    /// <summary>
+    /// Codex MC2e r2 F1, the profile deleted and created again under its id after the read: the new document is another
+    /// profile, so the call is <c>notFound</c> and the new one is left as it is.
+    /// </summary>
+    [Fact]
+    public async Task UpdateItem_WithNothingToWrite_OnAProfileReplacedAfterTheRead_IsNotFound()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = Workspace(factory);
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Swapped", 400, 200, TestDocs.Group("g", TestDocs.Scene("a"), TestDocs.Scene("b"))));
+        var writes = 0;
+        host.StepHook = step =>
+        {
+            if (step == "read")
+            {
+                Assert.True(workspace.DeleteWithItsTag(id));
+                var again = TestDocs.Doc("Swapped", 400, 200, TestDocs.Group("g", TestDocs.Scene("a"), TestDocs.Scene("b")));
+                again["id"] = id;
+                Assert.NotNull(workspace.Create(Encoding.UTF8.GetBytes(new JsonObject { ["id"] = id, ["document"] = again }.ToJsonString())).Entry);
+            }
+            else if (step == "write")
+                writes++;
+        };
+
+        var (text, error) = await Call(host, "update_item", new JsonObject { ["profile"] = id, ["item"] = "a", ["group"] = "g" });
+        Assert.True(error, text);
+        Assert.Contains("(notFound)", text);
+        Assert.Contains(id, text);
+        Assert.DoesNotContain("already was as asked", text);
+        Assert.Equal(0, writes);
+        var replaced = workspace.Find(id).Document!;
+        Assert.Equal("g[a, b]", Tree(replaced));
+        Assert.False(replaced.CanUndo);
+    }
 }

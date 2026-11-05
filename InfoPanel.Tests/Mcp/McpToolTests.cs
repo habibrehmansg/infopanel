@@ -83,8 +83,22 @@ public sealed class McpToolTests
                     Assert.True(element["properties"]!.AsObject().ContainsKey(required!.GetValue<string>()), $"{name}.{member} requires a member it doesn't define.");
                 foreach (var (inner, innerSchema) in element["properties"]!.AsObject())
                 {
-                    Assert.Contains(innerSchema!["type"]!.GetValue<string>(), new[] { "string", "integer", "number", "boolean", "object" });
+                    Assert.Contains(innerSchema!["type"]!.GetValue<string>(), new[] { "string", "integer", "number", "boolean", "object", "array" });
                     Assert.False(string.IsNullOrWhiteSpace(innerSchema["description"]?.GetValue<string>()), $"{name}.{member}.{inner} has no description.");
+                    if (innerSchema["type"]!.GetValue<string>() != "array")
+                        continue;
+                    // One level of lists in a list (a group's children), bounded, of closed objects holding no list.
+                    Assert.True(innerSchema["maxItems"]!.GetValue<int>() > 0, $"{name}.{member}.{inner} has no bound.");
+                    var nested = innerSchema["items"]!.AsObject();
+                    Assert.Equal("object", nested["type"]!.GetValue<string>());
+                    Assert.False(nested["additionalProperties"]!.GetValue<bool>());
+                    foreach (var required in nested["required"]!.AsArray())
+                        Assert.True(nested["properties"]!.AsObject().ContainsKey(required!.GetValue<string>()), $"{name}.{member}.{inner} requires a member it doesn't define.");
+                    foreach (var (deepest, deepestSchema) in nested["properties"]!.AsObject())
+                    {
+                        Assert.Contains(deepestSchema!["type"]!.GetValue<string>(), new[] { "string", "integer", "number", "boolean", "object" });
+                        Assert.False(string.IsNullOrWhiteSpace(deepestSchema["description"]?.GetValue<string>()), $"{name}.{member}.{inner}.{deepest} has no description.");
+                    }
                 }
             }
         }

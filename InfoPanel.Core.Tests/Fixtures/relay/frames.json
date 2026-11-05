@@ -80,6 +80,41 @@
         null
       ]
     },
+    "callWithGroupDesigns": {
+      "type": "call",
+      "id": "c5",
+      "tool": "add_items",
+      "arguments": {
+        "profile": "Overview",
+        "items": [
+          { "name": "Background", "scene": { "format": "infopanel.scene/1", "nodes": [{ "kind": "rect", "w": 800, "h": 480, "fill": "#0d1117" }] } },
+          {
+            "name": "CPU",
+            "x": 20,
+            "y": 20,
+            "children": [
+              { "name": "CPU card", "scene": { "format": "infopanel.scene/1", "nodes": [{ "kind": "rect", "w": 370, "h": 200, "fill": "#161b22" }] } },
+              { "name": "CPU temperature", "x": 16, "y": 48, "bindings": { "v": "plugin:/infopanel.mock/cpu/cpu-load" } }
+            ]
+          }
+        ]
+      },
+      "sentAt": 1762214400000,
+      "deadline": 1762214460000,
+      "maxChars": 140000,
+      "files": ["{\"package\":\"example.widget\",\"version\":\"1.0.0\"}"],
+      "designs": [
+        null,
+        null,
+        null,
+        {
+          "layout": { "w": 120, "h": 40 },
+          "source": { "format": "example.widget/1", "data": { "colour": "#ff8800" }, "deps": ["sha256:88226416b4bb8baa201e8d28b3b9eb72a4e8743b4bd7f53d15d7665d92f8368a"] },
+          "scene": { "format": "infopanel.scene/1", "inputs": { "v": { "type": "number" } }, "nodes": [{ "kind": "rect", "w": { "op": "input", "name": "v" }, "h": 10, "fill": "#ff8800" }] },
+          "origin": { "kind": "local" }
+        }
+      ]
+    },
     "cancel": { "type": "cancel", "id": "c2" }
   }
 }

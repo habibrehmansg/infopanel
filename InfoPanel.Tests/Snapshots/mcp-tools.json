@@ -187,13 +187,13 @@
           },
           "x": {
             "type": "number",
-            "description": "The item's left edge on the canvas, in pixels (0 when absent).",
+            "description": "The item's left edge in pixels: on the canvas, or from its group's x in a group (0 when absent).",
             "minimum": -100000,
             "maximum": 100000
           },
           "y": {
             "type": "number",
-            "description": "The item's top edge on the canvas, in pixels (0 when absent).",
+            "description": "The item's top edge in pixels: on the canvas, or from its group's y in a group (0 when absent).",
             "minimum": -100000,
             "maximum": 100000
           },
@@ -258,7 +258,7 @@
           },
           "items": {
             "type": "array",
-            "description": "The items, in order, each as add_item takes one (without profile): 1 to 50.",
+            "description": "The items, in order, each as add_item takes one (without profile), or a group of items (children): 1 to 50, a group's children counted.",
             "minItems": 1,
             "maxItems": 50,
             "items": {
@@ -270,13 +270,13 @@
                 },
                 "x": {
                   "type": "number",
-                  "description": "The item's left edge on the canvas, in pixels (0 when absent).",
+                  "description": "The item's left edge in pixels: on the canvas, or from its group's x in a group (0 when absent).",
                   "minimum": -100000,
                   "maximum": 100000
                 },
                 "y": {
                   "type": "number",
-                  "description": "The item's top edge on the canvas, in pixels (0 when absent).",
+                  "description": "The item's top edge in pixels: on the canvas, or from its group's y in a group (0 when absent).",
                   "minimum": -100000,
                   "maximum": 100000
                 },
@@ -313,11 +313,62 @@
                   "description": "Where among its siblings, 0 first (the end, drawn on top, when absent).",
                   "minimum": 0,
                   "maximum": 2000
+                },
+                "children": {
+                  "type": "array",
+                  "description": "Makes this entry a group of these items, in drawing order: 0 to 50, each as an item here but without group, index or children; their x, y are from the group's x, y. A group takes name, x, y, group and index, never scene, width, height or bindings.",
+                  "minItems": 0,
+                  "maxItems": 50,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "scene": {
+                        "type": "object",
+                        "description": "The item's scene (format infopanel.scene/1): get_design_guide topic scenes has the format."
+                      },
+                      "x": {
+                        "type": "number",
+                        "description": "The item's left edge in pixels: on the canvas, or from its group's x in a group (0 when absent).",
+                        "minimum": -100000,
+                        "maximum": 100000
+                      },
+                      "y": {
+                        "type": "number",
+                        "description": "The item's top edge in pixels: on the canvas, or from its group's y in a group (0 when absent).",
+                        "minimum": -100000,
+                        "maximum": 100000
+                      },
+                      "width": {
+                        "type": "number",
+                        "description": "The item's layout box width, for a scene that reads its box.",
+                        "minimum": 0,
+                        "maximum": 100000
+                      },
+                      "height": {
+                        "type": "number",
+                        "description": "The item's layout box height, for a scene that reads its box.",
+                        "minimum": 0,
+                        "maximum": 100000
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "The item's name, as the editor's layers show it.",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "bindings": {
+                        "type": "object",
+                        "description": "The scene's inputs bound to sensors: input name to a sensor key from list_sensors, or to {\"key\", \"stat\"}."
+                      }
+                    },
+                    "required": [
+                      "scene"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
-              "required": [
-                "scene"
-              ],
+              "required": [],
               "additionalProperties": false
             }
           }
@@ -399,6 +450,18 @@
           "visible": {
             "type": "boolean",
             "description": "Shown (true) or hidden (false)."
+          },
+          "group": {
+            "type": "string",
+            "description": "A group's id or exact name to move it into, at the end unless index says where; \"\" moves it to the top level. Its x, y stay as numbers, read from its new group's x, y: give x, y with it to place it.",
+            "minLength": 0,
+            "maxLength": 256
+          },
+          "index": {
+            "type": "integer",
+            "description": "Its place among its siblings, 0 first (at the back); past the last (2000): the end, on top. Alone, it reorders it in its group or the top level.",
+            "minimum": 0,
+            "maximum": 2000
           }
         },
         "required": [

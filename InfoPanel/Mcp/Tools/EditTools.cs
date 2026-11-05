@@ -180,7 +180,8 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
     /// and rebuilds, as a commit's does, and any other refusal is the call's error, with nothing written. A design's files
     /// are stored there, so a refused insertion leaves none stored; the commit asks the rule again on what it finds.
     /// <paramref name="isStale"/>, when given, picks out a conflict on a design's own op (the precheck's or a commit's):
-    /// that answers <see cref="Stale"/> at once, with nothing changed and no retry.
+    /// that answers <see cref="Stale"/> at once, with nothing changed and no retry. A build with no ops writes nothing
+    /// (no commit, no undo step) and answers unchanged.
     /// </remarks>
     public ToolChange Apply(string tool, FoundProfile found, McpCall call, Func<DocumentState, JsonArray> build, Action? beforeWrites,
         Func<ConflictProblem, bool>? isStale = null)
@@ -204,6 +205,24 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
                 state = document.Read();
                 Step("read");
                 var ops = build(state);
+                if (ops.Count == 0)
+                {
+                    // Nothing to write (all already as asked, seen on the document as read): no commit, no undo step. The
+                    // document must still be the workspace's open one for its id (a deleted one keeps its instance, and a
+                    // new one under the same id is another document): otherwise notFound, as the commit path answers.
+                    if (!workspace.IsOpen(document))
+                        throw attempt == 0 ? Gone(profile) : Replaced(profile);
+                    found.IsStill();
+                    var unchanged = new CommitResult
+                    {
+                        Rev = state.Generation.Rev,
+                        Items = new Dictionary<string, long>(),
+                        Dirty = state.Dirty,
+                        CanUndo = state.CanUndo,
+                        CanRedo = state.CanRedo,
+                    };
+                    return new ToolChange(document, state.Document.Profile.Name, unchanged, false, "");
+                }
                 var body = new JsonObject
                 {
                     ["opId"] = Guid.NewGuid().ToString("N"),
@@ -377,7 +396,8 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
     }
 
     /// <summary>Bindings as the tool takes them (input → a sensor key, or <c>{key, stat}</c>) as the document holds them.</summary>
-    public static JsonObject Bindings(JsonObject given)
+    /// <param name="at">The item's path in the call (<c>items/2/children/0</c>), which a refusal names; none for a single item.</param>
+    public static JsonObject Bindings(JsonObject given, string? at = null)
     {
         var bindings = new JsonObject();
         foreach (var (input, value) in given)
@@ -386,7 +406,7 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
             {
                 JsonValue text when text.TryGetValue<string>(out var key) => new JsonObject { ["key"] = key },
                 JsonObject binding => binding.DeepClone(),
-                _ => throw new ToolFailure("arguments", $"The binding for {input} must be a sensor key (text, from list_sensors) or {{\"key\", \"stat\"}} (arguments)."),
+                _ => throw new ToolFailure("arguments", $"{(at is null ? $"The binding for {input}" : $"{at}/bindings/{input}")} must be a sensor key (text, from list_sensors) or {{\"key\", \"stat\"}} (arguments)."),
             };
         }
         return bindings;
@@ -492,18 +512,35 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
     internal static (string Name, JsonObject Schema, bool Required)[] ItemMembers() =>
     [
         ("scene", Object("The item's scene (format infopanel.scene/1): get_design_guide topic scenes has the format."), true),
-        ("x", Number("The item's left edge on the canvas, in pixels (0 when absent).", -MaxCoordinate, MaxCoordinate), false),
-        ("y", Number("The item's top edge on the canvas, in pixels (0 when absent).", -MaxCoordinate, MaxCoordinate), false),
+        ("x", Number("The item's left edge in pixels: on the canvas, or from its group's x in a group (0 when absent).", -MaxCoordinate, MaxCoordinate), false),
+        ("y", Number("The item's top edge in pixels: on the canvas, or from its group's y in a group (0 when absent).", -MaxCoordinate, MaxCoordinate), false),
         ("width", Number("The item's layout box width, for a scene that reads its box.", 0, MaxCoordinate), false),
         ("height", Number("The item's layout box height, for a scene that reads its box.", 0, MaxCoordinate), false),
         ("name", String("The item's name, as the editor's layers show it."), false),
         ("bindings", Object("The scene's inputs bound to sensors: input name to a sensor key from list_sensors, or to {\"key\", \"stat\"}."), false),
         ("group", String("A group's id or exact name to add the item into (the top level when absent)."), false),
-        ("index", Integer("Where among its siblings, 0 first (the end, drawn on top, when absent).", 0, 2000), false),
+        ("index", Integer("Where among its siblings, 0 first (the end, drawn on top, when absent).", 0, MaxIndex), false),
     ];
 
-    /// <summary>An item's schema as add_items' list takes it: <see cref="ItemMembers"/>, closed.</summary>
-    internal static JsonObject ItemSchema() => Schema(ItemMembers());
+    /// <summary>The largest place among siblings a tool takes: the document's item limit; past the last is the end.</summary>
+    public const int MaxIndex = 2000;
+
+    /// <summary>
+    /// An entry of add_items' list: an item as <see cref="ItemMembers"/> (its scene not required, a design or a group's
+    /// children may stand for it, checked by the tool), or a group: <c>children</c>, each a <see cref="ChildSchema"/>.
+    /// </summary>
+    internal static JsonObject EntrySchema() => Schema(
+    [
+        .. ItemMembers().Select(m => m.Name == "scene" ? m with { Required = false } : m),
+        ("children", List($"Makes this entry a group of these items, in drawing order: 0 to {AddItemsTool.MaxItems}, each as an item here but without group, index or children; " +
+            "their x, y are from the group's x, y. A group takes name, x, y, group and index, never scene, width, height or bindings.", 0, AddItemsTool.MaxItems, ChildSchema()), false),
+    ]);
+
+    /// <summary>A group entry's child: an item as <see cref="ItemMembers"/>, without <c>group</c> or <c>index</c>, closed.</summary>
+    internal static JsonObject ChildSchema() => Schema([.. ItemMembers().Where(m => m.Name is not ("group" or "index"))]);
+
+    internal static ToolFailure NotAGroup(Item item) =>
+        new("notAGroup", $"{ItemNames.Label(item)} isn't a group (notAGroup): an item goes into a group or the top level.");
 
     public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
     {
@@ -527,7 +564,7 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
         var change = changes.Apply(Name, profile, arguments.Call, state =>
         {
             id = ProfileChanges.NewItemId(state.Document);
-            return [Insert(arguments, design, state.Document, group, id)];
+            return [Insert(SceneItem(arguments, design, id), arguments, state.Document, group)];
         }, files is null ? null : () => Designs.Store(changes, arguments.Call, files));
 
         var label = arguments.String("name") is { } n ? $"\"{n}\" ({id})" : id;
@@ -536,12 +573,10 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
     }
 
     /// <summary>
-    /// The <c>insert</c> op for one item as <paramref name="arguments"/> give it (<see cref="ItemMembers"/>), the new id
-    /// <paramref name="id"/>: the design's box, scene, source and origin when it has <paramref name="design"/>, else the
-    /// scene and box given; into <paramref name="group"/>'s group when given.
+    /// The scene item <paramref name="arguments"/> give (<see cref="ItemMembers"/>), the new id <paramref name="id"/>: the
+    /// design's box, scene, source and origin when it has <paramref name="design"/>, else the scene and box given.
     /// </summary>
-    /// <exception cref="ToolFailure">The group isn't there (<c>notFound</c>, <c>ambiguous</c>) or isn't a group (<c>notAGroup</c>).</exception>
-    internal static JsonObject Insert(ToolArguments arguments, JsonObject? design, Document document, PinnedItem? group, string id)
+    internal static JsonObject SceneItem(ToolArguments arguments, JsonObject? design, string id)
     {
         var item = new JsonObject
         {
@@ -579,13 +614,22 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
         {
             item["scene"] = arguments.Object("scene");
         }
+        return item;
+    }
 
+    /// <summary>
+    /// The <c>insert</c> op for <paramref name="item"/> (a scene item, or a group with its children), into
+    /// <paramref name="group"/>'s group when given, at <paramref name="arguments"/>' index when given.
+    /// </summary>
+    /// <exception cref="ToolFailure">The group isn't there (<c>notFound</c>, <c>ambiguous</c>) or isn't a group (<c>notAGroup</c>).</exception>
+    internal static JsonObject Insert(JsonObject item, ToolArguments arguments, Document document, PinnedItem? group)
+    {
         var op = new JsonObject { ["op"] = "insert", ["item"] = item };
         if (group != null)
         {
             var parent = group.Find(document);
             if (parent is not GroupItem)
-                throw new ToolFailure("notAGroup", $"{ItemNames.Label(parent)} isn't a group (notAGroup): an item goes into a group or the top level.");
+                throw NotAGroup(parent);
             op["parentId"] = parent.Id;
         }
         if (arguments.Integer("index") is { } index)
@@ -595,15 +639,16 @@ public sealed class AddItemTool(ProfileChanges changes) : McpTool
 }
 
 /// <summary>
-/// <c>add_items</c>: up to <see cref="MaxItems"/> items, each as <c>add_item</c> adds one, inserted in one commit and one
-/// undo step, all or nothing. From elsewhere (docs/2.0/relay.md, "Designs"), the call's designs give a design per item in
-/// order (null for an item given as a scene), all checked at once before anything is stored.
+/// <c>add_items</c>: up to <see cref="MaxItems"/> items, each as <c>add_item</c> adds one, or a group of them (an entry with
+/// <c>children</c>, each child counted), inserted in one commit and one undo step, all or nothing. From elsewhere
+/// (docs/2.0/relay.md, "Designs"), the call's designs give a design per entry and per child in order, a group's children
+/// right after it (null for an item given as a scene and for a group), all checked at once before anything is stored.
 /// </summary>
 public sealed class AddItemsTool(ProfileChanges changes) : McpTool
 {
     public const string ToolName = "add_items";
 
-    /// <summary>The most items one call adds.</summary>
+    /// <summary>The most items one call adds, a group's children counted.</summary>
     public const int MaxItems = 50;
 
     public override string Name => ToolName;
@@ -611,26 +656,89 @@ public sealed class AddItemsTool(ProfileChanges changes) : McpTool
     public override string Title => "Add items";
     public override JsonObject InputSchema => Schema(
         ("profile", String("The profile's id or exact name."), true),
-        ("items", List($"The items, in order, each as add_item takes one (without profile): 1 to {MaxItems}.", 1, MaxItems, AddItemTool.ItemSchema()), true));
+        ("items", List($"The items, in order, each as add_item takes one (without profile), or a group of items (children): 1 to {MaxItems}, a group's children counted.",
+            1, MaxItems, AddItemTool.EntrySchema()), true));
+
+    /// <summary>What a group entry doesn't take: its children draw, it has no scene, box or bindings of its own.</summary>
+    private static readonly string[] GroupTakesNot = ["scene", "width", "height", "bindings"];
+
+    /// <summary>An entry's children as given (a group's), else none.</summary>
+    private static IReadOnlyList<JsonElement> ChildrenOf(JsonElement entry) =>
+        entry.ValueKind == JsonValueKind.Object && entry.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array
+            ? [.. children.EnumerateArray()]
+            : [];
+
+    /// <summary>An item's bindings as its insert converts them, checked with the arguments so a refusal names its path.</summary>
+    /// <exception cref="ToolFailure"><c>arguments</c>: a binding that is neither a sensor key nor {key, stat}.</exception>
+    private static void CheckBindings(ToolArguments item, string at)
+    {
+        if (item.Object("bindings") is { } bindings)
+            ProfileChanges.Bindings(bindings, at);
+    }
+
+    /// <summary>A checked entry: its arguments and design, and for a group its children's.</summary>
+    private sealed record Entry(ToolArguments Item, JsonObject? Design, List<(ToolArguments Item, JsonObject? Design)>? Children);
 
     public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
     {
         var elements = arguments.List("items")!;
+        // Every entry and every child is an item: the cap and the designs count them all, a group's children right after it.
+        var slots = new int[elements.Count];
+        var count = 0;
+        for (var i = 0; i < elements.Count; i++)
+        {
+            slots[i] = count;
+            count += 1 + ChildrenOf(elements[i]).Count;
+        }
+        if (count > MaxItems)
+            throw new ToolFailure("arguments", $"Too many items (arguments): add_items takes at most {MaxItems} items in a call, a group's children counted: these are {count}. Send the rest in another call. Nothing was changed.");
         var designs = arguments.Call.Designs;
-        if (designs is not null && designs.Count != elements.Count)
-            throw new ToolFailure("design", $"add_items brought {designs.Count} designs for {elements.Count} items (design): one per item, null for an item given as a scene. Nothing was stored or changed.");
+        if (designs is not null && designs.Count != count)
+            throw new ToolFailure("design", $"add_items brought {designs.Count} designs for {count} items (design): one per item and per child of a group, in order, null for an item given as a scene and for a group. Nothing was stored or changed.");
 
         // Each item's arguments as add_item checks them; a design stands for its item's scene and box.
-        var schema = AddItemTool.ItemSchema();
-        var items = new List<ToolArguments>();
+        var entrySchema = AddItemTool.EntrySchema();
+        var childSchema = AddItemTool.ChildSchema();
+        var items = new List<Entry>();
         var problems = new List<string>();
         for (var i = 0; i < elements.Count; i++)
         {
+            var design = designs?[slots[i]];
             try
             {
-                items.Add(ToolArguments.Check($"item {i}", schema, elements[i], designs?[i] is null ? null : RelayFrames.DesignGives).For(arguments.Call));
+                var item = ToolArguments.Check($"item {i}", entrySchema, elements[i], design is null ? null : RelayFrames.DesignGives).For(arguments.Call);
+                if (!item.Has("children"))
+                {
+                    if (design is null && !item.Has("scene"))
+                        problems.Add($"item {i} needs scene, or children for a group.");
+                    CheckBindings(item, $"items/{i}");
+                    items.Add(new Entry(item, design, null));
+                    continue;
+                }
+
+                if (design is not null)
+                    throw new ToolFailure("design", $"add_items brought a design for item {i}, a group (design): a group's is null, its children's follow it. Nothing was stored or changed.");
+                if (GroupTakesNot.Any(item.Has))
+                    problems.Add($"item {i} is a group (children): give scene, width, height and bindings to its children.");
+                var children = new List<(ToolArguments, JsonObject?)>();
+                var given = ChildrenOf(elements[i]);
+                for (var k = 0; k < given.Count; k++)
+                {
+                    var childDesign = designs?[slots[i] + 1 + k];
+                    try
+                    {
+                        var child = ToolArguments.Check($"items/{i}/children/{k}", childSchema, given[k], childDesign is null ? null : RelayFrames.DesignGives).For(arguments.Call);
+                        CheckBindings(child, $"items/{i}/children/{k}");
+                        children.Add((child, childDesign));
+                    }
+                    catch (ToolFailure failure) when (failure.Code == "arguments")
+                    {
+                        problems.Add(failure.Message);
+                    }
+                }
+                items.Add(new Entry(item, null, children));
             }
-            catch (ToolFailure failure)
+            catch (ToolFailure failure) when (failure.Code == "arguments")
             {
                 problems.Add(failure.Message);
             }
@@ -651,21 +759,49 @@ public sealed class AddItemsTool(ProfileChanges changes) : McpTool
             changes.Step("preflight");
         }
 
-        var groups = items.Select(a => a.String("group") is { } wanted ? new PinnedItem(wanted) : null).ToList();
+        var groups = items.Select(e => e.Item.String("group") is { } wanted ? new PinnedItem(wanted) : null).ToList();
         var ids = new string[items.Count];
+        var childIds = new string[items.Count][];
         var change = changes.Apply(Name, profile, arguments.Call, state =>
         {
             var taken = new HashSet<string>(StringComparer.Ordinal);
             var ops = new JsonArray();
             for (var i = 0; i < items.Count; i++)
             {
+                var (item, design, children) = items[i];
                 ids[i] = ProfileChanges.NewItemId(state.Document, taken);
-                ops.Add(AddItemTool.Insert(items[i], designs?[i], state.Document, groups[i], ids[i]));
+                if (children is null)
+                {
+                    ops.Add(AddItemTool.Insert(AddItemTool.SceneItem(item, design, ids[i]), item, state.Document, groups[i]));
+                    continue;
+                }
+
+                // A group with its children inline, one insert: the commit's paths into it (/ops/i/item/children/k/…)
+                // read as the arguments name them (items/i/children/k/…).
+                childIds[i] = new string[children.Count];
+                var inline = new JsonArray();
+                for (var k = 0; k < children.Count; k++)
+                {
+                    childIds[i][k] = ProfileChanges.NewItemId(state.Document, taken);
+                    inline.Add(AddItemTool.SceneItem(children[k].Item, children[k].Design, childIds[i][k]));
+                }
+                var group = new JsonObject { ["kind"] = "group", ["id"] = ids[i] };
+                if (item.String("name") is { } name)
+                    group["name"] = name;
+                group["placement"] = new JsonObject { ["x"] = item.Double("x") ?? 0, ["y"] = item.Double("y") ?? 0 };
+                group["children"] = inline;
+                ops.Add(AddItemTool.Insert(group, item, state.Document, groups[i]));
             }
             return ops;
         }, files is null ? null : () => Designs.Store(changes, arguments.Call, files));
 
-        var labels = items.Select((a, i) => a.String("name") is { } n ? $"\"{n}\" ({ids[i]})" : ids[i]);
+        static string Label(ToolArguments item, string id, string? more = null) =>
+            item.String("name") is { } n ? $"\"{n}\" ({id}{more})" : more is null ? id : $"{id} ({more[2..]})";
+        var labels = items.Select((e, i) => e.Children is not { } children
+            ? Label(e.Item, ids[i])
+            : Label(e.Item, ids[i], children.Count == 0
+                ? ", an empty group"
+                : $", a group of {children.Count}: {string.Join(", ", children.Select((c, k) => Label(c.Item, childIds[i][k])))}"));
         return Task.FromResult(ToolResult.Text(
             $"Added {items.Count} items to {change.Name} in one change: {string.Join(", ", labels)}.{ProfileChanges.Warnings(change.Result)} {change.Saving}"));
     }
@@ -688,9 +824,21 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
         ("height", Number("Its layout box height.", 0, AddItemTool.MaxCoordinate), false),
         ("bindings", Object("Its sensor bindings, replaced whole: input name to a sensor key, or to {\"key\", \"stat\"}."), false),
         ("name", String("Its new name."), false),
-        ("visible", Boolean("Shown (true) or hidden (false)."), false));
+        ("visible", Boolean("Shown (true) or hidden (false)."), false),
+        ("group", GroupMember(), false),
+        ("index", Integer($"Its place among its siblings, 0 first (at the back); past the last ({AddItemTool.MaxIndex}): the end, on top. Alone, it reorders it in its group or the top level.",
+            0, AddItemTool.MaxIndex), false));
 
-    private static readonly string[] Changes = ["scene", "x", "y", "rotation", "width", "height", "bindings", "name", "visible"];
+    /// <summary><c>group</c>: a group's id or name, or empty for the top level.</summary>
+    private static JsonObject GroupMember()
+    {
+        var member = String("A group's id or exact name to move it into, at the end unless index says where; \"\" moves it to the top level. " +
+            "Its x, y stay as numbers, read from its new group's x, y: give x, y with it to place it.");
+        member["minLength"] = 0;
+        return member;
+    }
+
+    private static readonly string[] Changes = ["scene", "x", "y", "rotation", "width", "height", "bindings", "name", "visible", "group", "index"];
 
     public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
     {
@@ -706,6 +854,7 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
 
         string? label = null;
         var pinned = new PinnedItem(arguments.String("item")!);
+        var into = arguments.String("group") is { Length: > 0 } wanted ? new PinnedItem(wanted) : null;
         // Found once, before anything else: the change goes to this document, a design's only while the name still names
         // it (a rename away and back included), as add_item's.
         var profile = FoundProfile.Find(changes.Workspace, arguments.String("profile")!, holdName: brought is not null);
@@ -753,7 +902,7 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
 
             var design = arguments.Has("scene") || arguments.Has("width") || arguments.Has("height");
             if ((design || arguments.Has("bindings")) && item is not SceneItem)
-                throw new ToolFailure("op.target", $"{label} is a group (op.target): only x, y, rotation, name and visible change a group.");
+                throw new ToolFailure("op.target", $"{label} is a group (op.target): only x, y, rotation, name, visible, group and index change a group.");
             if (design && item is SceneItem scene)
             {
                 var op = new JsonObject { ["op"] = "setDesign", ["id"] = item.Id, ["baseRev"] = rev };
@@ -789,12 +938,64 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
                     set["visible"] = visible;
                 ops.Add(new JsonObject { ["op"] = "setAttributes", ["id"] = item.Id, ["baseRev"] = rev, ["set"] = set });
             }
+
+            // Last, after its placement is set: the move, which keeps the placement's numbers (now read in the new parent).
+            if ((arguments.Has("group") || arguments.Has("index")) && Move(state.Document, item, into, arguments, rev, ItemNames.Label(item)) is { } move)
+                ops.Add(move);
             return ops;
         }, files is null ? null : () => Designs.Store(changes, arguments.Call, files),
             conflict => designOp >= 0 && conflict.Conflicts.Any(c => c.Op == designOp));
 
         var what = change.Changed ? $"Changed {label} in {change.Name}.{ProfileChanges.Warnings(change.Result)} {change.Saving}" : $"{label} already was as asked: nothing changed.";
         return Task.FromResult(ToolResult.Text(what));
+    }
+
+    /// <summary>
+    /// The <c>move</c> op for <paramref name="item"/>: into <paramref name="into"/>'s group, to the top level for an empty
+    /// <c>group</c>, else within its parent; at the index given, else the end. Its own parent without an index is no move
+    /// (null): no reorder by accident, nor a place read before a sibling was inserted. A group into itself or a group
+    /// inside it is refused here, in words.
+    /// </summary>
+    /// <exception cref="ToolFailure"><c>notFound</c>, <c>ambiguous</c>, <c>notAGroup</c>, <c>op.cycle</c>.</exception>
+    private static JsonObject? Move(Document document, Item item, PinnedItem? into, ToolArguments arguments, long rev, string label)
+    {
+        var (parent, _) = PositionOf(document.Items, null, item.Id)!.Value;
+        var target = parent?.Id;
+        if (into is not null)
+        {
+            var group = into.Find(document);
+            if (group is not GroupItem)
+                throw AddItemTool.NotAGroup(group);
+            if (group.Id == item.Id || (item is GroupItem moved && ItemNames.Flatten(moved.Children).Any(c => c.Id == group.Id)))
+                throw new ToolFailure("op.cycle", $"{label} can't go into itself or a group inside it (op.cycle): nothing was changed.");
+            target = group.Id;
+        }
+        else if (arguments.Has("group"))
+        {
+            target = null; // "": the top level
+        }
+
+        var index = arguments.Integer("index");
+        if (index is null && target == parent?.Id)
+            return null;
+        var move = new JsonObject { ["op"] = "move", ["id"] = item.Id, ["baseRev"] = rev };
+        if (target is not null)
+            move["parentId"] = target;
+        move["index"] = index ?? AddItemTool.MaxIndex;
+        return move;
+    }
+
+    /// <summary>The group holding item <paramref name="id"/> (null at the top level) and its place there.</summary>
+    private static (GroupItem? Parent, int Index)? PositionOf(IReadOnlyList<Item> items, GroupItem? parent, string id)
+    {
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (items[i].Id == id)
+                return (parent, i);
+            if (items[i] is GroupItem group && PositionOf(group.Children, group, id) is { } found)
+                return found;
+        }
+        return null;
     }
 }
 

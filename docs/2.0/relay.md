@@ -140,8 +140,9 @@ with the texts its `source` needs stored. The engine checks it as any item the A
   (24 hours after they were stored, [API](../../spec/docs/api.md)); the item isn't added or changed.
 
 **Adding items by designs.** `add_items` adds up to 50 items in one commit and one undo step, all or nothing, each as
-`add_item` adds one; from elsewhere, `designs` gives a design per item of its `items`, in order, `null` for an item
-given as a `scene`:
+`add_item` adds one, or as a group of them (an entry with `children`, each child counted among the 50); from elsewhere,
+`designs` gives a design per item of its `items`, in order, a group's children right after the group, `null` for an
+item given as a `scene` and for a group:
 
 ```jsonc
 {"type":"call","id":…,"tool":"add_items","arguments":{"profile":"Overview","items":[{"x":10,"y":20},{"x":10,"y":70,"scene":{…}}]},"sentAt":…,"deadline":…,
@@ -149,13 +150,15 @@ given as a `scene`:
  "designs":[{"layout":{…},"source":{…},"scene":{…},"origin":{…}},null]}
 ```
 
-- `designs` is a list as long as `items`, each a design (as above) or `null`, never beside `design`; an item with a
-  design holds no `scene`, `width` or `height`. Anything else is `malformed`.
+- `designs` is a list as long as `items` and their `children` together, each a design (as above) or `null`, never
+  beside `design`; an item or a child with a design holds no `scene`, `width` or `height`. Anything else is
+  `malformed`. A design for a group is the tool's error result, `design`.
 - The files and every design are checked together before anything is written, as one design's are (at most 16 files
   in all; each file a dep of some design), then the insertion of every item is checked against the profile, then the
   files are stored, then the items are inserted in one commit behind the cutoff, with the profile held as for
   `add_item`. One item refused (its arguments, its group, its design, or the engine's checks, which name it as
-  `items/‹its place›/…`) refuses the call whole: nothing is stored or changed.
+  `items/‹its place›/…`, a child `items/‹its group's place›/children/‹its place›/…`) refuses the call whole: nothing
+  is stored or changed.
 
 **Reading an item.** A `read` names a profile and an item, each by id or exact name, as `get_profile` does. The answer,
 `item`, holds the ids it resolved (`profile`, and the item's own `id`), the document's tag (`instance`) and revision

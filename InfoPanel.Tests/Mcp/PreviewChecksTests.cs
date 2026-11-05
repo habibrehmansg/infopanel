@@ -220,6 +220,29 @@ public sealed class PreviewChecksTests
     }
 
     /// <summary>
+    /// A chip set on its card's top edge, half above it: the same overlap whether the two are at the top level or in one
+    /// group (the group at the card's place, their x, y from it). Grouping items doesn't clear what their drawings do.
+    /// </summary>
+    [Fact]
+    public async Task AChipStraddlingItsCardsEdge_IsTheSameOverlap_FlatOrInAGroup()
+    {
+        using var factory = new EngineFactory();
+        JsonObject Card(double x, double y) => Item("Card", x, y, Rect(200, 100, "#202020"));
+        JsonObject Chip(double x, double y) => Item("Chip", x, y, Rect(60, 20, "#ff9fd0"));
+        var flat = await Checks(factory, Doc(600, 300, "#000000", Card(100, 100), Chip(120, 90)));
+        var pane = TestDocs.Group("pane", Card(0, 0), Chip(20, -10));
+        pane["name"] = "Pane";
+        pane["placement"] = new JsonObject { ["x"] = 100, ["y"] = 100 };
+        var grouped = await Checks(factory, Doc(600, 300, "#000000", pane));
+
+        var line = LineAbout(flat, "Card");
+        Assert.Contains("\"Chip\"", line);
+        Assert.Contains("50 % of the smaller", line);
+        Assert.Equal(line, LineAbout(grouped, "Card"));
+        Assert.Equal("", LineAbout(grouped, "Pane"));
+    }
+
+    /// <summary>
     /// A glow drawn as a blurred copy of the text under it (12 px: it reaches 36 px) and one drawn as a glow effect:
     /// neither is the text's extent (not past the canvas, not overlapping the items it reaches) nor text to read (the
     /// copy's contrast isn't measured); the text itself is measured against what is under it, and a dim one still fails.

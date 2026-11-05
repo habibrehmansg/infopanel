@@ -235,6 +235,90 @@ public sealed class RelayAddItemsTests
     }
 
     /// <summary>
+    /// A group entry's children take designs too: one per entry and per child in order, a group's children right after it,
+    /// <c>null</c> for the group and for an item given as a scene. Each child's design lands on it, inside the group, in
+    /// one commit.
+    /// </summary>
+    [Fact]
+    public async Task Designs_ForAGroupsChildren_FollowTheGroup_InOrder_AndLandOnEachChild()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var workspace = WorkspaceOf(factory);
+        var document = P(workspace);
+        var rev = document.Rev;
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        JsonArray items =
+        [
+            new JsonObject { ["name"] = "Item 0", ["scene"] = TestDocs.Rect() },
+            new JsonObject
+            {
+                ["name"] = "Item 1",
+                ["x"] = 20,
+                ["y"] = 30,
+                ["children"] = new JsonArray(
+                    new JsonObject { ["name"] = "Item 1.0", ["x"] = 1 },
+                    new JsonObject { ["name"] = "Item 1.1", ["scene"] = TestDocs.Rect() },
+                    new JsonObject { ["name"] = "Item 1.2", ["x"] = 3, ["bindings"] = new JsonObject { ["v"] = "plugin:/infopanel.mock/cpu/cpu-load" } }),
+            },
+            new JsonObject { ["name"] = "Item 2" },
+        ];
+        var first = RelayDesignTests.Design(IdOf(Package));
+        var third = RelayDesignTests.Design(IdOf(Package), IdOf(Second));
+        third["layout"] = new JsonObject { ["w"] = 33, ["h"] = 11 };
+        var last = RelayDesignTests.Design(IdOf(Package));
+        last["layout"] = new JsonObject { ["w"] = 77, ["h"] = 7 };
+        await peer.SendAsync(AddItems(rig, "g", items, [null, null, first.DeepClone(), null, third.DeepClone(), last.DeepClone()], [Package, Second]));
+        var (text, error) = await ResultAsync(peer);
+        Assert.False(error, text);
+
+        Assert.Equal(rev + 1, document.Rev);
+        Assert.Equal(["Item 0", "Item 1", "Item 1.0", "Item 1.1", "Item 1.2", "Item 2"], Names(document));
+        var group = Assert.IsType<GroupItem>(document.Read().Document.Items.Single(i => i.Name == "Item 1"));
+        Assert.Equal((20d, 30d), (group.Placement.X, group.Placement.Y));
+        JsonNode Stored(Item item) => JsonSerializer.SerializeToNode(item, SpecJson.Options)!;
+        foreach (var (child, design) in new[] { (group.Children[0], first), (group.Children[2], third) })
+        {
+            Assert.True(JsonNode.DeepEquals(design["source"], Stored(child)["source"]), $"{child.Name}: {Stored(child)["source"]?.ToJsonString()}");
+            Assert.True(JsonNode.DeepEquals(design["layout"], Stored(child)["layout"]), $"{child.Name}: {Stored(child)["layout"]?.ToJsonString()}");
+        }
+        Assert.Null(Stored(group.Children[1])["source"]);
+        Assert.Equal("plugin:/infopanel.mock/cpu/cpu-load", Assert.IsType<SceneItem>(group.Children[2]).Bindings!["v"].Key);
+        Assert.True(JsonNode.DeepEquals(last["layout"], Stored(document.Read().Document.Items.Single(i => i.Name == "Item 2"))["layout"]));
+        Assert.True(workspace.Blobs.Exists(IdOf(Second)));
+    }
+
+    /// <summary>
+    /// A design for a group refuses the call (<c>design</c>): a group has no scene. Designs counted without a group's
+    /// children don't match the items: the frame is <c>malformed</c>. Nothing is stored or changed.
+    /// </summary>
+    [Fact]
+    public async Task ADesignForAGroup_OrDesignsNotCountingItsChildren_AreRefused_NothingStored()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var workspace = WorkspaceOf(factory);
+        var written = engine.Written();
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        JsonArray Items() => [new JsonObject { ["name"] = "Item 0", ["children"] = new JsonArray(new JsonObject { ["name"] = "Item 0.0" }) }];
+        await peer.SendAsync(AddItems(rig, "group", Items(), [RelayDesignTests.Design(IdOf(Package)), RelayDesignTests.Design(IdOf(Package))], [Package]));
+        var (text, error) = await ResultAsync(peer);
+        Assert.True(error, text);
+        Assert.Contains("(design)", text);
+        Assert.Contains("item 0, a group", text);
+
+        await peer.SendAsync(AddItems(rig, "short", Items(), [RelayDesignTests.Design(IdOf(Package))], [Package]));
+        Assert.Equal("""{"type":"error","code":"malformed","id":"short"}""", (await peer.NextAsync(Ct)).ToJsonString());
+
+        Assert.False(workspace.Blobs.Exists(IdOf(Package)));
+        Assert.Equal(written, engine.Written());
+    }
+
+    /// <summary>
     /// <c>designs</c> belongs to <c>add_items</c> and <c>design</c> to <c>add_item</c> and <c>update_item</c>: either on
     /// the other's tool is an error result, <c>design</c>, nothing stored or changed.
     /// </summary>

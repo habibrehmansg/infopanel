@@ -104,6 +104,38 @@ public sealed class RelayUpdateDesignTests
         Assert.Equal(("Gauge", 5d), (back.Name, back.Placement.X));
     }
 
+    /// <summary>A design with <c>group</c> and <c>index</c>: the design set, then the move, in one commit and one undo step.</summary>
+    [Fact]
+    public async Task ADesign_WithAGroupAndIndex_IsSetAndMoved_InOneCommit()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var workspace = WorkspaceOf(factory);
+        var document = P(workspace);
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+        TestDocs.Commit(document, TestDocs.Insert(TestDocs.Group("card", TestDocs.Scene("x1"))));
+        var gauge = await AddGaugeAsync(rig, peer, document);
+        var rev = document.Rev;
+
+        var design = Restyle(BasedOn(document, gauge));
+        await peer.SendAsync(Update(rig, "u", new JsonObject { ["profile"] = "P", ["item"] = gauge, ["group"] = "card", ["index"] = 0 }, design));
+        var result = (await peer.ExpectAsync("result", Ct))["result"]!;
+        Assert.False(result["isError"]!.GetValue<bool>(), result.ToJsonString());
+
+        Assert.Equal(rev + 1, document.Rev);
+        var card = Assert.IsType<GroupItem>(document.Read().Document.Items.Single(i => i.Id == "card"));
+        Assert.Equal([gauge, "x1"], card.Children.Select(c => c.Id));
+        var stored = JsonSerializer.SerializeToNode(card.Children[0], SpecJson.Options)!;
+        Assert.True(JsonNode.DeepEquals(design["source"], stored["source"]), stored["source"]?.ToJsonString());
+        Assert.Equal(5d, card.Children[0].Placement.X); // its numbers kept
+
+        // One undo step takes back both.
+        Assert.NotNull(document.Undo(new HistoryRequest { Instance = document.Instance, BaseRev = document.Rev }).Result);
+        Assert.Contains(document.Read().Document.Items, i => i.Id == gauge);
+        Assert.Equal(["x1"], ((GroupItem)document.Read().Document.Items.Single(i => i.Id == "card")).Children.Select(c => c.Id));
+    }
+
     public static TheoryData<string> Elsewhere() => ["tag", "item"];
 
     [Theory]

@@ -75,6 +75,14 @@ public sealed class RelayFrameFixtureTests
         Assert.Equal(designs[0]!.ToJsonString(), batch.Designs[0]!.Value.GetRawText());
         Assert.Null(designs[1]);
         Assert.Null(batch.Designs[1]);
-        Assert.Equal(["call", "callWithBasedOn", "callWithDesign", "callWithDesigns", "cancel", "read", "time", "welcome"], Fixtures["relay"]!.AsObject().Select(p => p.Key).Order());
+
+        // A group's children take a design each, right after the group: null for the group and for an item given as a scene.
+        var grouped = Assert.IsType<RelayFrame.Call>(Relay("callWithGroupDesigns"));
+        var groupDesigns = Fixtures["relay"]!["callWithGroupDesigns"]!["designs"]!.AsArray();
+        Assert.Equal(4, grouped.Designs!.Count);
+        Assert.Equal([null, null, null], grouped.Designs.Take(3).Select(d => d?.GetRawText()));
+        Assert.Equal(groupDesigns[3]!.ToJsonString(), grouped.Designs[3]!.Value.GetRawText());
+        Assert.Equal(["call", "callWithBasedOn", "callWithDesign", "callWithDesigns", "callWithGroupDesigns", "cancel", "read", "time", "welcome"],
+            Fixtures["relay"]!.AsObject().Select(p => p.Key).Order());
     }
 }

@@ -196,18 +196,27 @@ public static class RelayFrames
             design = shape.Clone();
         }
 
-        // add_items' designs: one per item of its arguments' items, in order, null for an item given as a scene; never
-        // beside a design. A design is its item's scene and box: that item doesn't give them too.
+        // add_items' designs: one per item of its arguments' items and per child of a group's children, in order (a
+        // group's children right after it), null for an item given as a scene or a group; never beside a design. A design
+        // is its item's scene and box: that item doesn't give them too.
         List<JsonElement?>? designs = null;
         if (root.TryGetProperty("designs", out var shapes) && shapes.ValueKind != JsonValueKind.Null)
         {
             if (design is not null || shapes.ValueKind != JsonValueKind.Array
-                || !arguments.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array
-                || items.GetArrayLength() != shapes.GetArrayLength())
+                || !arguments.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+                return new RelayFrame.Refused("malformed", id);
+            var entries = new List<JsonElement>();
+            foreach (var item in items.EnumerateArray())
+            {
+                entries.Add(item);
+                if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
+                    entries.AddRange(children.EnumerateArray());
+            }
+            if (entries.Count != shapes.GetArrayLength())
                 return new RelayFrame.Refused("malformed", id);
             designs = [];
             var index = 0;
-            foreach (var item in items.EnumerateArray())
+            foreach (var item in entries)
             {
                 var one = shapes[index++];
                 if (one.ValueKind == JsonValueKind.Null)

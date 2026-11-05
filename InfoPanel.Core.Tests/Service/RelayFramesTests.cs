@@ -178,6 +178,18 @@ public sealed class RelayFramesTests
         Assert.Null(Assert.IsType<RelayFrame.Call>(Read("""{"type":"call","id":"c","tool":"t","sentAt":5,"designs":null}""")).Designs);
     }
 
+    [Fact]
+    public void ACallsDesigns_CountAGroupsChildren_RightAfterIt()
+    {
+        var call = Assert.IsType<RelayFrame.Call>(Read("""
+            {"type":"call","id":"c","tool":"add_items","arguments":{"profile":"P","items":[{"x":5},{"name":"g","children":[{"name":"a"},{"scene":{}}]},{"name":"n"}]},"sentAt":5,
+             "designs":[{"source":{},"scene":{"n":0}},null,{"source":{},"scene":{"n":2}},null,{"source":{},"scene":{"n":4}}]}
+            """));
+        Assert.Equal(5, call.Designs!.Count);
+        Assert.Equal(["""{"source":{},"scene":{"n":0}}""", null, """{"source":{},"scene":{"n":2}}""", null, """{"source":{},"scene":{"n":4}}"""],
+            call.Designs.Select(d => d?.GetRawText()));
+    }
+
     [Theory]
     [InlineData("""{"designs":"x"}""")]
     [InlineData("""{"designs":{}}""")]
@@ -194,6 +206,12 @@ public sealed class RelayFramesTests
     [InlineData("""{"arguments":{"profile":"P","items":[{"width":10}]},"designs":[{"source":{},"scene":{}}]}""")]
     [InlineData("""{"arguments":{"profile":"P","items":[{"height":10}]},"designs":[{"source":{},"scene":{}}]}""")]
     [InlineData("""{"arguments":{"profile":"P","items":[5]},"designs":[{"source":{},"scene":{}}]}""")]
+    // A group's children count, right after it, and a child with a design doesn't give its scene or box either.
+    [InlineData("""{"arguments":{"profile":"P","items":[{"children":[{}]}]},"designs":[null]}""")]
+    [InlineData("""{"arguments":{"profile":"P","items":[{"children":[{}]},{}]},"designs":[null,null]}""")]
+    [InlineData("""{"arguments":{"profile":"P","items":[{"children":[{"scene":{}}]}]},"designs":[null,{"source":{},"scene":{}}]}""")]
+    [InlineData("""{"arguments":{"profile":"P","items":[{"children":[{"width":1}]}]},"designs":[null,{"source":{},"scene":{}}]}""")]
+    [InlineData("""{"arguments":{"profile":"P","items":[{"children":[5]}]},"designs":[null,{"source":{},"scene":{}}]}""")]
     public void DesignsNotAsTheyMustBe_AreMalformed(string members)
     {
         var frame = System.Text.Json.Nodes.JsonNode.Parse("""{"type":"call","id":"c","tool":"add_items","sentAt":5,"arguments":{"profile":"P","items":[{}]}}""")!.AsObject();
