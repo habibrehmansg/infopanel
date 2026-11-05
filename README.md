@@ -71,7 +71,11 @@ Issues are welcome; 2.0 takes no pull requests until its first release ([contrib
 
 InfoPanel is licensed under GPL 3.0 - see the [license file][license] for details.
 
-Third-party components: [LICENSES.md](LICENSES.md). The formats in `spec/`: [`spec/LICENSE`](spec/LICENSE).
+The formats and the API contract in `spec/` (its schemas, documentation and generated types) are under the MIT licence, [`spec/LICENSE`](spec/LICENSE), so anyone can build a client on them.
+
+Third-party components: [LICENSES.md](LICENSES.md).
+
+Contributions are covered by the contributor agreement, [`CLA.md`](CLA.md), a draft that isn't open for signature yet.
 
 ---
 
