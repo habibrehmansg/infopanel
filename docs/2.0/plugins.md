@@ -1,6 +1,6 @@
 # Plugins
 
-The engine runs 1.x plugins (the `InfoPanel.Plugins` SDK, net8.0) and reads their sensors, texts and tables into the sensor hub as the `plugins` source, under 1.x's keys, so a 1.x profile bound to a plugin reads it live. This page says how the engine finds plugins, runs them, and what it takes from them. Writing a plugin is still `PLUGINS.md` and `PLUGIN-ARCHITECTURE.md` (1.x; the SDK is the same).
+The engine runs 1.x plugins (the `InfoPanel.Plugins` SDK, net8.0) and reads their sensors, texts and tables into the sensor hub as the `plugins` source, under 1.x's keys, so a 1.x profile bound to a plugin reads it live. This page says how the engine finds plugins, runs them, and what it takes from them. Writing a plugin: [PLUGINS.md](../../PLUGINS.md), written for 1.x, whose SDK 2.0 keeps (its "InfoPanel 1.x and 2.0" section says what differs); how hosts work inside: [PLUGIN-ARCHITECTURE.md](../../PLUGIN-ARCHITECTURE.md).
 
 ## Packages and where they are
 

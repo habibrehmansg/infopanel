@@ -1,23 +1,23 @@
 # InfoPanel Plugin Architecture
 
-This document describes the internal architecture of InfoPanel's plugin system. It is intended for InfoPanel contributors and advanced developers who want to understand how plugins are loaded, hosted, and communicate with the main application.
+This document describes the internal architecture of InfoPanel's plugin system. It is intended for InfoPanel contributors and advanced developers who want to understand how plugins are loaded, hosted, and communicate with the main application. It describes InfoPanel 2.0's engine as the main application; what 2.0 does with plugins, and where it keeps them, is in [docs/2.0/plugins.md](docs/2.0/plugins.md).
 
 For writing plugins, see [PLUGINS.md](PLUGINS.md).
 
 ## System Overview
 
 ```
-┌─────────────────────┐         Named Pipe          ┌─────────────────────┐
-│    InfoPanel App     │◄──── StreamJsonRpc ────────►│  Plugin Host Process │
-│                      │                             │                      │
-│  PluginMonitor       │    IPluginHostService ──►   │  HostService         │
-│  PluginProcessMgr    │    ◄── IPluginClientCb      │  PluginWrapper(s)    │
-│  PluginHostConnection│                             │  SensorSnapshotMgr   │
-│  RemotePluginWrapper │         MMF (images)        │  PluginImageWriter   │
-└─────────────────────┘◄────── shared memory ──────►└─────────────────────┘
+┌────────────────────────┐          Named Pipe         ┌────────────────────────────┐
+│  InfoPanel engine      │◄────── StreamJsonRpc ──────►│  Plugin host process       │
+│                        │                             │  (InfoPanel --plugin-host) │
+│  PluginHostManager     │    IPluginHostService ──►   │  HostService               │
+│  PluginHostRunner      │   ◄── IPluginClientCallback │  PluginWrapper(s)          │
+│  PluginHostConnection  │                             │  SensorSnapshotManager     │
+│  PluginSensorSource    │    MMF (images; not read    │  PluginImageWriter         │
+└────────────────────────┘         by 2.0 yet)         └────────────────────────────┘
 ```
 
-Each plugin runs in a separate host process. The main application communicates with each host via JSON-RPC over a named pipe. Image data is shared via memory-mapped files (MMF) for zero-copy transfer.
+Each plugin package (a folder `InfoPanel.{Name}` with its DLL) runs in a host process of its own; the plugins in one DLL share it. The engine communicates with each host via JSON-RPC over a named pipe it serves for the current user only. Image data is shared via memory-mapped files (MMF) for zero-copy transfer; 2.0's engine doesn't read plugin images yet.
 
 ## Projects and Responsibilities
 
@@ -26,8 +26,9 @@ Each plugin runs in a separate host process. The main application communicates w
 | **InfoPanel.Plugins** | Public API for plugin authors: `IPlugin`, `BasePlugin`, data types (`PluginSensor`, `PluginText`, `PluginTable`), `IPluginContainer`, `PluginActionAttribute`, `IPluginConfigurable`, `PluginConfigProperty` |
 | **InfoPanel.Plugins.Graphics** | Image provider API: `IPluginImageProvider`, `IPluginImageWriter`, `PluginImageDescriptor`. Contains `PluginImageWriter` — the MMF-backed double-buffer implementation |
 | **InfoPanel.Plugins.Ipc** | IPC contract: `IPluginHostService` (host-side methods), `IPluginClientCallback` (app-side notifications), and all DTO types for serialization |
-| **InfoPanel.Plugins.Host** | Standalone executable that hosts one plugin assembly. Connects to the app's named pipe, loads the plugin via `PluginLoader`, and runs the update loop |
+| **InfoPanel.Plugins.Host** | A library that hosts one plugin assembly, run by the engine executable as its plugin host mode (`InfoPanel --plugin-host`, `PluginHostEntry`). Connects to the engine's named pipe, loads the plugin via `PluginLoader`, and runs the update loop |
 | **InfoPanel.Plugins.Loader** | `PluginLoader` (discovers and instantiates plugins), `PluginLoadContext` (assembly isolation), `PluginWrapper` (lifecycle management), `PluginDescriptor` (metadata), `PluginInfo` (INI parser) |
+| **InfoPanel** (`Plugins/`) | The engine's side: `PluginPackages` (finds the packages), `PluginHostManager` (one `PluginHostRunner` per package, started and stopped together), `PluginHostRunner` (starts a host, restarts it, stops it), `PluginHostConnection` (the pipe and the JSON-RPC connection), `PluginSensorSource` (the `plugins` sensor source, under 1.x's keys) |
 
 ## Assembly Isolation
 
@@ -43,7 +44,7 @@ Communication uses [StreamJsonRpc](https://github.com/microsoft/vs-streamjsonrpc
 
 ### IPluginHostService (app → host)
 
-Called by the main application to control the plugin host:
+Called by the main application to control the plugin host (2.0's engine calls `InitializeAsync` and `ShutdownAsync`; the others are 1.x's):
 
 | Method | Description |
 |---|---|
@@ -90,15 +91,13 @@ PluginPerformanceDto
 
 ### Entry Point
 
-`InfoPanel.Plugins.Host/Program.cs` — a console application that:
+`InfoPanel.Plugins.Host/PluginHostEntry.cs`, which the engine's `InfoPanel/Program.cs` runs when its first argument is `--plugin-host`:
 
-1. Parses CLI arguments: `--pipe <name>` and `--plugin <path>` (both required)
-2. Configures Serilog logging to `%LOCALAPPDATA%/InfoPanel/logs/plugin-host-{name}.log`
+1. Parses the arguments: `--pipe <name>`, `--plugin <dll>`, `--log-dir <dir>` and `--settings-dir <dir>` (required), `--log-level <level>` (`information` by default)
+2. Configures Serilog logging to `{log-dir}/{plugin folder}-{yyyyMMdd}.log` (daily, three kept, 10 MiB a file)
 3. Connects to the named pipe (30-second timeout)
-4. Attaches `HostService` as the JSON-RPC target
-5. Waits for the RPC connection to complete
-
-> The main InfoPanel process also supports `--plugin-host` mode (in `InfoPanel/Program.cs`), allowing it to run as an embedded host when needed.
+4. Attaches `HostService` as the JSON-RPC target; plugins' settings go to `{settings-dir}/{plugin id}.json`
+5. Waits for the RPC connection to complete; when the pipe ends without a shutdown, the plugins get 2 s to close and the process exits
 
 ### HostService
 
@@ -169,26 +168,20 @@ On each update cycle, `GetChangedEntries()` compares current hashes against cach
 ## Plugin Loading Flow
 
 ```
-PluginMonitor.StartAsync()
+PluginHostManager.StartAllAsync()        (once the engine listens)
   │
-  ├── Discover plugin folders
-  │     ├── Bundled: plugins/InfoPanel.Extras/ (whitelisted)
-  │     └── External: %ProgramData%\InfoPanel\plugins\*\
-  │           └── Auto-extract any InfoPanel.*.zip files
+  ├── PluginPackages.Find()
+  │     ├── Bundled: {engine folder}/plugins/InfoPanel.*/
+  │     └── Installed: {data folder}/plugins/InfoPanel.*/
   │
-  ├── For each plugin folder:
-  │     ├── PluginLoader.GetPluginInfo() → read PluginInfo.ini
-  │     └── Create PluginDescriptor
-  │
-  └── PluginProcessManager.StartPlugin()
-        ├── Spawn host process: InfoPanel.Plugins.Host.exe --pipe <name> --plugin <path>
-        ├── Create NamedPipeServerStream, wait for connection
+  └── For each package, PluginHostRunner:
+        ├── Create NamedPipeServerStream (ipph-{16 hex}, current user only)
+        ├── Spawn host process: InfoPanel --plugin-host --pipe <name> --plugin <dll> --log-dir … --settings-dir … --log-level …
         ├── Attach StreamJsonRpc with IPluginClientCallback
         ├── Call InitializeAsync() → host loads plugin, returns metadata
-        ├── Create RemotePluginWrapper proxies for each plugin/container/entry
-        └── Register sensors in PluginMonitor.SENSORHASH
+        └── OnPluginsLoaded → PluginSensorSource lists the entries as sensors
 ```
 
 ### Retry Logic
 
-If a host process crashes, `PluginProcessManager` will retry up to 3 times within a 60-second window before marking the plugin as failed.
+If a host process exits or disconnects unexpectedly, or fails to start, `PluginHostRunner` starts it again after 2 s, up to 3 times within a 60-second window (counted from the first failure), before marking the package as failed ([docs/2.0/plugins.md](docs/2.0/plugins.md#hosts)).

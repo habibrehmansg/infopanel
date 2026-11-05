@@ -2,8 +2,8 @@
 
 Spike date: 2026-10-26. Machine: MacBook Pro, Apple M4 Max (4 E-cores + 2×5 P-cores, 32-core GPU, 36 GB),
 macOS 27.0.1 (26A434), arm64. Every probe ran as the normal user (uid 501): no sudo, no extra
-entitlements, not sandboxed. Probe code (C and a .NET 10 console app) is throwaway and lives in the
-session scratchpad, not in the repo.
+entitlements, not sandboxed. Probe code (C and a .NET 10 console app) was throwaway and is not in the
+repository.
 
 ## Verdict
 
@@ -60,8 +60,8 @@ byte-swapped (0x3303 = 13059 mV, matching ioreg 13058). Decode per type carefull
 
 ## Recommended macOS ISensorSource v1
 
-Ship in this order. Everything runs in-process through P/Invoke, with no helper and no root. The .NET 10 probe in the scratchpad
-already calls IOReport, CoreFoundation and the SMC user client successfully.
+Ship in this order. Everything runs in-process through P/Invoke, with no helper and no root. The .NET 10 probe
+already called IOReport, CoreFoundation and the SMC user client successfully.
 
 1. **Public baseline (zero platform risk).** CPU load total/per core and P/E split (Mach + sysctl + device-tree cluster map),
    memory used/free/wired/compressed/pressure/swap, disk and network throughput, battery % / cycles / voltage / charging.
@@ -88,10 +88,6 @@ Do not build on `powermetrics` (root), IOReport CPU/ANE/DRAM energy (frozen), or
   behaviour only. ANE power: no unprivileged source found.
 - **Sensor labelling.** About 350 `T*` SMC keys exist, but Apple publishes no names. Friendly names ("P-core 3") need a
   community-maintained map per SoC. Some keys are not temperatures (`Tf*6` ≈ 100 °C, `Ta0*` = 8.0).
-- **Distribution.** Private-API use means **no Mac App Store** (App Review rejects it, and the App Sandbox very likely blocks
-  `IOServiceOpen(AppleSMC)`: unverified). Developer-ID signing plus notarisation is the route. Notarisation is a malware
-  scan and does not reject private symbols, the route tools like Stats take (not verified for our binary). Hardened runtime needs
-  no extra entitlement for these calls, as far as tested (the probe ran unsigned under `dotnet`).
 - **Untested here:** GPU frequency under real GPU load, the `IOPSCopyPowerSourcesInfo` call itself, Intel Macs (out of scope;
   SMC keys differ), other M-series chips, sandboxed execution.
 - **Fan control** (writing `F0Md`/`F0Tg`) needs root and is out of scope; reads are fine.

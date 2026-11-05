@@ -43,12 +43,15 @@ asked:
   once it is free; still held then, it exits 3. So a quick relaunch during a shutdown starts the engine again.
 
 **What opens.** With no web client served here (no `--web-root`, no `wwwroot` beside the engine) and exactly one
-cross origin allowed, the engine opens that origin's pairing link
-(`{origin}/#engine=http://127.0.0.1:{port}&token={token}`): a web client on another origin, which the link pairs with
-this engine. Otherwise it opens the sign-in link (`/auth/{token}`) to the web client it serves. The console prints only
-the links that lead somewhere: the sign-in link only when a web client is served here.
+cross origin allowed, the engine opens that origin's code link (`{origin}/#engine=http://127.0.0.1:{port}&code={code}`):
+a web client on another origin, which exchanges the code for the run's token and a lasting pairing
+([api.md, "Pairing"](../../spec/docs/api.md#pairing)). The code is new for each open, usable once within 2 minutes, and
+the session token is never in the link (`EngineRuntime.EditorLinkFor`, `EditorOpener`). Otherwise it opens the sign-in
+link (`/auth/{token}`) to the web client it serves. The console prints only the links that lead somewhere: the sign-in
+link only when a web client is served here, and each allowed origin's pairing link, which carries the token
+(`{origin}/#engine=http://127.0.0.1:{port}&token={token}`).
 
-**Which browser.** A pairing link goes to Chrome when it is installed, else to the default browser; a sign-in link goes
+**Which browser.** A code link goes to Chrome when it is installed, else to the default browser; a sign-in link goes
 to the default browser. A browser started directly that exits with an error within 2 seconds didn't start (a Chrome that
 can't run), and the next one is tried.
 
@@ -91,7 +94,7 @@ release build). A build from source carries none and behaves as before.
 - `--no-windows`: no desktop windows. The menu-bar item stays.
 - `--no-browser`: a second launch doesn't ask the running engine to open the editor.
 - `--allow-origin <origin>`: a web client on another origin; with no web root and one such origin, the editor that
-  opens. Replaces the origin a release build carries.
+  opens, through its code link. Replaces the origin a release build carries.
 
 ## How it is built
 

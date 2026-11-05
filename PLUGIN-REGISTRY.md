@@ -2,6 +2,8 @@
 
 InfoPanel maintains a community plugin registry in [`plugins.json`](plugins.json) at the root of this repository. The InfoPanel API reads this file to populate the plugin browser inside the app, enriching each entry with GitHub release data, download counts, and ratings.
 
+The plugin browser is InfoPanel 1.x's; 2.0 has none yet ([PLUGINS.md](PLUGINS.md#infopanel-1x-and-20)).
+
 ## Adding Your Plugin
 
 To list your plugin in the registry, open a pull request that adds an entry to the `plugins` array in `plugins.json`.
@@ -36,7 +38,7 @@ To list your plugin in the registry, open a pull request that adds an entry to t
 
 ### Naming Convention
 
-The repository name is used to match marketplace plugins to locally installed plugins. The API exposes a `repoName` field (the `repo` portion after the `/`) which the desktop app compares against installed plugin folder names.
+The repository name is used to match registry entries to locally installed plugins. The API exposes a `repoName` field (the `repo` portion after the `/`) which the desktop app compares against installed plugin folder names.
 
 For this matching to work, your **repository name must match your plugin's installed folder name**. For example, if your repo is `YourUsername/InfoPanel.MyPlugin`, the installed folder must be `InfoPanel.MyPlugin`.
 

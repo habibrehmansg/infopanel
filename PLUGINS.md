@@ -2,6 +2,7 @@
 
 ## Table of Contents
 - [Introduction](#introduction)
+- [InfoPanel 1.x and 2.0](#infopanel-1x-and-20)
 - [Quick Start](#quick-start)
 - [Plugin Components](#plugin-components)
   - [Base Plugin](#base-plugin)
@@ -10,8 +11,8 @@
 - [Image Providers](#image-providers)
 - [Plugin Actions](#plugin-actions)
 - [Plugin Configuration](#plugin-configuration)
+  - [Automatic Config Persistence](#automatic-config-persistence)
 - [Plugin Lifecycle](#plugin-lifecycle)
-- [Configuration Files](#configuration-files)
 - [Examples](#examples)
   - [Simple Sensor Plugin](#simple-sensor-plugin)
   - [Table Data Plugin](#table-data-plugin)
@@ -24,6 +25,16 @@
 InfoPanel features a plugin system that enables developers to extend its capabilities with custom data sources, visualizations, and images. Plugins can provide sensors, text values, tables, and rendered images that are displayed in InfoPanel's overlays and panels.
 
 Each plugin runs in an isolated host process, communicating with the main application over named pipes. This ensures that a misbehaving plugin cannot crash InfoPanel. For details on how the host system works internally, see [PLUGIN-ARCHITECTURE.md](PLUGIN-ARCHITECTURE.md).
+
+## InfoPanel 1.x and 2.0
+
+This guide was written for InfoPanel 1.x, the Windows app (branch `1.4.x`). The SDK (`InfoPanel.Plugins`, .NET 8) is the same in 2.0, whose engine runs 1.x plugins as they are, on Windows and macOS; on macOS it skips plugin types marked for Windows only, and a plugin type that provides [images](#image-providers) doesn't start there at all (its image channel needs Windows' shared memory), so its sensors don't show either. What 2.0 does differently ([docs/2.0/plugins.md](docs/2.0/plugins.md)):
+
+- **What the engine reads:** sensors, texts and tables, under 1.x's keys. It doesn't show [images](#image-providers), offer [actions](#plugin-actions) or let a user change a plugin's [settings](#plugin-configuration) yet.
+- **Where plugins go:** a package is a folder `InfoPanel.{Name}` holding `InfoPanel.{Name}.dll`. The engine reads its bundled plugins from `plugins/` beside itself and the user's from `plugins/` in its data folder (`%LOCALAPPDATA%\InfoPanel\v2\plugins\` on Windows, `~/Library/Application Support/InfoPanel/v2/plugins/` on macOS), when it starts. There is no plugin browser and no "Add Plugin from ZIP" yet: copy the folder there and start the engine again.
+- **Settings:** stored in the data folder, `plugin-settings/{package}/{plugin id}.json`, and applied when the plugin starts. 2.0 never writes to 1.x's folders.
+- **Logs:** `logs/plugins/{package}-{yyyyMMdd}.log` in the data folder.
+- **The host:** the engine's own executable, started as `InfoPanel --plugin-host` ([PLUGIN-ARCHITECTURE.md](PLUGIN-ARCHITECTURE.md)).
 
 ## Quick Start
 
@@ -383,7 +394,7 @@ public class MyPlugin : BasePlugin, IPluginConfigurable
 
 ### Automatic Config Persistence
 
-Config values are automatically persisted by the host process. When a user changes a config value in the UI, the host saves all current `ConfigProperties` values to a JSON file under `%LOCALAPPDATA%\InfoPanel\plugins\` (e.g. `my-plugin-id.config.json`). On next startup, stored values are automatically restored via `ApplyConfig()` after `Initialize()` returns.
+Config values are automatically persisted by the host process. In 1.x, when a user changes a config value in the UI, the host saves all current `ConfigProperties` values to a JSON file under `%LOCALAPPDATA%\InfoPanel\plugins\` (e.g. `my-plugin-id.config.json`). On next startup, stored values are automatically restored via `ApplyConfig()` after `Initialize()` returns. 2.0's host keeps them in its data folder instead ([above](#infopanel-1x-and-20)).
 
 **You do not need to implement any file I/O** — just keep your config state in memory and the host handles persistence transparently.
 
@@ -511,8 +522,9 @@ public class ProcessInfoPlugin : BasePlugin
 
 1. Build your plugin project in Release mode
 2. Copy the output folder (DLL, dependencies, and `PluginInfo.ini`) to:
-   - **External plugins:** `%ProgramData%\InfoPanel\plugins\YourPluginName\`
-3. The folder must follow the convention: `YourPluginName/YourPluginName.dll`
+   - **External plugins:** `%ProgramData%\InfoPanel\plugins\YourPluginName\` (1.x)
+   - **2.0:** `plugins\InfoPanel.YourPluginName\` in the engine's data folder ([above](#infopanel-1x-and-20))
+3. The folder must follow the convention: `YourPluginName/YourPluginName.dll` (2.0: `InfoPanel.YourPluginName/InfoPanel.YourPluginName.dll`)
 
 ### Listing in the Plugin Browser
 
@@ -530,7 +542,7 @@ YourPluginName.zip
     └── PluginInfo.ini
 ```
 
-Users can install by:
+In 1.x, users can install by:
 - Extracting the ZIP to `%ProgramData%\InfoPanel\plugins\`
 - Or using the "Add Plugin from ZIP" option in InfoPanel's Plugins page
 
