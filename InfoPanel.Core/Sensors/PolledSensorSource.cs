@@ -3,6 +3,7 @@ using InfoPanel.Models;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,8 +26,10 @@ public sealed class PolledSensorSourceOptions
 /// An <see cref="ISensorSource"/> over an <see cref="ISensorSampler"/>: <see cref="StartAsync"/> discovers the sensors
 /// (off the caller's thread) and polls them every <see cref="PolledSensorSourceOptions.Interval"/> (the source's own)
 /// on the thread pool, keeping now/min/max/avg per number sensor, or the source's own statistics when a sample carries
-/// them, and the last good text per text sensor (no statistics; cut at <see cref="MaxTextChars"/> characters, with one
-/// warning per key while it is listed: a key that returns after it was unlisted may warn again).
+/// them, the last good text per text sensor (no statistics; cut at <see cref="MaxTextChars"/> characters, with one
+/// warning per key while it is listed: a key that returns after it was unlisted may warn again), and the last good table
+/// per table sensor, with its format and, as its text, its first row (as a plugin's table reads; no statistics, and no
+/// history: <see cref="SensorHistory"/> keeps numbers only).
 /// Keys are the source's <see cref="SensorKeySpace"/>'s (<c>plugin:{KeyPrefix}{definition id}</c> by default); the
 /// source handles every key in it (unknown ones are unavailable). A sampler whose catalogue changes
 /// (<see cref="ISensorSampler.CatalogueVersion"/>) is discovered again after the round that changed it: keys that stay
@@ -52,10 +55,15 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
     {
         // The kind its definition gave; a key whose kind changes at a rediscovery starts afresh.
         public SensorKind Kind;
-        // A text sensor's last good text, read as it is (a read allocates nothing).
+        // A text sensor's last good text, read as it is (a read allocates nothing); a table sensor's first row.
         public string? Text;
+        // A table sensor's last good table and its format.
+        public DataTable? Table;
+        public string? TableFormat;
         // Whether its text was cut and warned of; it goes with the slot, so a key that returns after it expired warns again.
         public bool CutWarned;
+        // Whether a table whose text couldn't be read was warned of; cleared by the next table that reads.
+        public bool TableWarned;
         public double Now;
         // What a read answers: the source's statistics when the latest sample carried them, else the base's own.
         public double Min;
@@ -167,9 +175,12 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
             var status = StatusOf(in slot, _time.GetTimestamp());
             if (status is not (SensorStatus.Live or SensorStatus.Stale))
                 return SensorState.Without(status, slot.Kind);
-            return slot.Kind == SensorKind.Text
-                ? new SensorState(status, SensorKind.Text, new SensorReading(slot.Text!))
-                : new SensorState(status, SensorKind.Number, new SensorReading(slot.Min, slot.Max, slot.Avg, slot.Now, _units[i]));
+            return slot.Kind switch
+            {
+                SensorKind.Text => new SensorState(status, SensorKind.Text, new SensorReading(slot.Text!)),
+                SensorKind.Table => new SensorState(status, SensorKind.Table, new SensorReading(slot.Table!, slot.TableFormat!, slot.Text!)),
+                _ => new SensorState(status, SensorKind.Number, new SensorReading(slot.Min, slot.Max, slot.Avg, slot.Now, _units[i])),
+            };
         }
     }
 
@@ -375,10 +386,10 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                 continue;
             }
 
-            if (d.Kind is not (SensorKind.Number or SensorKind.Text))
+            if (d.Kind is not (SensorKind.Number or SensorKind.Text or SensorKind.Table))
             {
                 map[i] = -1;
-                _log.Warning("Sensor source {Source} skipped the sensor {Key}: a polled source reads numbers and text, not {Kind}", Id, key, d.Kind);
+                _log.Warning("Sensor source {Source} skipped the sensor {Key}: a polled source reads numbers, text and tables, not {Kind}", Id, key, d.Kind);
                 continue;
             }
 
@@ -545,7 +556,23 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                         slot.LastGood = sampled;
                         slot.Latest = sample.Stale ? SampleOutcome.Failed : SampleOutcome.Ok;
                         break;
-                    case SampleOutcome.Ok when slot.Kind == SensorKind.Number && sample.Text is null && double.IsFinite(sample.Value):
+                    case SampleOutcome.Ok when slot.Kind == SensorKind.Table && sample.Table is { } table:
+                        // Its text first, before the slot changes: a table whose text can't be read is a failed read.
+                        var format = sample.TableFormat ?? "";
+                        if (TableText(table, format, ref slot, s) is not { } tableText)
+                        {
+                            slot.Latest = SampleOutcome.Failed;
+                            break;
+                        }
+
+                        slot.Count++;
+                        slot.Table = table;
+                        slot.TableFormat = format;
+                        slot.Text = tableText;
+                        slot.LastGood = sampled;
+                        slot.Latest = sample.Stale ? SampleOutcome.Failed : SampleOutcome.Ok;
+                        break;
+                    case SampleOutcome.Ok when slot.Kind == SensorKind.Number && sample.Text is null && sample.Table is null && double.IsFinite(sample.Value):
                         // A value kept from before is no new reading: it counts only when there is none yet.
                         var counted = !sample.Stale || slot.Count == 0;
                         if (counted)
@@ -581,6 +608,8 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                         // No reading now: the last one goes with this round's other samples, under the same lock.
                         slot.Count = 0;
                         slot.Text = null;
+                        slot.Table = null;
+                        slot.TableFormat = null;
                         slot.Now = slot.Min = slot.Max = slot.Avg = 0;
                         slot.OwnMin = slot.OwnMax = slot.OwnAvg = 0;
                         slot.Latest = SampleOutcome.Unavailable;
@@ -626,6 +655,31 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
         }
 
         return text[..(char.IsHighSurrogate(text[MaxTextChars - 1]) ? MaxTextChars - 1 : MaxTextChars)];
+    }
+
+    /// <summary>
+    /// <paramref name="table"/>'s text as a plugin's table reads (its first row's cells), or null where it can't be read
+    /// (a sampler's table it can't read, a deleted row's say), warning once for <paramref name="slot"/> (the slot at
+    /// <paramref name="index"/>) while it lasts.
+    /// </summary>
+    private string? TableText(DataTable table, string format, ref Slot slot, int index)
+    {
+        try
+        {
+            var text = new InfoPanel.Plugins.PluginTable("", "", table, format).ToString();
+            slot.TableWarned = false;
+            return text;
+        }
+        catch (Exception ex)
+        {
+            if (!slot.TableWarned)
+            {
+                slot.TableWarned = true;
+                _log.Warning(ex, "Sensor source {Source}: the table of {Key} can't be read; it reads as failed", Id, _sensors[index].Key);
+            }
+
+            return null;
+        }
     }
 
     private void Rediscover(ISensorSampler sampler, long version, long now)

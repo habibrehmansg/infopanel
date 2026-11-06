@@ -839,9 +839,10 @@ public class PolledSensorSourceTests
     }
 
     /// <summary>
-    /// A sampler of number and text sensors whose catalogue the test changes: <see cref="Catalogue"/> is what the next
-    /// <see cref="Discover"/> returns, <see cref="Values"/> what each round reads by id (a double or a string, as the
-    /// sensor's kind, or an outcome; null fails; absent ids fail), and <see cref="Change"/> bumps the version.
+    /// A sampler of number, text and table sensors whose catalogue the test changes: <see cref="Catalogue"/> is what the
+    /// next <see cref="Discover"/> returns, <see cref="Values"/> what each round reads by id (a double, a string or a
+    /// table and its format, as the sensor's kind, or an outcome; null fails; absent ids fail), and <see cref="Change"/>
+    /// bumps the version.
     /// </summary>
     private sealed class TextSampler : ISensorSampler
     {
@@ -866,6 +867,8 @@ public class PolledSensorSourceTests
                     samples[i].Set(d);
                 else if (v is SampleOutcome outcome)
                     samples[i].Outcome = outcome;
+                else if (v is (System.Data.DataTable table, string format))
+                    samples[i].SetTable(table, format);
                 else
                     samples[i].SetText((string?)v);
             }
@@ -1220,17 +1223,221 @@ public class PolledSensorSourceTests
     }
 
     [Fact]
-    public void ATableDefinition_IsSkipped_WithAWarning()
+    public void ADefinitionOfAKindItDoesntKnow_IsSkipped_WithAWarning()
     {
         var events = new List<Serilog.Events.LogEvent>();
         var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(events)).CreateLogger();
-        var (source, sampler, _) = CreateText(log, ("table", SensorKind.Table), ("n", SensorKind.Number));
+        var (source, sampler, _) = CreateText(log, ("odd", (SensorKind)99), ("n", SensorKind.Number));
         sampler.Values["n"] = 3.0;
         source.Open();
 
         Assert.Equal(["plugin:/test.text/n"], source.GetSensors().Select(s => s.Key.ToString()));
         Assert.Equal(3, source.ReadState(source.KeyOf("n")).Reading.ValueNow);
         Assert.Single(events, e => e.Level == Serilog.Events.LogEventLevel.Warning);
+    }
+
+    private static (SensorStatus, SensorKind) Of(SensorState state) => (state.Status, state.Type);
+
+    /// <summary>A table of 1.x cells: a name, then a percentage, a row per name.</summary>
+    private static System.Data.DataTable Table(params (string Name, float Usage)[] rows)
+    {
+        var table = new System.Data.DataTable();
+        table.Columns.Add("Process Name", typeof(InfoPanel.Plugins.PluginText));
+        table.Columns.Add("Usage", typeof(InfoPanel.Plugins.PluginSensor));
+        foreach (var (name, usage) in rows)
+            table.Rows.Add(new InfoPanel.Plugins.PluginText("Process Name", name), new InfoPanel.Plugins.PluginSensor("Usage", usage, "%"));
+        return table;
+    }
+
+    [Fact]
+    public void ATableSensor_ReadsItsTable_WithItsFormat_AndItsFirstRowAsText_TypedTable()
+    {
+        var (source, sampler, time) = CreateText(null, ("top", SensorKind.Table), ("load", SensorKind.Number));
+        var first = Table(("yes", 12.5f), ("node", 3f));
+        sampler.Values["top"] = (first, "0:200|1:60");
+        sampler.Values["load"] = 40d;
+        source.Open();
+        var top = source.KeyOf("top");
+
+        var state = source.ReadState(top);
+        Assert.Equal((SensorStatus.Live, SensorKind.Table), (state.Status, state.Type));
+        Assert.Same(first, state.Reading.ValueTable);
+        Assert.Equal("0:200|1:60", state.Reading.ValueTableFormat);
+        // As a plugin's table reads: its first row's cells, joined (in the culture's numbers).
+        Assert.Equal(new InfoPanel.Plugins.PluginTable("", "", first, "0:200|1:60").ToString(), state.Reading.ValueText);
+        Assert.StartsWith("yes, 12", state.Reading.ValueText);
+        Assert.Equal(SensorKind.Table, SensorState.TypeOf(state.Reading));
+        Assert.Equal((0, 0, 0, 0), (state.Reading.ValueNow, state.Reading.ValueMin, state.Reading.ValueMax, state.Reading.ValueAvg));
+
+        // Each round's table is the reading; an empty one reads "-", as a plugin's does.
+        var second = Table();
+        sampler.Values["top"] = (second, "0:100");
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.True(source.TryRead(top, out var reading));
+        Assert.Same(second, reading.ValueTable);
+        Assert.Equal(("0:100", "-"), (reading.ValueTableFormat, reading.ValueText));
+
+        // The number beside it reads as before.
+        var load = source.ReadState(source.KeyOf("load"));
+        Assert.Equal((SensorStatus.Live, SensorKind.Number, 40d), (load.Status, load.Type, load.Reading.ValueNow));
+    }
+
+    [Fact]
+    public void ATableSensor_WithoutAReading_IsStillTypedTable_AndUnavailableDropsItsTable()
+    {
+        var (source, sampler, time) = CreateText(null, ("never", SensorKind.Table), ("t", SensorKind.Table));
+        sampler.Values["t"] = (Table(("a", 1f)), "0:10");
+        source.Open();
+
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Table), Of(source.ReadState(source.KeyOf("never"))));
+        Assert.Equal((SensorStatus.Live, SensorKind.Table), Of(source.ReadState(source.KeyOf("t"))));
+
+        sampler.Values["t"] = SampleOutcome.Unavailable;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        var state = source.ReadState(source.KeyOf("t"));
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Table, false), (state.Status, state.Type, state.HasReading));
+    }
+
+    [Fact]
+    public void AStaleTableSensor_KeepsItsLastTable_ThenIsUnavailable()
+    {
+        var (source, sampler, time) = CreateText(null, ("t", SensorKind.Table));
+        var last = Table(("a", 1f));
+        sampler.Values["t"] = (last, "0:10");
+        source.Open();
+        var key = source.KeyOf("t");
+
+        sampler.Values["t"] = SampleOutcome.Failed;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        var state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Stale, SensorKind.Table), (state.Status, state.Type));
+        Assert.Same(last, state.Reading.ValueTable);
+
+        time.Advance(TimeSpan.FromSeconds(30));
+        source.Poll();
+        Assert.Equal(SensorStatus.Unavailable, source.GetStatus(key));
+        Assert.False(source.TryRead(key, out _));
+    }
+
+    [Fact]
+    public void ATableWhoseTextCantBeRead_IsAFailedRead_LoggedOnce_AndPollingGoesOn()
+    {
+        var events = new List<Serilog.Events.LogEvent>();
+        var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(events)).CreateLogger();
+        var (source, sampler, time) = CreateText(log, ("t", SensorKind.Table), ("n", SensorKind.Number));
+        var last = Table(("a", 1f));
+        sampler.Values["t"] = (last, "0:10");
+        sampler.Values["n"] = 1d;
+        source.Open();
+        var key = source.KeyOf("t");
+
+        // Its first row deleted after the changes were accepted: reading that row (the table's text) throws.
+        var broken = Table(("b", 2f), ("c", 3f));
+        broken.AcceptChanges();
+        broken.Rows[0].Delete();
+        sampler.Values["t"] = (broken, "0:20");
+        sampler.Values["n"] = 2d;
+        for (var i = 0; i < 2; i++)
+        {
+            time.Advance(TimeSpan.FromSeconds(1));
+            source.Poll();
+        }
+
+        // A failed read: the last table stands, untouched; the round's other sensors read.
+        var state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Stale, SensorKind.Table), Of(state));
+        Assert.Same(last, state.Reading.ValueTable);
+        Assert.Equal(("0:10", new InfoPanel.Plugins.PluginTable("", "", last, "0:10").ToString()), (state.Reading.ValueTableFormat, state.Reading.ValueText));
+        Assert.Equal(2d, source.ReadState(source.KeyOf("n")).Reading.ValueNow);
+        Assert.Single(events, e => e.Level == Serilog.Events.LogEventLevel.Warning);
+
+        // The next good table reads.
+        var next = Table(("d", 4f));
+        sampler.Values["t"] = (next, "0:30");
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        state = source.ReadState(key);
+        Assert.Equal((SensorStatus.Live, SensorKind.Table), Of(state));
+        Assert.Same(next, state.Reading.ValueTable);
+        Assert.Equal("0:30", state.Reading.ValueTableFormat);
+    }
+
+    [Fact]
+    public void ATableSample_ForANumberOrText_AndANumberOrTextForATable_AreFailedReads()
+    {
+        var (source, sampler, _) = CreateText(null, ("n", SensorKind.Number), ("t", SensorKind.Text), ("table", SensorKind.Table), ("table2", SensorKind.Table));
+        sampler.Values["n"] = (Table(("a", 1f)), "0:10");
+        sampler.Values["t"] = (Table(("a", 1f)), "0:10");
+        sampler.Values["table"] = 1.0;
+        sampler.Values["table2"] = "text";
+        source.Open();
+
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Number), Of(source.ReadState(source.KeyOf("n"))));
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Text), Of(source.ReadState(source.KeyOf("t"))));
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Table), Of(source.ReadState(source.KeyOf("table"))));
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Table), Of(source.ReadState(source.KeyOf("table2"))));
+    }
+
+    [Fact]
+    public void ATableSensor_NeverEntersTheHistory()
+    {
+        var (source, sampler, time) = CreateText(null, ("top", SensorKind.Table), ("load", SensorKind.Number));
+        sampler.Values["top"] = (Table(("a", 1f)), "0:10");
+        sampler.Values["load"] = 5d;
+        source.Open();
+        var history = new SensorHistory(source, time);
+        var top = source.KeyOf("top");
+        var load = source.KeyOf("load");
+
+        Assert.Empty(history.GetSamples(top));
+        Assert.Empty(history.GetSamples(load));
+        for (var i = 0; i < 3; i++)
+        {
+            time.Advance(TimeSpan.FromSeconds(1));
+            source.Poll();
+            history.SampleNow();
+        }
+
+        Assert.Empty(history.GetSamples(top));
+        Assert.Equal([5d, 5d, 5d], history.GetSamples(load));
+        // Not for want of a reading: the table reads.
+        Assert.True(source.TryRead(top, out var reading));
+        Assert.NotNull(reading.ValueTable);
+    }
+
+    [Fact]
+    public void ATableSensor_IsCarriedThroughRediscovery_LikeAText()
+    {
+        var (source, sampler, time) = CreateText(null, ("top", SensorKind.Table));
+        var table = Table(("a", 1f));
+        sampler.Values["top"] = (table, "0:10");
+        source.Open();
+
+        sampler.Change(("top", SensorKind.Table), ("more", SensorKind.Table));
+        sampler.Values["top"] = SampleOutcome.Skipped;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+
+        Assert.Same(table, source.ReadState(source.KeyOf("top")).Reading.ValueTable);
+        Assert.Equal(SensorKind.Table, source.ReadState(source.KeyOf("more")).Type);
+    }
+
+    [Fact]
+    public void ReadingATable_AllocatesNothing()
+    {
+        var (source, sampler, _) = CreateText(null, ("t", SensorKind.Table));
+        sampler.Values["t"] = (Table(("a", 1f)), "0:10");
+        source.Open();
+        var key = source.KeyOf("t");
+        Assert.Equal((SensorStatus.Live, SensorKind.Table), Of(source.ReadState(key)));
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 100; i++)
+            source.ReadState(key);
+        Assert.Equal(before, GC.GetAllocatedBytesForCurrentThread());
     }
 
     [Fact]

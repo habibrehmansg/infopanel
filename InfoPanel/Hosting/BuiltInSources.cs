@@ -2,6 +2,7 @@ using InfoPanel.Sensors;
 using InfoPanel.Sensors.Clock;
 using InfoPanel.Sensors.Drives;
 using InfoPanel.Sensors.Network;
+using InfoPanel.Sensors.SystemInfo;
 using InfoPanel.Sensors.Volume;
 using InfoPanel.Sensors.Weather;
 using InfoPanel.Scenes;
@@ -19,7 +20,8 @@ public static class BuiltInSourceServiceCollectionExtensions
     /// its lookup following the settings' <c>sources.network.publicIp</c>) and the weather (<c>infopanel.weather</c>,
     /// from the configured service through its <see cref="ServiceClient"/>, following the settings' <c>sources.weather</c>,
     /// <see cref="WeatherSource"/>; without a service client registered, it has no service), in that order; then, on
-    /// macOS, the volume (<c>infopanel.volume</c>, its output devices through Core Audio, <see cref="VolumeSource"/>). Registered
+    /// macOS, the volume (<c>infopanel.volume</c>, its output devices through Core Audio, <see cref="VolumeSource"/>) and the
+    /// system information (<c>infopanel.system-info</c>, the uptime and processes, <see cref="SystemInfoSource"/>). Registered
     /// after the platform's sources and before the plugins'. Not in mock mode or while a recording is replayed (whose
     /// sessions say mock): there their keys are what any key no source handles is (simulated in mock mode, else
     /// unavailable).
@@ -35,9 +37,14 @@ public static class BuiltInSourceServiceCollectionExtensions
         services.AddSingleton<ISensorSource>(sp => WeatherSource.CreateSystem(sp.GetService<ServiceClient>(), sp.GetService<ServiceCredentials>(),
             sp.GetRequiredService<TimeProvider>(), sp.GetService<RegionalFormat>(), sp.GetService<SettingsStore>()));
         if (OperatingSystem.IsMacOS())
+        {
             services.AddSingleton<ISensorSource>(sp => OperatingSystem.IsMacOS()
                 ? VolumeSource.CreateSystem(sp.GetRequiredService<TimeProvider>())
                 : throw new PlatformNotSupportedException());
+            services.AddSingleton<ISensorSource>(sp => OperatingSystem.IsMacOS()
+                ? SystemInfoSource.CreateSystem(sp.GetRequiredService<TimeProvider>())
+                : throw new PlatformNotSupportedException());
+        }
         return services;
     }
 }

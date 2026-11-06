@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 
 namespace InfoPanel.Sensors;
 
@@ -7,7 +8,8 @@ namespace InfoPanel.Sensors;
 /// One sensor a sampler found: its id in the source's key space (<c>cpu/load</c> under a plugin prefix,
 /// <c>-1:4026532608:0:16777216</c> for HWiNFO; <see cref="SensorKeySpace"/>), group, name and unit, and the kind of
 /// value it reads: <see cref="SensorKind.Number"/> (<see cref="SensorSample.Set(double)"/>) by default, or
-/// <see cref="SensorKind.Text"/> (<see cref="SensorSample.SetText"/>). A polled source reads no tables.
+/// <see cref="SensorKind.Text"/> (<see cref="SensorSample.SetText"/>) or <see cref="SensorKind.Table"/>
+/// (<see cref="SensorSample.SetTable"/>).
 /// </summary>
 public sealed record SensorDefinition(string Id, string Group, string Name, string Unit, SensorKind Kind = SensorKind.Number);
 
@@ -17,7 +19,10 @@ public enum SampleOutcome : byte
     /// <summary>Not read this round (a rate sensor's first sample has no delta yet); the previous state stands.</summary>
     Skipped,
 
-    /// <summary><see cref="SensorSample.Value"/> holds a fresh, finite value, or <see cref="SensorSample.Text"/> a text.</summary>
+    /// <summary>
+    /// <see cref="SensorSample.Value"/> holds a fresh, finite value, <see cref="SensorSample.Text"/> a text, or
+    /// <see cref="SensorSample.Table"/> a table.
+    /// </summary>
     Ok,
 
     /// <summary>The read failed or the sensor is absent.</summary>
@@ -42,6 +47,10 @@ public struct SensorSample
     /// <summary>A text sensor's reading, set with <see cref="SetText"/>; null for a number.</summary>
     public string? Text;
 
+    /// <summary>A table sensor's reading and its default format (a 1.x table's), set with <see cref="SetTable"/>.</summary>
+    public DataTable? Table;
+    public string? TableFormat;
+
     /// <summary>The source's own minimum, maximum and average, set with <see cref="HasStatistics"/>.</summary>
     public double Min;
     public double Max;
@@ -65,6 +74,7 @@ public struct SensorSample
         HasStatistics = false;
         Stale = false;
         Text = null;
+        Table = null;
         if (double.IsFinite(value))
         {
             Value = value;
@@ -98,7 +108,23 @@ public struct SensorSample
         HasStatistics = false;
         Stale = false;
         Text = text;
+        Table = null;
         Outcome = text is null ? SampleOutcome.Failed : SampleOutcome.Ok;
+    }
+
+    /// <summary>
+    /// A table sensor's reading, its rows of <c>PluginText</c> and <c>PluginSensor</c> cells, with its default format
+    /// (<c>0:200|1:60</c>). Null fails the read. The table is the reading from then on, read without a lock: hand over a
+    /// new one each round, never one changed after.
+    /// </summary>
+    public void SetTable(DataTable? table, string format)
+    {
+        HasStatistics = false;
+        Stale = false;
+        Text = null;
+        Table = table;
+        TableFormat = format;
+        Outcome = table is null ? SampleOutcome.Failed : SampleOutcome.Ok;
     }
 
     /// <summary>The sensor has no reading now (<see cref="SampleOutcome.Unavailable"/>).</summary>
@@ -107,6 +133,7 @@ public struct SensorSample
         HasStatistics = false;
         Stale = false;
         Text = null;
+        Table = null;
         Outcome = SampleOutcome.Unavailable;
     }
 
@@ -119,7 +146,7 @@ public struct SensorSample
 }
 
 /// <summary>
-/// Reads a set of number and text sensors for <see cref="PolledSensorSource"/>. Called from one thread at a time:
+/// Reads a set of number, text and table sensors for <see cref="PolledSensorSource"/>. Called from one thread at a time:
 /// <see cref="Discover"/> once, then <see cref="Sample"/> once per poll, then <see cref="IDisposable.Dispose"/>.
 /// </summary>
 public interface ISensorSampler : IDisposable
