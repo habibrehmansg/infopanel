@@ -112,7 +112,7 @@ Both are done (the Persistence table above): the 1.x import reads guides from th
 | AIDA64 SensorPanel import | later | `InfoPanel/Models/SharedModel.SensorPanelImport.cs` |
 | ConfigModel / Settings (app settings) | the engine settings (`SettingsStore`, `GET`/`PATCH /api/settings`) hold the frame and graph rates, the log level, the sensor sources' settings and the others spec/docs/api.md lists ("Settings"); the devices', tray's, autostart's, hotkeys', autosave's and web server's settings later, each with its feature | `InfoPanel/Models/ConfigModel.cs`, `InfoPanel/Models/Settings.cs` |
 | JobObject (plugin host lifetime) | later (Windows; elsewhere a host exits when its pipe ends, and the engine kills what is left when it stops) | `InfoPanel/Utils/JobObject.cs` |
-| Installer | macOS: an app in a disk image, ad hoc signed, built by `packaging/macos/build.sh` (docs/2.0/packaging.md); Windows later | `InnoSetup/setup.iss` |
+| Installer | macOS: an app in a disk image, ad hoc signed, built by `packaging/macos/build.sh` (docs/2.0/packaging.md). Windows: done, `packaging/windows/` (`InfoPanel.iss`, built by `build.ps1`; docs/2.0/packaging.md): "InfoPanel 2" beside 1.x with its own AppId, folder, Start-menu group, Run value and task folder; per machine, x64; the licence page (`LICENSE`); the bundled PawnIO setup and, when no .NET 8 or later is installed, Microsoft's .NET runtime for the sensor helper, both hash-pinned; the finish page launches unelevated (1.x's ran as the elevated user); the uninstaller removes the Run value and the helper's tasks and keeps the data folder. Not 1.x's `[InstallDelete]` of the whole program folder's files | `InnoSetup/setup.iss` |
 
 ## 1.4.x bugs fixed in 2.0
 
