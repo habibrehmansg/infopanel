@@ -12,7 +12,7 @@ using System.Threading;
 namespace InfoPanel.Drawing
 {
     /// <summary>
-    /// Fonts the renderer resolves before the system's: the bundled Inter faces and any font files the
+    /// Fonts the renderer resolves before the system's: the bundled Inter and DSEG7 Classic faces and any font files the
     /// host registers (for example from <c>{data}/fonts</c>). Process-wide and thread-safe.
     /// The bundled faces are registered on first use, before anything else, so a font the host
     /// registers later with the same family and style replaces them.
@@ -21,7 +21,7 @@ namespace InfoPanel.Drawing
     {
         private static readonly ILogger Logger = Log.ForContext(typeof(FontRegistry));
 
-        private static readonly string[] EmbeddedFaces = ["Inter-Regular.ttf", "Inter-Bold.ttf", "Inter-Italic.ttf", "Inter-BoldItalic.ttf"];
+        private static readonly string[] EmbeddedFaces = ["Inter-Regular.ttf", "Inter-Bold.ttf", "Inter-Italic.ttf", "Inter-BoldItalic.ttf", "DSEG7Classic-Regular.ttf", "DSEG7Classic-Bold.ttf"];
         private static readonly string[] FontExtensions = [".ttf", ".otf", ".ttc", ".otc"];
 
         /// <summary>The largest font file read; a larger one isn't (the bundled faces are a few hundred KiB, a whole CJK collection tens of MiB).</summary>
@@ -36,7 +36,7 @@ namespace InfoPanel.Drawing
         private static bool _embeddedRegistered;
 
         /// <summary>
-        /// Registers the bundled Inter faces (Regular, Bold, Italic, Bold Italic). Idempotent; the
+        /// Registers the bundled faces: Inter (Regular, Bold, Italic, Bold Italic) and DSEG7 Classic (Regular, Bold). Idempotent; the
         /// registry also does this on first use, so calling it only moves the cost to start-up.
         /// </summary>
         public static void RegisterEmbedded()
@@ -264,7 +264,7 @@ namespace InfoPanel.Drawing
             }
         }
 
-        /// <summary>The families of the faces InfoPanel bundles (Inter): there on every computer.</summary>
+        /// <summary>The families of the faces InfoPanel bundles (Inter, DSEG7 Classic): there on every computer.</summary>
         public static IReadOnlySet<string> GetBundledFamilies()
         {
             lock (_lock)

@@ -460,7 +460,7 @@ public sealed class ListFontsTool : McpTool
             .Where(f => query == null || f.Contains(query, StringComparison.OrdinalIgnoreCase))
             .Select(f => bundled.Contains(f) ? $"{f} (bundled: on every computer)" : f)
             .ToList();
-        var fallback = $"a family that isn't installed is drawn in {string.Join(", ", bundled.Order(StringComparer.OrdinalIgnoreCase))}";
+        var fallback = $"a family that isn't installed is drawn in {InfoPanel.Drawing.FontDefaults.Family}";
         if (fonts.Count == 0)
             return Task.FromResult(ToolResult.Text($"No font family holds \"{query}\" ({all.Count} installed; {fallback}). Try a shorter query, or none."));
         var heading = query == null

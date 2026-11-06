@@ -348,6 +348,12 @@ Only in a publish for Windows (`dotnet publish InfoPanel -r win-x64`), in its ow
 - **Copyright**: Copyright 2016 The Inter Project Authors
 - **Project**: https://github.com/rsms/inter
 
+### DSEG7 Classic 0.46 (the bundled font)
+- **Use**: Regular and Bold, unmodified, embedded in `InfoPanel.Core` (`InfoPanel.Core/Fonts/`), so seven-segment digits draw the same on every computer
+- **Licence**: OFL-1.1, with the Reserved Font Name "DSEG"; its text in [`InfoPanel.Core/Fonts/DSEG-OFL.txt`](InfoPanel.Core/Fonts/DSEG-OFL.txt)
+- **Copyright**: Copyright (c) 2018, keshikan (http://www.keshikan.net), with Reserved Font Name "DSEG"
+- **Project**: https://github.com/keshikan/DSEG
+
 ---
 
 *From the restore graph at `ec716ce0`.*

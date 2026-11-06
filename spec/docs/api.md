@@ -192,7 +192,7 @@ The test vector (also as bodies in `examples/api/pairingChallengeRequest/`, `pai
 
 ## Fonts and sensors
 
-`GET /api/fonts` answers the font families a scene's text can name, as an array of strings: the engine's own families (Inter, and the fonts in its data folder's `fonts/`) first, then the system's, each sorted, each family once whatever its case.
+`GET /api/fonts` answers the font families a scene's text can name, as an array of strings: the engine's own families (Inter, DSEG7 Classic, and the fonts in its data folder's `fonts/`) first, then the system's, each sorted, each family once whatever its case.
 
 `GET /api/sensors` answers every sensor the engine's sources offer, as an array of `sensorEntry`: its `key`, which a binding names ([bindings](bindings.md#bindings)); its `source`, `group`, `name` and `unit`, for people; its `status` now: `live`, `stale` (the last value kept), `unavailable`, `denied` (the operating system refused the engine access to it), `simulated` or `missing` (the key isn't well formed); and its `type`, the type of value it reads: `number`, `text` or `table`, as a scene input's type names it ([bindings](bindings.md)), known without a reading, and `number` when the engine can't tell. The status and the type come from one read of the sensor, as a reading's do (below). These are a scene input's spellings where the meaning is the same; [bindings](bindings.md#status) maps each status to the status an input bound to the sensor reads. A client treats a status it doesn't know as no reading, and a type it doesn't know as `number`.
 

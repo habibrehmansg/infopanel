@@ -1,5 +1,6 @@
 using InfoPanel.Core.Tests.Golden;
 using InfoPanel.Drawing;
+using InfoPanel.Import;
 using SkiaSharp;
 using Topten.RichTextKit;
 using Xunit;
@@ -17,6 +18,58 @@ public class FontRegistryTests
     {
         Assert.Contains("Inter", FontRegistry.GetFamilies());
         Assert.Equal("Inter", FontDefaults.Family);
+    }
+
+    /// <summary>DSEG7 Classic (Regular and Bold, SIL OFL 1.1) is bundled like Inter: there on every computer, system copy or not.</summary>
+    [Theory]
+    [InlineData("DSEG7 Classic", 400, 400)]
+    [InlineData("dseg7 classic", 700, 700)]
+    [InlineData("DSEG7 Classic", 300, 400)]
+    public void BundledDseg7Classic_ResolvesWithNoSystemCopy(string family, int weight, int expectedWeight)
+    {
+        Assert.Contains("DSEG7 Classic", FontRegistry.GetFamilies());
+        Assert.Contains("DSEG7 Classic", FontRegistry.GetBundledFamilies());
+        Assert.Contains("Inter", FontRegistry.GetBundledFamilies());
+
+        Assert.True(FontRegistry.TryGet(family, weight, SKFontStyleSlant.Upright, out var typeface));
+        Assert.Equal("DSEG7 Classic", typeface.FamilyName);
+        Assert.Equal(expectedWeight, typeface.FontWeight);
+    }
+
+    /// <summary>A user's DSEG7 Classic in <c>{data}/fonts</c> replaces the bundled face of its style (the host registers it after the bundled ones).</summary>
+    [Fact]
+    public void ADseg7InTheDataFolder_ReplacesTheBundledFace()
+    {
+        Assert.True(FontRegistry.TryGet("DSEG7 Classic", 700, SKFontStyleSlant.Upright, out var bundled));
+        var directory = Path.Combine(Path.GetTempPath(), $"fonts-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.Copy(Path.Combine(InterDirectory, "DSEG7Classic-Bold.ttf"), Path.Combine(directory, "DSEG7Classic-Bold.ttf"));
+
+            Assert.Equal(["DSEG7 Classic"], FontRegistry.RegisterDirectory(directory));
+            Assert.True(FontRegistry.TryGet("DSEG7 Classic", 700, SKFontStyleSlant.Upright, out var user));
+            Assert.NotSame(bundled, user);
+            Assert.Single(FontRegistry.GetFamilies(), family => family.Equals("DSEG7 Classic", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>The 1.x renderer's and the scene runtime's font paths both reach the bundled face; Inter is unchanged.</summary>
+    [Fact]
+    public void Dseg7Classic_IsReachedByTheTextPaths_AndInterIsUnchanged()
+    {
+        Assert.True(FontRegistry.TryGet("DSEG7 Classic", 700, SKFontStyleSlant.Upright, out var bold));
+        Assert.Equal("DSEG7 Classic", SkiaGraphics.CreateTypeface("DSEG7 Classic", "Bold", bold: false, italic: false).FamilyName);
+        var style = new Style { FontFamily = "DSEG7 Classic", FontWeight = 700 };
+        Assert.Equal("DSEG7 Classic", InfoPanelFontMapper.Instance.TypefaceFromStyle(style, ignoreFontVariants: false).FamilyName);
+
+        Assert.Equal("Inter", SkiaGraphics.CreateTypeface("Inter", "", bold: false, italic: false).FamilyName);
+        Assert.Equal("Inter", FontDefaults.Family);
+        Assert.True(V1ReadContext.InstalledFonts()("DSEG7 Classic"));
     }
 
     [Theory]

@@ -507,8 +507,9 @@ public sealed class McpEditToolTests
         var (all, error) = await Call(host, "list_fonts", new JsonObject());
         Assert.False(error, all);
         var families = all.Split('\n').Skip(1).ToList();
-        Assert.StartsWith("Inter (bundled", families[0]);
-        Assert.Single(families, f => f.Contains("(bundled"));
+        Assert.StartsWith("DSEG7 Classic (bundled", families[0]);
+        Assert.StartsWith("Inter (bundled", families[1]);
+        Assert.Equal(2, families.Count(f => f.Contains("(bundled")));
 
         var (inter, interError) = await Call(host, "list_fonts", new JsonObject { ["query"] = "iNTe" });
         Assert.False(interError, inter);
@@ -520,7 +521,7 @@ public sealed class McpEditToolTests
         var (none, noneError) = await Call(host, "list_fonts", new JsonObject { ["query"] = "no-such-family-zq" });
         Assert.False(noneError, none);
         Assert.Contains("No font family", none);
-        Assert.Contains("Inter", none); // what a scene can always use
+        Assert.Contains("drawn in Inter)", none); // what a family nobody has falls back to
     }
 
     /// <summary>

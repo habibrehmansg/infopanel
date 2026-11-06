@@ -13,7 +13,7 @@ of the tools (names and input schemas, no wording) is committed as `InfoPanel.Te
 | `list_profiles` | read | The profiles: id, name, size, status, unsaved changes |
 | `get_profile` | read | A profile's name, size, revision and items (position, box, visibility, bindings, what made each; listed within 4 MiB, then "… and N more items"); with `item`, that item's scene and source |
 | `list_sensors` | read | The sensors: key, name, group, unit, status, value; `query` filters, `limit` caps (200) |
-| `list_fonts` | read | The font families a scene's text can name, the bundled ones (Inter) first and marked; `query` keeps those whose name holds it, in any case |
+| `list_fonts` | read | The font families a scene's text can name, the bundled ones (Inter, DSEG7 Classic) first and marked; `query` keeps those whose name holds it, in any case |
 | `render_preview` | read | A profile drawn as a PNG, `width` pixels wide (the profile's, at most 1,200), and the checks on the same tick (below), of the profile as it is now (the live frame's tick when it shows the newest change; what the live output holds back over the process budget is held back here too) |
 | `create_profile` | edit | An empty profile (`name`, `width`, `height`, `background`), stored and saved at once |
 | `add_item` | edit | An item drawing a `scene`, at `x`, `y`, with an optional box (`width`, `height`), `name`, `bindings`, `group`, `index`; from elsewhere, a design the service produced may stand for the scene and box ([relay.md](relay.md#designs)) |
