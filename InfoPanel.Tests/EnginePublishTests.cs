@@ -143,6 +143,88 @@ public class EnginePublishTests
         }
     }
 
+    [Fact]
+    public async Task AWindowsPublish_OnWindows_GivesInfoPanelExeTheProgramsIcon()
+    {
+        // The SDK writes the icon into the apphost only when it is built on Windows, so this runs on Windows alone.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only a publish on Windows writes resources into InfoPanel.exe.");
+        var dir = Directory.CreateTempSubdirectory("infopanel-publish-icon-");
+        try
+        {
+            var root = Path.Combine(dir.FullName, "win-x64");
+            await Publish(root, Path.Combine(dir.FullName, "artifacts"), "-r", "win-x64", "--self-contained", "false");
+
+            // packaging/windows/InfoPanel.ico's sizes, as the icon group in InfoPanel.exe lists them (256 is written as 0).
+            Assert.Equal([16, 20, 24, 32, 40, 48, 64, 256], IconGroupSizes(Path.Combine(root, "InfoPanel.exe")));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    /// <summary>The image sizes of the first icon group (<c>RT_GROUP_ICON</c>) in the executable at <paramref name="path"/>; none when it has none.</summary>
+    private static int[] IconGroupSizes(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+            return [];
+        var module = NativeResources.LoadLibraryExW(path, IntPtr.Zero, NativeResources.AsDataFileExclusive | NativeResources.AsImageResource);
+        Assert.True(module != IntPtr.Zero, $"{path} couldn't be loaded for its resources: error {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+        try
+        {
+            // The first group's name, taken while enumerating (an id, or a string that lives only as long as the module).
+            var resource = IntPtr.Zero;
+            NativeResources.EnumResourceNamesW(module, NativeResources.GroupIcon, (m, type, name, _) =>
+            {
+                resource = NativeResources.FindResourceW(m, name, type);
+                return false;
+            }, IntPtr.Zero);
+            if (resource == IntPtr.Zero)
+                return [];
+            var size = NativeResources.SizeofResource(module, resource);
+            var data = NativeResources.LockResource(NativeResources.LoadResource(module, resource));
+            var bytes = new byte[size];
+            System.Runtime.InteropServices.Marshal.Copy(data, bytes, 0, (int)size);
+            // GRPICONDIR: reserved, type 1, count; then one 14-byte GRPICONDIRENTRY each, its width first.
+            var count = BitConverter.ToUInt16(bytes, 4);
+            return Enumerable.Range(0, count).Select(i => bytes[6 + 14 * i] is 0 ? 256 : bytes[6 + 14 * i]).ToArray();
+        }
+        finally
+        {
+            NativeResources.FreeLibrary(module);
+        }
+    }
+
+    private static class NativeResources
+    {
+        public const uint AsDataFileExclusive = 0x40; // LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE
+        public const uint AsImageResource = 0x20; // LOAD_LIBRARY_AS_IMAGE_RESOURCE
+        public static readonly IntPtr GroupIcon = 14; // RT_GROUP_ICON
+
+        public delegate bool EnumNames(IntPtr module, IntPtr type, IntPtr name, IntPtr param);
+
+        [System.Runtime.InteropServices.DllImport("kernel32", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        public static extern IntPtr LoadLibraryExW(string path, IntPtr file, uint flags);
+
+        [System.Runtime.InteropServices.DllImport("kernel32", SetLastError = true)]
+        public static extern bool EnumResourceNamesW(IntPtr module, IntPtr type, EnumNames callback, IntPtr param);
+
+        [System.Runtime.InteropServices.DllImport("kernel32", SetLastError = true)]
+        public static extern IntPtr FindResourceW(IntPtr module, IntPtr name, IntPtr type);
+
+        [System.Runtime.InteropServices.DllImport("kernel32", SetLastError = true)]
+        public static extern uint SizeofResource(IntPtr module, IntPtr resource);
+
+        [System.Runtime.InteropServices.DllImport("kernel32", SetLastError = true)]
+        public static extern IntPtr LoadResource(IntPtr module, IntPtr resource);
+
+        [System.Runtime.InteropServices.DllImport("kernel32")]
+        public static extern IntPtr LockResource(IntPtr data);
+
+        [System.Runtime.InteropServices.DllImport("kernel32", SetLastError = true)]
+        public static extern bool FreeLibrary(IntPtr module);
+    }
+
     /// <summary>The PE subsystem of the executable at <paramref name="path"/>: its optional header's <c>Subsystem</c>.</summary>
     private static int Subsystem(string path)
     {

@@ -17,6 +17,9 @@
     <!-- Windows: asInvoker, and Common Controls 6 for the notification-area icon's task dialog (copied into the
          apphost, InfoPanel.exe, when it is built on Windows). -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Windows: the program's icon (Explorer, the taskbar, Start), written into the apphost when it is built on
+         Windows; packaging/windows/make-icon.ps1 makes it from Images/logo.png. -->
+    <ApplicationIcon>..\packaging\windows\InfoPanel.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
