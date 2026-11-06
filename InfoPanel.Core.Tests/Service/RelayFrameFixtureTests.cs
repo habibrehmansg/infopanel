@@ -82,7 +82,72 @@ public sealed class RelayFrameFixtureTests
         Assert.Equal(4, grouped.Designs!.Count);
         Assert.Equal([null, null, null], grouped.Designs.Take(3).Select(d => d?.GetRawText()));
         Assert.Equal(groupDesigns[3]!.ToJsonString(), grouped.Designs[3]!.Value.GetRawText());
-        Assert.Equal(["call", "callWithBasedOn", "callWithDesign", "callWithDesigns", "callWithGroupDesigns", "cancel", "read", "time", "welcome"],
+
+        // update_item without a design, based on a read: basedOn is a member of the call frame.
+        var raw = Assert.IsType<RelayFrame.Call>(Relay("callUpdateBasedOn"));
+        Assert.Equal("update_item", raw.Tool);
+        Assert.Null(raw.Design);
+        Assert.Null(raw.BasedOnList);
+        Assert.Equal(Fixtures["relay"]!["callUpdateBasedOn"]!["basedOn"]!.ToJsonString(), raw.BasedOn!.Value.GetRawText());
+
+        // update_items: a design with its own basedOn, a raw entry's basedOn in the list, a plain entry with neither.
+        var updates = Assert.IsType<RelayFrame.Call>(Relay("callWithUpdates"));
+        var given2 = Fixtures["relay"]!["callWithUpdates"]!;
+        Assert.Equal("update_items", updates.Tool);
+        Assert.Null(updates.BasedOn);
+        Assert.Equal(given2["designs"]![0]!.ToJsonString(), updates.Designs![0]!.Value.GetRawText());
+        Assert.Equal([null, null], updates.Designs.Skip(1).Select(d => d?.GetRawText()));
+        Assert.Equal([null, given2["basedOn"]![1]!.ToJsonString(), null], updates.BasedOnList!.Select(b => b?.GetRawText()));
+        Assert.Equal(["call", "callUpdateBasedOn", "callWithBasedOn", "callWithDesign", "callWithDesigns", "callWithGroupDesigns", "callWithUpdates", "cancel", "read", "time", "welcome"],
             Fixtures["relay"]!.AsObject().Select(p => p.Key).Order());
+    }
+
+    private const string Based = """{"instance":"t","rev":3,"item":"a"}""";
+
+    [Theory]
+    // An object: what a read found, never beside a design (which carries its own).
+    [InlineData("""{"basedOn":"x"}""")]
+    [InlineData("""{"basedOn":5}""")]
+    [InlineData("""{"basedOn":{"instance":"t","item":"a"}}""")]
+    [InlineData("""{"basedOn":{"instance":"t","rev":-1,"item":"a"}}""")]
+    [InlineData("""{"basedOn":{"instance":"t","rev":1.5,"item":"a"}}""")]
+    [InlineData("""{"basedOn":{"instance":5,"rev":1,"item":"a"}}""")]
+    [InlineData("""{"basedOn":{"instance":"t","rev":1}}""")]
+    [InlineData("""{"basedOn":{"instance":"t","rev":3,"item":"a"},"design":{"source":{},"scene":{}}}""")]
+    // A list: one per entry of the arguments' items, each null or what a read found, never where designs has a design.
+    [InlineData("""{"basedOn":[]}""")]
+    [InlineData("""{"basedOn":[null,null]}""")]
+    [InlineData("""{"basedOn":[5]}""")]
+    [InlineData("""{"basedOn":[{"instance":"t","rev":3}]}""")]
+    [InlineData("""{"arguments":{"profile":"P"},"basedOn":[null]}""")]
+    [InlineData("""{"arguments":{"profile":"P","items":{}},"basedOn":[null]}""")]
+    [InlineData("""{"basedOn":[{"instance":"t","rev":3,"item":"a"}],"designs":[{"source":{},"scene":{},"basedOn":{"instance":"t","rev":3,"item":"a"}}]}""")]
+    public void ABasedOnNotAsItMustBe_IsMalformed(string members)
+    {
+        var frame = JsonNode.Parse("""{"type":"call","id":"c","tool":"update_items","sentAt":5,"arguments":{"profile":"P","items":[{"item":"a"}]}}""")!.AsObject();
+        foreach (var (name, value) in JsonNode.Parse(members)!.AsObject())
+            frame[name] = value?.DeepClone();
+        Assert.Equal(new RelayFrame.Refused("malformed", "c"), RelayFrames.Read(Encoding.UTF8.GetBytes(frame.ToJsonString())));
+    }
+
+    [Fact]
+    public void ABasedOn_IsRead_AsAnObjectOrAList_NullAbsent()
+    {
+        RelayFrame.Call Call(string members)
+        {
+            var frame = JsonNode.Parse("""{"type":"call","id":"c","tool":"update_items","sentAt":5,"arguments":{"profile":"P","items":[{"item":"a"},{"item":"b"}]}}""")!.AsObject();
+            foreach (var (name, value) in JsonNode.Parse(members)!.AsObject())
+                frame[name] = value?.DeepClone();
+            return Assert.IsType<RelayFrame.Call>(RelayFrames.Read(Encoding.UTF8.GetBytes(frame.ToJsonString())));
+        }
+
+        Assert.Equal(Based, Call($$"""{"basedOn":{{Based}}}""").BasedOn!.Value.GetRawText());
+        Assert.Null(Call("""{"basedOn":null}""").BasedOn);
+        Assert.Null(Call("""{"basedOn":null}""").BasedOnList);
+        Assert.Equal([null, null], Call("""{"basedOn":[null,null]}""").BasedOnList!.Select(b => b?.GetRawText()));
+        // Beside designs, on the entries without one.
+        var both = Call($$"""{"basedOn":[null,{{Based}}],"designs":[{"source":{},"scene":{},"basedOn":{{Based}}},null]}""");
+        Assert.Equal([null, Based], both.BasedOnList!.Select(b => b?.GetRawText()));
+        Assert.NotNull(both.Designs![0]);
     }
 }

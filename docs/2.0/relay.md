@@ -60,7 +60,7 @@ The relay sends:
 |---|---|
 | `{"type":"welcome"}` | `connected`; reads the relay's clock |
 | `{"type":"time","nonce":…,"now":1762214400000}` | The answer to its reading with that nonce: the relay's clock, in ms since 1970 UTC. Another nonce is ignored |
-| `{"type":"call","id":…,"tool":"add_item","arguments":{…},"sentAt":…,"deadline":…,"maxChars":140000}` | Runs the tool ([below](#calls)). `sentAt` is the relay's clock when it sent the call, in ms since 1970 UTC (one past 9999-12-31, what a time holds, is `malformed`; one ahead of the relay's clock still gets at most 60 s, [below](#never-late)); `deadline`, optional, the latest its change may be made, on the same clock (a time as `sentAt` is, else `malformed`; the engine takes the earlier of it and `sentAt` + 60 s, [below](#never-late)); `maxChars`, optional, the most text the AI app takes (brought within 1,000 and 9 MiB). For `add_item` and `update_item` also `design` and `files`, for `add_items` `designs` and `files` ([below](#designs)) |
+| `{"type":"call","id":…,"tool":"add_item","arguments":{…},"sentAt":…,"deadline":…,"maxChars":140000}` | Runs the tool ([below](#calls)). `sentAt` is the relay's clock when it sent the call, in ms since 1970 UTC (one past 9999-12-31, what a time holds, is `malformed`; one ahead of the relay's clock still gets at most 60 s, [below](#never-late)); `deadline`, optional, the latest its change may be made, on the same clock (a time as `sentAt` is, else `malformed`; the engine takes the earlier of it and `sentAt` + 60 s, [below](#never-late)); `maxChars`, optional, the most text the AI app takes (brought within 1,000 and 9 MiB). For `add_item` and `update_item` also `design` and `files`, for `add_items` and `update_items` `designs` and `files`; for `update_item` also `basedOn`, an object, and for `update_items` a list ([below](#designs)) |
 | `{"type":"read","id":…,"profile":…,"item":…,"detail":true,"sentAt":…,"deadline":…,"maxChars":140000}` | Reads one item ([below](#designs)): answered `item`, or a `result` with `isError`. It arrives as a call does: counted among the 8, late by `sentAt` + 10 s, cancellable |
 | `{"type":"cancel","id":…}` | Trips the call's cutoff: its change stops unmade (a `read`'s: it answers `cancelled`) |
 
@@ -87,7 +87,7 @@ add types without a new protocol. A protocol the relay can't serve, it closes wi
   answer an error saying the limit and to ask `render_preview` for a smaller width.
 - **The cutoff.** Each call has its own, tripped by `cancel`, by the connection's close, or by its commit deadline
   ([below](#never-late)). Every place an edit tool writes asks it under the write's own lock, just before it writes:
-  each commit of `add_item`, `update_item`, `remove_item` and `show_on_desktop` (every retry included, under the
+  each commit of `add_item`, `update_item`, `update_items`, `remove_item` and `show_on_desktop` (every retry included, under the
   document's lock), `create_profile`'s create (the workspace's) and `add_asset`'s blob (the blob store's). A cutoff
   that trips while the write waits for its lock stops it; one that trips once the write holds its lock comes after the
   change. Once tripped, the change stops unmade and the call answers `cancelled`. The web-image rule is asked there
@@ -100,7 +100,7 @@ add types without a new protocol. A protocol the relay can't serve, it closes wi
 ## Designs
 
 A call to `add_item` or `update_item` from elsewhere may bring a design the service produced instead of a `scene` (and
-one to `add_items` a design per item, [below](#designs)): the item's box, scene,
+one to `add_items` or `update_items` a design per item, [below](#designs)): the item's box, scene,
 how it was produced and where it came from, as the document holds them ([document](../../spec/docs/document.md#source-and-origin)),
 with the texts its `source` needs stored. The engine checks it as any item the API is given and never interprets it.
 
@@ -113,9 +113,11 @@ with the texts its `source` needs stored. The engine checks it as any item the A
 - **The frame.** `design` is an object with `source` and `scene`, each an object, and optionally `layout` and `origin`,
   each an object; `files` a list of text. With a design, the arguments hold no `scene`, `width` or `height` (the design
   is the item's scene and box). Anything else is `malformed`.
-- **Only from elsewhere, only to `add_item`, `update_item` and `add_items`.** A call made on this computer carries only
-  arguments, and a `design`, `designs` or `files` among them isn't one of the tool's. A design or files on a call to
-  another tool, `designs` on a call to `add_item` or `update_item`, a `design` on one to `add_items`, or non-empty
+- **Only from elsewhere, only to `add_item`, `update_item`, `add_items` and `update_items`.** A call made on this
+  computer carries only arguments, and a `design`, `designs`, `basedOn` or `files` among them isn't one of the tool's. A
+  design or files on a call to another tool, `designs` on a call to `add_item` or `update_item`, a `design` on one to
+  `add_items` or `update_items`, a `basedOn` object on a call to any tool but `update_item` or a list on any but
+  `update_items`, or non-empty
   `files` without a design, is an error result, `design`, with nothing stored or changed (`files: []` without a design
   is taken as none).
 - **Checked before anything is written:** at most 16 files, each at most 1 MiB as UTF-8; each file's SHA-256
@@ -196,6 +198,50 @@ these ids.
   nothing changed; the engine can't rebuild a design it didn't produce, so the service may read the item again and
   build it once more. A move, rename or other change meanwhile doesn't conflict with the design; any other conflict
   keeps the one retry every change has.
+
+**A change based on a read.** An `update_item` without a design may name what the read it was built on found (a resize
+or a scene worked out from the item as read), as a member of the call frame:
+
+```jsonc
+{"type":"call","id":…,"tool":"update_item","arguments":{"profile":…,"item":…,"width":160,"height":40},"sentAt":…,"deadline":…,
+ "basedOn":{"instance":"‹the read's instance›","rev":12,"item":"‹the read's item id›"}}
+```
+
+- `basedOn` is an object as a design's is, never beside `design` (which carries its own); anything else is `malformed`.
+- The same three rules as a design's: another tag or item is the error `basedOn`, checked as the call starts, never
+  `stale`; from then on the profile is held (deleted, replaced or renamed before the commit: `notFound`); the change
+  that sets the item's design (`width`, `height` or `scene`) is based on `basedOn.rev`, the call's other changes on the
+  revision the engine reads, and a conflict on it answers `stale` at once, with nothing changed. A move, rename or
+  other change meanwhile doesn't conflict with it.
+- Without `basedOn` a change is as any `update_item`'s: on the revision the engine reads, a conflict retried once.
+
+**Changing items.** `update_items` changes 1 to 50 items in one commit and one undo step, all or nothing, each entry
+as `update_item` changes one (without `profile`), each item once. From elsewhere, `designs` gives a design per entry in
+order (`null` for one without), each with its own `basedOn`, and `basedOn` a list of what a read found per entry
+(`null` for one not based on a read, and for one with a design):
+
+```jsonc
+{"type":"call","id":…,"tool":"update_items","arguments":{"profile":"Overview","items":[{"item":"Gauge"},{"item":"Clock","width":160},{"item":"Label","x":200}]},"sentAt":…,"deadline":…,
+ "files":["‹text›"],
+ "designs":[{"layout":{…},"source":{…},"scene":{…},"basedOn":{…}},null,null],
+ "basedOn":[null,{"instance":…,"rev":12,"item":…},null]}
+```
+
+- `designs` is a list as `add_items`' is (as long as `items`, each a design or `null`; an entry with a design holds no
+  `scene`, `width` or `height`); `basedOn` a list as long as `items`, each `null` or an object as above, never one
+  where `designs` has a design. Anything else is `malformed`. A design without its own `basedOn` is the error result
+  `design`.
+- Each entry based on a read or a design has its tag and item checked as the call starts; then the files and every
+  design are checked together, as `add_items`' are; then the entries' changes, in order, are checked against the
+  profile; then the files are stored and the change is one commit behind the cutoff, with the profile held as for
+  `update_item`.
+- One entry refused refuses the call whole, with nothing stored or changed, named by its place: its arguments, an entry
+  with nothing to change, an item that isn't there or that another entry names too (`items/4 names the same item as
+  items/1`), a change that doesn't fit it, `basedOn`, or the engine's checks (`items/‹its place›/…`). A conflict on any
+  entry's design change (a design's, or one based on a read) answers `stale` at once; any other conflict keeps the one
+  retry, rebuilt on the profile and items found first.
+- The answer names the items changed, then those already as asked; with nothing changed, "Nothing changed: every item
+  already was as asked."
 
 ## Never late
 

@@ -47,6 +47,12 @@ public sealed record RelayCallContext(string Id, int? MaxChars, RelayCutoff Cuto
 
     /// <summary>The texts the design needs stored, each under its SHA-256, or null.</summary>
     public IReadOnlyList<string>? Files { get; init; }
+
+    /// <summary>What <c>update_item</c>'s change without a design was built on, or null.</summary>
+    public JsonElement? BasedOn { get; init; }
+
+    /// <summary><c>update_items</c>' <c>basedOn</c>, one per entry in order (null for an entry not based on a read), or null.</summary>
+    public IReadOnlyList<JsonElement?>? BasedOnList { get; init; }
 }
 
 /// <summary>A relay call's answer: the tool's result, or that its change was stopped before it was made.</summary>
@@ -903,6 +909,8 @@ public sealed class RelayClient : IAsyncDisposable
                     Design = (call.Frame as RelayFrame.Call)?.Design,
                     Designs = (call.Frame as RelayFrame.Call)?.Designs,
                     Files = (call.Frame as RelayFrame.Call)?.Files,
+                    BasedOn = (call.Frame as RelayFrame.Call)?.BasedOn,
+                    BasedOnList = (call.Frame as RelayFrame.Call)?.BasedOnList,
                 };
                 var answer = call.Frame switch
                 {

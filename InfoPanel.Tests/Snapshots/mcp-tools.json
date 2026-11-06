@@ -477,6 +477,112 @@
       }
     },
     {
+      "name": "update_items",
+      "title": "Change items",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "string",
+            "description": "The profile's id or exact name.",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "items": {
+            "type": "array",
+            "description": "The items to change, in order, each as update_item takes one (without profile), each item once: 1 to 50.",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "type": "object",
+              "properties": {
+                "item": {
+                  "type": "string",
+                  "description": "The item's id or exact name.",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "scene": {
+                  "type": "object",
+                  "description": "A new scene for it (format infopanel.scene/1)."
+                },
+                "x": {
+                  "type": "number",
+                  "description": "Its new left edge, in pixels.",
+                  "minimum": -100000,
+                  "maximum": 100000
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Its new top edge, in pixels.",
+                  "minimum": -100000,
+                  "maximum": 100000
+                },
+                "rotation": {
+                  "type": "number",
+                  "description": "Its rotation in degrees, clockwise.",
+                  "minimum": -360,
+                  "maximum": 360
+                },
+                "width": {
+                  "type": "number",
+                  "description": "Its layout box width.",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "height": {
+                  "type": "number",
+                  "description": "Its layout box height.",
+                  "minimum": 0,
+                  "maximum": 100000
+                },
+                "bindings": {
+                  "type": "object",
+                  "description": "Its sensor bindings, replaced whole: input name to a sensor key, or to {\"key\", \"stat\"}."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Its new name.",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "visible": {
+                  "type": "boolean",
+                  "description": "Shown (true) or hidden (false)."
+                },
+                "group": {
+                  "type": "string",
+                  "description": "A group's id or exact name to move it into, at the end unless index says where; \"\" moves it to the top level. Its x, y stay as numbers, read from its new group's x, y: give x, y with it to place it.",
+                  "minLength": 0,
+                  "maxLength": 256
+                },
+                "index": {
+                  "type": "integer",
+                  "description": "Its place among its siblings, 0 first (at the back); past the last (2000): the end, on top. Alone, it reorders it in its group or the top level.",
+                  "minimum": 0,
+                  "maximum": 2000
+                }
+              },
+              "required": [
+                "item"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "profile",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Change items",
+        "readOnlyHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "remove_item",
       "title": "Remove an item",
       "inputSchema": {

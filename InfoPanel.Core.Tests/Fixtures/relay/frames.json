@@ -115,6 +115,44 @@
         }
       ]
     },
+    "callUpdateBasedOn": {
+      "type": "call",
+      "id": "c6",
+      "tool": "update_item",
+      "arguments": { "profile": "p-0123456789", "item": "ai-0123456789", "width": 160, "height": 40 },
+      "sentAt": 1762214430000,
+      "deadline": 1762214460000,
+      "maxChars": 140000,
+      "basedOn": { "instance": "AAAAAAAAAAAAAAAAAAAAAA", "rev": 12, "item": "ai-0123456789" }
+    },
+    "callWithUpdates": {
+      "type": "call",
+      "id": "c7",
+      "tool": "update_items",
+      "arguments": {
+        "profile": "p-0123456789",
+        "items": [
+          { "item": "ai-0123456789", "x": 10, "y": 20 },
+          { "item": "ai-1111111111", "width": 160 },
+          { "item": "ai-2222222222", "x": 200, "name": "Clock" }
+        ]
+      },
+      "sentAt": 1762214430000,
+      "deadline": 1762214460000,
+      "maxChars": 140000,
+      "files": ["{\"package\":\"example.widget\",\"version\":\"1.0.0\"}"],
+      "designs": [
+        {
+          "layout": { "w": 120, "h": 40 },
+          "source": { "format": "example.widget/1", "data": { "colour": "#ff0000" }, "deps": ["sha256:88226416b4bb8baa201e8d28b3b9eb72a4e8743b4bd7f53d15d7665d92f8368a"] },
+          "scene": { "format": "infopanel.scene/1", "inputs": { "v": { "type": "number" } }, "nodes": [{ "kind": "rect", "w": { "op": "input", "name": "v" }, "h": 10, "fill": "#ff0000" }] },
+          "basedOn": { "instance": "AAAAAAAAAAAAAAAAAAAAAA", "rev": 12, "item": "ai-0123456789" }
+        },
+        null,
+        null
+      ],
+      "basedOn": [null, { "instance": "AAAAAAAAAAAAAAAAAAAAAA", "rev": 12, "item": "ai-1111111111" }, null]
+    },
     "cancel": { "type": "cancel", "id": "c2" }
   }
 }

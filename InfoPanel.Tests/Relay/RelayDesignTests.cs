@@ -44,8 +44,8 @@ public sealed class RelayDesignTests
         long? deadline = null, long? sentAt = null)
     {
         var call = rig.Call(id, tool, arguments, sentAt);
-        // add_items takes a design per item (DesignCalls' first item), null for its item given as a scene.
-        if (design is not null && tool == "add_items")
+        // add_items and update_items take a design per item (DesignCalls' first item), null for their second item.
+        if (design is not null && tool is "add_items" or "update_items")
             call["designs"] = new JsonArray(design, null);
         else if (design is not null)
             call["design"] = design;
@@ -72,13 +72,18 @@ public sealed class RelayDesignTests
                 new JsonObject { ["x"] = 5, ["y"] = 6, ["name"] = "Gauge" },
                 new JsonObject { ["scene"] = TestDocs.InputScene(), ["name"] = "Plain" }),
         },
+        ["update_items"] = () => new JsonObject
+        {
+            ["profile"] = "P",
+            ["items"] = new JsonArray(new JsonObject { ["item"] = "a", ["x"] = 7 }, new JsonObject { ["item"] = "b", ["x"] = 9 }),
+        },
     };
 
     /// <summary>A design for <paramref name="tool"/> on <paramref name="document"/>: <c>update_item</c>'s built on item <c>a</c> as it is now.</summary>
     private static JsonObject DesignFor(string tool, ProfileDocument document, params string[] deps)
     {
         var design = Design(deps);
-        if (tool == "update_item")
+        if (tool is "update_item" or "update_items")
             design["basedOn"] = new JsonObject { ["instance"] = document.Instance, ["rev"] = document.Rev, ["item"] = "a" };
         return design;
     }

@@ -19,6 +19,7 @@ of the tools (names and input schemas, no wording) is committed as `InfoPanel.Te
 | `add_item` | edit | An item drawing a `scene`, at `x`, `y`, with an optional box (`width`, `height`), `name`, `bindings`, `group`, `index`; from elsewhere, a design the service produced may stand for the scene and box ([relay.md](relay.md#designs)) |
 | `add_items` | edit | Up to 50 items (`items`, each as `add_item` takes one, without `profile`, or a group: `name`, `x`, `y`, `group`, `index` and `children`, items as these but without `group`, `index` or `children`, their `x`, `y` from the group's; each child counted) in one commit and one undo step, all or nothing: one item refused refuses them all, the answer naming it by its place (`items/3/…`, `items/3/children/1/…`); from elsewhere, a design per item and per child may stand for its scene and box ([relay.md](relay.md#designs)) |
 | `update_item` | edit | Any of an item's `x`, `y`, `rotation`, `width`, `height`, `scene`, `bindings`, `name`, `visible`, and its place: `group` (a group to move it into, `""` the top level) and `index` (0 at the back; alone, a new place in its group or the top level); a move keeps its `x`, `y` as numbers, set first when given; a group into itself or a group in it is refused (`op.cycle`); the rest stays; from elsewhere, a design the service produced may stand for the scene and box, built on the item as a read found it ([relay.md](relay.md#designs)) |
+| `update_items` | edit | 1 to 50 items (`items`, each as `update_item` takes one, without `profile`, each item once) changed in one commit and one undo step, all or nothing: one entry refused refuses them all, the answer naming it by its place (`items/3: …`, `items/3/scene/…`); from elsewhere, a design per entry, or what a read found, as for `update_item` ([relay.md](relay.md#designs)) |
 | `remove_item` | edit | An item, a group with everything in it |
 | `add_asset` | edit | A picture stored as a blob: `svg` (an SVG's text) or `data` (a picture file's bytes in base64, at most 8,388,608 characters); its asset id, format and size, for a scene's `media` node; nothing stored when it isn't a picture the engine shows (a video is refused) |
 | `show_on_desktop` | edit | The profile's desktop window on (`show`, the default) or off, its other window settings kept; the answer says when no window opens on this engine (`--no-windows`, or a platform without desktop windows), the setting kept |
@@ -66,8 +67,8 @@ stands ([relay.md](relay.md)).
   connection the engine opens to the configured service, under the engine's own rules: only the tools, a cutoff before
   every write (bounded by the call's own deadline, never past 60 s after it was sent), late calls refused, web images
   refused for now, text held to what the app takes, and log lines marked "from elsewhere" ([relay.md](relay.md)). A
-  call to `add_item` or `update_item` from elsewhere may bring a design the service produced, and one to `add_items` a
-  design per item, with the files their sources need: every file and dependency, and every change of the call (the web-image
+  call to `add_item` or `update_item` from elsewhere may bring a design the service produced, and one to `add_items` or
+  `update_items` a design per item, with the files their sources need: every file and dependency, and every change of the call (the web-image
   rule included, on each item of a batch), is checked before anything is stored, so a refused call leaves
   nothing behind; an `update_item`'s design names the document and item it was built on, and answers `stale` with
   nothing changed when the item's design changed meanwhile. The relay may also read one item whole, with

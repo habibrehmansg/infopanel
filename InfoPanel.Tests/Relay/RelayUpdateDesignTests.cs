@@ -376,4 +376,123 @@ public sealed class RelayUpdateDesignTests
         Assert.False(workspace.Blobs.Exists(IdOf(Newer)), "the file was stored");
         Assert.Equal(rev, document.Rev);
     }
+
+    // update_item without a design, based on a read (docs/2.0/relay.md, "A change based on a read"): basedOn is a member
+    // of the call frame, under the same three rules as a design's.
+
+    /// <summary><c>update_item</c> from elsewhere with <paramref name="arguments"/> and the call frame's <c>basedOn</c>, no design.</summary>
+    private static JsonObject Based(RelayRig rig, string id, JsonObject arguments, JsonObject basedOn)
+    {
+        var call = rig.Call(id, "update_item", arguments);
+        call["basedOn"] = basedOn;
+        return call;
+    }
+
+    private static JsonNode? Layout(ProfileDocument document, string id) =>
+        JsonSerializer.SerializeToNode(document.Read().Document.Items.Single(i => i.Id == id), SpecJson.Options)!["layout"]?.DeepClone();
+
+    /// <summary>
+    /// The profile replaced (deleted and created again under its id) since the read the change was built on: the call is
+    /// the error <c>basedOn</c>, checked as it starts, never <c>stale</c>; nothing changes.
+    /// </summary>
+    [Fact]
+    public async Task ARawUpdateBasedOnARead_OfAReplacedProfile_IsTheErrorBasedOn_NothingChanged()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var workspace = WorkspaceOf(factory);
+        var document = P(workspace);
+        var id = document.Id;
+        var basedOn = BasedOn(document, "a");
+        Assert.True(workspace.DeleteWithItsTag(id));
+        var again = TestDocs.Doc("P", 400, 200, TestDocs.Scene("a", 10, 10), TestDocs.Scene("b", 100, 10));
+        again["id"] = id;
+        Assert.NotNull(workspace.Create(Encoding.UTF8.GetBytes(new JsonObject { ["id"] = id, ["document"] = again }.ToJsonString())).Entry);
+        var written = engine.Written();
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        await peer.SendAsync(Based(rig, "u", new JsonObject { ["profile"] = id, ["item"] = "a", ["width"] = 300 }, basedOn));
+        var answer = await peer.NextAsync(Ct);
+        Assert.Equal("result", answer["type"]!.GetValue<string>());
+        Assert.True(answer["result"]!["isError"]!.GetValue<bool>(), answer.ToJsonString());
+        Assert.Contains("The profile was replaced or the item changed since this change was prepared; nothing was changed.",
+            answer["result"]!["content"]![0]!["text"]!.GetValue<string>());
+        Assert.Equal(written, engine.Written());
+        Assert.Null(Layout(workspace.Find(id).Document!, "a"));
+    }
+
+    /// <summary>A <c>basedOn</c> naming another item than the call's is the error <c>basedOn</c>; nothing changes.</summary>
+    [Fact]
+    public async Task ARawUpdateBasedOnAnotherItem_IsTheErrorBasedOn_NothingChanged()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var document = P(WorkspaceOf(factory));
+        var written = engine.Written();
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        await peer.SendAsync(Based(rig, "u", new JsonObject { ["profile"] = "P", ["item"] = "a", ["width"] = 300, ["x"] = 1 }, BasedOn(document, "b")));
+        var result = (await peer.ExpectAsync("result", Ct))["result"]!;
+        Assert.True(result["isError"]!.GetValue<bool>(), result.ToJsonString());
+        Assert.Contains("The profile was replaced or the item changed since this change was prepared; nothing was changed.",
+            result["content"]![0]!["text"]!.GetValue<string>());
+        Assert.Equal(written, engine.Written());
+        Assert.Null(Layout(document, "a"));
+    }
+
+    /// <summary>
+    /// A raw resize built on <c>basedOn.rev</c>, when the item's design changed since: its op is based on that revision,
+    /// so it conflicts and answers <c>stale</c> at once, nothing changed and nothing rebuilt (the engine's own retry would
+    /// have overwritten the newer design).
+    /// </summary>
+    [Fact]
+    public async Task ARawResize_WhenTheDesignChangedSinceBasedOnRev_IsStale_NothingChanged()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var document = P(WorkspaceOf(factory));
+        var basedOn = BasedOn(document, "a");
+        // Meanwhile its design changes (another client's new scene).
+        TestDocs.Commit(document, TestDocs.Design("a", TestDocs.Rect("#0000ff"), document.Rev));
+        var written = engine.Written();
+        var layout = Layout(document, "a");
+        var retries = 0;
+        engine.Host.StepHook = step =>
+        {
+            if (step == "retry")
+                Interlocked.Increment(ref retries);
+        };
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        await peer.SendAsync(Based(rig, "u", new JsonObject { ["profile"] = "P", ["item"] = "a", ["width"] = 300, ["x"] = 1 }, basedOn));
+        Assert.Equal("""{"type":"stale","id":"u"}""", (await peer.NextAsync(Ct)).ToJsonString());
+        Assert.Equal(written, engine.Written());
+        Assert.True(JsonNode.DeepEquals(layout, Layout(document, "a")));
+        Assert.Equal(0, retries);
+    }
+
+    /// <summary>A move or rename since <c>basedOn.rev</c> doesn't conflict with the resize: both stand, in the call's one commit.</summary>
+    [Fact]
+    public async Task ARawResize_AfterAMoveMeanwhile_IsNotStale()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var document = P(WorkspaceOf(factory));
+        var basedOn = BasedOn(document, "a");
+        TestDocs.Commit(document, TestDocs.Place("a", 77, 7, document.Rev), TestDocs.Attrs("a", name: "Moved"));
+        var rev = document.Rev;
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        await peer.SendAsync(Based(rig, "u", new JsonObject { ["profile"] = "P", ["item"] = "a", ["width"] = 300 }, basedOn));
+        var result = (await peer.ExpectAsync("result", Ct))["result"]!;
+        Assert.False(result["isError"]!.GetValue<bool>(), result.ToJsonString());
+        Assert.Equal(rev + 1, document.Rev);
+        var item = document.Read().Document.Items.Single(i => i.Id == "a");
+        Assert.Equal(("Moved", 77d), (item.Name, item.Placement.X));
+        Assert.Equal(300d, Layout(document, "a")!["w"]!.GetValue<double>());
+    }
 }

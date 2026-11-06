@@ -23,7 +23,7 @@ public sealed class McpCall
     private readonly RelayCutoff? _cutoff;
 
     private McpCall(McpCallOrigin origin, int? maxChars, RelayCutoff? cutoff, JsonObject? design, IReadOnlyList<JsonObject?>? designs,
-        IReadOnlyList<string>? files)
+        IReadOnlyList<string>? files, JsonObject? basedOn = null, IReadOnlyList<JsonObject?>? basedOnList = null)
     {
         Origin = origin;
         MaxChars = maxChars;
@@ -31,16 +31,20 @@ public sealed class McpCall
         Design = design;
         Designs = designs;
         Files = files;
+        BasedOn = basedOn;
+        BasedOnList = basedOnList;
     }
 
     /// <summary>A call from an AI app on this computer: no cutoff, no limit beyond the tools' own, never a design.</summary>
     public static McpCall ThisComputer { get; } = new(McpCallOrigin.ThisComputer, null, null, null, null, null);
 
-    /// <summary>A call from elsewhere, with its relay context: the only kind that brings a design.</summary>
+    /// <summary>A call from elsewhere, with its relay context: the only kind that brings a design or what a read found.</summary>
     public static McpCall Elsewhere(RelayCallContext context) => new(McpCallOrigin.Elsewhere, context.MaxChars, context.Cutoff,
         context.Design is { } design ? Copy(design) : null,
         context.Designs is { } designs ? [.. designs.Select(d => d is { } one ? Copy(one) : null)] : null,
-        context.Files);
+        context.Files,
+        context.BasedOn is { } basedOn ? Copy(basedOn) : null,
+        context.BasedOnList is { } list ? [.. list.Select(b => b is { } one ? Copy(one) : null)] : null);
 
     private static JsonObject Copy(System.Text.Json.JsonElement design) =>
         JsonNode.Parse(design.GetRawText(), documentOptions: InfoPanel.Spec.SpecJson.DocumentOptions)!.AsObject();
@@ -59,6 +63,18 @@ public sealed class McpCall
 
     /// <summary>The texts the design needs stored, each under its SHA-256, or null.</summary>
     public IReadOnlyList<string>? Files { get; }
+
+    /// <summary>
+    /// What <c>update_item</c>'s change without a design was built on (<c>instance</c>, <c>rev</c>, <c>item</c>; docs/2.0/relay.md,
+    /// "A change based on a read"): only on a call from elsewhere. A copy per call; null without one.
+    /// </summary>
+    public JsonObject? BasedOn { get; }
+
+    /// <summary>
+    /// <c>update_items</c>' <c>basedOn</c>, one per entry in order, null for an entry not based on a read: only on a call
+    /// from elsewhere. A copy per call; null without it.
+    /// </summary>
+    public IReadOnlyList<JsonObject?>? BasedOnList { get; }
 
     /// <summary>Whether the call brings a design, designs or files.</summary>
     public bool BringsDesign => Design is not null || Designs is not null || Files is not null;

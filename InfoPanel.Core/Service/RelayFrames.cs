@@ -36,6 +36,18 @@ public abstract record RelayFrame
 
         /// <summary><c>files</c>: the texts the design needs stored, or null.</summary>
         public IReadOnlyList<string>? Files { get; init; }
+
+        /// <summary>
+        /// <c>basedOn</c> as an object: what <c>update_item</c>'s change without a design was built on (<c>instance</c>,
+        /// <c>rev</c>, <c>item</c>), as a read found it; or null.
+        /// </summary>
+        public JsonElement? BasedOn { get; init; }
+
+        /// <summary>
+        /// <c>basedOn</c> as a list: <c>update_items</c>' one per entry of its arguments' <c>items</c> in order, null for an
+        /// entry not based on a read and for one with a design (which carries its own); or null.
+        /// </summary>
+        public IReadOnlyList<JsonElement?>? BasedOnList { get; init; }
     }
 
     /// <summary><c>cancel</c>: the relay withdrew the call <paramref name="Id"/>.</summary>
@@ -202,16 +214,8 @@ public static class RelayFrames
         List<JsonElement?>? designs = null;
         if (root.TryGetProperty("designs", out var shapes) && shapes.ValueKind != JsonValueKind.Null)
         {
-            if (design is not null || shapes.ValueKind != JsonValueKind.Array
-                || !arguments.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+            if (design is not null || shapes.ValueKind != JsonValueKind.Array || EntriesOf(arguments) is not { } entries)
                 return new RelayFrame.Refused("malformed", id);
-            var entries = new List<JsonElement>();
-            foreach (var item in items.EnumerateArray())
-            {
-                entries.Add(item);
-                if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
-                    entries.AddRange(children.EnumerateArray());
-            }
             if (entries.Count != shapes.GetArrayLength())
                 return new RelayFrame.Refused("malformed", id);
             designs = [];
@@ -230,6 +234,35 @@ public static class RelayFrames
             }
         }
 
+        // What the change was built on, as a read found it: an object (update_item's change without a design), never beside
+        // a design, which carries its own; or a list counted as designs are (update_items'), each null or one, never
+        // where designs has a design.
+        JsonElement? basedOn = null;
+        List<JsonElement?>? basedOnList = null;
+        if (root.TryGetProperty("basedOn", out var based) && based.ValueKind != JsonValueKind.Null)
+        {
+            if (based.ValueKind == JsonValueKind.Object)
+            {
+                if (design is not null || !IsBasedOn(based))
+                    return new RelayFrame.Refused("malformed", id);
+                basedOn = based.Clone();
+            }
+            else
+            {
+                if (based.ValueKind != JsonValueKind.Array || EntriesOf(arguments) is not { } entries || entries.Count != based.GetArrayLength())
+                    return new RelayFrame.Refused("malformed", id);
+                basedOnList = [];
+                var index = 0;
+                foreach (var one in based.EnumerateArray())
+                {
+                    if (one.ValueKind != JsonValueKind.Null && (!IsBasedOn(one) || designs?[index] is not null))
+                        return new RelayFrame.Refused("malformed", id);
+                    basedOnList.Add(one.ValueKind == JsonValueKind.Null ? null : one.Clone());
+                    index++;
+                }
+            }
+        }
+
         List<string>? files = null;
         if (root.TryGetProperty("files", out var texts) && texts.ValueKind != JsonValueKind.Null)
         {
@@ -244,7 +277,25 @@ public static class RelayFrames
             }
         }
 
-        return new RelayFrame.Call(id, tool.GetString()!, arguments, sentAt, maxChars) { Deadline = deadline, Design = design, Designs = designs, Files = files };
+        return new RelayFrame.Call(id, tool.GetString()!, arguments, sentAt, maxChars)
+        {
+            Deadline = deadline, Design = design, Designs = designs, Files = files, BasedOn = basedOn, BasedOnList = basedOnList,
+        };
+    }
+
+    /// <summary>The arguments' <c>items</c> and each one's <c>children</c>, in order, a group's children right after it; null when <c>items</c> isn't a list.</summary>
+    private static List<JsonElement>? EntriesOf(JsonElement arguments)
+    {
+        if (!arguments.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+            return null;
+        var entries = new List<JsonElement>();
+        foreach (var item in items.EnumerateArray())
+        {
+            entries.Add(item);
+            if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
+                entries.AddRange(children.EnumerateArray());
+        }
+        return entries;
     }
 
     private static bool TryMaxChars(JsonElement root, out int? maxChars)

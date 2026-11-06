@@ -27,11 +27,11 @@ public sealed class McpToolHost : IRelayToolHost
     public static IReadOnlyList<string> ToolNames { get; } =
     [
         "list_profiles", "get_profile", "list_sensors", "list_fonts", "render_preview",
-        "create_profile", "add_item", "add_items", "update_item", "remove_item", "add_asset", "show_on_desktop",
+        "create_profile", "add_item", "add_items", "update_item", "update_items", "remove_item", "add_asset", "show_on_desktop",
     ];
 
     /// <summary>The tools a call from elsewhere may bring a design to (docs/2.0/relay.md, "Designs").</summary>
-    public static IReadOnlyList<string> DesignTools { get; } = ["add_item", "update_item", "add_items"];
+    public static IReadOnlyList<string> DesignTools { get; } = ["add_item", "update_item", "add_items", "update_items"];
 
     private readonly IReadOnlyDictionary<string, McpTool> _tools;
     private readonly McpText _text;
@@ -81,6 +81,7 @@ public sealed class McpToolHost : IRelayToolHost
         new AddItemTool(changes!),
         new AddItemsTool(changes!),
         new UpdateItemTool(changes!),
+        new UpdateItemsTool(changes!),
         new RemoveItemTool(changes!),
         new AddAssetTool(changes!),
         new ShowOnDesktopTool(changes!, noWindow),
@@ -189,12 +190,19 @@ public sealed class McpToolHost : IRelayToolHost
                     throw new ToolFailure("design",
                         $"{tool} doesn't take a design (design): only {string.Join(", ", DesignTools)} does. Nothing was stored or changed.");
                 }
-                // add_items takes a design per item (designs), the others one design.
-                if (tool == AddItemsTool.ToolName ? call.Design is not null : call.Designs is not null)
+                // add_items and update_items take a design per item (designs), the others one design.
+                var batch = tool is AddItemsTool.ToolName or UpdateItemsTool.ToolName;
+                if (batch ? call.Design is not null : call.Designs is not null)
                 {
-                    throw new ToolFailure("design", tool == AddItemsTool.ToolName
-                        ? "add_items takes designs, one per item in order, not a design (design). Nothing was stored or changed."
-                        : $"{tool} takes a design, not designs (design): only add_items takes one per item. Nothing was stored or changed.");
+                    throw new ToolFailure("design", batch
+                        ? $"{tool} takes designs, one per item in order, not a design (design). Nothing was stored or changed."
+                        : $"{tool} takes a design, not designs (design): only add_items and update_items take one per item. Nothing was stored or changed.");
+                }
+                // What a read found: an object only to update_item, a list only to update_items.
+                if ((call.BasedOn is not null && tool != "update_item") || (call.BasedOnList is not null && tool != UpdateItemsTool.ToolName))
+                {
+                    throw new ToolFailure("design",
+                        $"{tool} doesn't take this basedOn (design): only update_item takes one, and update_items one per item. Nothing was stored or changed.");
                 }
                 // Files are a design's: without one, none are checked or stored, so the call is refused before it runs.
                 if (!call.HasDesign && call.Files is { Count: > 0 })

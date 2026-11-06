@@ -25,6 +25,7 @@ public sealed class McpToolTests
         ["add_item"] = ApiScope.Edit,
         ["add_items"] = ApiScope.Edit,
         ["update_item"] = ApiScope.Edit,
+        ["update_items"] = ApiScope.Edit,
         ["remove_item"] = ApiScope.Edit,
         ["add_asset"] = ApiScope.Edit,
         ["show_on_desktop"] = ApiScope.Edit,
@@ -38,6 +39,31 @@ public sealed class McpToolTests
         var result = await host.CallAsync(tool, json.RootElement.Clone(), Ct);
         var text = string.Join("\n", result["content"]!.AsArray().Where(c => c!["type"]!.GetValue<string>() == "text").Select(c => c!["text"]!.GetValue<string>()));
         return (text, result["isError"]!.GetValue<bool>(), result);
+    }
+
+    /// <summary>
+    /// <c>update_items</c> changes a profile (edit, not read-only), listed after <c>update_item</c>; each of its 1 to 50
+    /// entries takes exactly <c>update_item</c>'s members but <c>profile</c>, the item required.
+    /// </summary>
+    [Fact]
+    public void UpdateItems_IsAnEditTool_WhoseEntriesAreUpdateItemsMembersWithoutProfile()
+    {
+        var tools = McpToolHost.BuiltInList()["tools"]!.AsArray().Select(t => t!.AsObject()).ToList();
+        var names = tools.Select(t => t["name"]!.GetValue<string>()).ToList();
+        Assert.Equal(names.IndexOf("update_item") + 1, names.IndexOf("update_items"));
+        var single = tools.Single(t => t["name"]!.GetValue<string>() == "update_item");
+        var batch = tools.Single(t => t["name"]!.GetValue<string>() == "update_items");
+        Assert.False(batch["annotations"]!["readOnlyHint"]!.GetValue<bool>());
+        var schema = batch["inputSchema"]!;
+        Assert.Equal(["profile", "items"], schema["properties"]!.AsObject().Select(p => p.Key));
+        Assert.Equal("""["profile","items"]""", schema["required"]!.ToJsonString());
+        var items = schema["properties"]!["items"]!;
+        Assert.Equal((1, 50), (items["minItems"]!.GetValue<int>(), items["maxItems"]!.GetValue<int>()));
+        var entry = items["items"]!.AsObject().DeepClone().AsObject();
+        var expected = single["inputSchema"]!.DeepClone().AsObject();
+        expected["properties"]!.AsObject().Remove("profile");
+        expected["required"] = new JsonArray("item");
+        Assert.Equal(expected.ToJsonString(), entry.ToJsonString());
     }
 
     [Fact]

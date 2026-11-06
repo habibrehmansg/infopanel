@@ -44,6 +44,11 @@ public sealed class RelayToolRulesTests
             ["items"] = new JsonArray(new JsonObject { ["scene"] = TestDocs.InputScene() }, new JsonObject { ["scene"] = TestDocs.InputScene(), ["x"] = 30 }),
         },
         ["update_item"] = () => new JsonObject { ["profile"] = "P", ["item"] = "a", ["x"] = 55 },
+        ["update_items"] = () => new JsonObject
+        {
+            ["profile"] = "P",
+            ["items"] = new JsonArray(new JsonObject { ["item"] = "a", ["x"] = 55 }, new JsonObject { ["item"] = "b", ["x"] = 66, ["name"] = "B" }),
+        },
         ["remove_item"] = () => new JsonObject { ["profile"] = "P", ["item"] = "a" },
         ["add_asset"] = () => new JsonObject { ["svg"] = Svg },
         ["show_on_desktop"] = () => new JsonObject { ["profile"] = "P" },
