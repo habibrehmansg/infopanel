@@ -46,7 +46,7 @@ public sealed class HelperTaskTests
         Assert.Equal("true", Value(task, "Settings", "AllowStartOnDemand"));
         Assert.Equal("IgnoreNew", Value(task, "Settings", "MultipleInstancesPolicy"));
         Assert.Equal("true", Value(task, "Settings", "Enabled"));
-        Assert.Equal(@"\InfoPanel\Sensor helper " + Sid, Value(task, "RegistrationInfo", "URI"));
+        Assert.Equal(@"\InfoPanel 2\Sensor helper " + Sid, Value(task, "RegistrationInfo", "URI"));
     }
 
     [Fact]
@@ -90,9 +90,18 @@ public sealed class HelperTaskTests
     }
 
     [Fact]
+    public void TheFolder_IsNot1xsTask()
+    {
+        // 1.4.x's Run on startup is the task \InfoPanel at the root: a folder of that name can't be created beside it,
+        // and a task of that name made beside the folder hides the folder (shown on a PC). Windows compares without case.
+        Assert.False(string.Equals("InfoPanel", HelperTask.FolderName, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(@"\" + HelperTask.FolderName, HelperTask.FolderPath);
+    }
+
+    [Fact]
     public void TheTask_AndItsPipe_AreNamedForTheUser()
     {
-        Assert.Equal(@"\InfoPanel\Sensor helper " + Sid, HelperTask.PathOf(Sid));
+        Assert.Equal(@"\InfoPanel 2\Sensor helper " + Sid, HelperTask.PathOf(Sid));
         Assert.Equal("ipsensors-" + Sid, HelperTask.PipeName(Sid));
         // The longest SID a user has still names a pipe the protocol takes.
         Assert.True(HelperProtocol.IsPipeName(HelperTask.PipeName("S-1-5-21-4294967295-4294967295-4294967295-4294967295")));

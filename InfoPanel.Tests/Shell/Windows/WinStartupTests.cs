@@ -5,7 +5,7 @@ using Xunit;
 namespace InfoPanel.Tests.Shell.Windows;
 
 /// <summary>
-/// Start when I sign in: the <c>InfoPanel</c> value under the user's Run key, read as Task Manager reads it (its
+/// Start when I sign in: the <c>InfoPanel 2</c> value under the user's Run key, read as Task Manager reads it (its
 /// StartupApproved entry can turn it off), written with the engine's own path, removed with its StartupApproved entry.
 /// Through <see cref="FakeRegistry"/> on any OS; the registry itself on Windows, under a key of the test's own.
 /// </summary>
@@ -50,11 +50,19 @@ public sealed class WinStartupTests
         Startup().Set(true);
 
         Assert.Equal(@"Software\Microsoft\Windows\CurrentVersion\Run", WinStartup.RunKey);
-        Assert.Equal("InfoPanel", WinStartup.ValueName);
+        Assert.Equal("InfoPanel 2", WinStartup.ValueName);
         var (key, value) = Assert.Single(_registry.Values);
         Assert.Equal((WinStartup.RunKey, WinStartup.ValueName), key);
         Assert.Equal(Command, value);
         Assert.True(Startup().IsOn());
+    }
+
+    [Fact]
+    public void TheValue_IsNot1xs()
+    {
+        // 1.4.x deletes the Run value "InfoPanel" at every start (its legacy startup removal), so beside it 2.0's own
+        // value must be another name; Windows compares value names without case.
+        Assert.False(string.Equals("InfoPanel", WinStartup.ValueName, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

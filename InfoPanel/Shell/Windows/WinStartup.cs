@@ -40,8 +40,9 @@ internal sealed class WinRegistry : IWinRegistry
 }
 
 /// <summary>
-/// Start when I sign in: the value <c>InfoPanel</c> under the user's Run key, which Windows starts at sign-in and Task
-/// Manager lists under Startup apps. Read each time the menu opens, as Task Manager reads it: the value is there and its
+/// Start when I sign in: the value <c>InfoPanel 2</c> under the user's Run key, which Windows starts at sign-in and Task
+/// Manager lists under Startup apps. Not 1.x's <c>InfoPanel</c>: 1.4.x, installed beside 2.0, deletes that value at
+/// every start. Read each time the menu opens, as Task Manager reads it: the value is there and its
 /// StartupApproved entry (Task Manager's switch) doesn't turn it off. So what Task Manager shows is what the menu shows.
 /// Turning it on writes the engine's own path and clears that switch; turning it off removes both.
 /// </summary>
@@ -52,7 +53,7 @@ internal sealed class WinStartup(IWinRegistry registry, string command)
     /// <summary>Task Manager's switch for each Run value: a binary value whose first byte is odd when it is turned off.</summary>
     public const string ApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 
-    public const string ValueName = "InfoPanel";
+    public const string ValueName = "InfoPanel 2";
 
     /// <summary>Whether Windows starts InfoPanel when the user signs in.</summary>
     public bool IsOn()

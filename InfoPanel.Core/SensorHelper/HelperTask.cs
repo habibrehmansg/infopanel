@@ -7,7 +7,7 @@ namespace InfoPanel.SensorHelper;
 
 /// <summary>
 /// The sensor helper's task: the way it reads every sensor with administrator rights while the engine runs without them.
-/// One scheduled task per registered user, <c>\InfoPanel\Sensor helper &lt;user SID&gt;</c>, run as SYSTEM, never under
+/// One scheduled task per registered user, <c>\InfoPanel 2\Sensor helper &lt;user SID&gt;</c>, run as SYSTEM, never under
 /// the user's token (so it never takes the user's environment, which any program of the user can write), with no
 /// trigger: the user's unelevated engine starts it on demand (<c>schtasks /Run</c>), which its security descriptor
 /// allows that user alone (read and run). Its action is the helper in Program Files, <c>--serve --user &lt;SID&gt;</c>:
@@ -21,10 +21,13 @@ public static class HelperTask
     /// <summary>The task's principal and the pipe's owner: LocalSystem.</summary>
     public const string SystemSid = "S-1-5-18";
 
-    /// <summary>The Task Scheduler folder the tasks are in.</summary>
-    public const string FolderName = "InfoPanel";
+    /// <summary>
+    /// The Task Scheduler folder the tasks are in. Not 1.x's <c>InfoPanel</c>: 1.4.x's Run on startup is a task of that
+    /// name at the root, and a task and a folder of one name can't both be there.
+    /// </summary>
+    public const string FolderName = "InfoPanel 2";
 
-    /// <summary>The folder's full path: <c>\InfoPanel</c>.</summary>
+    /// <summary>The folder's full path: <c>\InfoPanel 2</c>.</summary>
     public const string FolderPath = @"\" + FolderName;
 
     /// <summary>

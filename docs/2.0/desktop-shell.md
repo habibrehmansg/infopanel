@@ -114,7 +114,7 @@ stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in star
   computer…", Show on Desktop "Show on desktop", Show Data
   Folder in Finder "Open data folder", Quit InfoPanel "Exit", and so on; an item it doesn't know keeps the model's
   words.
-- **Start when I sign in** is the value `InfoPanel` under the user's Run key
+- **Start when I sign in** is the value `InfoPanel 2` under the user's Run key
   (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), the engine's own program quoted (under the `dotnet` host:
   the host and the engine's assembly). It is read each time the menu opens, as Task Manager reads it (its Startup apps
   switch, under `…\Explorer\StartupApproved\Run`, can turn it off), so the menu shows what Task Manager shows. Ticking it
