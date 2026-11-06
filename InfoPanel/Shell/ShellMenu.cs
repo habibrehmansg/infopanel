@@ -1,8 +1,8 @@
 namespace InfoPanel.Shell;
 
 /// <summary>
-/// What a menu line is: an action the user can choose, a line that only says something, a separator, or a submenu
-/// (<see cref="ShellMenuItem.Children"/>).
+/// What a menu line is: an action the user can choose, a line that only says something, a separator, a submenu
+/// (<see cref="ShellMenuItem.Children"/>), or the menu's header (the app's name, at its top).
 /// </summary>
 public enum ShellItemKind
 {
@@ -10,13 +10,16 @@ public enum ShellItemKind
     Status,
     Separator,
     Submenu,
+    Header,
 }
 
 /// <summary>
 /// One line of the shell's menu: <paramref name="Id"/> is what a click reports (stable, so a platform can map its own
 /// words to it), <paramref name="KeyEquivalent"/> the key that chooses it with Command while the menu is open (macOS).
-/// <see cref="Checked"/> draws a check mark beside it; a <see cref="ShellItemKind.Submenu"/> holds its lines in
-/// <see cref="Children"/>. Two items are equal when every member is, their children's lines included.
+/// <see cref="Checked"/> draws a check mark beside it; <see cref="Detail"/> is a second line beneath its label, and
+/// <see cref="Initial"/> the letter of a round badge before it (macOS draws both; Windows puts the detail on the same
+/// line); a <see cref="ShellItemKind.Submenu"/> holds its lines in <see cref="Children"/>. Two items are equal when every
+/// member is, their children's lines included.
 /// </summary>
 public sealed record ShellMenuItem(string Id, string Label, ShellItemKind Kind = ShellItemKind.Action, string? KeyEquivalent = null)
 {
@@ -25,14 +28,20 @@ public sealed record ShellMenuItem(string Id, string Label, ShellItemKind Kind =
     /// <summary>A check mark beside the line (Show on Desktop's profiles that are shown).</summary>
     public bool Checked { get; init; }
 
+    /// <summary>A second line beneath the label, in the secondary colour (who is signed in: the email, or Sign In…).</summary>
+    public string? Detail { get; init; }
+
+    /// <summary>The letter a round badge before the line shows (who is signed in); null for none.</summary>
+    public string? Initial { get; init; }
+
     /// <summary>A submenu's lines; empty for any other kind.</summary>
     public IReadOnlyList<ShellMenuItem> Children { get; init; } = [];
 
     public bool Equals(ShellMenuItem? other) =>
         other is not null && Id == other.Id && Label == other.Label && Kind == other.Kind && KeyEquivalent == other.KeyEquivalent
-        && Checked == other.Checked && Children.SequenceEqual(other.Children);
+        && Checked == other.Checked && Detail == other.Detail && Initial == other.Initial && Children.SequenceEqual(other.Children);
 
-    public override int GetHashCode() => HashCode.Combine(Id, Label, Kind, KeyEquivalent, Checked, Children.Count);
+    public override int GetHashCode() => HashCode.Combine(Id, Label, Kind, KeyEquivalent, Checked, Detail, Initial, Children.Count);
 }
 
 /// <summary>A profile as Show on Desktop lists it: its id, its name, and whether its desktop window is on.</summary>
@@ -42,6 +51,7 @@ public sealed record ShellProfile(string Id, string Name, bool Shown);
 /// What the menu is built from: the engine's state when the user opens it. <see cref="HasCredential"/>: the engine holds
 /// a credential for the configured service, and the service hasn't refused it; <see cref="SignedInAs"/>: its holder's
 /// name (else email), as the service last gave it for that same credential, ready to show (<c>ServiceHolder</c>), or null;
+/// <see cref="SignedInEmail"/>: the holder's email shown beneath that name, or null (no name, or none known);
 /// <see cref="Profiles"/>: the profiles that can be opened, in the library's order; <see cref="DesktopWindows"/>: this
 /// engine shows desktop windows (not <c>--no-windows</c>, and a platform that has them).
 /// </summary>
@@ -50,6 +60,8 @@ public sealed record ShellState(string Version)
     public bool HasCredential { get; init; }
 
     public string? SignedInAs { get; init; }
+
+    public string? SignedInEmail { get; init; }
 
     public IReadOnlyList<ShellProfile> Profiles { get; init; } = [];
 
@@ -63,6 +75,7 @@ public sealed record ShellState(string Version)
 /// </summary>
 public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
 {
+    public const string Header = "header";
     public const string Status = "status";
     public const string SignedIn = "signed-in";
     public const string OpenEditor = "open-editor";
@@ -80,19 +93,31 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
 
     private const string DesktopPrefix = "desktop:";
 
+    /// <summary>Who is signed in, without a credential (or with one the service refused): the second line beneath "Not signed in".</summary>
+    public const string SignIn = "Sign In…";
+
     /// <summary>
-    /// "InfoPanel {version} is running"; the signed-in line ("Signed in as {name}" while a credential is held and its name is
-    /// known, "Not signed in" without one or when the service refused it, none while the name isn't known); Open Editor; Edit
-    /// from Another Computer… (the editor at its engine settings); Show on Desktop with each profile
-    /// (when desktop windows are on); Show Data Folder in Finder, Open Logs Folder, Copy Engine Details; Quit InfoPanel (⌘Q).
+    /// The header "InfoPanel" and "Running · {version}"; who is signed in, one line that opens the editor at its sign-in
+    /// settings: the name with the email beneath and the name's initial while a credential is held and its holder known
+    /// (the email alone without a name), "Not signed in" with "Sign In…" beneath without one or when the service refused it,
+    /// none while the holder isn't known; Open Editor; Edit from Another Computer… (the editor at its engine settings); Show
+    /// on Desktop with each profile (when desktop windows are on); Show Data Folder in Finder, Open Logs Folder, Copy Engine
+    /// Details; Quit InfoPanel (⌘Q).
     /// </summary>
     public static ShellMenu Build(ShellState state)
     {
-        var items = new List<ShellMenuItem> { new(Status, $"InfoPanel {state.Version} is running", ShellItemKind.Status) };
+        var items = new List<ShellMenuItem>
+        {
+            new(Header, "InfoPanel", ShellItemKind.Header),
+            new(Status, $"Running · {state.Version}", ShellItemKind.Status),
+            Separator(),
+        };
         if (!state.HasCredential)
-            items.Add(new(SignedIn, "Not signed in", ShellItemKind.Status));
+            items.Add(new(SignedIn, "Not signed in") { Detail = SignIn });
         else if (state.SignedInAs is { } name)
-            items.Add(new(SignedIn, $"Signed in as {name}", ShellItemKind.Status));
+            items.Add(new(SignedIn, name) { Detail = state.SignedInEmail, Initial = InitialOf(name) });
+        if (items[^1].Id == SignedIn)
+            items.Add(Separator());
         items.Add(new(OpenEditor, "Open Editor"));
         items.Add(new(EditFromAnotherComputer, "Edit from Another Computer…"));
         items.Add(Separator());
@@ -130,6 +155,23 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
         show = rest[..colon] == "show";
         profileId = rest[(colon + 1)..];
         return true;
+    }
+
+    /// <summary>
+    /// The letter of <paramref name="name"/>'s round badge: its first letter or digit (the whole character, an accent
+    /// included) in capitals; null when it has none.
+    /// </summary>
+    public static string? InitialOf(string name)
+    {
+        var elements = System.Globalization.StringInfo.GetTextElementEnumerator(name);
+        while (elements.MoveNext())
+        {
+            var element = elements.GetTextElement();
+            if (char.IsLetterOrDigit(element, 0))
+                return element.ToUpperInvariant();
+        }
+
+        return null;
     }
 
     public bool Equals(ShellMenu? other) => other is not null && Items.SequenceEqual(other.Items);

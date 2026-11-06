@@ -249,7 +249,7 @@ public sealed class ShellActionTests : IDisposable
 /// <summary>
 /// The menu's signed-in line on the engine host (docs/2.0/desktop-shell.md, "The menu"), the configured service a fake on
 /// a loopback port: the engine asks it who holds the credential (<c>GET /svc/v1/holder</c>) with the credential itself;
-/// "Signed in as …" with the answer, "Not signed in" without a credential, nothing while the name isn't known; the name
+/// the holder's name and email with the answer, "Not signed in" without a credential, nothing while the name isn't known; the name
 /// kept in memory only, never in a log, the recent entries, <c>/api/logs</c>, the settings or Copy Engine Details. Without
 /// a menu, the engine asks nothing.
 /// </summary>
@@ -328,7 +328,8 @@ public sealed class ShellSignedInTests : IAsyncDisposable
 
         await Connect(api);
 
-        await Until(() => SignedInLine(shell) == $"Signed in as {Name}", "the holder's name");
+        await Until(() => SignedInLine(shell) == Name, "the holder's name");
+        Assert.Equal(Email, shell.OpenMenu().Items.Single(i => i.Id == ShellMenu.SignedIn).Detail);
         var request = Assert.Single(_service.Requests);
         Assert.Equal(("GET", "/svc/v1/holder", $"Bearer {Credential}"), (request.Method, request.Path, request.Header("Authorization")));
 
@@ -371,7 +372,7 @@ public sealed class ShellSignedInTests : IAsyncDisposable
         _answer = () => (200, JsonSerializer.Serialize(new { name = (string?)null, email = Email }));
         var (second, shell) = await Start(engine);
         using (second)
-            await Until(() => SignedInLine(shell) == $"Signed in as {Email}", "the second engine's answer");
+            await Until(() => SignedInLine(shell) == Email, "the second engine's answer");
         Assert.Equal(2, _service.Requests.Count);
     }
 
@@ -383,7 +384,7 @@ public sealed class ShellSignedInTests : IAsyncDisposable
         using var _ = factory;
         using var api = Api(factory);
         await Connect(api);
-        await Until(() => SignedInLine(shell) == $"Signed in as {Name}", "the holder's name");
+        await Until(() => SignedInLine(shell) == Name, "the holder's name");
 
         await shell.ClickAsync(ShellMenu.CopyEngineDetails);
 
@@ -439,7 +440,7 @@ public sealed class ShellSignedInTests : IAsyncDisposable
         var holder = factory.Services.GetRequiredService<ServiceHolder>();
         using var api = Api(factory);
         await Connect(api);
-        await Until(() => SignedInLine(shell) == $"Signed in as {Name}", "the holder's name");
+        await Until(() => SignedInLine(shell) == Name, "the holder's name");
 
         // The same credential provided again asks again; that answer waits until released.
         using var answer = new ManualResetEventSlim(false);

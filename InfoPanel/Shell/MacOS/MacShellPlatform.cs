@@ -9,7 +9,9 @@ namespace InfoPanel.Shell.MacOS;
 /// The menu-bar item on macOS through AppKit (libobjc interop, as <see cref="MacDesktopPlatform"/>): an
 /// <c>NSStatusItem</c> whose button shows <see cref="ShellGlyph"/> as a template image (18 points, drawn at 2×) with the
 /// engine's address as its tooltip, and an <c>NSMenu</c> rebuilt from the engine's model each time it opens
-/// (<c>menuNeedsUpdate:</c>), its submenus and check marks included. Copied text goes to the general <c>NSPasteboard</c>. Prompts are <c>NSAlert</c>s run modally, the app brought forward first (an accessory app
+/// (<c>menuNeedsUpdate:</c>), its submenus and check marks included: the header in the bold menu font, the status line in
+/// the secondary colour, and the row of who is signed in, its second line in the secondary colour (attributed titles)
+/// and its round initial as the item's image (<see cref="ShellInitial"/>). Copied text goes to the general <c>NSPasteboard</c>. Prompts are <c>NSAlert</c>s run modally, the app brought forward first (an accessory app
 /// isn't active), one at a time, each from a run-loop timer rather than from the main queue's callback: an alert run
 /// inside a queued callback would hold the main queue, so nothing else posted (closing windows, removing the item, the
 /// engine's stop) could run until someone answered it. The engine's stop (<see cref="Remove"/>) dismisses an open
@@ -41,9 +43,20 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
     /// <summary><c>NSPasteboardTypeString</c>'s value.</summary>
     private const string PlainTextType = "public.utf8-plain-text";
 
+    /// <summary>The round initial's size in points; its image is drawn at 2×.</summary>
+    private const double InitialPoints = 26;
+
     /// <summary><c>objc_msgSend</c> for a method of two objects that answers a <c>BOOL</c> (<c>setString:forType:</c>).</summary>
     private static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, byte> SendBoolIdId =
         (delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, byte>)NativeLibrary.GetExport(NativeLibrary.Load("/usr/lib/libobjc.A.dylib"), "objc_msgSend");
+
+    /// <summary><c>objc_msgSend</c> for a method of two objects that answers an object (<c>initWithString:attributes:</c>).</summary>
+    private static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr> SendIdIdId =
+        (delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr>)NativeLibrary.GetExport(NativeLibrary.Load("/usr/lib/libobjc.A.dylib"), "objc_msgSend");
+
+    /// <summary><c>objc_msgSend</c> for <c>dictionaryWithObjects:forKeys:count:</c>.</summary>
+    private static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr*, IntPtr*, nuint, IntPtr> SendDictionary =
+        (delegate* unmanaged<IntPtr, IntPtr, IntPtr*, IntPtr*, nuint, IntPtr>)NativeLibrary.GetExport(NativeLibrary.Load("/usr/lib/libobjc.A.dylib"), "objc_msgSend");
 
     private static readonly Serilog.ILogger Logger = Log.ForContext<MacShellPlatform>();
 
@@ -250,12 +263,26 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
     /// <summary>Rebuilds the menu from the engine's model as it opens.</summary>
     private void Rebuild(IntPtr menu)
     {
+        if (_menuSource is { } source)
+            Fill(menu, source());
+        else
+            Fill(menu, new ShellMenu([]));
+    }
+
+    /// <summary>
+    /// <paramref name="menu"/>'s items made afresh from <paramref name="model"/>, on the main thread (a test builds a menu
+    /// that is never shown on any thread).
+    /// </summary>
+    internal void Fill(IntPtr menu, ShellMenu model)
+    {
         ObjC.SendVoid(menu, ObjC.Sel("removeAllItems"));
         _ids.Clear();
-        if (_menuSource is not { } source)
-            return;
-        AddLines(menu, source().Items);
+        EnsureTarget();
+        AddLines(menu, model.Items);
     }
+
+    /// <summary>The model's id of the item tagged <paramref name="tag"/> (what a click on it reports), or null.</summary>
+    internal string? IdOf(nint tag) => tag >= 0 && tag < _ids.Count ? _ids[(int)tag] : null;
 
     /// <summary>
     /// Adds <paramref name="lines"/> to <paramref name="menu"/>: separators, greyed status lines, actions (each tagged with
@@ -281,6 +308,14 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
                 ObjC.SendVoidId(item, ObjC.Sel("setTarget:"), _target);
             if (line.Checked)
                 ObjC.SendVoidInt(item, ObjC.Sel("setState:"), ControlStateOn);
+            if (Title(line) is var title && title != IntPtr.Zero)
+            {
+                ObjC.SendVoidId(item, ObjC.Sel("setAttributedTitle:"), title);
+                ObjC.SendVoid(title, ObjC.Sel("release"));
+            }
+
+            if (line.Initial is { } letter)
+                ObjC.SendVoidId(item, ObjC.Sel("setImage:"), Initial(letter));
             if (line.Kind == ShellItemKind.Submenu)
             {
                 var submenu = ObjC.SendId(ObjC.Send(ObjC.Class("NSMenu"), ObjC.Sel("alloc")), ObjC.Sel("initWithTitle:"), ObjC.NSString(line.Label));
@@ -294,6 +329,59 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
             ObjC.SendVoidId(menu, ObjC.Sel("addItem:"), item);
             ObjC.SendVoid(item, ObjC.Sel("release"));
         }
+    }
+
+    /// <summary>
+    /// The line's attributed title (owned by the caller), or <see cref="IntPtr.Zero"/> for a plain one: the header in the
+    /// bold menu font and the label colour (a disabled item keeps the colour its title names, so it isn't greyed); a status
+    /// line in the secondary colour; a line with a second line (who is signed in) as its label in the menu font and the
+    /// label colour (named: an attributed title without a colour is drawn black, unreadable on a dark menu), then its
+    /// second line beneath in the small system size and the secondary colour.
+    /// </summary>
+    private static IntPtr Title(ShellMenuItem line)
+    {
+        var font = ObjC.Class("NSFont");
+        var colour = ObjC.Class("NSColor");
+        var menuFont = ObjC.SendIdDouble(font, ObjC.Sel("menuFontOfSize:"), 0);
+        switch (line.Kind)
+        {
+            case ShellItemKind.Header:
+                return Text(line.Label, ObjC.SendIdDouble(font, ObjC.Sel("boldSystemFontOfSize:"), ObjC.SendDouble(menuFont, ObjC.Sel("pointSize"))),
+                    ObjC.Send(colour, ObjC.Sel("labelColor")));
+            case ShellItemKind.Status:
+                return Text(line.Label, menuFont, ObjC.Send(colour, ObjC.Sel("secondaryLabelColor")));
+        }
+
+        if (line.Detail is not { } detail)
+            return IntPtr.Zero;
+        var title = Text(line.Label + "\n", menuFont, ObjC.Send(colour, ObjC.Sel("labelColor")));
+        var beneath = Text(detail, ObjC.SendIdDouble(font, ObjC.Sel("menuFontOfSize:"), ObjC.SendDouble(font, ObjC.Sel("smallSystemFontSize"))),
+            ObjC.Send(colour, ObjC.Sel("secondaryLabelColor")));
+        ObjC.SendVoidId(title, ObjC.Sel("appendAttributedString:"), beneath);
+        ObjC.SendVoid(beneath, ObjC.Sel("release"));
+        return title;
+    }
+
+    /// <summary>An <c>NSMutableAttributedString</c> (owned by the caller) of <paramref name="text"/> in <paramref name="font"/> and <paramref name="colour"/> (none: zero).</summary>
+    private static IntPtr Text(string text, IntPtr font, IntPtr colour)
+    {
+        var keys = stackalloc IntPtr[] { ObjC.Constant("AppKit", "NSFontAttributeName"), ObjC.Constant("AppKit", "NSForegroundColorAttributeName") };
+        var values = stackalloc IntPtr[] { font, colour };
+        var attributes = SendDictionary(ObjC.Class("NSDictionary"), ObjC.Sel("dictionaryWithObjects:forKeys:count:"), values, keys, colour == IntPtr.Zero ? 1u : 2u);
+        return SendIdIdId(ObjC.Send(ObjC.Class("NSMutableAttributedString"), ObjC.Sel("alloc")), ObjC.Sel("initWithString:attributes:"), ObjC.NSString(text), attributes);
+    }
+
+    /// <summary>The round initial of <paramref name="letter"/> as an <c>NSImage</c> of <see cref="InitialPoints"/> points, drawn at 2×, in its own colours (not a template).</summary>
+    private static IntPtr Initial(string letter)
+    {
+        var png = ShellInitial.Png(letter, (int)(InitialPoints * 2));
+        IntPtr data;
+        fixed (byte* bytes = png)
+            data = ObjC.SendIdPtrUInt(ObjC.Class("NSData"), ObjC.Sel("dataWithBytes:length:"), (IntPtr)bytes, (nuint)png.Length);
+        var image = ObjC.SendId(ObjC.Send(ObjC.Class("NSImage"), ObjC.Sel("alloc")), ObjC.Sel("initWithData:"), data);
+        ObjC.SendVoidSize(image, ObjC.Sel("setSize:"), new NSSize(InitialPoints, InitialPoints));
+        ObjC.Send(image, ObjC.Sel("autorelease"));
+        return image;
     }
 
     /// <summary>

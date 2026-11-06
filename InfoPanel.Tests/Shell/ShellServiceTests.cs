@@ -114,6 +114,27 @@ public sealed class ShellServiceTests : IDisposable
         Assert.False(Stopping);
     }
 
+    /// <summary>
+    /// The row of who is signed in (here "Not signed in" with Sign In… beneath: a test engine holds no credential) opens
+    /// the sign-in link with the client's sign-in settings as its <c>then</c>, and the link lands there.
+    /// </summary>
+    [Fact]
+    public async Task WhoIsSignedIn_OpensTheSignInLink_ThatLandsOnTheClientsSignInSettings()
+    {
+        await WaitUntil(() => _shell.Icon != null);
+        Assert.Equal(("Not signed in", "Sign In…"), _shell.OpenMenu().Items.Where(i => i.Id == ShellMenu.SignedIn).Select(i => (i.Label, i.Detail)).Single());
+
+        await _shell.ClickAsync(ShellMenu.SignedIn);
+
+        var link = Assert.Single(_browser.Opened);
+        Assert.Equal($"http://127.0.0.1:{EngineFactory.Port}/auth/{EngineFactory.Token}?then=%23%2Fsettings%2Faccount", link);
+        using var client = _factory.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false });
+        using var response = await client.GetAsync(new Uri(link).PathAndQuery, Ct);
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal($"/#token={EngineFactory.Token}&then=%23%2Fsettings%2Faccount", response.Headers.Location?.OriginalString);
+        Assert.False(Stopping);
+    }
+
     [Fact]
     public async Task Quit_WithNothingUnsaved_StopsTheEngine_WithoutAsking()
     {

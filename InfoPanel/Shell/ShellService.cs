@@ -1,3 +1,4 @@
+using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using InfoPanel.Api;
@@ -18,7 +19,8 @@ namespace InfoPanel.Shell;
 /// <see cref="ServiceHolder"/>, which asks the configured service who holds the credential, for the signed-in line.
 /// <list type="bullet">
 /// <item><b>Open Editor</b> (and Show on Desktop's <b>More in the Editor…</b>) opens the editor through <see cref="EditorOpener"/>;
-/// <b>Edit from Another Computer…</b> opens it at its engine settings (<see cref="EditorRoutes.EngineSettings"/>).</item>
+/// <b>Edit from Another Computer…</b> opens it at its engine settings (<see cref="EditorRoutes.EngineSettings"/>), and
+/// the row of who is signed in at its sign-in settings (<see cref="EditorRoutes.AccountSettings"/>).</item>
 /// <item><b>Show on Desktop</b>'s profiles turn a profile's desktop window on or off as the editor's switch does: one
 /// <c>profile</c> commit of <c>window.enabled</c> at the revision read (read again and retried on a conflict), saved at
 /// once at that revision when the profile had no unsaved changes before it, else left unsaved with them.</item>
@@ -83,7 +85,9 @@ public sealed class ShellService(
                 _ = AskTestPromptAsync();
         });
         _stopping = lifetime.ApplicationStopping.Register(platform.Remove);
-        // Who holds the service credential, for the signed-in line: asked only while there is a menu to show it.
+        // Who holds the service credential, for the signed-in line: asked only while there is a menu to show it, and again
+        // at once when the network changes after a failed ask.
+        NetworkChange.NetworkAddressChanged += OnNetworkChanged;
         holder.Start();
         return Task.CompletedTask;
     }
@@ -93,8 +97,11 @@ public sealed class ShellService(
         _started.Dispose();
         _stopping.Dispose();
         platform.TerminateRequested -= OnTerminateRequested;
+        NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
         await holder.StopAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    private void OnNetworkChanged(object? sender, EventArgs e) => holder.NetworkChanged();
 
     /// <summary>The menu as it opens, from the engine's state now; a state that can't be read leaves the lines that need none.</summary>
     private ShellMenu Menu()
@@ -111,7 +118,7 @@ public sealed class ShellService(
     }
 
     /// <summary>
-    /// The engine's state for the menu: the credential and its holder's name, and, when desktop windows are on, the
+    /// The engine's state for the menu: the credential and its holder's name and email, and, when desktop windows are on, the
     /// profiles that can be opened in the library's order (one past what the menu lists, so it knows there are more),
     /// each with its window on or off.
     /// </summary>
@@ -136,6 +143,7 @@ public sealed class ShellService(
         {
             HasCredential = signedIn.Held,
             SignedInAs = signedIn.Name,
+            SignedInEmail = signedIn.Email,
             Profiles = profiles,
             DesktopWindows = desktop,
         };
@@ -168,6 +176,9 @@ public sealed class ShellService(
                         break;
                     case ShellMenu.EditFromAnotherComputer:
                         editor.Open(EditorRoutes.EngineSettings);
+                        break;
+                    case ShellMenu.SignedIn:
+                        editor.Open(EditorRoutes.AccountSettings);
                         break;
                     case ShellMenu.ShowDataFolder:
                         folders.Open(paths.Root);

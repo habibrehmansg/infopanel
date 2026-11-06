@@ -108,6 +108,21 @@ public sealed class WebClientLinkTests
         Assert.Equal("#/settings/engine", EditorRoutes.EngineSettings);
     }
 
+    /// <summary>The client's sign-in settings (the menu's row of who is signed in) is a page the engine knows too.</summary>
+    [Fact]
+    public void ALinkToTheSignInSettings_CarriesItAsThen_InTheCodeLink_AndTheSignInLink()
+    {
+        var code = new EngineRuntime(5300, "tok", [], ["https://client.example"]) { WebRootServed = false };
+        var signIn = new EngineRuntime(5300, "tok", [], []) { WebRootServed = true };
+
+        Assert.Equal(
+            new EditorLink("https://client.example/#engine=http://127.0.0.1:5300&code=q3Zt0vK8Lw2NxR5yB7mC1A&then=%23%2Fsettings%2Faccount", WebClient: true),
+            code.EditorLinkFor(() => "q3Zt0vK8Lw2NxR5yB7mC1A", EditorRoutes.AccountSettings));
+        Assert.Equal(new EditorLink("http://127.0.0.1:5300/auth/tok?then=%23%2Fsettings%2Faccount", WebClient: false),
+            signIn.EditorLinkFor(() => throw new InvalidOperationException(), EditorRoutes.AccountSettings));
+        Assert.Equal([EditorRoutes.EngineSettings, EditorRoutes.AccountSettings], EditorRoutes.Known);
+    }
+
     /// <summary>The page is one the engine knows, never a caller's: any other is refused before a code is minted.</summary>
     [Theory]
     [InlineData("#/profiles")]

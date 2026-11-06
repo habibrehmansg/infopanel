@@ -1024,7 +1024,7 @@
           "name": "then",
           "in": "query",
           "required": false,
-          "description": "The client's page the link lands on: only `#/settings/engine`, once; any other is ignored.",
+          "description": "The client's page the link lands on: only `#/settings/engine` or `#/settings/account`, once; any other is ignored.",
           "schema": {"type": "string"}
         }
       ],
@@ -1035,8 +1035,8 @@
         "security": [],
         "responses": {
           "302": {
-            "description": "To /#token={token}, and with then, to /#token={token}&then=%23%2Fsettings%2Fengine.",
-            "headers": {"Location": {"description": "/#token={token}, or /#token={token}&then=%23%2Fsettings%2Fengine", "required": true, "schema": {"type": "string"}}}
+            "description": "To /#token={token}, and with then, to /#token={token}&then=%23%2Fsettings%2Fengine (or %23%2Fsettings%2Faccount).",
+            "headers": {"Location": {"description": "/#token={token}, or /#token={token}&then=%23%2Fsettings%2Fengine (or %23%2Fsettings%2Faccount)", "required": true, "schema": {"type": "string"}}}
           },
           "401": {"description": "Any token but the session token.", "content": {"text/plain": {}}}
         }

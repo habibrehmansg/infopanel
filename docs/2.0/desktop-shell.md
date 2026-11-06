@@ -8,28 +8,34 @@ for light and dark menu bars. On Windows it is an icon in the notification area,
 
 Click the hexagon. The menu is built afresh from the engine's state each time it opens:
 
-1. "InfoPanel 2.0.0 is running" (grey, not clickable), and under it, grey, who is signed in: "Signed in as ‹name›" while
-   the engine holds a credential for the configured service and knows its holder; "Not signed in" while it holds none,
-   or the service refused the one it holds; nothing while it holds one whose holder isn't known yet. The engine asks
-   the configured service itself, with the credential (below, "Who is signed in").
-2. **Open Editor**: opens the editor in the browser, already signed in (below, "Opening the editor"). **Edit from
+1. The header, "InfoPanel" (bold, not greyed, not clickable), and under it "Running · 2.0.0" in the secondary colour.
+2. — Who is signed in, one row: while the engine holds a credential for the configured service and knows its holder, a
+   round initial (the first letter or digit of the name, else of the email, white on a grey disc; no picture is
+   downloaded), the holder's name, and beneath it the email in the secondary colour; the email alone when the holder
+   has no name. "Not signed in" with "Sign In…" beneath while it holds none, or the service refused the one it holds.
+   No row (nor its separator) while it holds one whose holder isn't known yet. Clicking the row opens the editor at its
+   sign-in settings, where this computer is connected (the link's `then`, below). The engine asks the configured
+   service itself, with the credential (below, "Who is signed in"). The name and the email are attributed titles (the
+   second line, and the item's image the initial), so the row stays a plain menu item, with no arrow: it opens a page,
+   not a submenu.
+3. — **Open Editor**: opens the editor in the browser, already signed in (below, "Opening the editor"). **Edit from
    Another Computer…**, under it: the same, at the editor's engine settings, where another computer is set up to edit
    this one (the link's `then`, below).
-3. **Show on Desktop ▸**, only while desktop windows are on (not `--no-windows`): each profile that can be opened, in
+4. — **Show on Desktop ▸**, only while desktop windows are on (not `--no-windows`): each profile that can be opened, in
    the library's order, with a check mark when its desktop window is on; "No Profiles Yet" (grey) when there are none;
    past 20, the first 20 and **More in the Editor…**, which opens the editor. Choosing a profile turns its window on or
    off as the editor's Show on desktop does: one `profile` commit of `window.enabled` (the rest of `window` as the
    document has it) at the revision it read, read again on a conflict, one undo step; saved at once at that revision
    when the profile had no unsaved changes, otherwise left unsaved with them. Each line asks for the state opposite the
    check mark it showed, so a choice made after another client changed the window changes nothing.
-4. **Show Data Folder in Finder** and **Open Logs Folder**: the engine's own folders, as the editor's buttons open
+5. — **Show Data Folder in Finder** and **Open Logs Folder**: the engine's own folders, as the editor's buttons open
    them (`POST /api/folders/{folder}/open`). **Copy Engine Details**: what a bug report needs when the editor can't
    connect, with the labels of the editor's own details, in a fenced block: the engine's version, protocol and
    system, its build, when it started, the OS version, the architecture, its address and its data folder (the home
    folder as `~`, its path matched as the home folder's volume compares names: on macOS as the volume says, asked once,
    in any case when it can't be asked; in any case on Windows; with case elsewhere). Never the token, a
    link, a profile, a reading or who is signed in.
-5. **Quit InfoPanel** (⌘Q while the menu is open).
+6. — **Quit InfoPanel** (⌘Q while the menu is open).
 
 Every line has a stable id (`ShellMenu`'s constants; a profile's line `desktop:show:{id}` or `desktop:hide:{id}`), so
 another platform maps its own words to the same lines. Updates come later. Starting the engine never opens the editor:
@@ -43,18 +49,23 @@ apart.
 The engine learns the credential's holder from the configured service, with the credential itself: `GET
 {service address}/svc/v1/holder`, sent as every request to the service is (only to the address in effect, the credential
 as a bearer token, no redirect followed, with `--offline` only to a service on this computer), answered
-`{"name": string | null, "email": string}`. The line shows the name, else the email, without control characters, and
-past 40 characters its first 39 and "…".
+`{"name": string | null, "email": string}`. The row shows the name with the email beneath, or the email alone when the
+name is null or empty, each without control characters, and past 40 characters its first 39 and "…".
 
 - **When it asks:** while the menu-bar item shows, at start, whenever the credential changes (a client provides one,
-  even the same again, or removes it; the service address changes), and again every 6 hours while it holds one, never
-  more often nor later, whatever a `Retry-After` asks. One request at a time, each bounded at 15 s, its answer read to
-  at most 4 KiB. Should the asking itself fail, the next change asks again. Opening the menu never waits for the
+  even the same again, or removes it; the service address changes), and again every 6 hours after an answer while it
+  holds one. After a failed ask (the service unreachable, a 5xx, a malformed answer) it asks again sooner, as the
+  weather source does: after 1 minute, then 2, 4, 8… doubling with each failure in a row, or after the failure's
+  `Retry-After` when that is longer, never later than 6 hours; and at once when the computer's network changes (an
+  address comes or goes: a network joined, a sleep's end), so an engine started before its network or its service
+  shows the row within a minute or so of both being up. An answer, a change of the credential or the address, or such
+  a network change starts the retries again at 1 minute. One request at a time, each bounded at 15 s, its answer read
+  to at most 4 KiB. Should the asking itself fail, the next change asks again. Opening the menu never waits for the
   credential's store: it reads what the engine last learned.
-- **What it keeps:** the name, in memory only, for the credential it was asked with. An answer that comes after that
-  credential was replaced or removed is never shown for another. A failure (the service unreachable, a 5xx, a malformed
-  answer) keeps the name known for that same credential, else shows no line; a 401 refuses the credential (as for every
-  request), and the line says "Not signed in" until a client provides another.
+- **What it keeps:** the name and the email, in memory only, for the credential they were asked with. An answer that
+  comes after that credential was replaced or removed is never shown for another. A failure keeps what is known for that
+  same credential, else shows no row; a 401 refuses the credential (as for every request), and the row says "Not signed
+  in" until a client provides another; the name and the email go together.
 - **Never** stored, logged (the log file, the recent entries, `/api/logs`) or copied by Copy Engine Details.
 
 ## Quit
@@ -81,13 +92,16 @@ stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in star
   doesn't open a second tab.
 - **Right-click** it (or the menu key): the menu, built afresh each time, in Windows' sentence case (Windows menus stay
   light in dark mode):
-  1. "InfoPanel 2.0.0 is running" and who is signed in ("Signed in as ‹name›" or "Not signed in"), both grey;
-  2. **Open editor** (bold: what a click does) · **Edit from another computer…**;
-  3. — **Show on desktop ▸**, a submenu, while desktop windows are on: each profile, checked when its window is on;
+  1. "InfoPanel · Running · 2.0.0", grey: the header and the status in one line (a Windows menu has no header);
+  2. — who is signed in, one line (a Windows menu line has no second line, nor an image here): "‹name› (‹email›)", the
+     email alone when the holder has no name, or "Not signed in · Sign in…"; it opens the editor at its sign-in
+     settings, as on macOS; none while the holder isn't known;
+  3. — **Open editor** (bold: what a click does) · **Edit from another computer…**;
+  4. — **Show on desktop ▸**, a submenu, while desktop windows are on: each profile, checked when its window is on;
      "No profiles yet" (grey) when there are none; past 20, **More in the editor…**;
-  4. — **Open data folder** · **Open logs folder** · **Copy engine details** (on the clipboard as plain text);
-  5. — **Start when I sign in** ✓;
-  6. — **Exit**.
+  5. — **Open data folder** · **Open logs folder** · **Copy engine details** (on the clipboard as plain text);
+  6. — **Start when I sign in** ✓;
+  7. — **Exit**.
 
   The lines and what each does are the model's menu (`ShellMenu.Build`, the same as macOS's) in Windows' words
   (`WinShellText`, by each line's id): Open Editor is "Open editor", Edit from Another Computer… "Edit from another
@@ -134,8 +148,9 @@ link (`/auth/{token}`) to the web client it serves.
 (`#/settings/engine`, `EditorRoutes`), URL-encoded as `then`: the code link's last member
 (`{origin}/#engine=…&code=…&then=%23%2Fsettings%2Fengine`), or the sign-in link's query (`/auth/{token}?then=…`), whose
 redirect hands it on after the token (`/#token=…&then=…`; [api.md, "Signing in"](../../spec/docs/api.md#signing-in)).
-The page is a constant the engine knows, never a caller's: the redirect carries only that one, as the engine spells it,
-and leaves any other out. The client opens at it once the code is exchanged (after the reload that follows) or the token
+The row of who is signed in opens it the same way at the client's sign-in settings (`EditorRoutes.AccountSettings`,
+`then=%23%2Fsettings%2Faccount`). The pages are constants the engine knows, never a caller's: the redirect carries only
+those, as the engine spells them, and leaves any other out. The client opens at it once the code is exchanged (after the reload that follows) or the token
 taken, and keeps neither the link nor `then` in its address; a client that doesn't know the member ignores it.
 
 The console prints only the links that lead somewhere: the sign-in

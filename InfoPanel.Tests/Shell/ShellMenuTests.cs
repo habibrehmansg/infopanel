@@ -7,7 +7,7 @@ namespace InfoPanel.Tests.Shell;
 public sealed class ShellMenuTests
 {
     private static ShellState State(params ShellProfile[] profiles) =>
-        new("2.0.0-dev") { HasCredential = true, SignedInAs = "ann@example.com", DesktopWindows = true, Profiles = profiles };
+        new("2.0.0-dev") { HasCredential = true, SignedInAs = "Ann Lee", SignedInEmail = "ann@example.com", DesktopWindows = true, Profiles = profiles };
 
     private static ShellProfile[] Profiles(int count) =>
         [.. Enumerable.Range(1, count).Select(i => new ShellProfile($"p{i}", $"Profile {i}", Shown: i % 2 == 0))];
@@ -15,14 +15,17 @@ public sealed class ShellMenuTests
     private static ShellMenuItem Item(ShellMenu menu, string id) => Assert.Single(menu.Items, i => i.Id == id);
 
     [Fact]
-    public void TheMenu_InOrder_StatusAccountOpenEditor_EditFromAnotherComputer_ShowOnDesktop_TheFolders_Details_AndQuit()
+    public void TheMenu_InOrder_HeaderAndStatus_WhoIsSignedIn_OpenEditor_EditFromAnotherComputer_ShowOnDesktop_TheFolders_Details_AndQuit()
     {
         var menu = ShellMenu.Build(State(new ShellProfile("a", "Desk overlay", Shown: true)));
 
         Assert.Equal(
         [
-            (ShellMenu.Status, "InfoPanel 2.0.0-dev is running", ShellItemKind.Status),
-            (ShellMenu.SignedIn, "Signed in as ann@example.com", ShellItemKind.Status),
+            (ShellMenu.Header, "InfoPanel", ShellItemKind.Header),
+            (ShellMenu.Status, "Running · 2.0.0-dev", ShellItemKind.Status),
+            ("", "", ShellItemKind.Separator),
+            (ShellMenu.SignedIn, "Ann Lee", ShellItemKind.Action),
+            ("", "", ShellItemKind.Separator),
             (ShellMenu.OpenEditor, "Open Editor", ShellItemKind.Action),
             (ShellMenu.EditFromAnotherComputer, "Edit from Another Computer…", ShellItemKind.Action),
             ("", "", ShellItemKind.Separator),
@@ -35,44 +38,81 @@ public sealed class ShellMenuTests
             (ShellMenu.Quit, "Quit InfoPanel", ShellItemKind.Action),
         ], menu.Items.Select(i => (i.Id, i.Label, i.Kind)));
         Assert.Equal("q", Item(menu, ShellMenu.Quit).KeyEquivalent);
+        Assert.False(Item(menu, ShellMenu.Header).Enabled);
         Assert.False(Item(menu, ShellMenu.Status).Enabled);
-        Assert.False(Item(menu, ShellMenu.SignedIn).Enabled);
+        Assert.True(Item(menu, ShellMenu.SignedIn).Enabled);
         Assert.True(Item(menu, ShellMenu.ShowOnDesktop).Enabled);
         Assert.All(menu.Items.Where(i => i.Kind == ShellItemKind.Action), i => Assert.True(i.Enabled));
+        // Only the row of who is signed in has a second line or an image.
+        Assert.All(menu.Items.Where(i => i.Id != ShellMenu.SignedIn), i => Assert.Equal((null, null), (i.Detail, i.Initial)));
     }
 
     [Fact]
-    public void TheStatusLine_NamesTheVersion()
+    public void TheHeader_IsTheAppsName_AndTheStatus_SaysRunning_WithTheVersion()
     {
-        Assert.Equal("InfoPanel 2.1.0 is running", ShellMenu.Build(new ShellState("2.1.0")).Items[0].Label);
+        var items = ShellMenu.Build(new ShellState("2.1.0")).Items;
+
+        Assert.Equal((ShellMenu.Header, "InfoPanel", ShellItemKind.Header), (items[0].Id, items[0].Label, items[0].Kind));
+        Assert.Equal((ShellMenu.Status, "Running · 2.1.0", ShellItemKind.Status), (items[1].Id, items[1].Label, items[1].Kind));
+        Assert.Equal(ShellItemKind.Separator, items[2].Kind);
     }
 
     [Fact]
-    public void TheSignedInLine_SignedIn_WhenACredentialIsHeld_AndItsNameKnown()
+    public void WhoIsSignedIn_TheName_TheEmailBeneath_AndTheNamesInitial_AClickableRow()
     {
-        var menu = ShellMenu.Build(new ShellState("2.0.0") { HasCredential = true, SignedInAs = "Ann Lee" });
+        var menu = ShellMenu.Build(new ShellState("2.0.0") { HasCredential = true, SignedInAs = "habib rehman", SignedInEmail = "habib@example.com" });
 
-        var line = Item(menu, ShellMenu.SignedIn);
-        Assert.Equal("Signed in as Ann Lee", line.Label);
-        Assert.Equal(ShellItemKind.Status, line.Kind);
-        Assert.Equal(1, menu.Items.ToList().IndexOf(line));
+        var row = Item(menu, ShellMenu.SignedIn);
+        Assert.Equal(("habib rehman", "habib@example.com", "H", ShellItemKind.Action, true), (row.Label, row.Detail, row.Initial, row.Kind, row.Enabled));
+        Assert.Equal(3, menu.Items.ToList().IndexOf(row));
+        Assert.Equal([ShellItemKind.Separator, ShellItemKind.Separator], new[] { menu.Items[2].Kind, menu.Items[4].Kind });
+        Assert.Empty(row.Children);
     }
 
     [Fact]
-    public void TheSignedInLine_NotSignedIn_WhenNoCredentialIsHeld_WhateverNameIsKept()
+    public void WhoIsSignedIn_WithoutAName_TheEmailAlone_ItsInitial()
     {
-        Assert.Equal("Not signed in", Item(ShellMenu.Build(new ShellState("2.0.0") { HasCredential = false }), ShellMenu.SignedIn).Label);
-        // A name kept without a credential (one set before the credential, or not yet cleared) never shows.
-        Assert.Equal("Not signed in", Item(ShellMenu.Build(new ShellState("2.0.0") { HasCredential = false, SignedInAs = "Ann" }), ShellMenu.SignedIn).Label);
+        // The holder named by the email alone (no name): it is the line, with nothing beneath.
+        var row = Item(ShellMenu.Build(new ShellState("2.0.0") { HasCredential = true, SignedInAs = "zed@example.com" }), ShellMenu.SignedIn);
+
+        Assert.Equal(("zed@example.com", (string?)null, "Z", ShellItemKind.Action), (row.Label, row.Detail, row.Initial, row.Kind));
     }
 
     [Fact]
-    public void TheSignedInLine_IsLeftOut_WhenACredentialIsHeld_ButItsNameIsntKnownYet()
+    public void WhoIsSignedIn_NotSignedIn_WithSignInBeneath_AClickableRow_WhateverNameIsKept()
     {
-        var menu = ShellMenu.Build(new ShellState("2.0.0") { HasCredential = true, SignedInAs = null });
+        foreach (var state in new[] { new ShellState("2.0.0"), new ShellState("2.0.0") { SignedInAs = "Ann", SignedInEmail = "ann@example.com" } })
+        {
+            var menu = ShellMenu.Build(state);
+            var row = Item(menu, ShellMenu.SignedIn);
+            // A name kept without a credential (or after the service refused it) never shows.
+            Assert.Equal(("Not signed in", "Sign In…", (string?)null, ShellItemKind.Action, true), (row.Label, row.Detail, row.Initial, row.Kind, row.Enabled));
+            Assert.Equal(3, menu.Items.ToList().IndexOf(row));
+        }
+    }
+
+    [Fact]
+    public void WhoIsSignedIn_IsLeftOut_WithItsSeparator_WhileTheNameIsntKnownYet()
+    {
+        var menu = ShellMenu.Build(new ShellState("2.0.0") { HasCredential = true, SignedInAs = null, SignedInEmail = "ignored@example.com" });
 
         Assert.DoesNotContain(menu.Items, i => i.Id == ShellMenu.SignedIn);
-        Assert.Equal(ShellMenu.OpenEditor, menu.Items[1].Id);
+        Assert.Equal([ShellMenu.Header, ShellMenu.Status, "", ShellMenu.OpenEditor], menu.Items.Take(4).Select(i => i.Id));
+    }
+
+    /// <summary>The round initial: the first letter or digit, in capitals (a whole character, an accent included); none without one.</summary>
+    [Theory]
+    [InlineData("habib", "H")]
+    [InlineData("élan Vital", "É")]
+    [InlineData("(Ann) Lee", "A")]
+    [InlineData("👩🏽‍💻 Bo", "B")]
+    [InlineData("42 Club", "4")]
+    [InlineData("e\u0301mile", "E\u0301")]
+    [InlineData("…", null)]
+    public void TheInitial_IsTheFirstLetterOrDigit_InCapitals(string name, string? initial)
+    {
+        Assert.Equal(initial, ShellMenu.InitialOf(name));
+        Assert.Equal(initial, Item(ShellMenu.Build(new ShellState("2.0.0") { HasCredential = true, SignedInAs = name }), ShellMenu.SignedIn).Initial);
     }
 
     /// <summary>Edit from Another Computer… is always there, an action right below Open Editor, whatever the state.</summary>
@@ -158,7 +198,8 @@ public sealed class ShellMenuTests
 
         Assert.DoesNotContain(menu.Items, i => i.Id == ShellMenu.ShowOnDesktop);
         // No two separators in a row: the folders follow the editor's lines' separator.
-        Assert.Equal([ShellMenu.Status, ShellMenu.SignedIn, ShellMenu.OpenEditor, ShellMenu.EditFromAnotherComputer, "", ShellMenu.ShowDataFolder], menu.Items.Take(6).Select(i => i.Id));
+        Assert.Equal([ShellMenu.Header, ShellMenu.Status, "", ShellMenu.SignedIn, "", ShellMenu.OpenEditor, ShellMenu.EditFromAnotherComputer, "", ShellMenu.ShowDataFolder],
+            menu.Items.Take(9).Select(i => i.Id));
     }
 
     [Theory]

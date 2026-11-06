@@ -29,7 +29,8 @@ internal sealed record WinMenuEntry(uint Command, string Id, string Label, WinMe
 
 /// <summary>
 /// The model's menu (<see cref="ShellMenu.Build"/>) as the Win32 menu's lines, built each time the menu opens: in
-/// Windows' words (<see cref="WinShellText"/>), Open editor the default item, a submenu of the model's (Show on desktop)
+/// Windows' words (<see cref="WinShellText"/>), the header and the status line one grey line ("InfoPanel · Running ·
+/// 2.0.0": a Win32 menu has no header), Open editor the default item, a submenu of the model's (Show on desktop)
 /// as a submenu with its check marks, and the platform's Start when I sign in in a group of its own above Exit. Commands
 /// are numbered across the whole menu, the submenus' lines included, so the one <c>TrackPopupMenuEx</c> returns names
 /// one line.
@@ -45,7 +46,7 @@ internal static class WinTrayMenu
     /// </summary>
     public static IReadOnlyList<WinMenuEntry> Lines(ShellMenu menu, bool? startAtSignIn)
     {
-        var items = menu.Items.ToList();
+        var items = WithTheHeaderInTheStatus(menu.Items);
         var exit = items.FindIndex(i => i.Id == ShellMenu.Quit && i.Kind != ShellItemKind.Separator);
         var head = exit < 0 ? items : items[..exit];
         var tail = exit < 0 ? [] : items[exit..];
@@ -88,6 +89,29 @@ internal static class WinTrayMenu
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// <paramref name="items"/> with the header put into the status line after it ("InfoPanel · Running · 2.0.0"); a header
+    /// without one stays a grey line of its own.
+    /// </summary>
+    private static List<ShellMenuItem> WithTheHeaderInTheStatus(IReadOnlyList<ShellMenuItem> items)
+    {
+        var lines = new List<ShellMenuItem>();
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (items[i].Kind == ShellItemKind.Header && i + 1 < items.Count && items[i + 1].Kind == ShellItemKind.Status)
+            {
+                lines.Add(items[i + 1] with { Label = $"{items[i].Label} · {items[i + 1].Label}" });
+                i++;
+            }
+            else
+            {
+                lines.Add(items[i]);
+            }
+        }
+
+        return lines;
     }
 
     private static WinMenuEntry Entry(ShellMenuItem item, ref uint command)

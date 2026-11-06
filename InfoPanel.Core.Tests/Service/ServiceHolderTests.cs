@@ -111,7 +111,15 @@ public sealed class ServiceHolderTests : IAsyncDisposable
     private static Task Idle(ServiceHolder holder, long asks) =>
         Until(() => holder.Asks == asks && holder.IsWaiting, $"the holder to wait after {asks} asks");
 
-    private static void AssertShown(ServiceHolder holder, bool held, string? name) => Assert.Equal(new ServiceHolderState(held, name), holder.Current);
+    /// <summary>Whether the credential is held and the name shown (the email beside it is checked on its own).</summary>
+    private static void AssertShown(ServiceHolder holder, bool held, string? name) => Assert.Equal((held, name), (holder.Current.Held, holder.Current.Name));
+
+    /// <summary>Waits until the holder has asked <paramref name="asks"/> times and the service has been sent <paramref name="requests"/> requests.</summary>
+    private async Task Asked(ServiceHolder holder, long asks, int requests)
+    {
+        await Idle(holder, asks);
+        Assert.Equal(requests, _service.Requests.Count);
+    }
 
     // ---- When it asks ----
 
@@ -300,6 +308,74 @@ public sealed class ServiceHolderTests : IAsyncDisposable
         Assert.Equal(new string('e', 39) + "…", ServiceHolder.Shown(null, email));
     }
 
+    // ---- The email beside the name ----
+
+    [Fact]
+    public async Task TheEmail_IsKeptBesideTheName()
+    {
+        _credentials.Put(Credential);
+
+        var holder = await Started();
+
+        Assert.Equal(new ServiceHolderState(true, Name, Email), holder.Current);
+    }
+
+    [Fact]
+    public async Task WithoutAName_TheEmailShows_AndNothingBesideIt()
+    {
+        _answer = (_, _) => Task.FromResult(Answer(null));
+        _credentials.Put(Credential);
+
+        var holder = await Started();
+
+        Assert.Equal(new ServiceHolderState(true, Email, null), holder.Current);
+    }
+
+    [Theory]
+    [InlineData("\tzq\u0000-holder@example.test\u2028", "zq-holder@example.test")]
+    [InlineData("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee@example.test", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee…")]
+    [InlineData(" ", null)]
+    public async Task TheEmail_IsCleanedAndShortened_AsTheNameIs(string email, string? shown)
+    {
+        _answer = (_, _) => Task.FromResult(Answer("Ann Lee", email));
+        _credentials.Put(Credential);
+
+        var holder = await Started();
+
+        Assert.Equal(new ServiceHolderState(true, "Ann Lee", shown), holder.Current);
+    }
+
+    [Fact]
+    public async Task TheEmail_GoesWithTheName_OnARemoval_ARefusal_OrAnotherCredential_AndStaysThroughAFailure()
+    {
+        _credentials.Put(Credential);
+        var holder = await Started();
+
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        _clock.Advance(ServiceHolder.Interval);
+        await Idle(holder, 2);
+        Assert.Equal(new ServiceHolderState(true, Name, Email), holder.Current);
+
+        _credentials.Put(Other);
+        await Idle(holder, 3);
+        Assert.Equal(new ServiceHolderState(true, null, null), holder.Current);
+
+        _answer = (_, _) => Task.FromResult(Answer(Name));
+        _credentials.Put(Credential);
+        await Idle(holder, 4);
+        Assert.Equal(new ServiceHolderState(true, Name, Email), holder.Current);
+        _credentials.Delete();
+        await Idle(holder, 5);
+        Assert.Equal(new ServiceHolderState(false, null, null), holder.Current);
+
+        _credentials.Put(Credential);
+        await Idle(holder, 6);
+        _answer = (_, _) => Task.FromResult((401, Array.Empty<byte>()));
+        _clock.Advance(ServiceHolder.Interval);
+        await Until(() => holder.Requests == 6 && holder.IsWaiting, "the 401");
+        Assert.Equal(new ServiceHolderState(false, null, null), holder.Current);
+    }
+
     // ---- A 401, a failure, a late answer ----
 
     [Fact]
@@ -426,6 +502,139 @@ public sealed class ServiceHolderTests : IAsyncDisposable
         await Idle(holder, 3);
         // The same text again is another credential: the answer to the one removed isn't its name.
         AssertShown(holder, held: true, name: null);
+    }
+
+    // ---- After a failure: asked again soon ----
+
+    /// <summary>The waits after successive failures, in minutes: 1, doubling, then the 6-hour interval.</summary>
+    public static readonly int[] RetryMinutes = [1, 2, 4, 8, 16, 32, 64, 128, 256, 360, 360];
+
+    [Fact]
+    public async Task AFailure_IsAskedAgainAfterAMinute_ThenTwo_Four_Doubling_UpToTheInterval()
+    {
+        Assert.Equal(TimeSpan.FromMinutes(1), ServiceHolder.FirstRetry);
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        _credentials.Put(Credential);
+        var holder = await Started();
+
+        var asks = 1;
+        foreach (var minutes in RetryMinutes)
+        {
+            _clock.Advance(TimeSpan.FromMinutes(minutes) - TimeSpan.FromSeconds(1));
+            await Asked(holder, asks, asks);
+            _clock.Advance(TimeSpan.FromSeconds(1));
+            await Asked(holder, ++asks, asks);
+        }
+
+        AssertShown(holder, held: true, name: null);
+    }
+
+    [Fact]
+    public async Task AnAnswerAfterFailures_WaitsTheInterval_AndTheNextFailureStartsAgainAtAMinute()
+    {
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        _credentials.Put(Credential);
+        var holder = await Started();
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await Asked(holder, 2, 2);
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        await Asked(holder, 3, 3);
+
+        _answer = (_, _) => Task.FromResult(Answer(Name));
+        _clock.Advance(TimeSpan.FromMinutes(4));
+        await Asked(holder, 4, 4);
+        AssertShown(holder, held: true, name: Name);
+
+        _clock.Advance(ServiceHolder.Interval - TimeSpan.FromSeconds(1));
+        await Asked(holder, 4, 4);
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await Asked(holder, 5, 5);
+
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await Asked(holder, 6, 6);
+        AssertShown(holder, held: true, name: Name);
+    }
+
+    [Fact]
+    public async Task AChangeOfCredential_StartsTheRetriesAgainAtAMinute()
+    {
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        _credentials.Put(Credential);
+        var holder = await Started();
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await Asked(holder, 2, 2);
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        await Asked(holder, 3, 3);
+
+        _credentials.Put(Other);
+        await Asked(holder, 4, 4);
+        _clock.Advance(TimeSpan.FromMinutes(1) - TimeSpan.FromSeconds(1));
+        await Asked(holder, 4, 4);
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await Asked(holder, 5, 5);
+    }
+
+    [Fact]
+    public async Task ARetryAfter_LongerThanTheRetry_IsWaited()
+    {
+        // 503 asking for 10 minutes: the service's least wait, longer than the first retry's minute.
+        await using var limited = new LocalHttpServer((_, stream, _) =>
+            LocalHttpServer.Answer(stream, 503, [], "application/json", "Retry-After: 600"));
+        _address = $"http://127.0.0.1:{limited.Port}";
+        _credentials.Put(Credential);
+        var holder = await Started();
+
+        _clock.Advance(TimeSpan.FromMinutes(10) - TimeSpan.FromSeconds(1));
+        await Idle(holder, 1);
+        Assert.Single(limited.Requests);
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await Idle(holder, 2);
+        Assert.Equal(2, limited.Requests.Count);
+    }
+
+    [Fact]
+    public async Task ANetworkChange_AfterAFailure_AsksAtOnce_AndTheRetriesStartAgain()
+    {
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        _credentials.Put(Credential);
+        var holder = await Started();
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await Asked(holder, 2, 2);
+
+        // The network changed (a sleep's end, another Wi-Fi): asked at once, no time passing.
+        Assert.True(holder.NetworkChanged());
+        await Asked(holder, 3, 3);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await Asked(holder, 4, 4);
+
+        _answer = (_, _) => Task.FromResult(Answer(Name));
+        Assert.True(holder.NetworkChanged());
+        await Asked(holder, 5, 5);
+        AssertShown(holder, held: true, name: Name);
+    }
+
+    [Fact]
+    public async Task ANetworkChange_WithoutAFailure_AsksNothing()
+    {
+        // No credential.
+        var holder = await Started();
+        Assert.False(holder.NetworkChanged());
+
+        // An answer.
+        _credentials.Put(Credential);
+        await Asked(holder, 2, 1);
+        Assert.False(holder.NetworkChanged());
+
+        // A 401: refused until another credential.
+        _answer = (_, _) => Task.FromResult((401, Array.Empty<byte>()));
+        _clock.Advance(ServiceHolder.Interval);
+        await Until(() => holder.Requests == 2 && holder.IsWaiting, "the 401");
+        Assert.False(holder.NetworkChanged());
+
+        _clock.Advance(TimeSpan.FromHours(1));
+        await Until(() => holder.IsWaiting, "the wait");
+        Assert.Equal(2, _service.Requests.Count);
     }
 
     // ---- Bounds ----

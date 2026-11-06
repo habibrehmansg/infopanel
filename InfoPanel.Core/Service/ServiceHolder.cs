@@ -13,9 +13,10 @@ namespace InfoPanel.Service;
 /// <summary>
 /// Who holds the service credential, as the menu shows it: <see cref="Held"/>, the engine holds a credential the service
 /// hasn't refused; <see cref="Name"/>, its holder's name (else email) as the service last gave it for that same
-/// credential, ready to show, or null while it isn't known.
+/// credential, ready to show, or null while it isn't known; <see cref="Email"/>, the holder's email shown beside that
+/// name, ready to show, or null when the name is the email itself or there is none.
 /// </summary>
-public readonly record struct ServiceHolderState(bool Held, string? Name);
+public readonly record struct ServiceHolderState(bool Held, string? Name, string? Email = null);
 
 /// <summary>
 /// Asks the configured service who holds the credential (docs/2.0/desktop-shell.md, "The menu"):
@@ -23,12 +24,16 @@ public readonly record struct ServiceHolderState(bool Held, string? Name);
 /// credential as a bearer token, no redirect followed, no credential no request, a 401 refusing every request until a
 /// client provides another, <c>--offline</c> asking only a service on this computer), answered
 /// <c>{"name": string | null, "email": string}</c>. It asks once started, when the credential or the service address
-/// changes, and again every <see cref="Interval"/> while one is held, never more often nor, whatever a <c>Retry-After</c>
-/// asks, later; a failure of the task itself is logged and the next change asks again. One request at a time, each
-/// bounded at <see cref="RequestTimeout"/>, its answer read to at most <see cref="MaxBytes"/>. The name (else the email)
-/// is kept in memory only, tied to the credential's generation it was asked with, so an answer that comes after the
-/// credential was replaced or removed is never shown for another; a failure (unreachable, a 5xx, a malformed answer)
-/// keeps the name known for that same credential. Never stored, never logged; nor is the credential, which isn't read here.
+/// changes, and again every <see cref="Interval"/> after an answer while one is held. After a failed ask (unreachable, a
+/// 5xx, a malformed answer) it asks again sooner, as the weather source does: after <see cref="FirstRetry"/>, doubling
+/// with each failure in a row, or after the failure's <c>Retry-After</c> when that is longer, never later than
+/// <see cref="Interval"/>; and at once when the computer's network changes (<see cref="NetworkChanged"/>). An answer, a
+/// change of the credential or the address, or a network change starts the retries again at <see cref="FirstRetry"/>. A
+/// failure of the task itself is logged and the next change asks again. One request at a time, each bounded at
+/// <see cref="RequestTimeout"/>, its answer read to at most <see cref="MaxBytes"/>. The name (else the email) and the
+/// email beside it are kept in memory only, tied to the credential's generation they were asked with, so an answer that
+/// comes after the credential was replaced or removed is never shown for another; a failure keeps what is known for that
+/// same credential. Never stored, never logged; nor is the credential, which isn't read here.
 /// What the menu reads (<see cref="Current"/>) is published on each change, so reading it never waits for the credential's
 /// store.
 /// </summary>
@@ -40,8 +45,11 @@ public sealed class ServiceHolder : IDisposable
     /// <summary>Each request's bound, reading the answer included.</summary>
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
 
-    /// <summary>How long after an answer, or a failure, it asks again while the credential is held.</summary>
+    /// <summary>How long after an answer it asks again while the credential is held; the longest wait after a failure.</summary>
     public static readonly TimeSpan Interval = TimeSpan.FromHours(6);
+
+    /// <summary>The wait after the first failed ask in a row, doubled after each further one, up to <see cref="Interval"/>.</summary>
+    public static readonly TimeSpan FirstRetry = TimeSpan.FromMinutes(1);
 
     /// <summary>The longest answer read, in bytes; a longer one is malformed.</summary>
     public const int MaxBytes = 4096;
@@ -66,11 +74,13 @@ public sealed class ServiceHolder : IDisposable
     private TaskCompletionSource _published = NewWake();
 
     // Under _lock: an ask is due at once (at start, after a change); when the next is due (null: only after a change); the
-    // name known and the credential's generation it was asked with; what the last ask came to, for the log.
+    // name and email known and the credential's generation they were asked with; what the last ask came to (for the log,
+    // and a network change after a failure); the failed asks in a row since an answer or a change.
     private bool _pending = true;
     private long? _dueAt;
-    private (long Generation, string Name)? _known;
+    private (long Generation, string Name, string? Email)? _known;
     private Kind? _last;
+    private int _failures;
 
     private TaskCompletionSource _wake = NewWake();
     private CancellationTokenSource? _cts;
@@ -113,11 +123,11 @@ public sealed class ServiceHolder : IDisposable
     private Snapshot Read(long requested)
     {
         var (state, generation) = _credentials.StateAndGeneration;
-        string? name;
+        (long, string Name, string? Email)? shown;
         lock (_lock)
-            name = _known is { } known && known.Generation == generation ? known.Name : null;
+            shown = _known is { } known && known.Generation == generation ? known : null;
         return new Snapshot(state, generation,
-            state == ServiceCredentialState.Present ? new ServiceHolderState(true, name) : new ServiceHolderState(false, null), requested);
+            state == ServiceCredentialState.Present ? new ServiceHolderState(true, shown?.Name, shown?.Email) : new ServiceHolderState(false, null), requested);
     }
 
     /// <summary>
@@ -276,9 +286,19 @@ public sealed class ServiceHolder : IDisposable
         var shown = Clean(name);
         if (shown.Length == 0)
             shown = Clean(email);
+        return Shortened(shown);
+    }
+
+    /// <summary>
+    /// The email as it shows beside the name, cleaned and shortened as <see cref="Shown"/> does; null when there is no name
+    /// to show (the email shows in its place) or the email has nothing to show.
+    /// </summary>
+    internal static string? ShownBeside(string? name, string email) => Clean(name).Length == 0 ? null : Shortened(Clean(email));
+
+    private static string? Shortened(string shown)
+    {
         if (shown.Length == 0)
             return null;
-
         var info = new StringInfo(shown);
         return info.LengthInTextElements <= MaxNameLength ? shown : info.SubstringByTextElements(0, MaxNameLength - 1) + "…";
     }
@@ -304,9 +324,31 @@ public sealed class ServiceHolder : IDisposable
     private void CredentialChanged()
     {
         lock (_lock)
+        {
             _pending = true;
+            _failures = 0;
+        }
+
         Volatile.Read(ref _wake).TrySetResult();
         RequestPublish(here: false);
+    }
+
+    /// <summary>
+    /// The computer's network changed (the engine follows the system's address changes): after a failed ask, one is due at
+    /// once and the retries start again at <see cref="FirstRetry"/>; otherwise nothing changes. Answers whether it asks.
+    /// </summary>
+    public bool NetworkChanged()
+    {
+        lock (_lock)
+        {
+            if (_last != Kind.Failed || _dueAt is null)
+                return false;
+            _pending = true;
+            _failures = 0;
+        }
+
+        Volatile.Read(ref _wake).TrySetResult();
+        return true;
     }
 
     private static TaskCompletionSource NewWake() => new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -407,7 +449,7 @@ public sealed class ServiceHolder : IDisposable
         // Read before the request takes the credential: the generation only grows, so when it is the same once the answer
         // is in, the request was sent with this one; when it moved, the answer is kept under this one and shown for none.
         var (_, generation) = _credentials.StateAndGeneration;
-        (Kind Kind, string? Name) outcome;
+        Outcome outcome;
         using (var timeout = new CancellationTokenSource(RequestTimeout, _time))
         using (var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token))
         {
@@ -418,11 +460,12 @@ public sealed class ServiceHolder : IDisposable
             catch (Exception) when (!ct.IsCancellationRequested)
             {
                 // Unreachable, refused, timed out, cut off: the service didn't answer.
-                outcome = (Kind.Failed, null);
+                outcome = new Outcome(Kind.Failed);
             }
         }
 
         bool again;
+        var wait = Interval;
         lock (_lock)
         {
             switch (outcome.Kind)
@@ -430,17 +473,20 @@ public sealed class ServiceHolder : IDisposable
                 case Kind.Named:
                     // A late answer never replaces what a later credential's answer brought.
                     if (_known is not { } known || known.Generation <= generation)
-                        _known = (generation, outcome.Name!);
+                        _known = (generation, outcome.Name!, outcome.Email);
+                    _failures = 0;
                     _dueAt = _time.GetTimestamp() + Ticks(Interval);
                     break;
                 case Kind.Failed:
-                    // The interval, whatever a Retry-After asks: never more often, and never longer (a service's wait
-                    // of days would hold the next ask past what a wait can be).
-                    _dueAt = _time.GetTimestamp() + Ticks(Interval);
+                    // Soon, then less often: the retry's wait, or the service's Retry-After when longer, never past the
+                    // interval (a service's wait of days would hold the next ask past what a wait can be).
+                    wait = RetryWait(++_failures, outcome.RetryAfter);
+                    _dueAt = _time.GetTimestamp() + Ticks(wait);
                     break;
                 default:
                     // Nothing held to ask for, or refused: nothing kept, nothing asked until a change.
                     _known = null;
+                    _failures = 0;
                     _dueAt = null;
                     break;
             }
@@ -463,36 +509,52 @@ public sealed class ServiceHolder : IDisposable
                 _log.Information("The configured service refused the credential when asked for its holder");
                 break;
             case Kind.Failed:
-                _log.Warning("The configured service didn't say who holds the credential; asking again in {Wait}", Interval);
+                _log.Warning("The configured service didn't say who holds the credential; asking again in {Wait}", wait);
                 break;
         }
     }
 
+    /// <summary>
+    /// The wait after <paramref name="failures"/> failed asks in a row: <see cref="FirstRetry"/>, doubled after each further
+    /// one, or <paramref name="retryAfter"/> (the service's least wait) when it is longer; never past <see cref="Interval"/>.
+    /// </summary>
+    internal static TimeSpan RetryWait(int failures, TimeSpan? retryAfter)
+    {
+        var doublings = Math.Min(Math.Max(failures - 1, 0), 30);
+        var wait = TimeSpan.FromTicks(Math.Min(FirstRetry.Ticks * (1L << doublings), Interval.Ticks));
+        if (retryAfter is { } asked && asked > wait)
+            wait = asked;
+        return wait > Interval ? Interval : wait;
+    }
+
     private long Ticks(TimeSpan wait) => (long)(wait.Ticks * (double)_time.TimestampFrequency / TimeSpan.TicksPerSecond);
 
-    private async Task<(Kind, string?)> RequestAsync(CancellationToken ct)
+    /// <summary>What an ask came to: the name and the email beside it (<see cref="Kind.Named"/>), the service's <c>Retry-After</c> (<see cref="Kind.Failed"/>).</summary>
+    private readonly record struct Outcome(Kind Kind, string? Name = null, string? Email = null, TimeSpan? RetryAfter = null);
+
+    private async Task<Outcome> RequestAsync(CancellationToken ct)
     {
         if (_client == null)
-            return (Kind.NotAsked, null);
+            return new Outcome(Kind.NotAsked);
 
         using var answer = await _client.SendAsync(HttpMethod.Get, Path, ct: ct).ConfigureAwait(false);
         if (answer.Refused is not null)
-            return (Kind.NotAsked, null);
+            return new Outcome(Kind.NotAsked);
 
         Interlocked.Increment(ref _requests);
         var response = answer.Response!;
         if (response.StatusCode == HttpStatusCode.Unauthorized)
-            return (Kind.Refused, null);
-        if (response.StatusCode == HttpStatusCode.OK && await ReadAsync(response, ct).ConfigureAwait(false) is { } body && Parse(body) is { } name)
-            return (Kind.Named, name);
-        return (Kind.Failed, null);
+            return new Outcome(Kind.Refused);
+        if (response.StatusCode == HttpStatusCode.OK && await ReadAsync(response, ct).ConfigureAwait(false) is { } body && Parse(body) is { } holder)
+            return new Outcome(Kind.Named, holder.Name, holder.Email);
+        return new Outcome(Kind.Failed, RetryAfter: answer.RetryAfter);
     }
 
     /// <summary>
-    /// The name to show from an answer <c>{"name": string | null, "email": string}</c> (a name left out reads as null), or
-    /// null when it is malformed: not that object, the email not a string, or nothing to show.
+    /// The name to show and the email beside it from an answer <c>{"name": string | null, "email": string}</c> (a name
+    /// left out reads as null), or null when it is malformed: not that object, the email not a string, or nothing to show.
     /// </summary>
-    private static string? Parse(byte[] body)
+    private static (string Name, string? Email)? Parse(byte[] body)
     {
         try
         {
@@ -509,7 +571,8 @@ public sealed class ServiceHolder : IDisposable
                     return null;
             }
 
-            return Shown(name, email.GetString()!);
+            var address = email.GetString()!;
+            return Shown(name, address) is { } shown ? (shown, ShownBeside(name, address)) : null;
         }
         catch (JsonException)
         {

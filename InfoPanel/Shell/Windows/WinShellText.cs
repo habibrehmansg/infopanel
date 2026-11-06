@@ -16,8 +16,8 @@ internal static class WinShellText
     public const string StartAtSignIn = "Start when I sign in";
 
     /// <summary>
-    /// The menu's words by item id. The status line, the signed-in line and a profile's line (its name) are already the
-    /// same on Windows, so they keep the model's.
+    /// The menu's words by item id. The header, the status line and a profile's line (its name) are already the same on
+    /// Windows, so they keep the model's; who is signed in is one line (<see cref="Label"/>).
     /// </summary>
     private static readonly Dictionary<string, string> MenuLabels = new()
     {
@@ -43,8 +43,19 @@ internal static class WinShellText
     /// <summary>The icon's tooltip: "InfoPanel 2.0.0".</summary>
     public static string Tooltip(string version) => $"InfoPanel {version}";
 
-    /// <summary>An item's label on Windows.</summary>
-    public static string Label(ShellMenuItem item) => MenuLabels.TryGetValue(item.Id, out var label) ? label : item.Label;
+    /// <summary>Who is signed in, signed out, on Windows: one line, "Not signed in · Sign in…".</summary>
+    public const string SignIn = "Sign in…";
+
+    /// <summary>
+    /// An item's label on Windows. Who is signed in is one line (a Win32 menu line has no second line): the name and the
+    /// email in brackets, "Ann Lee (ann@example.com)", or the email alone; signed out, "Not signed in · Sign in…".
+    /// </summary>
+    public static string Label(ShellMenuItem item)
+    {
+        if (item.Id == ShellMenu.SignedIn && item.Detail is { } detail)
+            return detail == ShellMenu.SignIn ? $"{item.Label} · {SignIn}" : $"{item.Label} ({detail})";
+        return MenuLabels.TryGetValue(item.Id, out var label) ? label : item.Label;
+    }
 
     /// <summary><paramref name="prompt"/> in Windows' words, its cancel button last (Windows puts Cancel at the end).</summary>
     public static WinPrompt Prompt(ShellPrompt prompt)

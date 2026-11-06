@@ -4953,12 +4953,12 @@ export interface ApiOperations {
       token: string;
     };
     query: {
-      /** The client's page the link lands on: only `#/settings/engine`, once; any other is ignored. */
+      /** The client's page the link lands on: only `#/settings/engine` or `#/settings/account`, once; any other is ignored. */
       then?: string;
     };
     request: never;
     responses: {
-      /** To /#token={token}, and with then, to /#token={token}&then=%23%2Fsettings%2Fengine. */
+      /** To /#token={token}, and with then, to /#token={token}&then=%23%2Fsettings%2Fengine (or %23%2Fsettings%2Faccount). */
       302: null;
       /** Any token but the session token. */
       401: "text/plain";
