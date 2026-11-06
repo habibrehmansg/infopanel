@@ -270,12 +270,10 @@ public static partial class ProfileArchive
 
         using (json)
         {
-            // The JSON-level pass first; then a window's topmost, as an earlier engine exported it, is read as its level,
-            // in the document checked and answered (the client creates the profile with it).
+            // The JSON-level pass first, then the document's check.
             if (ValidationText.CheckJson(json.RootElement, workspace.Limits.JsonDepth, "/document") is { } invalidJson)
                 throw new ImportRefusal(ValidationText.Cap(invalidJson));
-            using var withLevel = StoredTopmost.Read(json.RootElement);
-            var document = withLevel?.RootElement ?? json.RootElement;
+            var document = json.RootElement;
             if (workspace.CheckImportDocument(document) is { Count: > 0 } errors)
                 throw new ImportRefusal(errors);
 

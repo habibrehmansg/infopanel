@@ -277,61 +277,16 @@ public sealed class WorkspaceTests : IDisposable
         doc["profile"]!["window"] = JsonNode.Parse(window);
         return doc.ToJsonString();
     }
-
     /// <summary>
-    /// The draft's <c>window.topmost</c>, in a document an earlier engine stored: true opens as <c>level: "top"</c>, false
-    /// as no level, clean, the file kept as it is until a save writes <c>level</c>.
+    /// A stored document whose window has the draft's <c>window.topmost</c> is unreadable at its path, whatever its value:
+    /// the engine reads no other name for the window's level, and leaves the file as it is.
     /// </summary>
     [Theory]
-    [InlineData(true, "top")]
-    [InlineData(false, null)]
-    public void AStoredDocumentWithTopmost_OpensWithItsLevel_Clean_AndItsNextSaveWritesLevel(bool topmost, string? level)
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AStoredDocumentWithTopmost_IsUnreadable_AtTopmost_AndTheFileIsLeft(bool topmost)
     {
-        var stored = WithWindow(A, $$"""{"enabled":true,"x":5,"topmost":{{(topmost ? "true" : "false")}},"draggable":false}""");
-        var workspace = With((A, stored));
-
-        Assert.Equal("ok", Assert.Single(workspace.List()).Status);
-        var doc = workspace.Open(A)!;
-        var window = doc.Current.Document.Profile.Window!;
-        Assert.Equal((level, true, 5, false), (window.Level, window.Enabled, window.X, window.Draggable));
-        Assert.False(doc.Dirty);
-        Assert.Equal(1, doc.Rev);
-        Assert.Equal(stored, File.ReadAllText(Paths.DocumentFile(A))); // untouched until saved
-
-        doc.Save();
-        var saved = JsonNode.Parse(File.ReadAllText(Paths.DocumentFile(A)))!["profile"]!["window"]!.AsObject();
-        Assert.False(saved.ContainsKey("topmost"));
-        Assert.Equal(level, saved["level"]?.GetValue<string>());
-        Assert.Equal(level is not null, saved.ContainsKey("level"));
-    }
-
-    /// <summary>
-    /// The folder's id and the window's <c>topmost</c> are both read from the stored document: one with another id and
-    /// <c>topmost: true</c> opens under its folder's id with <c>level: "top"</c>.
-    /// </summary>
-    [Fact]
-    public void AStoredDocumentWithAnotherIdAndTopmost_OpensUnderTheFolder_WithLevelTop()
-    {
-        var workspace = With((A, WithWindow(B, """{"enabled":true,"topmost":true}""")));
-
-        Assert.Equal("ok", Assert.Single(workspace.List()).Status);
-        var doc = workspace.Open(A)!;
-        Assert.Equal((A, A, "top"), (doc.Id, doc.Current.Document.Id, doc.Current.Document.Profile.Window!.Level));
-        Assert.False(doc.Dirty);
-    }
-
-    /// <summary>
-    /// Only a lone boolean <c>topmost</c> is read: beside a <c>level</c>, or not a boolean, it is refused as before, at its
-    /// path.
-    /// </summary>
-    [Theory]
-    [InlineData("""{"enabled":true,"topmost":true,"level":"top"}""")]
-    [InlineData("""{"enabled":true,"level":"normal","topmost":false}""")]
-    [InlineData("""{"enabled":true,"topmost":"yes"}""")]
-    [InlineData("""{"enabled":true,"topmost":null}""")]
-    public void AStoredDocumentWithTopmostBesideALevel_OrNotABoolean_IsUnreadable_AtTopmost(string window)
-    {
-        var stored = WithWindow(A, window);
+        var stored = WithWindow(A, $$"""{"enabled":true,"x":5,"topmost":{{(topmost ? "true" : "false")}}}""");
         var workspace = With((A, stored));
 
         var entry = Assert.Single(workspace.List());

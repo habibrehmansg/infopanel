@@ -913,11 +913,11 @@ public sealed class RecoveryTests : IDisposable
     }
 
     /// <summary>
-    /// A checkpoint an earlier engine kept, whose document has the draft's <c>window.topmost</c>: restored, true as
-    /// <c>level: "top"</c>.
+    /// A checkpoint whose document has the draft's <c>window.topmost</c> is one the engine can't open as a stored
+    /// document: not restored, logged once, the profile opens as saved, the file left where it is.
     /// </summary>
     [Fact]
-    public void AKeptDocumentWithTopmost_IsRestored_WithLevelTop()
+    public void AKeptDocumentWithTopmost_IsNotRestored_AndTheFileIsLeft()
     {
         var workspace = StartWorkspace();
         Create(workspace);
@@ -926,36 +926,14 @@ public sealed class RecoveryTests : IDisposable
         var kept = JsonNode.Parse(DocJson(A, Scene("a", 20, 10), Scene("b", 50, 10)))!.AsObject();
         kept["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["topmost"] = true };
         File.WriteAllText(RecoveryPath(), RecoveryJson(Hash(saved), kept.ToJsonString()));
+        var before = File.ReadAllBytes(RecoveryPath());
 
         var doc = StartWorkspace().Open(A)!;
-        Assert.Equal((2L, true), (doc.Rev, doc.Dirty));
-        Assert.NotNull(doc.Recovered);
-        Assert.Equal(20, X(doc.Current));
-        Assert.Equal("top", doc.Current.Document.Profile.Window!.Level);
-        Assert.Empty(RecoveryWarnings());
-    }
-
-    /// <summary>
-    /// A kept document with another id and the draft's <c>window.topmost: true</c>: restored under the folder's id, with
-    /// <c>level: "top"</c>.
-    /// </summary>
-    [Fact]
-    public void AKeptDocumentWithAnotherIdAndTopmost_IsRestored_UnderItsFolderId_WithLevelTop()
-    {
-        var workspace = StartWorkspace();
-        Create(workspace);
-        workspace.Dispose();
-        var saved = File.ReadAllBytes(Paths.DocumentFile(A));
-        var kept = JsonNode.Parse(DocJson(B, Scene("a", 20, 10), Scene("b", 50, 10)))!.AsObject();
-        kept["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["topmost"] = true };
-        File.WriteAllText(RecoveryPath(), RecoveryJson(Hash(saved), kept.ToJsonString()));
-
-        var doc = StartWorkspace().Open(A)!;
-        Assert.Equal((2L, true), (doc.Rev, doc.Dirty));
-        Assert.NotNull(doc.Recovered);
-        Assert.Equal((A, "top"), (doc.Current.Document.Id, doc.Current.Document.Profile.Window!.Level));
-        Assert.Equal(20, X(doc.Current));
-        Assert.Empty(RecoveryWarnings());
+        Assert.Equal((1L, false), (doc.Rev, doc.Dirty));
+        Assert.Null(doc.Recovered);
+        Assert.Equal(10, X(doc.Current));
+        Assert.Single(RecoveryWarnings());
+        Assert.Equal(before, File.ReadAllBytes(RecoveryPath()));
     }
 
     [Fact]

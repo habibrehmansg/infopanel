@@ -47,40 +47,6 @@ public class EngineStartupTests
     }
 
     [Fact]
-    public async Task AStep1DataFolder_IsLeftUntouched_WithOneWarning_AndTheExampleIsCreatedBesideIt()
-    {
-        using var factory = new EngineFactory();
-        var step1 = new Dictionary<string, string>
-        {
-            ["profiles.xml"] = "<ArrayOfProfile />",
-            [Path.Combine("profiles", "9c1f2b3a-0000-4000-8000-000000000000.xml")] = "<ArrayOfDisplayItem />",
-            [Path.Combine("assets", "9c1f2b3a-0000-4000-8000-000000000000", "image.png")] = "not read",
-        };
-        foreach (var (name, text) in step1)
-        {
-            var path = Path.Combine(factory.DataDir, name);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, text);
-        }
-
-        using (var client = factory.CreateApiClient())
-        {
-            var profiles = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("/api/profiles", Ct)).RootElement;
-            Assert.Equal("Wide bar", Assert.Single(profiles.EnumerateArray()).GetProperty("name").GetString());
-        }
-
-        foreach (var (name, text) in step1)
-            Assert.Equal(text, File.ReadAllText(Path.Combine(factory.DataDir, name)));
-        var log = "";
-        await WaitUntil(() =>
-        {
-            log = string.Join("\n", Directory.GetFiles(Path.Combine(factory.DataDir, "logs")).Select(ReadShared));
-            return log.Contains("step-1 profiles");
-        });
-        Assert.Single(log.Split('\n'), line => line.Contains("step-1 profiles"));
-    }
-
-    [Fact]
     public async Task TheSettings_AreOpenedAtStartUp_AndAFirstRunWritesNoSettingsFile()
     {
         using var factory = new EngineFactory();

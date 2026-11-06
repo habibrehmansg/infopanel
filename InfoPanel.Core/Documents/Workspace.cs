@@ -107,7 +107,7 @@ public sealed record StoredBlob(BlobInfo Info, bool Created);
 /// <list type="bullet">
 /// <item><b>Start-up</b> (<see cref="Start"/>): the data folder's marker checked (<see cref="StoreMarker"/>) before
 /// anything else, both stores opened, the blob sweep run, then the first change: the example document on the first run
-/// (the store didn't exist before). Step-1 data in the folder is left untouched and unread, with one warning.</item>
+/// (the store didn't exist before). Step-1 data in the folder is left untouched and unread.</item>
 /// <item><b>Folders are ids.</b> A profile's id is its folder's name. A stored document whose own <c>id</c> differs is
 /// opened under the folder's id (logged), and saved with it.</item>
 /// <item><b>Opening.</b> A document is opened the first time anything reads it (the profile list included) and stays
@@ -218,8 +218,7 @@ public sealed class Workspace : IDisposable
     /// Checks the data folder's marker (<see cref="StoreMarker.Open"/>: nothing is repaired, swept or written in a folder
     /// this engine can't honour), opens the stores in <paramref name="paths"/>, sweeps the blobs, and on the first run (no
     /// profile order file and no profile folder before) stores the example documents <see cref="WorkspaceOptions.Examples"/>
-    /// names, each with its blobs, unless <see cref="WorkspaceOptions.ExamplesWanted"/> says no. Logs once when the folder
-    /// holds step-1 data.
+    /// names, each with its blobs, unless <see cref="WorkspaceOptions.ExamplesWanted"/> says no.
     /// </summary>
     /// <exception cref="StoreMarkerException">The marker stops start-up; nothing in the folder was changed.</exception>
     /// <exception cref="IOException">A store can't be opened.</exception>
@@ -229,11 +228,6 @@ public sealed class Workspace : IDisposable
         options ??= new WorkspaceOptions();
         var logger = options.Logger ?? Log.ForContext<Workspace>();
         var hadOrder = RegularFile.StateOf(paths.ProfileOrderFile) != PathState.Absent;
-        if (HasStep1Data(paths))
-        {
-            logger.Warning("The data folder {DataDir} holds step-1 profiles (profiles.xml, profiles/*.xml, assets/); this engine doesn't read them and leaves them untouched",
-                paths.Root);
-        }
 
         var documents = new DocumentStore(paths, options.Limits, options.StorageFaults);
         var blobs = new BlobStore(paths, options.Limits);
@@ -259,21 +253,6 @@ public sealed class Workspace : IDisposable
     /// </summary>
     public static IReadOnlyList<string> FirstRunExamples(bool macOS, bool mockSensors) =>
         macOS && !mockSensors ? [MacOSExample] : [WideBarExample];
-
-    /// <summary>Whether step-1 data is in the folder; false when that can't be told (it only decides a warning).</summary>
-    private static bool HasStep1Data(DataPaths paths)
-    {
-        try
-        {
-            return File.Exists(paths.ProfilesFile) || Directory.Exists(paths.AssetsDirectory)
-                || RegularFile.List(paths.ProfilesDirectory, new ListingBudget(RegularFile.MaxListing, $"Listing {paths.ProfilesDirectory}"))
-                    .Any(entry => entry is FileInfo && entry.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
 
     /// <summary>The example documents embedded in Core (<c>Documents/Examples/*.document.json</c>), by file name.</summary>
     public static IReadOnlyList<(string Name, byte[] Bytes)> ExampleDocuments()
@@ -529,11 +508,9 @@ public sealed class Workspace : IDisposable
                 root = renamed.RootElement;
             }
 
-            // A window's topmost, as an earlier engine stored it, read as its level (the file is kept until a save).
-            using var withLevel = StoredTopmost.Read(root);
             using (renamed)
             {
-                var load = Generation.Load(withLevel?.RootElement ?? root, 1, Limits, Support, null, jsonChecked: true);
+                var load = Generation.Load(root, 1, Limits, Support, null, jsonChecked: true);
                 if (load.Generation is { } generation)
                 {
                     if (load.Check.Items.Count > 0)
@@ -629,11 +606,9 @@ public sealed class Workspace : IDisposable
         var renamed = document.TryGetProperty("id", out var ownId) && ownId.ValueKind == JsonValueKind.String && ownId.GetString() != id
             ? WithId(document, id)
             : null;
-        // A window's topmost, as an earlier engine kept it, read as its level.
-        using var withLevel = StoredTopmost.Read(renamed?.RootElement ?? document);
         using (renamed)
         {
-            var load = Generation.Load(withLevel?.RootElement ?? renamed?.RootElement ?? document, 1, Limits, Support, null, jsonChecked: true);
+            var load = Generation.Load(renamed?.RootElement ?? document, 1, Limits, Support, null, jsonChecked: true);
             if (load.Generation is not { } generation)
             {
                 var first = load.Check.Errors.FirstOrDefault() ?? new SpecError("", "schema", "The document can't be opened.");

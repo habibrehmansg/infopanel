@@ -836,8 +836,8 @@ public sealed class CommitTests
     }
 
     /// <summary>
-    /// A commit is closed: the draft's <c>window.topmost</c> is a schema error at its path (only documents the engine
-    /// stored read it), and <c>level</c> takes its three values only.
+    /// A commit is closed: the draft's <c>window.topmost</c> is a schema error at its path, and <c>level</c> takes its
+    /// three values only.
     /// </summary>
     [Fact]
     public void A_profile_commit_with_topmost_is_a_schema_error_and_level_takes_its_three_values()

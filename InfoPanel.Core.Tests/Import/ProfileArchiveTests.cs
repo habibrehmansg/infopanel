@@ -706,27 +706,20 @@ public sealed class ProfileArchiveTests : IDisposable
     }
 
     /// <summary>
-    /// An archive an earlier engine exported, whose document has the draft's <c>window.topmost</c>: imported with
-    /// <c>level</c> (true as <c>top</c>, false as none), so the client's create with the answered document passes.
+    /// An archive whose document has the draft's <c>window.topmost</c> is refused <c>schema</c> at its path, whatever its
+    /// value: the engine reads no other name for the window's level in any archive's document.
     /// </summary>
     [Theory]
-    [InlineData(true, "top")]
-    [InlineData(false, null)]
-    public void ADocumentWithTopmost_IsImportedWithItsLevel_AndCreates(bool topmost, string? level)
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ADocumentWithTopmost_IsRefused_AsASchemaError_AtItsPath(bool topmost)
     {
         var document = Document();
         document["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["topmost"] = topmost, ["resizable"] = false };
-        var target = NewWorkspace("target");
 
-        var contents = Open(WithDocument(document, ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template)), target);
+        var refusal = Assert.Throws<ImportRefusal>(() => Open(WithDocument(document, ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template)), NewWorkspace("target")));
 
-        var window = contents.Document.GetProperty("profile").GetProperty("window");
-        string[] members = level is null ? ["enabled", "resizable"] : ["enabled", "level", "resizable"];
-        Assert.Equal(members, window.EnumerateObject().Select(p => p.Name));
-        Assert.Equal(level, window.TryGetProperty("level", out var value) ? value.GetString() : null);
-        var created = target.Create(Encoding.UTF8.GetBytes(new JsonObject { ["id"] = Id, ["document"] = JsonNode.Parse(contents.Document.GetRawText()) }.ToJsonString()));
-        Assert.True(created.Entry is not null, string.Join("; ", created.Invalid?.Errors.Select(e => $"{e.Code} {e.Path}") ?? []));
-        Assert.Equal(level, target.Open(Id)!.Current.Document.Profile.Window!.Level);
+        Assert.Equal(("schema", "/document/profile/window/topmost"), (Assert.Single(refusal.Errors).Code, refusal.Errors[0].Path));
     }
 
     [Theory]
