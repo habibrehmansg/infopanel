@@ -6,6 +6,7 @@ using InfoPanel.Images;
 using InfoPanel.Mcp.Tools;
 using InfoPanel.Output;
 using InfoPanel.Scenes;
+using InfoPanel.Service;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -585,5 +586,230 @@ public sealed class PreviewChecksTests
         Assert.Contains("The checks found nothing (they cover fit, the canvas edge, box overlap and contrast)", checks);
         Assert.DoesNotContain("No problems found", checks);
         Assert.DoesNotContain("Not checked", checks);
+    }
+
+    [Fact]
+    public async Task FindingsOfOneKindOnOneItem_AreOneLine_WithTheirCount()
+    {
+        using var factory = new EngineFactory();
+        // Twelve labels each drawn past a box too narrow for it, in each of two items.
+        JsonObject[] Labels(string prefix) => [.. Enumerable.Range(0, 12).Select(i =>
+            Text($"{prefix}{i * 10}", "#ffffff", more: new JsonObject { ["x"] = i * 30, ["y"] = 0, ["w"] = 6 }))];
+        static JsonObject Gradient(string text, double x) => Text(text, "#000000", 40, 800, new JsonObject
+        {
+            ["x"] = x,
+            ["fill"] = new JsonObject
+            {
+                ["type"] = "linear", ["x1"] = 0, ["y1"] = 0, ["x2"] = 100, ["y2"] = 0,
+                ["stops"] = new JsonArray(new JsonObject { ["at"] = 0, ["color"] = "#ff0000" }, new JsonObject { ["at"] = 1, ["color"] = "#0000ff" }),
+            },
+        });
+        var checks = await Checks(factory, Doc(800, 600, "#000000",
+            Item("Gauge", 10, 10, Labels("")),
+            Item("Dial", 10, 60, Labels("d")),
+            // Contrasts that differ, the lowest (#101010) neither first nor last.
+            Item("Dim", 10, 120, [.. new[] { "#303030", "#202020", "#101010", "#282828", "#202020" }.Select((fill, i) =>
+                Text(((char)('A' + i)).ToString(), fill, 40, 800, new JsonObject { ["x"] = i * 60 }))]),
+            Item("Rainbow", 10, 200, Gradient("a", 0), Gradient("b", 100), Gradient("c", 200)),
+            Item("Single", 10, 300, Text("Alone in a box", "#ffffff", more: new JsonObject { ["w"] = 20, ["overflow"] = "ellipsis" })),
+            // Two kinds on one item: two texts drawn past their boxes, two that end with "…".
+            Item("Mixed", 10, 400,
+                Text("m1", "#ffffff", more: new JsonObject { ["w"] = 6 }),
+                Text("m2", "#ffffff", more: new JsonObject { ["x"] = 40, ["w"] = 6 }),
+                Text("Much too long", "#ffffff", more: new JsonObject { ["x"] = 100, ["w"] = 20, ["overflow"] = "ellipsis" }),
+                Text("Far too long", "#ffffff", more: new JsonObject { ["x"] = 200, ["w"] = 20, ["overflow"] = "ellipsis" })),
+            // Four items each straddling the bottom edge of one drawn before them: half of each in its box. Of those, P0
+            // is drawn below P1 and P2, which overlap it and each other.
+            Item("Wide", 400, 300, Rect(200, 40, "#404040")),
+            Item("P0", 400, 320, Rect(30, 40, "#808080")),
+            Item("P1", 415, 320, Rect(30, 40, "#808080")),
+            Item("P2", 422, 320, Rect(30, 40, "#808080")),
+            Item("P3", 550, 320, Rect(30, 40, "#808080"))));
+        var lines = checks.Split('\n');
+
+        // One line per item and kind, saying the count and quoting three.
+        var gauge = Assert.Single(lines, l => l.Contains("\"Gauge\""));
+        Assert.Contains("\"Gauge\" (gauge): 12 texts are drawn past their boxes (\"0\", \"10\", \"20\" and 9 more). Make the box larger or the text smaller.", gauge);
+        var dial = Assert.Single(lines, l => l.Contains("\"Dial\""));
+        Assert.Contains("12 texts are drawn past their boxes", dial);
+        Assert.Contains("(\"d0\", \"d10\", \"d20\" and 9 more)", dial);
+        var dim = Assert.Single(lines, l => l.Contains("\"Dim\""));
+        Assert.Contains("5 texts (\"A\", \"B\", \"C\" and 2 more) have contrast as low as 1.1:1 against what is under them (#101010 on #000000)", dim);
+        var rainbow = Assert.Single(lines, l => l.Contains("\"Rainbow\""));
+        Assert.Contains("3 texts \"a\", \"b\" and \"c\" (filled with a gradient or a composed paint: their contrast isn't checked)", rainbow);
+        Assert.True(checks.IndexOf(rainbow, StringComparison.Ordinal) > checks.IndexOf("Not checked", StringComparison.Ordinal), checks);
+
+        // Overlaps grouped by the item drawn below, the upper items' own overlaps on their own lines.
+        Assert.Contains("\"P0\" (p0) and 2 items overlap (their boxes; the drawn shapes may not): \"P1\" (p1) 50 % and \"P2\" (p2) 27 % of the smaller.",
+            Assert.Single(lines, l => l.Contains("\"P0\" (p0) and")));
+        Assert.Contains("\"P1\" (p1) and \"P2\" (p2) overlap (their boxes; the drawn shapes may not): 77 % of the smaller.",
+            Assert.Single(lines, l => l.Contains("\"P1\" (p1) and")));
+        Assert.DoesNotContain(lines, l => l.Contains("\"P2\" (p2) and") || l.Contains("\"P3\" (p3) and"));
+        var wide = Assert.Single(lines, l => l.Contains("\"Wide\""));
+        Assert.Contains("\"Wide\" (wide) and 4 items overlap (their boxes; the drawn shapes may not): \"P0\" (p0) 50 %, \"P1\" (p1) 50 %, \"P2\" (p2) 50 % and 1 more of the smaller.", wide);
+
+        // One line per kind on one item.
+        var mixed = lines.Where(l => l.Contains("\"Mixed\"")).ToList();
+        Assert.Equal(2, mixed.Count);
+        Assert.Contains(mixed, l => l.Contains("\"Mixed\" (mixed): 2 texts are drawn past their boxes (\"m1\" and \"m2\"). Make the box larger or the text smaller."));
+        Assert.Contains(mixed, l => l.Contains("\"Mixed\" (mixed): 2 texts end with \"…\": they don't fit their boxes (\"Much too long\" and \"Far too long\"). Make the box wider or the text smaller."));
+
+        // A single finding keeps its own line.
+        Assert.Contains("its text \"Alone in a box\" ends with \"…\": it doesn't fit its box. Make the box wider or the text smaller.",
+            Assert.Single(lines, l => l.Contains("\"Single\"")));
+        Assert.Equal(40, global::InfoPanel.Mcp.PreviewCheckReport.MaxLinesShown);
+    }
+
+    /// <summary>A busy profile: sixty small rectangles of many colours, so its picture is several kilobytes.</summary>
+    private static JsonObject Busy(string name) => TestDocs.Doc(name, 400, 200, [.. Enumerable.Range(0, 60).Select(i =>
+        TestDocs.Scene($"r{i}", i * 37 % 380, i * 53 % 180, TestDocs.Rect($"#{i * 40503 & 0xffffff:x6}", 15 + i % 7, 9 + i % 5)))]);
+
+    /// <summary>render_preview through the tool host as a call from elsewhere with <paramref name="maxChars"/> (null: none).</summary>
+    private static async Task<ToolResult> Run(WebApplicationFactory<Program> factory, string arguments, int? maxChars)
+    {
+        using var json = JsonDocument.Parse(arguments);
+        using var cutoff = new RelayCutoff(TimeProvider.System);
+        var call = McpCall.Elsewhere(new RelayCallContext("e1", maxChars, cutoff));
+        return await factory.Services.GetRequiredService<McpToolHost>().RunAsync("render_preview", json.RootElement.Clone(), call, Ct);
+    }
+
+    private static string Picture(ToolResult result) => result.Content.Single(c => c!["type"]!.GetValue<string>() == "image")!["data"]!.GetValue<string>();
+
+    private static string Words(ToolResult result) =>
+        string.Join("\n", result.Content.Where(c => c!["type"]!.GetValue<string>() == "text").Select(c => c!["text"]!.GetValue<string>()));
+
+    private static int Characters(ToolResult result) => result.Content.Sum(c => (c!["text"] ?? c["data"])!.GetValue<string>().Length);
+
+    [Fact]
+    public async Task APictureOverWhatTheAiAppTakes_IsDrawnNarrower_AndSaysSo()
+    {
+        using var factory = new EngineFactory();
+        TestDocs.Create(factory.Services.GetRequiredService<Workspace>(), Busy("Busy"));
+
+        // Without a limit: the picture as asked.
+        var whole = await Run(factory, """{"profile":"Busy","width":400}""", null);
+        var picture = Picture(whole);
+        using (var png = SKBitmap.Decode(Convert.FromBase64String(picture)))
+            Assert.Equal(400, png.Width);
+        Assert.StartsWith("Busy: a 400×200 picture of the 400×200 profile.\n", Words(whole));
+
+        // With room for it all: as without a limit.
+        var roomy = await Run(factory, """{"profile":"Busy","width":400}""", Characters(whole) + 100);
+        Assert.Equal(picture, Picture(roomy));
+        Assert.Equal(Words(whole), Words(roomy));
+
+        // Half the picture's room: a picture all the same, narrower, saying so, the whole answer within the limit.
+        var maxChars = Words(whole).Length + picture.Length / 2;
+        var held = await Run(factory, """{"profile":"Busy","width":400}""", maxChars);
+        Assert.False(held.IsError, Words(held));
+        Assert.True(Characters(held) <= maxChars, $"{Characters(held)} characters, more than {maxChars}");
+        using var smaller = SKBitmap.Decode(Convert.FromBase64String(Picture(held)));
+        Assert.InRange(smaller.Width, Thumbnail.MinWidth, 399);
+        Assert.StartsWith($"Busy: a {smaller.Width}×{smaller.Height} picture (drawn smaller than the 400 asked, to fit what this AI app takes) of the 400×200 profile.\n",
+            Words(held));
+        Assert.Contains("Checks (heuristics", Words(held)); // the checks whole
+
+        // No width asked: the profile's own, said as such.
+        var own = await Run(factory, """{"profile":"Busy"}""", maxChars);
+        Assert.Contains("(drawn smaller than 400 wide, to fit what this AI app takes)", Words(own));
+    }
+
+    [Fact]
+    public async Task WhenEvenTheLeastWidthDoesntFit_ThePictureIsRefusedAsBefore()
+    {
+        using var factory = new EngineFactory();
+        TestDocs.Create(factory.Services.GetRequiredService<Workspace>(), Busy("Busy"));
+        var refused = await Run(factory, """{"profile":"Busy","width":400}""", McpToolHost.TextRoom + 20);
+        Assert.True(refused.IsError);
+        Assert.Equal("maxChars", refused.Outcome);
+        Assert.DoesNotContain(refused.Content, c => c!["type"]!.GetValue<string>() == "image");
+        Assert.Contains("Ask for a smaller one: render_preview with a smaller width.", Words(refused));
+        Assert.Contains($"({McpToolHost.TextRoom + 20} in all)", Words(refused)); // the limit, named
+    }
+
+    /// <summary>
+    /// A profile so tall its picture's height is capped: asked 1200 wide it is drawn 100 wide, and a narrower picture is
+    /// narrower than that, not than the 1200 asked, so each one drawn again is smaller than the last.
+    /// </summary>
+    [Fact]
+    public async Task APictureUnderTheHeightCap_IsDrawnNarrowerThanTheWidthItWasDrawn()
+    {
+        using var factory = new EngineFactory();
+        TestDocs.Create(factory.Services.GetRequiredService<Workspace>(), TestDocs.Doc("Tall", 400, 16384, [.. Enumerable.Range(0, 120).Select(i =>
+            TestDocs.Scene($"r{i}", i * 37 % 300, i * 136, TestDocs.Rect($"#{i * 40503 & 0xffffff:x6}", 40 + i * 13 % 60, 60 + i % 70)))]));
+
+        var whole = await Run(factory, """{"profile":"Tall","width":1200}""", null);
+        using (var png = SKBitmap.Decode(Convert.FromBase64String(Picture(whole))))
+            Assert.Equal((100, 4096), (png.Width, png.Height));
+
+        // Room for half the picture: a picture this tall and thin gets smaller about as its width does, not its area,
+        // so the tries after the first are measured by the width; a few of them fit it.
+        var maxChars = Words(whole).Length + Picture(whole).Length / 2;
+        var held = await Run(factory, """{"profile":"Tall","width":1200}""", maxChars);
+        Assert.False(held.IsError, Words(held));
+        Assert.True(Characters(held) <= maxChars, $"{Characters(held)} characters, more than {maxChars}");
+        using var smaller = SKBitmap.Decode(Convert.FromBase64String(Picture(held)));
+        Assert.InRange(smaller.Width, Thumbnail.MinWidth, 99);
+        Assert.StartsWith($"Tall: a {smaller.Width}×{smaller.Height} picture (drawn smaller than the 1200 asked, to fit what this AI app takes) of the 400×16384 profile.\n",
+            Words(held));
+    }
+
+    /// <summary>A clock that moves on by <paramref name="step"/> each time it is read, from half past a second.</summary>
+    private sealed class SteppingTime(TimeSpan step) : TimeProvider
+    {
+        private DateTimeOffset _now = new(2026, 1, 1, 0, 0, 0, 500, TimeSpan.Zero);
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            lock (this)
+            {
+                var now = _now;
+                _now += step;
+                return now;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The picture drawn narrower is the tick the checks measured: a rectangle moved by the clock's milliseconds, on a
+    /// clock that moves 300 ms each time it is read, so a second tick would draw it 60 px or more elsewhere.
+    /// </summary>
+    [Fact]
+    public async Task APictureDrawnNarrower_IsTheTickTheChecksMeasured()
+    {
+        using var factory = new EngineFactory();
+        var workspace = factory.Services.GetRequiredService<Workspace>();
+        var moving = new JsonObject
+        {
+            ["kind"] = "rect",
+            ["x"] = new JsonObject { ["op"] = "mul", ["args"] = new JsonArray(new JsonObject { ["op"] = "time", ["field"] = "millisecond" }, -0.2) },
+            ["y"] = 0, ["w"] = 300, ["h"] = 50, ["fill"] = "#ff0000",
+        };
+        TestDocs.Create(workspace, TestDocs.Doc("Moving", 400, 200, [TestDocs.Scene("moving", 0, 0, Scene(moving), new JsonObject { ["name"] = "Moving" })]));
+        await using var render = new RenderService(workspace, factory.Services.GetRequiredService<SceneRuntimeOptions>(), new SteppingTime(TimeSpan.FromMilliseconds(300)),
+            new RenderServiceOptions(AutoTick: false));
+        var tool = new RenderPreviewTool(workspace, render, factory.Services.GetRequiredService<McpToolHost>().Text);
+
+        async Task<ToolResult> Call(int? maxChars)
+        {
+            using var json = JsonDocument.Parse("""{"profile":"Moving","width":400}""");
+            using var cutoff = new RelayCutoff(TimeProvider.System);
+            return await tool.CallAsync(ToolArguments.Check(tool.Name, tool.InputSchema, json.RootElement).For(McpCall.Elsewhere(new RelayCallContext("e1", maxChars, cutoff))), Ct);
+        }
+
+        var whole = await Call(null);
+        var held = await Call(Words(whole).Length + Picture(whole).Length / 2);
+        var words = Words(held);
+        Assert.Contains("drawn smaller than the 400 asked", words);
+        var past = System.Text.RegularExpressions.Regex.Match(words, "\"Moving\" \\(moving\\): its drawing reaches ([0-9.]+) px past the canvas's left edge");
+        Assert.True(past.Success, words);
+        var left = double.Parse(past.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+
+        // The rectangle's right edge in the picture is where the checks' tick put it: 300 − left, at the picture's scale.
+        using var png = SKBitmap.Decode(Convert.FromBase64String(Picture(held)));
+        var scale = png.Width / 400.0;
+        var row = (int)(25 * scale);
+        var right = Enumerable.Range(0, png.Width).Last(x => png.GetPixel(x, row) is { Red: > 200, Green: < 60, Blue: < 60 }) + 1;
+        Assert.InRange(right, (300 - left) * scale - 2, (300 - left) * scale + 2);
     }
 }

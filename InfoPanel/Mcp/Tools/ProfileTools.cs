@@ -389,23 +389,59 @@ public sealed class RenderPreviewTool(Workspace workspace, RenderService render,
         ("profile", String("The profile's id or exact name."), true),
         ("width", Integer($"The picture's width in pixels (the profile's own, at most {MaxWidth}, when absent).", Thumbnail.MinWidth, MaxWidth), false));
 
+    /// <summary>How many times a picture over the AI app's <c>maxChars</c> is drawn again, narrower, before the answer is left to the limit.</summary>
+    internal const int FitTries = 3;
+
     public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
     {
         var document = ProfileNames.Find(workspace, arguments.String("profile")!);
         var thresholds = text.Checks();
-        DocumentProfile profile;
-        int w, h;
-        byte[] png;
-        PreviewCheckReport checks;
+        ToolResult result;
         try
         {
-            // One generation and one tick for the picture, its size and the checks (Codex p2 #6).
-            (profile, w, h, png, checks) = render.Inspect(document, (snapshot, generation) =>
+            // One generation and one tick for the picture, its size and the checks (Codex p2 #6), a narrower picture too.
+            result = render.Inspect(document, (snapshot, generation) =>
             {
                 var shown = generation.Document.Profile;
-                var width = arguments.Integer("width") ?? Math.Clamp(shown.Width, Thumbnail.MinWidth, MaxWidth);
-                var (pw, ph, _) = Thumbnail.Size(shown.Width, shown.Height, width);
-                return (shown, pw, ph, Thumbnail.RenderPng(snapshot, width), PreviewChecks.Run(snapshot, generation.Document, thresholds));
+                var asked = arguments.Integer("width");
+                var width = asked ?? Math.Clamp(shown.Width, Thumbnail.MinWidth, MaxWidth);
+                var checks = PreviewChecks.Run(snapshot, generation.Document, thresholds).Text;
+                var answer = Answer(Thumbnail.RenderPng(snapshot, width), width);
+
+                // Over what the AI app takes: the same tick drawn narrower, its base64 scaled to the room the text leaves,
+                // a few times at most, never below the least width. A picture still over it is refused by the limit. Each
+                // try is narrower than the width the last was drawn, not asked: a tall profile's is less, its height capped,
+                // and after the first try the width is scaled by the room itself, not its square root (a tall picture's data
+                // does not go with its area).
+                if (arguments.Call.MaxChars is { } maxChars)
+                {
+                    var drawn = Thumbnail.Size(snapshot.Width, snapshot.Height, width).Width;
+                    for (var tries = 0; tries < FitTries && drawn > Thumbnail.MinWidth && Characters(answer) > maxChars; tries++)
+                    {
+                        var room = maxChars - Math.Max(McpToolHost.TextRoom, Text(answer).Length);
+                        var size = Image(answer).Length;
+                        var fit = Math.Max(0, room) / (double)size;
+                        // The first try assumes the picture's data goes with its area; once one has been drawn that is
+                        // known, not assumed: a tall picture's height is capped, so its data goes about with its width.
+                        var narrower = Math.Clamp((int)(drawn * (tries == 0 ? Math.Sqrt(fit) : fit) * 0.9), Thumbnail.MinWidth, drawn - 1);
+                        answer = Answer(Thumbnail.RenderPng(snapshot, narrower), narrower);
+                        drawn = Thumbnail.Size(snapshot.Width, snapshot.Height, narrower).Width;
+                    }
+                }
+                return answer;
+
+                ToolResult Answer(byte[] png, int drawn)
+                {
+                    var (pw, ph, _) = Thumbnail.Size(shown.Width, shown.Height, drawn);
+                    var smaller = drawn < width
+                        ? $" (drawn smaller than {(asked is null ? $"{width} wide" : $"the {width} asked")}, to fit what this AI app takes)"
+                        : "";
+                    return new ToolResult(
+                    [
+                        new JsonObject { ["type"] = "image", ["data"] = Convert.ToBase64String(png), ["mimeType"] = "image/png" },
+                        new JsonObject { ["type"] = "text", ["text"] = $"{shown.Name}: a {pw}×{ph} picture{smaller} of the {shown.Width}×{shown.Height} profile.\n\n{checks}" },
+                    ], false, "ok");
+                }
             });
         }
         catch (ObjectDisposedException)
@@ -413,10 +449,13 @@ public sealed class RenderPreviewTool(Workspace workspace, RenderService render,
             throw new ToolFailure("notFound", $"There's no profile {arguments.String("profile")} any more (notFound). list_profiles names them.");
         }
 
-        return Task.FromResult(new ToolResult(
-        [
-            new JsonObject { ["type"] = "image", ["data"] = Convert.ToBase64String(png), ["mimeType"] = "image/png" },
-            new JsonObject { ["type"] = "text", ["text"] = $"{profile.Name}: a {w}×{h} picture of the {profile.Width}×{profile.Height} profile.\n\n{checks.Text}" },
-        ], false, "ok"));
+        return Task.FromResult(result);
     }
+
+    private static string Image(ToolResult answer) => answer.Content[0]!["data"]!.GetValue<string>();
+
+    private static string Text(ToolResult answer) => answer.Content[1]!["text"]!.GetValue<string>();
+
+    /// <summary>What the answer costs the AI app in characters, as the limit counts it: the picture's data and the text.</summary>
+    private static int Characters(ToolResult answer) => Image(answer).Length + Text(answer).Length;
 }

@@ -405,14 +405,15 @@ public sealed class RelayToolRulesTests
         var picture = whole["content"]!.AsArray().Single(p => p!["type"]!.GetValue<string>() == "image")!["data"]!.GetValue<string>();
         Assert.True(picture.Length > 1000, $"{picture.Length} characters");
 
-        // At 1000: the whole answer within it, saying why there is no picture and how to get one.
+        // At 1000: the whole answer within it, the picture drawn narrower and saying so (PreviewChecksTests: when even the
+        // least width doesn't fit, the refusal saying the limit and how to get a smaller one).
         var (held, heldCharacters) = await Preview(1000);
         Assert.True(heldCharacters <= 1000, $"{heldCharacters} characters: {held.ToJsonString()[..Math.Min(300, held.ToJsonString().Length)]}");
-        Assert.DoesNotContain(held["content"]!.AsArray(), p => p!["type"]!.GetValue<string>() == "image");
-        Assert.True(held["isError"]!.GetValue<bool>());
-        var text = held["content"]![0]!["text"]!.GetValue<string>();
-        Assert.Contains("1000", text);
-        Assert.Contains("width", text);
+        Assert.False(held["isError"]!.GetValue<bool>());
+        var smaller = held["content"]!.AsArray().Single(p => p!["type"]!.GetValue<string>() == "image")!["data"]!.GetValue<string>();
+        Assert.True(smaller.Length < picture.Length, $"{smaller.Length} characters");
+        var text = held["content"]!.AsArray().Single(p => p!["type"]!.GetValue<string>() == "text")!["text"]!.GetValue<string>();
+        Assert.Contains("(drawn smaller than the 440 asked, to fit what this AI app takes)", text);
 
         // With room for it all: as without a limit.
         var (roomy, _) = await Preview(wholeCharacters);

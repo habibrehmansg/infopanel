@@ -91,6 +91,9 @@ public static class PreviewChecks
     public const double CardFill = 0.5;
 
     private const int MaxQuoted = 40;
+
+    /// <summary>The most texts or items a line about several findings of one kind on one item names.</summary>
+    private const int MaxQuotedTexts = 3;
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
 
     private readonly record struct Box(double Left, double Top, double Right, double Bottom)
@@ -131,19 +134,72 @@ public static class PreviewChecks
 
     private static void Fit(TickSnapshot snapshot, Func<string, string> label, List<string> problems)
     {
+        var found = new Grouped();
         foreach (var text in snapshot.Texts)
         {
-            var (what, next) = text.Fit switch
+            var (what, many, next) = text.Fit switch
             {
-                TextFit.Ellipsis => ("ends with \"…\": it doesn't fit its box", "Make the box wider or the text smaller."),
-                TextFit.LinesLeftOut => ("has lines left out (maxLines)", "Allow more lines, make the box larger or the text smaller."),
-                TextFit.Clipped => ("is clipped by its box", "Make the box larger or the text smaller."),
-                TextFit.PastBox => ("is drawn past its box", "Make the box larger or the text smaller."),
-                TextFit.FitMinimum => ("is shrunk to its fit minimum and still doesn't fit", "Make the box larger, the text shorter or the minimum smaller."),
-                _ => ((string?)null, (string?)null),
+                TextFit.Ellipsis => ("ends with \"…\": it doesn't fit its box", "end with \"…\": they don't fit their boxes", "Make the box wider or the text smaller."),
+                TextFit.LinesLeftOut => ("has lines left out (maxLines)", "have lines left out (maxLines)", "Allow more lines, make the box larger or the text smaller."),
+                TextFit.Clipped => ("is clipped by its box", "are clipped by their boxes", "Make the box larger or the text smaller."),
+                TextFit.PastBox => ("is drawn past its box", "are drawn past their boxes", "Make the box larger or the text smaller."),
+                TextFit.FitMinimum => ("is shrunk to its fit minimum and still doesn't fit", "are shrunk to their fit minimum and still don't fit", "Make the box larger, the text shorter or the minimum smaller."),
+                _ => ((string?)null, (string?)null, (string?)null),
             };
             if (what != null)
-                problems.Add($"{label(text.ItemId)}: its text {Quote(text.Text)} {what}. {next}");
+            {
+                var name = label(text.ItemId);
+                found.Add($"{text.ItemId}\n{text.Fit}", Quote(text.Text), $"{name}: its text {Quote(text.Text)} {what}. {next}",
+                    (count, quoted) => $"{name}: {count} texts {many} ({quoted}). {next}");
+            }
+        }
+        found.AddTo(problems);
+    }
+
+    /// <summary>
+    /// Findings of one kind on one item as one line, in the order each kind was first found: a single finding as its own
+    /// line, several as one line with their count and the first <see cref="MaxQuotedTexts"/> of what they are about.
+    /// </summary>
+    private sealed class Grouped
+    {
+        private sealed class Finding(string key, string one, Func<int, string, string> many, double rank)
+        {
+            public string Key { get; } = key;
+            public List<string> About { get; } = [];
+            public string One { get; } = one;
+            public Func<int, string, string> Many { get; set; } = many;
+            public double Rank { get; set; } = rank;
+        }
+
+        private readonly List<Finding> _found = [];
+
+        /// <summary>
+        /// A finding about <paramref name="about"/> (a quoted text, an item): its line alone (<paramref name="one"/>), and
+        /// the line for several of its kind given their count and what they are about (<paramref name="many"/>), the one of
+        /// the lowest <paramref name="rank"/> kept.
+        /// </summary>
+        public void Add(string key, string about, string one, Func<int, string, string> many, double rank = 0)
+        {
+            var finding = _found.Find(f => f.Key == key);
+            if (finding is null)
+                _found.Add(finding = new Finding(key, one, many, rank));
+            else if (rank < finding.Rank)
+                (finding.Many, finding.Rank) = (many, rank);
+            finding.About.Add(about);
+        }
+
+        public void AddTo(List<string> lines)
+        {
+            foreach (var f in _found)
+                lines.Add(f.About.Count == 1 ? f.One : f.Many(f.About.Count, Listed(f.About)));
+        }
+
+        private static string Listed(List<string> about)
+        {
+            var shown = about.Take(MaxQuotedTexts).ToList();
+            return about.Count > MaxQuotedTexts
+                ? $"{string.Join(", ", shown)} and {about.Count - MaxQuotedTexts} more"
+                : $"{string.Join(", ", shown[..^1])} and {shown[^1]}";
         }
     }
 
@@ -159,6 +215,7 @@ public static class PreviewChecks
 
     private static void Overlap(List<(string Id, Box Box, Box Frame)> scenes, double overlapMin, Func<string, string> label, List<string> problems, List<string> notChecked)
     {
+        var found = new Grouped();
         var compared = 0;
         for (var i = 0; i < scenes.Count; i++)
         {
@@ -166,6 +223,7 @@ public static class PreviewChecks
             {
                 if (++compared > MaxPairs)
                 {
+                    found.AddTo(problems);
                     foreach (var (id, _, _) in scenes.Skip(i))
                         notChecked.Add($"{label(id)} (its overlaps: past the {MaxPairs.ToString("N0", Invariant)} item pairs the overlap check compares)");
                     return;
@@ -182,10 +240,15 @@ public static class PreviewChecks
                 if (share <= overlapMin || below.Contains(above) || (below.Overlap(frame) > CardFill * frame.Area && frame.Contains(scenes[j].Frame)))
                     continue;
                 var how = above.Contains(below) ? $", and {label(scenes[j].Id)} is drawn over all of {label(scenes[i].Id)}" : "";
-                problems.Add($"{label(scenes[i].Id)} and {label(scenes[j].Id)} overlap (their boxes; the drawn shapes may not): {Percent(share)} of the smaller{how}. " +
-                    "Move one, or put the one that holds the other first so it is drawn below.");
+                var first = label(scenes[i].Id);
+                found.Add($"{scenes[i].Id}\noverlap", $"{label(scenes[j].Id)} {Percent(share)}",
+                    $"{first} and {label(scenes[j].Id)} overlap (their boxes; the drawn shapes may not): {Percent(share)} of the smaller{how}. " +
+                    "Move one, or put the one that holds the other first so it is drawn below.",
+                    (count, items) => $"{first} and {count} items overlap (their boxes; the drawn shapes may not): {items} of the smaller. " +
+                        "Move one, or put the one that holds the other first so it is drawn below.");
             }
         }
+        found.AddTo(problems);
     }
 
     private static void Contrast(TickSnapshot snapshot, double contrastMin, Func<string, string> label, List<string> problems, List<string> notChecked)
@@ -209,22 +272,32 @@ public static class PreviewChecks
         var pixels = bitmap.GetPixelSpan();
         var stride = bitmap.RowBytes;
 
+        // Findings of one kind on one item as one line: low contrast, and each reason a text isn't checked.
+        var low = new Grouped();
+        var skipped = new Grouped();
+        void Skip(TextReport text, string one, string many)
+        {
+            var item = label(text.ItemId);
+            skipped.Add($"{text.ItemId}\n{one}", Quote(text.Text), $"{item}: text {Quote(text.Text)} ({one})", (count, quoted) => $"{item}: {count} texts {quoted} ({many})");
+        }
+
         long sampled = 0;
         for (var index = 0; index < texts.Count; index++)
         {
             var text = texts[index];
             if (text.Blurred && UnderItsSharpCopy(texts, index))
                 continue; // a glow or a shadow, not text to read: the text over it is checked
-            var name = $"{label(text.ItemId)}: text {Quote(text.Text)}";
+            var item = label(text.ItemId);
+            var name = $"{item}: text {Quote(text.Text)}";
             if (text.Colors is not { } colors)
             {
-                notChecked.Add($"{name} (filled with a gradient or a composed paint: its contrast isn't checked)");
+                Skip(text, "filled with a gradient or a composed paint: its contrast isn't checked", "filled with a gradient or a composed paint: their contrast isn't checked");
                 continue;
             }
             if (text.Blended)
             {
                 // The checks have no model of compositing: its colour on what is below isn't its colour (Codex p2 #4).
-                notChecked.Add($"{name} (in a group drawn with a blend mode: its contrast isn't checked)");
+                Skip(text, "in a group drawn with a blend mode: its contrast isn't checked", "in a group drawn with a blend mode: their contrast isn't checked");
                 continue;
             }
             if (colors.Count == 0)
@@ -249,7 +322,8 @@ public static class PreviewChecks
                 continue; // off the canvas: the canvas check says so
             if (sampled + count > MaxSampledPixels)
             {
-                notChecked.Add($"{name} (its contrast: past the {MaxSampledPixels.ToString("N0", Invariant)} pixels the contrast check samples)");
+                Skip(text, $"its contrast: past the {MaxSampledPixels.ToString("N0", Invariant)} pixels the contrast check samples",
+                    $"their contrast: past the {MaxSampledPixels.ToString("N0", Invariant)} pixels the contrast check samples");
                 continue;
             }
             sampled += count;
@@ -273,7 +347,7 @@ public static class PreviewChecks
                 : ranked.Where(e => e.Value >= MinorShare * count).Select(e => e.Key).ToList();
             if (backgrounds.Count == 0)
             {
-                notChecked.Add($"{name} (the background under it has no main colour: its contrast isn't checked)");
+                Skip(text, "the background under it has no main colour: its contrast isn't checked", "the background under them has no main colour: their contrast isn't checked");
                 continue;
             }
 
@@ -291,10 +365,17 @@ public static class PreviewChecks
             {
                 var alpha = (found.Text & 0xFF) / 255.0 * Math.Clamp(text.Opacity, 0, 1);
                 var faded = alpha < 1 ? $" at {Percent(alpha)} opacity" : "";
-                problems.Add($"{name} has contrast {Number(found.Ratio)}:1 against what is under it ({Hex(found.Text >> 8)}{faded} on {Hex(found.Background)}); " +
-                    $"{Number(contrastMin)}:1 or more reads well. Change the text's colour or the background's.");
+                var colours = $"{Hex(found.Text >> 8)}{faded} on {Hex(found.Background)}";
+                low.Add($"{text.ItemId}\ncontrast", Quote(text.Text),
+                    $"{name} has contrast {Number(found.Ratio)}:1 against what is under it ({colours}); " +
+                    $"{Number(contrastMin)}:1 or more reads well. Change the text's colour or the background's.",
+                    (count, quoted) => $"{item}: {count} texts ({quoted}) have contrast as low as {Number(found.Ratio)}:1 against what is under them ({colours}); " +
+                        $"{Number(contrastMin)}:1 or more reads well. Change the texts' colour or the background's.",
+                    found.Ratio);
             }
         }
+        low.AddTo(problems);
+        skipped.AddTo(notChecked);
     }
 
     /// <summary>
