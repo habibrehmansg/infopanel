@@ -907,11 +907,12 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
     /// <paramref name="arguments"/> ask, on the document as read (<paramref name="state"/>): its design when it brings
     /// one (<paramref name="brought"/>, built on <paramref name="basedOn"/>), its placement, box or scene, bindings, name
     /// and visibility, then its move. Answers the item found and the index in <paramref name="ops"/> of the op based on
-    /// <c>basedOn.rev</c>, or -1.
+    /// <c>basedOn.rev</c>, or -1. <paramref name="moved"/>, for a batch whose entries apply in order: the parent each
+    /// earlier entry moved an item to (null the top level), read before the document's, and given this entry's move.
     /// </summary>
     /// <exception cref="ToolFailure">The item or group isn't there, or the change doesn't fit it.</exception>
     internal static (Item Item, int DesignOp) Ops(JsonArray ops, DocumentState state, ToolArguments arguments, PinnedItem pinned, PinnedItem? into,
-        JsonObject? brought, JsonObject? basedOn)
+        JsonObject? brought, JsonObject? basedOn, Dictionary<string, string?>? moved = null)
     {
         var designOp = -1;
         var item = pinned.Find(state.Document);
@@ -986,8 +987,11 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
         }
 
         // Last, after its placement is set: the move, which keeps the placement's numbers (now read in the new parent).
-        if ((arguments.Has("group") || arguments.Has("index")) && Move(state.Document, item, into, arguments, rev, ItemNames.Label(item)) is { } move)
+        if ((arguments.Has("group") || arguments.Has("index")) && Move(state.Document, item, into, arguments, rev, ItemNames.Label(item), moved) is { } move)
+        {
             ops.Add(move);
+            moved?[item.Id] = move["parentId"]?.GetValue<string>();
+        }
         return (item, designOp);
     }
 
@@ -995,10 +999,11 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
     /// The <c>move</c> op for <paramref name="item"/>: into <paramref name="into"/>'s group, to the top level for an empty
     /// <c>group</c>, else within its parent; at the index given, else the end. Its own parent without an index is no move
     /// (null): no reorder by accident, nor a place read before a sibling was inserted. A group into itself or a group
-    /// inside it is refused here, in words.
+    /// inside it is refused here, in words: as the earlier entries' moves (<paramref name="moved"/>) left the groups.
     /// </summary>
     /// <exception cref="ToolFailure"><c>notFound</c>, <c>ambiguous</c>, <c>notAGroup</c>, <c>op.cycle</c>.</exception>
-    private static JsonObject? Move(Document document, Item item, PinnedItem? into, ToolArguments arguments, long rev, string label)
+    private static JsonObject? Move(Document document, Item item, PinnedItem? into, ToolArguments arguments, long rev, string label,
+        Dictionary<string, string?>? moved)
     {
         var (parent, _) = PositionOf(document.Items, null, item.Id)!.Value;
         var target = parent?.Id;
@@ -1007,8 +1012,12 @@ public sealed class UpdateItemTool(ProfileChanges changes) : McpTool
             var group = into.Find(document);
             if (group is not GroupItem)
                 throw AddItemTool.NotAGroup(group);
-            if (group.Id == item.Id || (item is GroupItem moved && ItemNames.Flatten(moved.Children).Any(c => c.Id == group.Id)))
-                throw new ToolFailure("op.cycle", $"{label} can't go into itself or a group inside it (op.cycle): nothing was changed.");
+            // Up from the group to the top level: the item on the way is a cycle.
+            for (string? id = group.Id; id is not null; id = moved is not null && moved.TryGetValue(id, out var now) ? now : PositionOf(document.Items, null, id)!.Value.Parent?.Id)
+            {
+                if (id == item.Id)
+                    throw new ToolFailure("op.cycle", $"{label} can't go into itself or a group inside it (op.cycle): nothing was changed.");
+            }
             target = group.Id;
         }
         else if (arguments.Has("group"))
@@ -1155,10 +1164,11 @@ public sealed class UpdateItemsTool(ProfileChanges changes) : McpTool
             designOps.Clear();
             var ops = new JsonArray();
             var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+            var moved = new Dictionary<string, string?>(StringComparer.Ordinal); // entries apply in order: a move sees the earlier ones'
             for (var i = 0; i < entries.Count; i++)
             {
                 var (item, design, basedOn) = entries[i];
-                var (changed, designOp) = Named(i, () => UpdateItemTool.Ops(ops, state, item, pinned[i], into[i], design, basedOn));
+                var (changed, designOp) = Named(i, () => UpdateItemTool.Ops(ops, state, item, pinned[i], into[i], design, basedOn, moved));
                 if (seen.TryGetValue(changed.Id, out var first))
                     throw new ToolFailure("arguments", $"items/{i} names the same item as items/{first} (arguments): give each item once, with all its changes. Nothing was changed.");
                 seen[changed.Id] = i;

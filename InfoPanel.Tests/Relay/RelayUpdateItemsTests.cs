@@ -258,6 +258,68 @@ public sealed class RelayUpdateItemsTests
         Assert.False(workspace.Blobs.Exists(IdOf(Newer)), "the design's file was stored");
     }
 
+    private static async Task<(string Text, bool IsError)> UpdatesAsync(Engine engine, JsonArray items)
+    {
+        using var json = JsonDocument.Parse(new JsonObject { ["profile"] = "P", ["items"] = items }.ToJsonString());
+        var result = await engine.Host.CallAsync("update_items", json.RootElement.Clone(), Ct);
+        return (result["content"]![0]!["text"]!.GetValue<string>(), result["isError"]!.GetValue<bool>());
+    }
+
+    private static IEnumerable<string> Ids(IEnumerable<Item> items) => items.Select(i => i.Id);
+
+    /// <summary>
+    /// Entries apply in order: <c>inner</c> out of <c>outer</c> to the top level, then <c>outer</c> into <c>inner</c>, is no
+    /// cycle once the first has moved. One commit; one undo step puts the hierarchy back.
+    /// </summary>
+    [Fact]
+    public async Task AnOrderedReparenting_SeesTheEarlierEntriesMoves_OneCommit_OneUndoStepPutsItBack()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var document = P(WorkspaceOf(factory));
+        TestDocs.Commit(document, TestDocs.Insert(TestDocs.Group("outer", TestDocs.Group("inner", TestDocs.Scene("y1")))));
+        var rev = document.Rev;
+
+        var (text, error) = await UpdatesAsync(engine,
+            [new JsonObject { ["item"] = "inner", ["group"] = "" }, new JsonObject { ["item"] = "outer", ["group"] = "inner" }]);
+        Assert.False(error, text);
+        Assert.StartsWith("Changed 2 items in P in one change: inner, outer.", text);
+        Assert.Equal(rev + 1, document.Rev);
+        Assert.Contains("inner", Ids(document.Read().Document.Items));
+        Assert.DoesNotContain("outer", Ids(document.Read().Document.Items));
+        Assert.Equal(["y1", "outer"], Ids(Assert.IsType<GroupItem>(ItemOf(document, "inner")).Children));
+        Assert.Empty(Assert.IsType<GroupItem>(ItemOf(document, "outer")).Children);
+
+        UndoOnce(document);
+        Assert.Contains("outer", Ids(document.Read().Document.Items));
+        Assert.DoesNotContain("inner", Ids(document.Read().Document.Items));
+        Assert.Equal(["inner"], Ids(Assert.IsType<GroupItem>(ItemOf(document, "outer")).Children));
+        Assert.Equal(["y1"], Ids(Assert.IsType<GroupItem>(ItemOf(document, "inner")).Children));
+    }
+
+    /// <summary>
+    /// A cycle made across two entries (<c>ga</c> into <c>gb</c>, then <c>gb</c> into <c>ga</c>) is refused as one entry's is,
+    /// in words, named by the entry that closes it; nothing changed.
+    /// </summary>
+    [Fact]
+    public async Task ACycleAcrossTwoEntries_IsRefusedInWords_NamedByTheSecond_NothingChanged()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var document = P(WorkspaceOf(factory));
+        TestDocs.Commit(document, TestDocs.Insert(TestDocs.Group("ga", TestDocs.Scene("y1"))), TestDocs.Insert(TestDocs.Group("gb", TestDocs.Scene("y2"))));
+        var written = engine.Written();
+        var rev = document.Rev;
+
+        var (text, error) = await UpdatesAsync(engine,
+            [new JsonObject { ["item"] = "ga", ["group"] = "gb" }, new JsonObject { ["item"] = "gb", ["group"] = "ga" }]);
+        Assert.True(error, text);
+        Assert.Contains("items/1: gb can't go into itself or a group inside it (op.cycle): nothing was changed.", text);
+        Assert.Equal(rev, document.Rev);
+        Assert.Equal(written, engine.Written());
+        Assert.Equal(["ga", "gb"], Ids(document.Read().Document.Items).Where(id => id is "ga" or "gb"));
+    }
+
     [Fact]
     public async Task TheFiftyFirst_IsRefused_AndNoneAtAll()
     {
