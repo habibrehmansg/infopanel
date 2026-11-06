@@ -69,7 +69,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal("""{"providers":["http"]}""", session.GetProperty("media").GetRawText());
         Assert.Equal(SpecLimits.Default.Nodes, support.GetProperty("infopanel.scene/1").GetProperty("limits").GetProperty("nodes").GetInt32());
         Assert.Equal(SpecLimits.Default.Items, support.GetProperty("infopanel.document/1").GetProperty("limits").GetProperty("items").GetInt32());
-        Assert.Equal("[]", session.GetProperty("features").GetRawText());
+        Assert.Equal("""["plugins"]""", session.GetProperty("features").GetRawText());
 
         // The PC's regional format as the engine read it at start-up (every test engine's is en-US).
         Assert.Equal("""{"tag":"en-US","decimalSeparator":".","groupSeparator":","}""", session.GetProperty("locale").GetRawText());
@@ -403,7 +403,150 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal("°C", gpuTemp.GetProperty("unit").GetString());
         Assert.Equal("live", gpuTemp.GetProperty("status").GetString());
         Assert.All(sensors, s => Assert.Equal("live", s.GetProperty("status").GetString()));
-        Assert.Equal(["key", "source", "group", "name", "unit", "status"], gpuTemp.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["key", "source", "group", "name", "unit", "status", "type"], gpuTemp.EnumerateObject().Select(p => p.Name));
+    }
+
+    [Fact]
+    public async Task Sensors_GiveEachSensorsType_AndTheStatusAsBefore()
+    {
+        var sensors = (await GetJson("/api/sensors")).EnumerateArray().ToList();
+        var byKey = sensors.ToDictionary(s => s.GetProperty("key").GetString()!);
+
+        Assert.Equal("number", byKey["plugin:/infopanel.mock/gpu/gpu-temp"].GetProperty("type").GetString());
+        Assert.Equal("table", byKey["plugin:/infopanel.mock/system/top-processes"].GetProperty("type").GetString());
+        Assert.Equal("text", byKey["plugin:/infopanel.mock/system/now-playing"].GetProperty("type").GetString());
+        Assert.Equal(35, sensors.Count(s => s.GetProperty("type").GetString() == "number"));
+        // Every sensor's status is the one the hub gives it on its own: the type came with it, not instead of it.
+        var hub = factory.Services.GetRequiredService<InfoPanel.Sensors.SensorHub>();
+        Assert.All(sensors, s =>
+        {
+            Assert.True(InfoPanel.Sensors.SensorKey.TryParse(s.GetProperty("key").GetString(), out var key));
+            Assert.Equal(JsonSerializer.Serialize(hub.GetStatus(key)).Trim('"'), s.GetProperty("status").GetString());
+        });
+        Assert.All(sensors, s => Valid(s, "sensorEntry"));
+    }
+
+    /// <summary>
+    /// A source whose every read flips its one sensor between a live text and an unavailable number: a list that took the
+    /// status and the type from two reads would pair a live status with the number's type.
+    /// </summary>
+    private sealed class FlippingSource : InfoPanel.Sensors.ISensorSource, InfoPanel.Sensors.ISensorStatusSource
+    {
+        public static readonly InfoPanel.Sensors.SensorKey Key = InfoPanel.Sensors.SensorKey.Plugin("/flipping/one");
+        private int _reads;
+
+        public string Id => "flipping";
+
+        public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public IReadOnlyList<InfoPanel.Sensors.SensorInfo> GetSensors() => [new(Key, Id, "Flipping", "One", "")];
+
+        public bool Handles(InfoPanel.Sensors.SensorKey key) => key == Key;
+
+        private InfoPanel.Sensors.SensorState Next() =>
+            Interlocked.Increment(ref _reads) % 2 == 1
+                ? new(InfoPanel.Sensors.SensorStatus.Live, InfoPanel.Sensors.SensorKind.Text, new InfoPanel.Models.SensorReading("now"))
+                : InfoPanel.Sensors.SensorState.Without(InfoPanel.Sensors.SensorStatus.Unavailable, InfoPanel.Sensors.SensorKind.Number);
+
+        public bool TryRead(InfoPanel.Sensors.SensorKey key, out InfoPanel.Models.SensorReading reading)
+        {
+            var state = Next();
+            reading = state.Reading;
+            return state.HasReading;
+        }
+
+        public InfoPanel.Sensors.SensorStatus GetStatus(InfoPanel.Sensors.SensorKey key) => Next().Status;
+
+        public InfoPanel.Sensors.SensorState ReadState(InfoPanel.Sensors.SensorKey key) => Next();
+    }
+
+    [Fact]
+    public async Task Sensors_TakeTheStatusAndTheTypeFromOneRead()
+    {
+        using var fresh = new EngineFactory();
+        using var engine = fresh.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.AddSingleton<InfoPanel.Sensors.ISensorSource>(new FlippingSource())));
+        using var client = engine.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+
+        for (var i = 0; i < 4; i++)
+        {
+            var sensors = JsonDocument.Parse(await client.GetStringAsync("/api/sensors", Ct)).RootElement;
+            var one = sensors.EnumerateArray().Single(s => s.GetProperty("key").GetString() == FlippingSource.Key.ToString());
+            Assert.Equal(
+                (one.GetProperty("status").GetString(), one.GetProperty("type").GetString()) switch
+                {
+                    ("live", "text") or ("unavailable", "number") => "one read",
+                    var other => $"two reads: {other}",
+                },
+                "one read");
+        }
+    }
+
+    /// <summary>
+    /// A source whose reads count as use (as a public address's do: <c>NetworkSource</c> asks the lookup then) and whose
+    /// peeks don't.
+    /// </summary>
+    private sealed class UseCountingSource : InfoPanel.Sensors.ISensorSource, InfoPanel.Sensors.ISensorStatusSource
+    {
+        public static readonly InfoPanel.Sensors.SensorKey Key = InfoPanel.Sensors.SensorKey.Plugin("/counting/one");
+        public int Uses;
+        public int Peeks;
+
+        public string Id => "counting";
+
+        public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public IReadOnlyList<InfoPanel.Sensors.SensorInfo> GetSensors() => [new(Key, Id, "Counting", "One", "")];
+
+        public bool Handles(InfoPanel.Sensors.SensorKey key) => key == Key;
+
+        private static InfoPanel.Sensors.SensorState State() =>
+            new(InfoPanel.Sensors.SensorStatus.Live, InfoPanel.Sensors.SensorKind.Text, new InfoPanel.Models.SensorReading("203.0.113.7"));
+
+        public bool TryRead(InfoPanel.Sensors.SensorKey key, out InfoPanel.Models.SensorReading reading)
+        {
+            Interlocked.Increment(ref Uses);
+            reading = State().Reading;
+            return true;
+        }
+
+        public InfoPanel.Sensors.SensorStatus GetStatus(InfoPanel.Sensors.SensorKey key) => State().Status;
+
+        public InfoPanel.Sensors.SensorState ReadState(InfoPanel.Sensors.SensorKey key)
+        {
+            Interlocked.Increment(ref Uses);
+            return State();
+        }
+
+        public InfoPanel.Sensors.SensorState PeekState(InfoPanel.Sensors.SensorKey key)
+        {
+            Interlocked.Increment(ref Peeks);
+            return State();
+        }
+    }
+
+    [Fact]
+    public async Task Sensors_ListingPutsNoSensorInUse_AValuesReadDoes()
+    {
+        var source = new UseCountingSource();
+        using var fresh = new EngineFactory();
+        using var engine = fresh.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.AddSingleton<InfoPanel.Sensors.ISensorSource>(source)));
+        using var client = engine.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+
+        var sensors = JsonDocument.Parse(await client.GetStringAsync("/api/sensors", Ct)).RootElement;
+        var one = sensors.EnumerateArray().Single(s => s.GetProperty("key").GetString() == UseCountingSource.Key.ToString());
+        Assert.Equal(("live", "text"), (one.GetProperty("status").GetString(), one.GetProperty("type").GetString()));
+        Assert.Equal(0, Volatile.Read(ref source.Uses));
+        Assert.Equal(1, Volatile.Read(ref source.Peeks));
+
+        var values = JsonDocument.Parse(await client.GetStringAsync("/api/sensors/values", Ct)).RootElement;
+        Assert.Contains(values.EnumerateArray(), v => v.GetProperty("key").GetString() == UseCountingSource.Key.ToString());
+        Assert.True(Volatile.Read(ref source.Uses) > 0);
     }
 
     [Fact]

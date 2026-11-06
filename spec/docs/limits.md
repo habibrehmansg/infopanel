@@ -90,7 +90,7 @@ Every request body is held to a size as received, whitespace around the JSON val
 
 | Limit | Value | The body of |
 |---|---|---|
-| `requestBytes` | 64 KiB | An undo, redo, revert, save or duplicate, or a service credential (a few members; [API](api.md)) |
+| `requestBytes` | 64 KiB | An undo, redo, revert, save or duplicate, a service credential, or a plugin package's switch or setting change (a few members; [API](api.md)) |
 | `tokenRequestBytes` | 4 KiB | A token create (a name and its scopes), and a pairing request |
 
 A commit's body is held to `commitBytes` ([commit limits](#commit-limits)), a create's is read up to `documentBytes` plus 64 KiB and its document then held to `documentBytes` ([sizes](#sizes)), a 1.x migration record's to `recordBytes` ([1.x import limits](#1x-import-limits)), a settings change's to `settingsRequestBytes` ([settings limits](#settings-limits)), a blob's bytes to `mediaBytes` and an archive's to `archiveBytes` (413, nothing read further or stored). Every body is nested at most `jsonDepth` deep. A body is read only as far as its limit plus one byte, whether or not it states its length.

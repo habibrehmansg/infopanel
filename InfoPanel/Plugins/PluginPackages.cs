@@ -11,7 +11,10 @@ namespace InfoPanel.Plugins;
 /// <param name="Directory">The folder's full path.</param>
 /// <param name="DllPath">The plugin DLL the host loads.</param>
 /// <param name="Bundled">Whether it ships with the engine (read-only) rather than being installed by the user.</param>
-public sealed record PluginPackage(string Folder, string Directory, string DllPath, bool Bundled);
+public sealed record PluginPackage(string Folder, string Directory, string DllPath, bool Bundled)
+{
+    public PluginPackageInfo Info { get; init; } = PluginPackageInfo.Default(Folder);
+}
 
 /// <summary>Finds the plugin packages in the bundled and installed folders.</summary>
 public static partial class PluginPackages
@@ -118,6 +121,6 @@ public static partial class PluginPackages
             return null;
         }
 
-        return new PluginPackage(dir.Name, dir.FullName, dll, bundled);
+        return new PluginPackage(dir.Name, dir.FullName, dll, bundled) { Info = PluginPackageInfo.Read(dir.FullName, dir.Name, PluginLimits.Default, logger) };
     }
 }

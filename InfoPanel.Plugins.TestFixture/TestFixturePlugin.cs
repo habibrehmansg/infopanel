@@ -4,8 +4,9 @@ using InfoPanel.Plugins;
 namespace InfoPanel.TestFixture;
 
 /// <summary>
-/// The engine tests' plugin: a sensor, a text and a table in a container, a sensor in an ephemeral container, an action,
-/// and a setting of each type; <see cref="FixtureMode"/> makes it misbehave on request.
+/// The engine tests' plugin: a sensor, a text and a table in a container, a sensor in an ephemeral container, two actions
+/// (Reset counter; Report an error, which throws), and a setting of each type, its Label setting, when applied, becoming
+/// its Status text (a setting changing a reading live); <see cref="FixtureMode"/> makes it misbehave on request.
 /// </summary>
 public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
 {
@@ -29,6 +30,8 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
     private Thread? _hung;
     private Thread? _spew;
     private Timer? _exit;
+    private volatile bool _updated;
+    private object? _applied;
 
     public TestFixturePlugin() : base(FixtureMode.Current.Id ?? DefaultId, "Test Fixture", "A plugin for the engine's tests.")
     {
@@ -42,7 +45,7 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
 
     public override TimeSpan UpdateInterval => TimeSpan.Zero;
 
-    public IReadOnlyList<PluginConfigProperty> ConfigProperties =>
+    public IReadOnlyList<PluginConfigProperty> ConfigProperties => HangOnRequest() ??
     [
         new PluginConfigProperty { Key = "label", DisplayName = "Label", Type = PluginConfigType.String, Value = _settings["label"] },
         new PluginConfigProperty { Key = "count", DisplayName = "Count", Type = PluginConfigType.Integer, Value = _settings["count"], MinValue = 0, MaxValue = 100, Step = 1 },
@@ -52,15 +55,38 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
         new PluginConfigProperty { Key = "apiKey", DisplayName = "API key", Type = PluginConfigType.String, Value = _settings["apiKey"] },
     ];
 
+    /// <summary>
+    /// Under <c>settings-hang</c>, once the plugin has updated, never returns; under <c>throw-settings</c>, once a setting
+    /// has been applied, throws with its value; else null.
+    /// </summary>
+    private IReadOnlyList<PluginConfigProperty>? HangOnRequest()
+    {
+        if (FixtureMode.Current.SettingsHang && _updated)
+            Thread.Sleep(Timeout.Infinite);
+        if (FixtureMode.Current.ThrowSettings && _applied is { } applied)
+            throw new InvalidOperationException($"fixture: can't list settings after {applied}");
+        return null;
+    }
+
     public void ApplyConfig(string key, object? value)
     {
         if (!_settings.ContainsKey(key))
             throw new ArgumentException($"No setting '{key}'.");
+        if (FixtureMode.Current.ThrowApply)
+            throw new InvalidOperationException($"fixture: can't take {value}");
         _settings[key] = value;
+        _applied = value;
+        if (key == "label")
+            _status.Value = value?.ToString() ?? "";
     }
 
     [PluginAction("Reset counter")]
     public void ResetCounter() => _counter.Value = 0;
+
+    public const string ReportedError = "fixture: an error on request";
+
+    [PluginAction("Report an error")]
+    public void ReportError() => throw new InvalidOperationException(ReportedError);
 
     public override void Initialize()
     {
@@ -140,7 +166,11 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
         }
     }
 
-    public override void Update() => _counter.Value += 1;
+    public override void Update()
+    {
+        _counter.Value += 1;
+        _updated = true;
+    }
 
     public override Task UpdateAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

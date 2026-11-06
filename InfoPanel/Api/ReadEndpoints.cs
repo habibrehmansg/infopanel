@@ -110,14 +110,21 @@ public static partial class ReadEndpoints
 
         api.MapGet("/sensors", (SensorHub hub) => ApiResults.Json(
             hub.GetSensors()
-                .Select(s => new SensorEntry
+                .Select(s =>
                 {
-                    Key = s.Key.ToString(),
-                    Source = s.SourceId,
-                    Group = s.Group,
-                    Name = s.Name,
-                    Unit = s.Unit,
-                    Status = hub.GetStatus(s.Key),
+                    // The status and the type from one call into the source, as /sensors/values reads them, but passively:
+                    // listing puts no sensor in use (a public address isn't looked up for it).
+                    var state = hub.PeekState(s.Key);
+                    return new SensorEntry
+                    {
+                        Key = s.Key.ToString(),
+                        Source = s.SourceId,
+                        Group = s.Group,
+                        Name = s.Name,
+                        Unit = s.Unit,
+                        Status = state.Status,
+                        Type = SensorEntry.TypeName(state.Type),
+                    };
                 })
                 .ToList())).RequireScope(ApiScope.Read);
 
@@ -204,9 +211,10 @@ public static partial class ReadEndpoints
 
     /// <summary>
     /// The optional API features the engine has (spec/docs/api.md, "Session"): every operation added after this version of
-    /// the API comes under a name here. None yet.
+    /// the API comes under a name here: <c>plugins</c>, the plugins' requests (<see cref="PluginEndpoints"/>), listed whether or
+    /// not the engine hosts plugins.
     /// </summary>
-    public static IReadOnlyList<string> Features { get; } = [];
+    public static IReadOnlyList<string> Features { get; } = ["plugins"];
 
     /// <summary>What the engine reads, by format string: each format's newest minor version, its capabilities the engine has and its limits.</summary>
     public static IReadOnlyDictionary<string, SupportedFormat> FormatSupportOf(Workspace workspace) =>

@@ -38,6 +38,9 @@ public interface IPluginProcess : IDisposable
 
     /// <summary>Kills the process and its children; nothing when it has exited.</summary>
     void Kill();
+
+    /// <summary>Its memory now, in bytes: private bytes on Windows, resident size elsewhere; null when it can't be read.</summary>
+    long? MemoryBytes { get; }
 }
 
 /// <summary>
@@ -131,6 +134,24 @@ public sealed class PluginProcessLauncher : IPluginProcessLauncher
             catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
             {
                 // It has exited, or can't be killed (gone already).
+            }
+        }
+
+        public long? MemoryBytes
+        {
+            get
+            {
+                try
+                {
+                    if (_process.HasExited)
+                        return null;
+                    _process.Refresh();
+                    return OperatingSystem.IsWindows() ? _process.PrivateMemorySize64 : _process.WorkingSet64;
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+                {
+                    return null;
+                }
             }
         }
 

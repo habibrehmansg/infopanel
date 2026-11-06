@@ -26,7 +26,7 @@ export interface Session {
   /** When this run of the engine started, in UTC to the second. The same for the whole run, like `instance`. */
   started: Timestamp;
   /**
-   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines none, so the list is empty. A client ignores a name it doesn't know.
+   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins. A client ignores a name it doesn't know.
    * Unique items.
    */
   features: ApiFeature[];
@@ -1015,6 +1015,8 @@ export interface SensorEntry {
   unit: string;
   /** `live` (a current reading), `stale` (a reading older than the source normally updates, the last value kept), `unavailable` (no reading), `denied` (the operating system refused the engine access to the sensor), `simulated` (no source handles the key; the engine simulates it, in mock mode only) or `missing` (the key isn't well formed). A scene input bound to the sensor reads it as docs/bindings.md#status maps it. A client treats a status it doesn't know as no reading. */
   status: "live" | "stale" | "unavailable" | "denied" | "simulated" | "missing";
+  /** The type of value the sensor reads, as a scene input's type names it (docs/bindings.md): `number`, `text` or `table`; `number` when the engine can't tell. Taken with `status`, from one read. Known without a reading. A client treats a type it doesn't know as `number`. */
+  type: "number" | "text" | "table";
 }
 
 /** One reading in GET /api/sensors/values, an array of these: every listed sensor (sensorEntry) that has a reading now, in list order. A sensor without one is left out. */
@@ -1124,6 +1126,201 @@ export interface SensorSourceReason {
    * Length: 1–256.
    */
   message: string;
+}
+
+/** GET /api/plugins: whether the engine hosts plugins and every plugin package it found when it started (docs/api.md#plugins). */
+export interface PluginList {
+  /** Whether the engine hosts plugins: false when it was started without them (`--no-plugins`), and then `packages` is empty. */
+  enabled: boolean;
+  /** The packages the engine found when it started: the bundled ones (beside the engine), then those in its data folder's `plugins/`, each in folder-name order ignoring case. */
+  packages: PluginPackage[];
+}
+
+/** A plugin package (docs/api.md#plugins): a folder `InfoPanel.{Name}` holding one plugin DLL, run in a host of its own. Never holds a setting's value. */
+export interface PluginPackage {
+  /**
+   * The package's folder name, which names it in the requests under /api/plugins/{folder} (matched ignoring case).
+   * Pattern: `^InfoPanel\.[A-Za-z0-9_-]+$`.
+   */
+  folder: string;
+  /**
+   * Its name for people: `Name` in its PluginInfo.ini, else its folder name.
+   * Length: 1–256.
+   */
+  name: string;
+  /**
+   * `Version` in its PluginInfo.ini, as written, or null.
+   * Length: ≤ 256.
+   */
+  version: string | null;
+  /**
+   * `Author` in its PluginInfo.ini, or null.
+   * Length: ≤ 256.
+   */
+  author: string | null;
+  /**
+   * `Description` in its PluginInfo.ini, or null.
+   * Length: ≤ 4096.
+   */
+  description: string | null;
+  /**
+   * `Website` in its PluginInfo.ini when it is an `http` or `https` URL, else null.
+   * Length: ≤ 256.
+   * Pattern: `^[Hh][Tt][Tt][Pp][Ss]?://`.
+   */
+  website: string | null;
+  /** Whether it ships with the engine (beside it, read only) rather than being in the data folder's `plugins/`. */
+  bundled: boolean;
+  /**
+   * The operating systems its PluginInfo.ini's `Platforms` names, as written, in lower case: `windows`, `macos`, `linux`. Empty: it runs anywhere. A package that doesn't name the engine's (the session's `platform`) is `unsupported`. A client shows a name it doesn't know as given.
+   * Unique items.
+   */
+  platforms: string[];
+  /** The user's choice: false once turned off (PUT /api/plugins/{folder}/on), kept across restarts. A failure never turns a package off. */
+  on: boolean;
+  /** `starting` (its host is starting, or restarting after it ended), `running` (its host runs), `off` (turned off, or not started), `failed` (`reason` says why; its sensors are unavailable until it is reloaded or turned on again) or `unsupported` (it doesn't run on this operating system: no host starts). A client treats a state it doesn't know as `failed`. */
+  state: "starting" | "running" | "off" | "failed" | "unsupported";
+  /** Why it is `failed` or `unsupported`, or null. */
+  reason: PluginReason | null;
+  /**
+   * Its host's processor use, in percent of the computer's, as the host last reported it; null until its first report, or while no host runs.
+   * Range: 0–100.
+   */
+  cpu: number | null;
+  /**
+   * Its host's memory in bytes, read by the engine from the host's process: private bytes on Windows, resident size elsewhere; null while no host runs.
+   * Range: ≥ 0.
+   */
+  memory: number | null;
+  /**
+   * How many sensors it lists now (its entries in GET /api/sensors).
+   * Range: ≥ 0.
+   */
+  sensors: number;
+  /** The plugins its host loaded this run of the engine (kept once it stops); empty before it has run. */
+  plugins: PluginInfo[];
+  /**
+   * Its newest errors, newest first, at most 20: from its plugins, its loads and its host's failures.
+   * Items: ≤ 20.
+   */
+  errors: PluginError[];
+}
+
+/** Why a plugin package is `failed` or `unsupported` (docs/api.md#plugins). */
+export interface PluginReason {
+  /**
+   * The reason for programs, an open code: `gaveUp` (its host kept ending, and was restarted as often as the engine restarts one), `notStarted` (its host couldn't be given the folders it writes in), `duplicateId` (it provides a plugin id a package earlier in the list provides) or `platform` (it doesn't run on this operating system). A client words the codes it knows and shows `message` for one it doesn't.
+   * Pattern: `^[a-z][A-Za-z0-9]{0,63}$`.
+   */
+  code: string;
+  /**
+   * The reason in English, technical, for people and bug reports.
+   * Length: 1–4096.
+   */
+  message: string;
+}
+
+/** A plugin a package's host loaded (docs/api.md#plugins). */
+export interface PluginInfo {
+  /**
+   * The plugin's id: the first part of its sensors' keys (`plugin:/{id}/…`), and its name in the requests under /api/plugins/{folder}/plugins/{id}.
+   * Length: 1–64.
+   */
+  id: string;
+  /**
+   * Its name, for people.
+   * Length: ≤ 256.
+   */
+  name: string;
+  /**
+   * Its description, for people; empty when it gives none.
+   * Length: ≤ 4096.
+   */
+  description: string;
+  /**
+   * How many sensors it lists now.
+   * Range: ≥ 0.
+   */
+  sensors: number;
+  /** What it can be asked to do (POST /api/plugins/{folder}/plugins/{id}/actions/{method}). */
+  actions: PluginAction[];
+  /** Whether it has settings (GET and PATCH /api/plugins/{folder}/plugins/{id}/settings). */
+  configurable: boolean;
+}
+
+/** An action a plugin offers. */
+export interface PluginAction {
+  /**
+   * Its name in the request that runs it.
+   * Length: 1–256.
+   */
+  method: string;
+  /**
+   * Its name, for people.
+   * Length: ≤ 256.
+   */
+  name: string;
+}
+
+/** An error of a plugin package's, as the engine logged it (a warning). */
+export interface PluginError {
+  /**
+   * When the engine got it: RFC 3339 in UTC with milliseconds, such as "2026-11-06T09:30:00.125Z".
+   * Pattern: `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$`.
+   */
+  time: string;
+  /**
+   * The id of the plugin it came from, or null when it is the package's (its host's, say).
+   * Length: ≤ 64.
+   */
+  plugin: string | null;
+  /**
+   * What it says, technical, for people; never a setting's value.
+   * Length: ≤ 4096.
+   */
+  message: string;
+}
+
+/** PUT /api/plugins/{folder}/on: turns a package on or off. */
+export interface PluginSwitch {
+  /** True to turn it on (its host is started), false to turn it off (its host is stopped). */
+  on: boolean;
+}
+
+/** One of a plugin's settings, as the plugin answers it: GET and PATCH /api/plugins/{folder}/plugins/{id}/settings answer an array of these (docs/api.md#plugin-settings). */
+export interface PluginSetting {
+  /**
+   * Its key, which a change names.
+   * Length: ≥ 1.
+   */
+  key: string;
+  /** Its name, for people. */
+  name: string;
+  /** Its description, for people, or null. */
+  description: string | null;
+  /** `string` (text, at most 4,096 characters), `integer` (a whole number from −2,147,483,648 to 2,147,483,647), `number`, `boolean` or `choice` (one of `options`). A client treats a type it doesn't know as one it can't change, and shows its value as given. */
+  type: "string" | "integer" | "number" | "boolean" | "choice";
+  /** Its value now, as the plugin answers it. */
+  value: string | number | boolean | null;
+  /** An `integer`'s or a `number`'s lowest value, when the plugin gives one. */
+  min?: number;
+  /** An `integer`'s or a `number`'s highest value, when the plugin gives one. */
+  max?: number;
+  /** The step a client offers between values, when the plugin gives one; the engine doesn't hold a change to it. */
+  step?: number;
+  /** A `choice`'s options, when the plugin gives them. */
+  options?: string[];
+}
+
+/** PATCH /api/plugins/{folder}/plugins/{id}/settings: one setting changed (docs/api.md#plugin-settings). */
+export interface PluginSettingChange {
+  /**
+   * The setting's key, as GET answers it (any length GET lists; the body is held to `requestBytes`).
+   * Length: ≥ 1.
+   */
+  key: string;
+  /** Its new value, of the setting's type (pluginSetting). */
+  value: string | number | boolean;
 }
 
 /** GET /api/settings, and the answer to PATCH /api/settings: the engine settings in effect, each the value set or its default, with how many changes this run made to the stored settings and whether the engine could read them (docs/api.md#settings). `status` tells the two shapes apart: `ok` without a `problem` (engineSettingsOk), or the settings the engine couldn't read with the `problem` (engineSettingsProblem). Read tolerantly: a later engine may add settings, and a client ignores members it doesn't know. A client treats a status it doesn't know as settings it can't change, and shows the `problem` when one comes. */
@@ -4253,8 +4450,8 @@ export interface ApiOperations {
    */
   "POST /api/folders/{folder}/open": {
     params: {
-      /** Which of the engine's own folders: `data`, its data folder (the session's dataDir), or `logs`, the folder of its log files. */
-      folder: "data" | "logs";
+      /** Which of the engine's own folders: `data`, its data folder (the session's dataDir); `logs`, the folder of its log files; or `plugins`, its data folder's `plugins/`, where the plugins a user adds go, created when absent (the `plugins` feature, docs/api.md#plugins). */
+      folder: "data" | "logs" | "plugins";
     };
     query: { [key: string]: never };
     request: never;
@@ -4265,10 +4462,190 @@ export interface ApiOperations {
       401: Problem;
       /** The token lacks the scope the request needs. */
       403: ScopeProblem;
-      /** No such folder: `folder` is neither `data` nor `logs`. The engine opens no other path. */
+      /** No such folder: `folder` isn't `data`, `logs` or `plugins`. The engine opens no other path. */
       404: Problem;
       /** The engine couldn't open the folder: it isn't there, or the file manager couldn't be started. The error is in the engine's log. */
       500: Problem;
+    };
+  };
+  /**
+   * listPlugins: Whether the engine hosts plugins, and each plugin package it found: its state, its plugins, its errors (the `plugins` feature).
+   *
+   * docs/api.md#plugins.
+   */
+  "GET /api/plugins": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The packages; none, and `enabled` false, when the engine was started without plugins. Never a setting's value. */
+      200: PluginList;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+    };
+  };
+  /**
+   * switchPlugin: Turns a plugin package on or off: the choice is written, kept across restarts, then its host started or stopped.
+   *
+   * docs/api.md#turning-a-package-on-or-off.
+   */
+  "PUT /api/plugins/{folder}/on": {
+    params: {
+      /** The package's folder name (pluginPackage's `folder`), matched ignoring case. */
+      folder: string;
+    };
+    query: { [key: string]: never };
+    request: PluginSwitch;
+    responses: {
+      /** The choice is written and its host started (the package `starting`) or stopped (`off`); turning on a package that is on and failed starts it again; a choice it already has changes nothing. */
+      200: PluginPackage;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No package in that folder (none at all when the engine was started without plugins). */
+      404: Problem;
+      /** The package is `unsupported` (it doesn't run on this operating system), or the engine couldn't read its plugin state file when it started and changes none this run (docs/api.md#turning-a-package-on-or-off). Nothing was changed. */
+      409: Problem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+      /** The choice couldn't be written; nothing was changed. The error is in the engine's log. */
+      500: Problem;
+    };
+  };
+  /**
+   * reloadPlugin: Restarts a plugin package's host: stopped (5 seconds, then killed), then started afresh, its restarts counted anew.
+   *
+   * docs/api.md#reloading-a-package.
+   */
+  "POST /api/plugins/{folder}/reload": {
+    params: {
+      /** The package's folder name (pluginPackage's `folder`), matched ignoring case. */
+      folder: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** Its host was stopped and is starting again: the package, `starting`. */
+      202: PluginPackage;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No package in that folder (none at all when the engine was started without plugins). */
+      404: Problem;
+      /** The package is turned off, or `unsupported`. */
+      409: Problem;
+    };
+  };
+  /**
+   * openPluginFolder: Opens a plugin package's folder (a bundled one's too) in the file manager of the computer the engine runs on.
+   *
+   * docs/api.md#plugins.
+   */
+  "POST /api/plugins/{folder}/open": {
+    params: {
+      /** The package's folder name (pluginPackage's `folder`), matched ignoring case. */
+      folder: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The engine asked the system's file manager to open the folder, as POST /api/folders/{folder}/open does (docs/api.md#folders). */
+      204: null;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No package in that folder (none at all when the engine was started without plugins). */
+      404: Problem;
+      /** The engine couldn't open the folder; the error is in its log. */
+      500: Problem;
+    };
+  };
+  /**
+   * runPluginAction: Asks a plugin to run one of the actions it lists, through its package's host as it runs then.
+   *
+   * docs/api.md#plugin-actions.
+   */
+  "POST /api/plugins/{folder}/plugins/{id}/actions/{method}": {
+    params: {
+      /** The package's folder name (pluginPackage's `folder`), matched ignoring case. */
+      folder: string;
+      /** The plugin's id (pluginInfo's `id`). */
+      id: string;
+      /** The action, as the plugin lists it (pluginAction's `method`). */
+      method: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The request was sent to the host; the engine doesn't wait for the action. An error it meets is the package's (pluginPackage's `errors`). */
+      202: null;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No package in that folder, its running host lists no plugin with that id, or the plugin lists no action of that name. The engine sends no other. */
+      404: Problem;
+      /** The package's host isn't running. */
+      409: Problem;
+    };
+  };
+  /**
+   * getPluginSettings: A plugin's settings, each with its value, asked of its package's host as it runs.
+   *
+   * docs/api.md#plugin-settings.
+   */
+  "GET /api/plugins/{folder}/plugins/{id}/settings": {
+    params: {
+      /** The package's folder name (pluginPackage's `folder`), matched ignoring case. */
+      folder: string;
+      /** The plugin's id (pluginInfo's `id`). */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** Every setting, as the plugin answers them. */
+      200: PluginSetting[];
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No package in that folder, its running host lists no plugin with that id, or the plugin has no settings. */
+      404: Problem;
+      /** The package's host isn't running, or didn't answer within 10 seconds. */
+      409: Problem;
+    };
+  };
+  /**
+   * changePluginSetting: Changes one of a plugin's settings: checked against the setting, applied by the plugin as it runs and kept by its host.
+   *
+   * docs/api.md#plugin-settings.
+   */
+  "PATCH /api/plugins/{folder}/plugins/{id}/settings": {
+    params: {
+      /** The package's folder name (pluginPackage's `folder`), matched ignoring case. */
+      folder: string;
+      /** The plugin's id (pluginInfo's `id`). */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: PluginSettingChange;
+    responses: {
+      /** Every setting, as the plugin answers them once it applied the change (one change can change others). */
+      200: PluginSetting[];
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No package in that folder, its running host lists no plugin with that id, the plugin has no settings, or none with that key. */
+      404: Problem;
+      /** The package's host isn't running, or didn't answer within 10 seconds. */
+      409: Problem;
+      /** The body breaks its definition or `requestBytes`, or its value isn't one the setting takes (`setting.value` at /value: of another type, a whole number outside int32, outside the setting's `min` and `max`, not finite, not one of its `options`, or text over 4,096 characters); nothing was changed. */
+      422: InvalidProblem;
     };
   };
   /**

@@ -38,7 +38,7 @@ public class ConformanceTests(EngineFactory factory) : IClassFixture<EngineFacto
     public void AConformingResponse_Passes()
     {
         Assert.Null(Check("GET /api/sensors", Response("GET /api/sensors", 200, "application/json; charset=utf-8",
-            """[{"key":"k","source":"s","group":"g","name":"n","unit":"","status":"live"}]""")));
+            """[{"key":"k","source":"s","group":"g","name":"n","unit":"","status":"live","type":"number"}]""")));
         Assert.Null(Check("DELETE /api/tokens/{id}", Response("DELETE /api/tokens/{id}", 204, null, "")));
     }
 
@@ -54,7 +54,7 @@ public class ConformanceTests(EngineFactory factory) : IClassFixture<EngineFacto
     public void AMemberTheDefinitionLacks_Fails_NamingTheOperationAndTheDefinition()
     {
         var violation = Check("GET /api/sensors", Response("GET /api/sensors", 200, "application/json",
-            """[{"key":"k","source":"s","group":"g","name":"n","unit":"","status":"live","extra":1}]"""));
+            """[{"key":"k","source":"s","group":"g","name":"n","unit":"","status":"live","type":"number","extra":1}]"""));
         Assert.NotNull(violation);
         Assert.Contains("GET /api/sensors (listSensors)", violation);
         Assert.Contains("/0", violation);

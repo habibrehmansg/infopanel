@@ -13,6 +13,10 @@ namespace InfoPanel.TestFixture;
 /// <item><c>exit-after-ms=N</c>: the host process exits (code 3) N ms after the plugin starts, saying so on stderr.</item>
 /// <item><c>entries=N</c>: N more sensors, in a container of their own.</item>
 /// <item><c>text-chars=N</c>: the status text is N characters long.</item>
+/// <item><c>settings-hang</c>: once the plugin has updated, asking its settings never returns (its start's own reads still do).</item>
+/// <item><c>throw-apply</c>: applying a setting throws, the value given in the exception's message.</item>
+/// <item><c>throw-settings</c>: once a setting has been applied, reading the settings throws, the value applied in the
+/// exception's message.</item>
 /// <item><c>spew-bytes=N</c>: once started, N bytes to stdout and N to stderr with no newline, then <c>spew-end</c> on
 /// stderr, and the plugin runs on.</item>
 /// </list>
@@ -33,6 +37,9 @@ public sealed class FixtureMode
     public int Entries { get; private init; }
     public int? TextChars { get; private init; }
     public int? SpewBytes { get; private init; }
+    public bool SettingsHang { get; private init; }
+    public bool ThrowApply { get; private init; }
+    public bool ThrowSettings { get; private init; }
 
     private static FixtureMode Load()
     {
@@ -60,6 +67,9 @@ public sealed class FixtureMode
             Entries = Number("entries") ?? 0,
             TextChars = Number("text-chars"),
             SpewBytes = Number("spew-bytes"),
+            SettingsHang = settings.ContainsKey("settings-hang"),
+            ThrowApply = settings.ContainsKey("throw-apply"),
+            ThrowSettings = settings.ContainsKey("throw-settings"),
         };
     }
 }

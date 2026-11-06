@@ -10,8 +10,8 @@ using Xunit;
 namespace InfoPanel.Tests.Plugins;
 
 // Opt-in (INFOPANEL_PLUGIN_TESTS=1): the bundled Extras on this machine, run in a plugin host, so the suite doesn't run it
-// by default. Its host runs within 10 s; its plugins are Windows only (skipped elsewhere, where it lists nothing); the
-// host's memory goes to the test output.
+// by default. Its PluginInfo.ini says Platforms=windows: on Windows its host runs within 10 s and the host's memory goes to
+// the test output; elsewhere it is unsupported and no host starts.
 public sealed class BundledExtrasTests : IDisposable
 {
     private readonly string _root = PluginFixtures.NewTempRoot("ip-extras-");
@@ -69,6 +69,22 @@ public sealed class BundledExtrasTests : IDisposable
 
         var clock = Stopwatch.StartNew();
         var manager = engine.Services.GetRequiredService<PluginHostManager>();
+        if (!OperatingSystem.IsWindows())
+        {
+            // Windows only: unsupported here, and no host starts.
+            while (manager.Runners.Count == 0)
+            {
+                Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), "The engine didn't find Extras within 10 s");
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+            }
+            var extras = Assert.Single(manager.Runners);
+            Assert.False(manager.IsSupported(extras));
+            await Task.Delay(500, TestContext.Current.CancellationToken);
+            Assert.Equal(PluginHostState.Stopped, extras.State);
+            Assert.Null(extras.ProcessId);
+            return;
+        }
+
         while (manager.Runners.SingleOrDefault() is not { State: PluginHostState.Running })
         {
             Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), $"The Extras host didn't run within 10 s; listed: {source.GetSensors().Count}");

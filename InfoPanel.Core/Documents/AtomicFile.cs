@@ -163,6 +163,14 @@ public static class AtomicFile
     /// </exception>
     public static void Write(string path, ReadOnlyMemory<byte> content, string? root = null) => Write(path, content, root, faults: null);
 
+    /// <summary>As <see cref="Write(string, ReadOnlyMemory{byte}, string?)"/>, telling when the target is replaced.</summary>
+    /// <param name="replaced">
+    /// Called once the target is replaced, before its folder is flushed: an exception after it is the flush failing, with
+    /// the target already holding <paramref name="content"/>.
+    /// </param>
+    public static void Write(string path, ReadOnlyMemory<byte> content, string? root, Action replaced) =>
+        Write(path, content, root, faults: null, replaced);
+
     /// <summary>Replaces <paramref name="path"/> with what <paramref name="write"/> writes, creating its folder when missing.</summary>
     /// <param name="root">As for <see cref="CreateFolder(string, string?)"/>.</param>
     /// <exception cref="IOException">

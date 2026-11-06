@@ -36,6 +36,9 @@ public sealed record PluginHostTimeouts
 
     /// <summary>How long all hosts together get to shut down when the engine stops, before the rest are killed.</summary>
     public TimeSpan EngineStop { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long a call the engine makes of a running host (an action sent, settings read or applied) may take.</summary>
+    public TimeSpan Call { get; init; } = TimeSpan.FromSeconds(10);
 }
 
 /// <summary>

@@ -186,7 +186,15 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
                     refused.Add(new Refusal(id, problem));
                     continue;
                 }
-                if (_owners.TryGetValue(id, out var owner))
+                if (_owners.TryGetValue(id, out var owner) && !string.Equals(owner, folder, StringComparison.OrdinalIgnoreCase)
+                    && _packages.TryGetValue(owner, out var other) && other.State is PluginHostState.Stopped or PluginHostState.Failed)
+                {
+                    // A package whose host is stopped or failed keeps its catalogue (its sensors unavailable) until another
+                    // package's host takes one of its ids (the manager has decided that it may): it gives up the catalogue.
+                    Clear(other);
+                    owner = null;
+                }
+                if (owner != null)
                 {
                     refused.Add(new Refusal(id, string.Equals(owner, folder, StringComparison.OrdinalIgnoreCase)
                         ? "its id is used by another plugin in the same package"
@@ -273,6 +281,24 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
                     }
                 }
             }
+        }
+    }
+
+    /// <summary>The plugin ids the package's catalogue holds now.</summary>
+    public IReadOnlySet<string> PluginIdsOf(string folder)
+    {
+        lock (_lock)
+            return _packages.TryGetValue(folder, out var package) ? package.PluginIds.ToHashSet(StringComparer.Ordinal) : new HashSet<string>();
+    }
+
+    /// <summary>How many sensors the package lists now (of <paramref name="pluginId"/> only, when given).</summary>
+    public int CountOf(string folder, string? pluginId = null)
+    {
+        lock (_lock)
+        {
+            if (!_packages.TryGetValue(folder, out var package))
+                return 0;
+            return pluginId == null ? package.Keys.Count : package.Keys.Count(k => _entries[k].PluginId == pluginId);
         }
     }
 

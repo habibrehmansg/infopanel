@@ -582,6 +582,7 @@ try
     app.MapServiceEndpoints();
     app.MapLogEndpoints();
     app.MapFolderEndpoints();
+    app.MapPluginEndpoints();
     app.MapDisplayEndpoints();
     app.MapPreviewSocket();
     app.MapClientFallback(webRoot);

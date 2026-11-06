@@ -25,7 +25,7 @@ The engine keeps everything it stores in one folder: `{LocalApplicationData}/Inf
 | `logs/plugins/` | The plugin hosts' logs, `{package}-{yyyyMMdd}.log`, written by each host ([plugins](plugins.md#what-a-host-writes)) |
 | `plugins/` | Plugins the user added, one `InfoPanel.{Name}` folder each ([plugins](plugins.md)); a package folder that is a link isn't followed |
 | `plugin-settings/{package}/{plugin id}.json` | Configurable plugins' settings, written by their hosts |
-| `plugin-state.json` | Reserved for which plugins the user turned off |
+| `plugin-state.json` | The plugin packages the user turned off, by folder name; written only when the user turns one on or off ([below](#the-plugin-state)) |
 | `profiles.xml`, `profiles/{guid}.xml`, `assets/` | Step-1 data, left untouched and unread |
 
 Every file the engine replaces is written to `{name}.{32 hex}.tmp` beside it, flushed and renamed over it, so a crash leaves the old file or the new one. `--fresh` (a development flag) wipes a folder only when it holds nothing but these entries and their temp files.
@@ -97,6 +97,12 @@ Before `window.level` ([document](../../spec/docs/document.md#the-desktop-window
 ## The profile list
 
 `profiles.json` is held to `profileListBytes` (16 MiB, `spec/docs/limits.md`), its own bound, not a document's: the engine never writes a larger one (a create or duplicate that would is refused with `limit.profileListBytes`) and reads one within it. A file over the bound isn't read, nor rewritten that run: the profiles are listed by id, and their order is kept in memory. If the profile folders alone make a list over the bound, the engine keeps that order for the run and doesn't write it, and refuses creates until profiles are deleted.
+
+## The plugin state
+
+`plugin-state.json` is `{"format": "infopanel.plugin-state/1", "off": ["InfoPanel.X"]}`: the packages the user turned off, by folder name, compared ignoring case ([plugins](plugins.md#on-off-and-reload)). Only the user's choice is written, never a crash, a give-up, a refusal or a package that doesn't run on this operating system; a name with no package is kept. It is read when the engine starts, held to 1 MiB, and written through a temp file renamed over it, keeping every member it doesn't know as it was written. A file the engine can't hold whole (another format, over 1 MiB, a link, not JSON) is never rewritten: every package runs, and turning one on or off is refused for the run.
+
+The member `v1Migration`, `{"completed": "<UTC time>"}`, is reserved for the 1.x upgrade's plugin migration (a later part, on Windows): the engine keeps it as written and never writes it, and the file's presence never means that migration ran.
 
 ## The engine's last port
 

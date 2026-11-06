@@ -931,6 +931,27 @@ public sealed class NetworkSourceTests : IDisposable
     }
 
     [Fact]
+    public void APeek_ThroughTheHubOrTheSource_PutsNoPublicAddressInUse_AReadStillDoes()
+    {
+        Add("en0", "en0");
+        var source = Open();
+        var hub = new SensorHub([source]);
+        var schedule = source.Lookup!.Schedule;
+        var v4 = NetworkSource.PublicKeyOf("ipv4");
+        var v6 = NetworkSource.PublicKeyOf("ipv6");
+        Assert.Contains(v4, hub.GetSensors().Select(s => s.Key));
+
+        // A listing's snapshot of every sensor, as /api/sensors takes it.
+        _ = hub.GetSensors().Select(s => hub.PeekState(s.Key)).ToList();
+        ((ISensorStatusSource)source).PeekState(v6);
+        Assert.False(schedule.InUse(_time.GetTimestamp()));
+        Assert.False(schedule.TakeDue(_time.GetTimestamp()));
+
+        hub.ReadState(v4);
+        Assert.True(schedule.InUse(_time.GetTimestamp()));
+    }
+
+    [Fact]
     public void ANetworkChange_TellsTheLookup_InterfaceUpOrDown_AddressAddedOrGone_InterfaceAppearing_NotSpeedOrName()
     {
         var en0 = Add("en0", "en0", "192.168.1.20");

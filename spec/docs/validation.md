@@ -90,6 +90,7 @@ Each code is reported at the value it is about ([versioning](versioning.md#error
 | `baseRev.future` | Not a check on content: a commit's or op's `baseRev`, or an undo's, redo's or revert's, greater than the document's `rev`, a revision it hasn't reached ([commits](commit.md#baserev-conflicts)). |
 | `rev.mismatch` | Not a check on content: an engine API body whose revisions disagree, such as a document response whose `rev` isn't its document's ([API](api.md#checks-beyond-the-schema)). |
 | `frame.video` | Not a check on content: a frame header whose video members disagree with its `encoding` ([API](api.md#checks-beyond-the-schema)). |
+| `setting.value` | Not a check on content: a plugin setting's new value that the setting, as its plugin answers it, doesn't take: of another type, outside its range, not one of its options, or too long ([API](api.md#plugin-settings)). |
 | `op.target` | `setDesign` or `setBindings` on a group. |
 | `op.parent` | An `insert` or `move` into an item that isn't a group. |
 | `op.cycle` | A group moved into itself or into something it contains. |

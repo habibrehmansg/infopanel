@@ -295,8 +295,8 @@
           "name": "folder",
           "in": "path",
           "required": true,
-          "description": "Which of the engine's own folders: `data`, its data folder (the session's dataDir), or `logs`, the folder of its log files.",
-          "schema": {"enum": ["data", "logs"]}
+          "description": "Which of the engine's own folders: `data`, its data folder (the session's dataDir); `logs`, the folder of its log files; or `plugins`, its data folder's `plugins/`, where the plugins a user adds go, created when absent (the `plugins` feature, docs/api.md#plugins).",
+          "schema": {"enum": ["data", "logs", "plugins"]}
         }
       ],
       "post": {
@@ -309,12 +309,192 @@
           "401": {"$ref": "#/components/responses/unauthorized"},
           "403": {"$ref": "#/components/responses/forbidden"},
           "404": {
-            "description": "No such folder: `folder` is neither `data` nor `logs`. The engine opens no other path.",
+            "description": "No such folder: `folder` isn't `data`, `logs` or `plugins`. The engine opens no other path.",
             "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
           },
           "500": {
             "description": "The engine couldn't open the folder: it isn't there, or the file manager couldn't be started. The error is in the engine's log.",
             "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
+    "/api/plugins": {
+      "get": {
+        "operationId": "listPlugins",
+        "summary": "Whether the engine hosts plugins, and each plugin package it found: its state, its plugins, its errors (the `plugins` feature).",
+        "description": "docs/api.md#plugins.",
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {
+            "description": "The packages; none, and `enabled` false, when the engine was started without plugins. Never a setting's value.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pluginList"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"}
+        }
+      }
+    },
+    "/api/plugins/{folder}/on": {
+      "parameters": [{"$ref": "#/components/parameters/pluginFolder"}],
+      "put": {
+        "operationId": "switchPlugin",
+        "summary": "Turns a plugin package on or off: the choice is written, kept across restarts, then its host started or stopped.",
+        "description": "docs/api.md#turning-a-package-on-or-off.",
+        "security": [{"bearer": ["session"]}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pluginSwitch"}}}},
+        "responses": {
+          "200": {
+            "description": "The choice is written and its host started (the package `starting`) or stopped (`off`); turning on a package that is on and failed starts it again; a choice it already has changes nothing.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pluginPackage"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {
+            "description": "No package in that folder (none at all when the engine was started without plugins).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "409": {
+            "description": "The package is `unsupported` (it doesn't run on this operating system), or the engine couldn't read its plugin state file when it started and changes none this run (docs/api.md#turning-a-package-on-or-off). Nothing was changed.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "422": {"$ref": "#/components/responses/invalid"},
+          "500": {
+            "description": "The choice couldn't be written; nothing was changed. The error is in the engine's log.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
+    "/api/plugins/{folder}/reload": {
+      "parameters": [{"$ref": "#/components/parameters/pluginFolder"}],
+      "post": {
+        "operationId": "reloadPlugin",
+        "summary": "Restarts a plugin package's host: stopped (5 seconds, then killed), then started afresh, its restarts counted anew.",
+        "description": "docs/api.md#reloading-a-package.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "202": {
+            "description": "Its host was stopped and is starting again: the package, `starting`.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pluginPackage"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {
+            "description": "No package in that folder (none at all when the engine was started without plugins).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "409": {
+            "description": "The package is turned off, or `unsupported`.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
+    "/api/plugins/{folder}/open": {
+      "parameters": [{"$ref": "#/components/parameters/pluginFolder"}],
+      "post": {
+        "operationId": "openPluginFolder",
+        "summary": "Opens a plugin package's folder (a bundled one's too) in the file manager of the computer the engine runs on.",
+        "description": "docs/api.md#plugins.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "204": {"description": "The engine asked the system's file manager to open the folder, as POST /api/folders/{folder}/open does (docs/api.md#folders)."},
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {
+            "description": "No package in that folder (none at all when the engine was started without plugins).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "500": {
+            "description": "The engine couldn't open the folder; the error is in its log.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
+    "/api/plugins/{folder}/plugins/{id}/actions/{method}": {
+      "parameters": [
+        {"$ref": "#/components/parameters/pluginFolder"},
+        {"$ref": "#/components/parameters/pluginId"},
+        {
+          "name": "method",
+          "in": "path",
+          "required": true,
+          "description": "The action, as the plugin lists it (pluginAction's `method`).",
+          "schema": {"type": "string"}
+        }
+      ],
+      "post": {
+        "operationId": "runPluginAction",
+        "summary": "Asks a plugin to run one of the actions it lists, through its package's host as it runs then.",
+        "description": "docs/api.md#plugin-actions.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "202": {"description": "The request was sent to the host; the engine doesn't wait for the action. An error it meets is the package's (pluginPackage's `errors`)."},
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {
+            "description": "No package in that folder, its running host lists no plugin with that id, or the plugin lists no action of that name. The engine sends no other.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "409": {
+            "description": "The package's host isn't running.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
+    "/api/plugins/{folder}/plugins/{id}/settings": {
+      "parameters": [
+        {"$ref": "#/components/parameters/pluginFolder"},
+        {"$ref": "#/components/parameters/pluginId"}
+      ],
+      "get": {
+        "operationId": "getPluginSettings",
+        "summary": "A plugin's settings, each with its value, asked of its package's host as it runs.",
+        "description": "docs/api.md#plugin-settings.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "200": {
+            "description": "Every setting, as the plugin answers them.",
+            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "urn:infopanel:api:1#/$defs/pluginSetting"}}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {
+            "description": "No package in that folder, its running host lists no plugin with that id, or the plugin has no settings.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "409": {
+            "description": "The package's host isn't running, or didn't answer within 10 seconds.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      },
+      "patch": {
+        "operationId": "changePluginSetting",
+        "summary": "Changes one of a plugin's settings: checked against the setting, applied by the plugin as it runs and kept by its host.",
+        "description": "docs/api.md#plugin-settings.",
+        "security": [{"bearer": ["session"]}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pluginSettingChange"}}}},
+        "responses": {
+          "200": {
+            "description": "Every setting, as the plugin answers them once it applied the change (one change can change others).",
+            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "urn:infopanel:api:1#/$defs/pluginSetting"}}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {
+            "description": "No package in that folder, its running host lists no plugin with that id, the plugin has no settings, or none with that key.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "409": {
+            "description": "The package's host isn't running, or didn't answer within 10 seconds.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "422": {
+            "description": "The body breaks its definition or `requestBytes`, or its value isn't one the setting takes (`setting.value` at /value: of another type, a whole number outside int32, outside the setting's `min` and `max`, not finite, not one of its `options`, or text over 4,096 characters); nothing was changed.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
           }
         }
       }
@@ -1149,6 +1329,20 @@
         "in": "path",
         "required": true,
         "description": "The profile's id: its document's id.",
+        "schema": {"type": "string"}
+      },
+      "pluginFolder": {
+        "name": "folder",
+        "in": "path",
+        "required": true,
+        "description": "The package's folder name (pluginPackage's `folder`), matched ignoring case.",
+        "schema": {"type": "string"}
+      },
+      "pluginId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "The plugin's id (pluginInfo's `id`).",
         "schema": {"type": "string"}
       },
       "blobId": {

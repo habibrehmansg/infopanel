@@ -105,6 +105,24 @@ namespace InfoPanel.Plugins.Host
                         });
                     }
 
+                    // The settings as the engine lists them. A getter that throws can hold a setting's value in its text
+                    // (one restored a moment ago included), so this read has a catch of its own: the start fails with the
+                    // exception's kind logged and reported, never its text, and the exception goes no further.
+                    List<PluginConfigPropertyDto> settings = [];
+                    if (plugin is IPluginConfigurable listed)
+                    {
+                        try
+                        {
+                            settings = listed.ConfigProperties.Select(ConvertConfigPropertyToDto).ToList();
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error("Failed to initialize plugin {PluginName}: reading its settings failed ({Error})", wrapper.Name, ex.GetType().Name);
+                            NotifyError(wrapper.Id, $"Reading its settings failed ({ex.GetType().Name})");
+                            continue;
+                        }
+                    }
+
                     var metadata = new PluginMetadataDto
                     {
                         Id = wrapper.Id,
@@ -116,9 +134,7 @@ namespace InfoPanel.Plugins.Host
                         UpdateIntervalMs = wrapper.UpdateInterval.TotalMilliseconds,
                         Actions = actions,
                         IsConfigurable = plugin is IPluginConfigurable,
-                        ConfigProperties = plugin is IPluginConfigurable configurable
-                            ? configurable.ConfigProperties.Select(ConvertConfigPropertyToDto).ToList()
-                            : []
+                        ConfigProperties = settings
                     };
                     // Detect image provider and set up shared memory buffers
                     if (plugin is IPluginImageProvider imageProvider)
@@ -272,8 +288,10 @@ namespace InfoPanel.Plugins.Host
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error(ex, "Error applying config key {Key} on plugin {PluginId}", key, pluginId);
-                    NotifyError(pluginId, $"Config '{key}' apply failed: {ex.Message}");
+                    // The exception's text can hold the value (a plugin saying what it couldn't take): only its kind is
+                    // logged and reported, so a setting's value never leaves the settings call.
+                    Logger.Error("Error applying config key {Key} on plugin {PluginId}: {Error}", key, pluginId, ex.GetType().Name);
+                    NotifyError(pluginId, $"Config '{key}' apply failed ({ex.GetType().Name})");
                 }
                 // Return refreshed properties (ApplyConfig may change other properties)
                 return Task.FromResult(configurable.ConfigProperties.Select(ConvertConfigPropertyToDto).ToList());
@@ -652,7 +670,8 @@ namespace InfoPanel.Plugins.Host
                     }
                     catch (Exception ex)
                     {
-                        Logger.Warning(ex, "Failed to apply stored config key {Key} on plugin {PluginId}", kvp.Key, wrapper.Id);
+                        // As in ApplyConfigAsync: the exception's text (or an inner one's) can hold the saved value.
+                        Logger.Warning("Failed to apply stored config key {Key} on plugin {PluginId}: {Error}", kvp.Key, wrapper.Id, ex.GetType().Name);
                     }
                 }
 
@@ -660,7 +679,8 @@ namespace InfoPanel.Plugins.Host
             }
             catch (Exception ex)
             {
-                Logger.Warning(ex, "Failed to load config file for plugin {PluginId}", wrapper.Id);
+                // A parse error's text quotes the file, which holds the settings' values: only its kind is logged.
+                Logger.Warning("Failed to load config file for plugin {PluginId}: {Error}", wrapper.Id, ex.GetType().Name);
             }
         }
 
@@ -679,7 +699,8 @@ namespace InfoPanel.Plugins.Host
             }
             catch (Exception ex)
             {
-                Logger.Warning(ex, "Failed to save config for plugin {PluginId}", wrapper.Id);
+                // A plugin's property getter can throw with a value in its text: only the exception's kind is logged.
+                Logger.Warning("Failed to save config for plugin {PluginId}: {Error}", wrapper.Id, ex.GetType().Name);
             }
         }
 

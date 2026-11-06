@@ -37,6 +37,45 @@ internal static class PluginFixtures
         return target;
     }
 
+    /// <summary>
+    /// The test plugin as another package, <paramref name="folder"/> (as long as <see cref="FixtureFolder"/>), copied into
+    /// <paramref name="parent"/> with <paramref name="mode"/> as its fixture-mode.txt; returns the folder. A package's DLL
+    /// is loaded by its folder's name, so the copy's assembly is renamed: its files' names, and the name's UTF-8 bytes in
+    /// the DLL and its .json files, replaced by one as long (nothing in them moves).
+    /// </summary>
+    public static string CopyFixtureAs(string parent, string folder, params string[] mode)
+    {
+        if (folder.Length != FixtureFolder.Length || !folder.StartsWith("InfoPanel.", StringComparison.Ordinal))
+            throw new ArgumentException($"A copy's name is InfoPanel.{{Name}}, as long as {FixtureFolder}.", nameof(folder));
+        var (from, to) = (System.Text.Encoding.UTF8.GetBytes(FixtureFolder), System.Text.Encoding.UTF8.GetBytes(folder));
+        var source = BuiltFolder(FixtureFolder);
+        var target = Path.Combine(parent, folder);
+        Directory.CreateDirectory(target);
+        foreach (var file in Directory.EnumerateFiles(source))
+        {
+            var name = Path.GetFileName(file);
+            if (!name.StartsWith(FixtureFolder + ".", StringComparison.Ordinal))
+            {
+                File.Copy(file, Path.Combine(target, name));
+                continue;
+            }
+            if (name.EndsWith(".pdb", StringComparison.Ordinal))
+                continue;
+            var bytes = File.ReadAllBytes(file);
+            for (var at = bytes.AsSpan().IndexOf(from); at >= 0;)
+            {
+                to.CopyTo(bytes, at);
+                var next = bytes.AsSpan(at + from.Length).IndexOf(from);
+                at = next < 0 ? -1 : at + from.Length + next;
+            }
+            File.WriteAllBytes(Path.Combine(target, folder + name[FixtureFolder.Length..]), bytes);
+        }
+
+        if (mode.Length > 0)
+            File.WriteAllLines(Path.Combine(target, "fixture-mode.txt"), mode);
+        return target;
+    }
+
     public static string DllOf(string packageFolder) => Path.Combine(packageFolder, Path.GetFileName(packageFolder) + ".dll");
 
     /// <summary>A fresh folder under the temp folder, short enough for a Unix socket path next to it.</summary>

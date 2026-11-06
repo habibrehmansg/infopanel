@@ -150,7 +150,15 @@ public sealed class SensorHub : ISensorStatusReader
     /// else <c>unavailable</c>), or the simulated walk, as <see cref="TryRead"/> starts it. With a reading, the type is
     /// the reading's.
     /// </summary>
-    public SensorState ReadState(SensorKey key)
+    public SensorState ReadState(SensorKey key) => State(key, peek: false);
+
+    /// <summary>
+    /// <see cref="ReadState"/> through <see cref="ISensorStatusSource.PeekState"/>: the same snapshot without putting the
+    /// sensor in use (a public address isn't looked up for it). What listing the sensors (<c>/api/sensors</c>) takes.
+    /// </summary>
+    public SensorState PeekState(SensorKey key) => State(key, peek: true);
+
+    private SensorState State(SensorKey key, bool peek)
     {
         if (!IsWellFormed(key))
             return SensorState.Without(SensorStatus.Missing);
@@ -159,7 +167,7 @@ public sealed class SensorHub : ISensorStatusReader
         {
             if (source is ISensorStatusSource statusSource)
             {
-                var state = statusSource.ReadState(key);
+                var state = peek ? statusSource.PeekState(key) : statusSource.ReadState(key);
                 return state.Status switch
                 {
                     SensorStatus.Live or SensorStatus.Stale => state with { Type = SensorState.TypeOf(state.Reading) },

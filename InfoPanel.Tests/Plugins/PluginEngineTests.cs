@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Ipc;
@@ -188,6 +189,243 @@ public sealed class PluginEngineTests : IDisposable
         await Until(() => runner.State == PluginHostState.Failed, "the package fails");
         Assert.Contains("is a link", runner.Reason);
         Assert.Empty(Directory.EnumerateFileSystemEntries(assets));
+    }
+
+    // ---- the packages at run time, with real hosts ----
+
+    // Two packages of the test plugin, one plugin id between them: InfoPanel.TestFixturB is first in folder order.
+    private const string Earlier = "InfoPanel.TestFixturB";
+    private const string Later = PluginFixtures.FixtureFolder;
+
+    [Theory]
+    [InlineData(Earlier)]
+    [InlineData(Later)]
+    public async Task Of_two_packages_with_one_plugin_id_the_earlier_in_folder_order_keeps_it_whichever_starts_first(string startsFirst)
+    {
+        using var factory = new EngineFactory();
+        var bundled = Path.Combine(_root, "bundled");
+        PluginFixtures.CopyFixtureAs(bundled, Earlier, "id=dup");
+        var package = PluginFixtures.CopyFixture(bundled, "id=dup");
+        var then = startsFirst == Earlier ? Later : Earlier;
+        // The other package is turned off at start, then on once the first one's host runs the plugin.
+        Directory.CreateDirectory(factory.DataDir);
+        File.WriteAllText(Path.Combine(factory.DataDir, PluginStateFile.FileName), $$"""{"format":"infopanel.plugin-state/1","off":["{{then}}"]}""");
+        using var engine = WithPlugins(factory, package);
+        using var client = Client(engine);
+        var manager = engine.Services.GetRequiredService<PluginHostManager>();
+        await Until(() => manager.Runners.Count == 2, "both packages are found");
+        var (a, b) = (manager.Find(Earlier)!, manager.Find(Later)!);
+        var first = manager.Find(startsFirst)!;
+        await Until(() => first.State == PluginHostState.Running && first.Plugins.Any(p => p.Id == "dup"), "the first package's host runs the plugin");
+        using var firstHost = HostProcess.Of(first.ProcessId!.Value);
+
+        Assert.Equal(PluginSwitch.Done, await manager.SetOnAsync(then, true));
+
+        // The earlier package keeps the id; the later one fails with duplicateId, its host stopped, its choice untouched.
+        await Until(() => a.State == PluginHostState.Running && a.Plugins.Any(p => p.Id == "dup") && b.State == PluginHostState.Failed,
+            "the earlier package runs the plugin and the later one fails");
+        Assert.Equal("duplicateId", b.ReasonCode);
+        // The id it names is the first shared: the test plugin's, or the fixture's platform plugin's (both in both packages).
+        Assert.Matches($@"\Aits plugin (dup|\S+-only-fixture) is provided by the plugin package {Earlier.Replace(".", @"\.")}, earlier in the list\z", b.Reason);
+        Assert.True(manager.IsOn(b));
+        Assert.Null(b.ProcessId);
+        if (first == b)
+            await Until(() => !firstHost.Runs(), "the later package's host is gone", TimeSpan.FromSeconds(15));
+        var hub = engine.Services.GetRequiredService<SensorHub>();
+        await Until(() => hub.GetStatus(SensorKey.Plugin("/dup/readings/counter")) == SensorStatus.Live, "the plugin's sensors read from the earlier package's host");
+        await Eventually.Stays(() => b.State == PluginHostState.Failed && b.ProcessId == null, TimeSpan.FromSeconds(3), "the later package isn't restarted");
+    }
+
+    [Fact]
+    public async Task An_action_goes_to_the_host_running_then_after_a_reload_and_a_restart_and_its_error_is_kept_with_its_time_and_plugin()
+    {
+        using var factory = new EngineFactory();
+        using var engine = WithPlugins(factory, PluginFixtures.CopyFixture(Path.Combine(_root, "bundled")));
+        using var client = Client(engine);
+        await Listed(client);
+        var manager = engine.Services.GetRequiredService<PluginHostManager>();
+        var runner = await Runner(engine);
+
+        var before = DateTimeOffset.UtcNow;
+        await ReportsAnError(runner, 1);
+        var error = runner.ErrorLog[0];
+        Assert.Equal(PluginFixtures.FixturePluginId, error.Plugin);
+        Assert.Contains("ReportError", error.Message);
+        Assert.InRange(error.Time, before, DateTimeOffset.UtcNow);
+
+        // Reloaded: a new host, and the action goes to it.
+        var pid = runner.ProcessId!.Value;
+        Assert.Equal(PluginSwitch.Done, await manager.ReloadAsync(PluginFixtures.FixtureFolder));
+        await Until(() => runner.State == PluginHostState.Running && runner.ProcessId is { } p && p != pid, "a new host runs after the reload");
+        await ReportsAnError(runner, 2);
+
+        // Killed and restarted: the same.
+        pid = runner.ProcessId!.Value;
+        using (var host = Process.GetProcessById(pid))
+            host.Kill();
+        await Until(() => runner.State == PluginHostState.Running && runner.ProcessId is { } p && p != pid, "a new host runs after the restart");
+        await ReportsAnError(runner, 3);
+    }
+
+    /// <summary>Runs the test plugin's "Report an error" and waits until the package has <paramref name="count"/> of its errors.</summary>
+    private static async Task ReportsAnError(PluginHostRunner runner, int count)
+    {
+        Assert.Equal(PluginCall.Done, await runner.RunActionAsync(PluginFixtures.FixturePluginId, "ReportError"));
+        await Until(() => runner.ErrorLog.Count(e => e.Plugin == PluginFixtures.FixturePluginId && e.Message.Contains(ReportedError)) == count,
+            $"the plugin's error is kept ({count})");
+    }
+
+    private const string ReportedError = "fixture: an error on request";
+
+    [Fact]
+    public async Task Changing_the_Label_setting_changes_the_Status_reading_live()
+    {
+        using var factory = new EngineFactory();
+        using var engine = WithPlugins(factory, PluginFixtures.CopyFixture(Path.Combine(_root, "bundled")));
+        using var client = Client(engine);
+        await Listed(client);
+        var runner = await Runner(engine);
+
+        var (outcome, problem, settings) = await runner.ApplySettingAsync(PluginFixtures.FixturePluginId, "label", JsonDocument.Parse("\"changed live\"").RootElement.Clone());
+
+        Assert.Equal(PluginCall.Done, outcome);
+        Assert.Null(problem);
+        Assert.Equal("changed live", settings!.Single(s => s.Key == "label").Value!.Value.GetString());
+        await Until(async () =>
+        {
+            var values = (await client.GetFromJsonAsync<JsonElement[]>("/api/sensors/values", Ct))!;
+            return values.Any(v => v.GetProperty("key").GetString() == "plugin:/test-fixture/readings/status"
+                && v.TryGetProperty("text", out var text) && text.GetString() == "changed live");
+        }, "the Status reading is the new label");
+    }
+
+    [Fact]
+    public async Task A_settings_value_a_plugin_puts_in_its_failure_reaches_no_log_list_or_error()
+    {
+        const string Secret = "s3cret-sentinel-7e41";
+        using var factory = new EngineFactory();
+        using var engine = WithPlugins(factory, PluginFixtures.CopyFixture(Path.Combine(_root, "bundled"), "throw-apply"));
+        using var client = Client(engine);
+        await Listed(client);
+        var runner = await Runner(engine);
+
+        // The plugin's ApplyConfig throws with the value in its message.
+        using var patch = await client.PatchAsJsonAsync($"/api/plugins/{PluginFixtures.FixtureFolder}/plugins/{PluginFixtures.FixturePluginId}/settings",
+            new { key = "label", value = Secret }, Ct);
+        var answer = await patch.Content.ReadAsStringAsync(Ct);
+        await Until(() => runner.ErrorLog.Any(e => e.Plugin == PluginFixtures.FixturePluginId && e.Message.Contains("label", StringComparison.Ordinal)), "the failure is kept");
+
+        Assert.DoesNotContain(Secret, answer, StringComparison.Ordinal);
+        Assert.DoesNotContain(runner.ErrorLog, e => e.Message.Contains(Secret, StringComparison.Ordinal));
+        Assert.DoesNotContain(Secret, await client.GetStringAsync("/api/plugins", Ct), StringComparison.Ordinal);
+        Assert.DoesNotContain(Secret, await client.GetStringAsync("/api/logs", Ct), StringComparison.Ordinal);
+        // Neither the engine's log file nor the host's.
+        var hostLogs = Directory.GetFiles(Path.Combine(factory.DataDir, "logs", "plugins"), "*.log");
+        Assert.NotEmpty(hostLogs);
+        foreach (var file in Directory.GetFiles(Path.Combine(factory.DataDir, "logs"), "*", SearchOption.AllDirectories))
+        {
+            using var reader = new StreamReader(new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
+            Assert.DoesNotContain(Secret, await reader.ReadToEndAsync(Ct), StringComparison.Ordinal);
+        }
+        // The failure is kept with its kind and time, never its text.
+        var failure = runner.ErrorLog.First(e => e.Plugin == PluginFixtures.FixturePluginId && e.Message.Contains("label", StringComparison.Ordinal));
+        Assert.Contains(nameof(InvalidOperationException), failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_saved_settings_value_a_plugin_puts_in_its_failure_at_start_reaches_no_log_list_or_error()
+    {
+        const string Secret = "s3cret-sentinel-5c92";
+        using var factory = new EngineFactory();
+        // A setting saved earlier, restored when the host starts: the plugin's ApplyConfig throws with the value.
+        var saved = Path.Combine(factory.DataDir, "plugin-settings", PluginFixtures.FixtureFolder);
+        Directory.CreateDirectory(saved);
+        await File.WriteAllTextAsync(Path.Combine(saved, $"{PluginFixtures.FixturePluginId}.json"),
+            JsonSerializer.Serialize(new Dictionary<string, string> { ["label"] = Secret }), Ct);
+        using var engine = WithPlugins(factory, PluginFixtures.CopyFixture(Path.Combine(_root, "bundled"), "throw-apply"));
+        using var client = Client(engine);
+        await Listed(client);
+        var runner = await Runner(engine);
+
+        // The host logged the failed restore, with its key and kind.
+        var hostLogs = Path.Combine(factory.DataDir, "logs", "plugins");
+        await Until(async () => (await Logs(hostLogs)).Contains("Failed to apply stored config key", StringComparison.Ordinal), "the failed restore is logged");
+        var hostLog = await Logs(hostLogs);
+        Assert.Contains("Failed to apply stored config key label", hostLog, StringComparison.Ordinal);
+        Assert.Contains(nameof(InvalidOperationException), hostLog, StringComparison.Ordinal);
+
+        Assert.DoesNotContain(runner.ErrorLog, e => e.Message.Contains(Secret, StringComparison.Ordinal));
+        Assert.DoesNotContain(Secret, await client.GetStringAsync("/api/plugins", Ct), StringComparison.Ordinal);
+        Assert.DoesNotContain(Secret, await client.GetStringAsync("/api/logs", Ct), StringComparison.Ordinal);
+        // Neither the engine's log file nor the host's.
+        Assert.DoesNotContain(Secret, await Logs(Path.Combine(factory.DataDir, "logs")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_restored_settings_value_a_plugin_puts_in_its_settings_failure_at_start_reaches_no_log_list_or_error()
+    {
+        const string Secret = "s3cret-sentinel-a3d8";
+        using var factory = new EngineFactory();
+        // A setting saved earlier, restored when the host starts; once applied, the plugin's settings getter throws with it.
+        var saved = Path.Combine(factory.DataDir, "plugin-settings", PluginFixtures.FixtureFolder);
+        Directory.CreateDirectory(saved);
+        await File.WriteAllTextAsync(Path.Combine(saved, $"{PluginFixtures.FixturePluginId}.json"),
+            JsonSerializer.Serialize(new Dictionary<string, string> { ["label"] = Secret }), Ct);
+        using var engine = WithPlugins(factory, PluginFixtures.CopyFixture(Path.Combine(_root, "bundled"), "throw-settings"));
+        using var client = Client(engine);
+        var runner = await Runner(engine);
+
+        // The start's failure is reported and logged by the host.
+        await Until(() => runner.ErrorLog.Any(e => e.Plugin == PluginFixtures.FixturePluginId), "the start's failure is reported");
+        var hostLogs = Path.Combine(factory.DataDir, "logs", "plugins");
+        await Until(async () => (await Logs(hostLogs)).Contains("Failed to initialize plugin", StringComparison.Ordinal), "the start's failure is logged");
+
+        Assert.DoesNotContain(runner.ErrorLog, e => e.Message.Contains(Secret, StringComparison.Ordinal));
+        Assert.DoesNotContain(Secret, await client.GetStringAsync("/api/plugins", Ct), StringComparison.Ordinal);
+        Assert.DoesNotContain(Secret, await client.GetStringAsync("/api/logs", Ct), StringComparison.Ordinal);
+        // Neither the engine's log file nor the host's.
+        Assert.DoesNotContain(Secret, await Logs(Path.Combine(factory.DataDir, "logs")), StringComparison.Ordinal);
+        // The failure keeps its kind, in the error and the host's log.
+        var failure = runner.ErrorLog.First(e => e.Plugin == PluginFixtures.FixturePluginId);
+        Assert.Contains(nameof(InvalidOperationException), failure.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(InvalidOperationException), await Logs(hostLogs), StringComparison.Ordinal);
+    }
+
+    /// <summary>Every log file under <paramref name="folder"/>, read while the engine and its hosts still write them.</summary>
+    private static async Task<string> Logs(string folder)
+    {
+        if (!Directory.Exists(folder)) return "";
+        var all = new StringBuilder();
+        foreach (var file in Directory.GetFiles(folder, "*", SearchOption.AllDirectories))
+        {
+            using var reader = new StreamReader(new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
+            all.Append(await reader.ReadToEndAsync(Ct));
+        }
+        return all.ToString();
+    }
+
+    [Fact]
+    public async Task A_settings_call_the_host_never_answers_is_answered_within_10_seconds()
+    {
+        using var factory = new EngineFactory();
+        using var engine = WithPlugins(factory, PluginFixtures.CopyFixture(Path.Combine(_root, "bundled"), "settings-hang"));
+        using var client = Client(engine);
+        await Listed(client);
+        var runner = await Runner(engine);
+        // Once the plugin has updated (its counter past 0), its settings never answer.
+        await Until(async () =>
+        {
+            var values = (await client.GetFromJsonAsync<JsonElement[]>("/api/sensors/values", Ct))!;
+            return values.Any(v => v.GetProperty("key").GetString() == Counter && v.TryGetProperty("now", out var now) && now.GetDouble() > 0);
+        }, "the plugin has updated");
+
+        var since = Stopwatch.StartNew();
+        var (outcome, settings) = await runner.GetSettingsAsync(PluginFixtures.FixturePluginId).WaitAsync(TimeSpan.FromSeconds(30), Ct);
+
+        Assert.Equal(PluginCall.NoAnswer, outcome);
+        Assert.Null(settings);
+        Assert.InRange(since.Elapsed, TimeSpan.FromSeconds(9.5), TimeSpan.FromSeconds(15));
+        Assert.Equal(PluginHostState.Running, runner.State);
     }
 
     private static WebApplicationFactory<Program> WithPlugins(EngineFactory factory, string package) =>

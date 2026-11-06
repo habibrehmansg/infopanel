@@ -109,4 +109,10 @@ public interface ISensorStatusSource
     /// publishes readings: a sample published concurrently is either wholly in it or not at all.
     /// </summary>
     SensorState ReadState(SensorKey key);
+
+    /// <summary>
+    /// <see cref="ReadState"/> without putting the sensor in use: what listing the sensors (<c>/api/sensors</c>) takes.
+    /// The same as <see cref="ReadState"/> unless a read starts work of its own (the public address lookup).
+    /// </summary>
+    SensorState PeekState(SensorKey key) => ReadState(key);
 }

@@ -11,9 +11,13 @@ namespace InfoPanel.Tests.Plugins;
 /// <see cref="FakeProcess"/> that, as its <see cref="FakeHost"/> says, connects to the engine's real pipe from this
 /// process and serves the host service over JSON-RPC, or never connects, hangs, ignores a shutdown, or exits when told.
 /// </summary>
-internal sealed class FakeLauncher(Func<FakeHost> hosts) : IPluginProcessLauncher
+internal sealed class FakeLauncher(Func<PluginHostCommand, FakeHost> hosts) : IPluginProcessLauncher
 {
     private readonly List<FakeProcess> _started = [];
+
+    public FakeLauncher(Func<FakeHost> hosts) : this(_ => hosts())
+    {
+    }
 
     public IReadOnlyList<FakeProcess> Started
     {
@@ -26,7 +30,7 @@ internal sealed class FakeLauncher(Func<FakeHost> hosts) : IPluginProcessLaunche
 
     public IPluginProcess Start(PluginHostCommand command)
     {
-        var process = new FakeProcess(command, hosts());
+        var process = new FakeProcess(command, hosts(command));
         lock (_started)
             _started.Add(process);
         process.Run();
@@ -51,10 +55,43 @@ internal sealed class FakeHost : IPluginHostService
 
     public string PluginId { get; init; } = "fake";
 
+    /// <summary>Its InitializeAsync waits for this first, when set.</summary>
+    public Task? InitializeGate { get; init; }
+
+    /// <summary>Its ShutdownAsync waits for this first (once counted), when set.</summary>
+    public Task? ShutdownGate { get; init; }
+
+    /// <summary>Its plugin's actions (method names; each shown as "Do {method}").</summary>
+    public string[] Actions { get; init; } = [];
+
+    /// <summary>Its plugin's settings, when it has any; their values change as they are applied.</summary>
+    public List<PluginConfigPropertyDto>? Settings { get; init; }
+
+    /// <summary>Its settings calls never answer.</summary>
+    public bool SettingsHang { get; init; }
+
+    /// <summary>The actions it was asked to run, in order: (plugin id, method).</summary>
+    public List<(string Plugin, string Method)> ActionsRun { get; } = [];
+
+    /// <summary>The settings it was asked to apply, in order: (plugin id, key, value).</summary>
+    public List<(string Plugin, string Key, object? Value)> Applied { get; } = [];
+
     internal FakeProcess Process { get; set; } = null!;
     internal JsonRpc? Rpc { get; set; }
 
-    public PluginMetadataDto Metadata => new() { Id = PluginId, Name = "Fake" };
+    public PluginMetadataDto Metadata => new()
+    {
+        Id = PluginId,
+        Name = "Fake",
+        Description = "A fake plugin.",
+        Actions = [.. Actions.Select(a => new PluginActionDto { MethodName = a, DisplayName = "Do " + a })],
+        IsConfigurable = Settings != null,
+        ConfigProperties = Settings ?? [],
+    };
+
+    /// <summary>The entries its plugin lists in its one container, <c>c</c>: a number, <c>v</c>, unless a test gives others.</summary>
+    public Func<List<EntryDto>> Entries { get; init; } =
+        () => [new EntryDto { Id = "v", Name = "Value", Type = "sensor", SensorValue = new SensorValueDto { Value = 1, Unit = "u" } }];
 
     public Dictionary<string, List<ContainerDto>> Containers => new()
     {
@@ -64,13 +101,15 @@ internal sealed class FakeHost : IPluginHostService
             {
                 Id = "c",
                 Name = "Container",
-                Entries = [new EntryDto { Id = "v", Name = "Value", Type = "sensor", SensorValue = new SensorValueDto { Value = 1, Unit = "u" } }],
+                Entries = Entries(),
             },
         ],
     };
 
     public async Task<List<PluginMetadataDto>> InitializeAsync()
     {
+        if (InitializeGate != null)
+            await InitializeGate.WaitAsync(Process.Dead);
         if (InitializeHangs)
             await Task.Delay(Timeout.Infinite, Process.Dead);
         if (!NoLoaded)
@@ -78,16 +117,40 @@ internal sealed class FakeHost : IPluginHostService
         return [Metadata];
     }
 
-    public Task InvokeActionAsync(string pluginId, string methodName) => Task.CompletedTask;
+    public Task InvokeActionAsync(string pluginId, string methodName)
+    {
+        lock (ActionsRun)
+            ActionsRun.Add((pluginId, methodName));
+        return Task.CompletedTask;
+    }
 
-    public Task<List<PluginConfigPropertyDto>> GetConfigPropertiesAsync(string pluginId) => Task.FromResult(new List<PluginConfigPropertyDto>());
+    public async Task<List<PluginConfigPropertyDto>> GetConfigPropertiesAsync(string pluginId)
+    {
+        if (SettingsHang)
+            await Task.Delay(Timeout.Infinite, Process.Dead);
+        return pluginId == PluginId ? Settings ?? [] : [];
+    }
 
-    public Task<List<PluginConfigPropertyDto>> ApplyConfigAsync(string pluginId, string key, object? value) =>
-        Task.FromResult(new List<PluginConfigPropertyDto>());
+    public async Task<List<PluginConfigPropertyDto>> ApplyConfigAsync(string pluginId, string key, object? value)
+    {
+        if (SettingsHang)
+            await Task.Delay(Timeout.Infinite, Process.Dead);
+        lock (Applied)
+            Applied.Add((pluginId, key, value));
+        if (Settings?.FirstOrDefault(p => p.Key == key) is { } setting)
+            setting.Value = value;
+        return Settings ?? [];
+    }
+
+    /// <summary>Reports its processor use, as a host does every 2 s.</summary>
+    public Task SendPerformanceAsync(double cpu) =>
+        Rpc!.NotifyAsync(nameof(IPluginClientCallback.OnPerformanceUpdate), new List<PluginPerformanceDto> { new() { PluginId = PluginId, CpuPercent = cpu } });
 
     public async Task ShutdownAsync()
     {
         Process.ShutdownsAsked++;
+        if (ShutdownGate != null)
+            await ShutdownGate.WaitAsync(Process.Dead);
         if (IgnoresShutdown)
         {
             await Task.Delay(Timeout.Infinite, Process.Dead);
@@ -134,6 +197,7 @@ internal sealed class FakeProcess(PluginHostCommand command, FakeHost host) : IP
     public Task Exited => _exited.Task;
     public string ErrorTail { get; set; } = "";
     public bool Killed { get; private set; }
+    public long? MemoryBytes { get; set; } = 42 * 1024 * 1024;
     public int ShutdownsAsked { get; set; }
     public TaskCompletionSource Connected { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

@@ -7,6 +7,7 @@ using InfoPanel.Desktop;
 using InfoPanel.Hosting;
 using InfoPanel.Spec;
 using InfoPanel.Tests.Desktop;
+using InfoPanel.Tests.Plugins;
 using InfoPanel.Tests.Preview;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -255,6 +256,76 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         {
             failingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
             await Send(failingSession, "POST", "/api/folders/data/open", 500);
+        }
+
+        // The plugins (the plugins feature): this engine hosts none, and its plugins folder opens. An engine of its own hosts
+        // fake packages (FakePluginHosts: no plugin process runs): one running, one turned off, one for another operating
+        // system; another's folder opener fails.
+        await Send(reader, "GET", "/api/plugins", 200);
+        await Send(session, "POST", "/api/folders/plugins/open", 204);
+        var pluginsTour = Path.Combine(factory.Root, "plugins-tour");
+        var bundled = Path.Combine(pluginsTour, "bundled");
+        foreach (var package in new[] { "InfoPanel.TourA", "InfoPanel.TourOff", "InfoPanel.TourW" })
+        {
+            Directory.CreateDirectory(Path.Combine(bundled, package));
+            File.WriteAllText(Path.Combine(bundled, package, package + ".dll"), "not loaded: the hosts are fakes");
+        }
+        File.WriteAllText(Path.Combine(bundled, "InfoPanel.TourW", "PluginInfo.ini"),
+            $"[PluginInfo]\nPlatforms={(InfoPanel.Plugins.PluginPlatforms.Current == "windows" ? "macos" : "windows")}\n");
+        var pluginData = Path.Combine(pluginsTour, "data");
+        Directory.CreateDirectory(pluginData);
+        var pluginState = Path.Combine(pluginData, InfoPanel.Plugins.PluginStateFile.FileName);
+        File.WriteAllText(pluginState, """{"format":"infopanel.plugin-state/1","off":["InfoPanel.TourOff"]}""");
+        var pluginHosts = new FakeLauncher(c => new FakeHost
+        {
+            PluginId = c.PluginDll.Contains("InfoPanel.TourA.", StringComparison.Ordinal) ? "tour" : "other",
+            Actions = ["Refresh"],
+            Settings = [new() { Key = "count", DisplayName = "Count", Type = "Integer", Value = 3L, MinValue = 0, MaxValue = 10 }],
+        });
+        using (var hosting = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", pluginData).UseSetting("Engine:NoPlugins", "false")
+                   .UseSetting("Engine:BundledPlugins", bundled).ConfigureTestServices(s => s.AddSingleton<InfoPanel.Plugins.IPluginProcessLauncher>(pluginHosts))))
+        using (var hostingSession = hosting.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            hostingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            var plugins = hosting.Services.GetRequiredService<InfoPanel.Plugins.PluginHostManager>();
+            await Eventually.Until(() => plugins.Find("InfoPanel.TourA") is { State: InfoPanel.Plugins.PluginHostState.Running }, "the tour's package runs");
+            const string running = "/api/plugins/InfoPanel.TourA", off = "/api/plugins/InfoPanel.TourOff", none = "/api/plugins/InfoPanel.None";
+            await Send(hostingSession, "GET", "/api/plugins", 200);
+            await Send(hostingSession, "GET", $"{running}/plugins/tour/settings", 200);
+            await Send(hostingSession, "GET", $"{running}/plugins/nope/settings", 404);
+            await Send(hostingSession, "GET", $"{off}/plugins/other/settings", 409);
+            await Send(hostingSession, "PATCH", $"{running}/plugins/tour/settings", 200, Body("""{"key":"count","value":4}"""));
+            await Send(hostingSession, "PATCH", $"{running}/plugins/tour/settings", 422, Body("""{"key":"count","value":11}"""));
+            await Send(hostingSession, "PATCH", $"{running}/plugins/tour/settings", 404, Body("""{"key":"nope","value":1}"""));
+            await Send(hostingSession, "PATCH", $"{off}/plugins/other/settings", 409, Body("""{"key":"count","value":4}"""));
+            await Send(hostingSession, "POST", $"{running}/plugins/tour/actions/Refresh", 202);
+            await Send(hostingSession, "POST", $"{running}/plugins/tour/actions/Dispose", 404);
+            await Send(hostingSession, "POST", $"{off}/plugins/other/actions/Refresh", 409);
+            await Send(hostingSession, "POST", $"{running}/open", 204);
+            await Send(hostingSession, "POST", $"{none}/open", 404);
+            await Send(hostingSession, "POST", $"{running}/reload", 202);
+            await Send(hostingSession, "POST", $"{off}/reload", 409);
+            await Send(hostingSession, "POST", $"{none}/reload", 404);
+            await Send(hostingSession, "PUT", $"{off}/on", 200, Body("""{"on":true}"""));
+            await Send(hostingSession, "PUT", $"{none}/on", 404, Body("""{"on":true}"""));
+            await Send(hostingSession, "PUT", "/api/plugins/InfoPanel.TourW/on", 409, Body("""{"on":false}"""));
+            await Send(hostingSession, "PUT", $"{running}/on", 422, Body("{}"));
+            // A choice that can't be written: a folder where the file goes.
+            File.Delete(pluginState);
+            Directory.CreateDirectory(pluginState);
+            await Send(hostingSession, "PUT", $"{running}/on", 500, Body("""{"on":false}"""));
+        }
+
+        using (var failing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", Path.Combine(pluginsTour, "failing")).UseSetting("Engine:NoPlugins", "false")
+                   .UseSetting("Engine:BundledPlugins", bundled).ConfigureTestServices(s =>
+                   {
+                       s.AddSingleton<InfoPanel.Plugins.IPluginProcessLauncher>(new FakeLauncher(() => new FakeHost()));
+                       s.AddSingleton<IFolderOpener>(new RecordingFolderOpener { Failure = new IOException("no file manager") });
+                   })))
+        using (var failingSession = failing.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            failingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            await Send(failingSession, "POST", "/api/plugins/InfoPanel.TourA/open", 500);
         }
 
         // The PawnIO driver's install, the session token's: none to run on this engine (409); an engine of its own with a

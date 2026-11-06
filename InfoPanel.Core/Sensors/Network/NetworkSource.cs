@@ -20,7 +20,7 @@ namespace InfoPanel.Sensors.Network;
 /// dashes); with a lookup (none under <c>--offline</c>), the public addresses first, <c>plugin:/infopanel.network/public/ipv4</c>
 /// and <c>…/ipv6</c>, from <see cref="PublicIpLookup"/>. A read of a public address (<see cref="ISensorReader.TryRead"/>
 /// or <see cref="ISensorStatusSource.ReadState"/>, as a shown profile's and a client's value reads are; a status alone
-/// isn't one, nor is the history's own sampling, which never reads a text: <see cref="SensorHistory"/>) puts it in use
+/// isn't one, nor is a peek (<see cref="PeekState"/>, the sensors' listing), nor is the history's own sampling, which never reads a text: <see cref="SensorHistory"/>) puts it in use
 /// (<see cref="PublicIpLookup.NoteUse"/>), the only time the lookup asks. The engine never
 /// answers the plugin's keys; a 1.x import binds them to these (<see cref="RetiredPlugins"/>).
 /// <para>
@@ -243,6 +243,10 @@ public sealed class NetworkSource : ISensorSource, ISensorStatusSource, ISensorS
 
         return _polled.ReadState(key);
     }
+
+    /// <summary>A peek isn't a read: <see cref="ReadState"/> without putting a public address in use (listing the sensors).</summary>
+    public SensorState PeekState(SensorKey key) =>
+        IsPublic(key) && Hidden() ? SensorState.Without(SensorStatus.Unavailable) : _polled.ReadState(key);
 
     /// <summary>A status isn't a read: listing the sensors (<c>/api/sensors</c>) or importing puts no public address in use.</summary>
     public SensorStatus GetStatus(SensorKey key) => IsPublic(key) && Hidden() ? SensorStatus.Unavailable : _polled.GetStatus(key);

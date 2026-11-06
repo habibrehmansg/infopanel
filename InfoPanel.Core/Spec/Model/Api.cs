@@ -624,7 +624,10 @@ public sealed record ProblemBody
     public string? TraceId { get; init; }
 }
 
-/// <summary>A listed sensor (<c>GET /api/sensors</c>); <see cref="Status"/> is its status now. A binding names it by <see cref="Key"/>.</summary>
+/// <summary>
+/// A listed sensor (<c>GET /api/sensors</c>); <see cref="Status"/> is its status now and <see cref="Type"/> the type of
+/// value it reads (<c>number</c>, <c>text</c>, <c>table</c>), both from one read. A binding names it by <see cref="Key"/>.
+/// </summary>
 [SpecDef("urn:infopanel:api:1#/$defs/sensorEntry")]
 public sealed record SensorEntry
 {
@@ -634,6 +637,15 @@ public sealed record SensorEntry
     public required string Name { get; init; }
     public required string Unit { get; init; }
     public required InfoPanel.Sensors.SensorStatus Status { get; init; }
+    public required string Type { get; init; }
+
+    /// <summary>The spelling of a sensor's type, as a scene input's type names it.</summary>
+    public static string TypeName(InfoPanel.Sensors.SensorKind kind) => kind switch
+    {
+        InfoPanel.Sensors.SensorKind.Text => "text",
+        InfoPanel.Sensors.SensorKind.Table => "table",
+        _ => "number",
+    };
 }
 
 /// <summary>
@@ -721,6 +733,105 @@ public sealed record SensorSourceReason
 {
     public required string Code { get; init; }
     public required string Message { get; init; }
+}
+
+// The plugins (GET /api/plugins and the requests under it).
+
+/// <summary>Whether the engine hosts plugins, and the packages it found when it started.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginList")]
+public sealed record PluginListBody
+{
+    public required bool Enabled { get; init; }
+    public required IReadOnlyList<PluginPackageBody> Packages { get; init; }
+}
+
+/// <summary>A plugin package: what its PluginInfo.ini says, the user's choice, its host's state, its plugins and errors. Never a setting's value.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginPackage")]
+public sealed record PluginPackageBody
+{
+    public required string Folder { get; init; }
+    public required string Name { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Version { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Author { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Description { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Website { get; init; }
+    public required bool Bundled { get; init; }
+    public required IReadOnlyList<string> Platforms { get; init; }
+    public required bool On { get; init; }
+    public required string State { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required PluginReasonBody? Reason { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required double? Cpu { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required long? Memory { get; init; }
+    public required int Sensors { get; init; }
+    public required IReadOnlyList<PluginInfoBody> Plugins { get; init; }
+    public required IReadOnlyList<PluginErrorBody> Errors { get; init; }
+}
+
+/// <summary>Why a package is failed or unsupported: an open code and a technical message.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginReason")]
+public sealed record PluginReasonBody
+{
+    public required string Code { get; init; }
+    public required string Message { get; init; }
+}
+
+/// <summary>A plugin a package's host loaded.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginInfo")]
+public sealed record PluginInfoBody
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required string Description { get; init; }
+    public required int Sensors { get; init; }
+    public required IReadOnlyList<PluginActionBody> Actions { get; init; }
+    public required bool Configurable { get; init; }
+}
+
+/// <summary>An action a plugin offers: its method, and its name for people.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginAction")]
+public sealed record PluginActionBody
+{
+    public required string Method { get; init; }
+    public required string Name { get; init; }
+}
+
+/// <summary>An error of a package's: when (UTC, milliseconds), from which plugin (null: the package's own), and what.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginError")]
+public sealed record PluginErrorBody
+{
+    public required string Time { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Plugin { get; init; }
+    public required string Message { get; init; }
+}
+
+/// <summary><c>PUT /api/plugins/{folder}/on</c>'s body.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginSwitch")]
+public sealed record PluginSwitchRequest
+{
+    public required bool On { get; init; }
+}
+
+/// <summary>One of a plugin's settings, as the plugin answers it.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginSetting")]
+public sealed record PluginSettingBody
+{
+    public required string Key { get; init; }
+    public required string Name { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Description { get; init; }
+    public required string Type { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required JsonElement? Value { get; init; }
+    public double? Min { get; init; }
+    public double? Max { get; init; }
+    public double? Step { get; init; }
+    public IReadOnlyList<string>? Options { get; init; }
+}
+
+/// <summary><c>PATCH /api/plugins/{folder}/plugins/{id}/settings</c>'s body: one setting's key and new value.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginSettingChange")]
+public sealed record PluginSettingChangeRequest
+{
+    public required string Key { get; init; }
+    public required JsonElement Value { get; init; }
 }
 
 // The engine settings (GET and PATCH /api/settings).
