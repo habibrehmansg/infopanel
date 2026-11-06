@@ -92,6 +92,49 @@ public sealed class SceneBoundsTests
         Assert.Equal(150, all[2].Frame.X);
     }
 
+    /// <summary>
+    /// A gauge's outline: a ring segment of two SVG arcs (radii 190.5 and 139.5 about (202, 212)) joined by straight
+    /// ends, stroked 4 wide with miter joins. Its ink reaches the outer arc's extremes (x 11.5 to 392.5, top 21.5) and the
+    /// stroke's conservative reach past them; never the arcs' control points, which lie up to 1.41 radii from the centre.
+    /// </summary>
+    private const string GaugeOutline = "[{'kind':'path','d':'M15.75 252A190.5 190.5 0 1 1 388.25 252L339 236A139.5 139.5 0 1 0 65 236Z',"
+        + "'stroke':{'paint':'#ffffff','width':4,'join':'miter'}}]";
+
+    [Fact]
+    public void An_arc_outline_is_measured_by_its_curve_not_its_control_points()
+    {
+        var b = Bounds(Rect("{'x':0,'y':0}", ",'layout':{'w':400,'h':258}", GaugeOutline)).Single();
+        // The stroke's reach at a miter join is 4 × half its width (8), conservative.
+        Assert.Equal(11.5 - 8, b.Ink.X, 1);
+        Assert.Equal(21.5 - 8, b.Ink.Y, 1);
+        Assert.Equal(392.5 + 8, b.Ink.X + b.Ink.W, 1);
+    }
+
+    [Fact]
+    public void An_arc_outline_really_past_the_edge_is_measured_past_it()
+    {
+        var b = Bounds(Rect("{'x':-20,'y':-30}", ",'layout':{'w':400,'h':258}", GaugeOutline)).Single();
+        Assert.Equal(-20 + 11.5 - 8, b.Ink.X, 1);
+        Assert.Equal(-30 + 21.5 - 8, b.Ink.Y, 1);
+    }
+
+    /// <summary>
+    /// A stroked curve that doubles back to where it starts: its ends are one point, but the curve reaches (150, 50) and
+    /// is drawn there. Its ink and automatic frame hold that reach and its stroke, and not the control point (200, 0).
+    /// </summary>
+    [Fact]
+    public void A_curve_that_doubles_back_is_measured_by_its_reach()
+    {
+        var b = Bounds(Rect("{'x':0,'y':0}", nodes: "[{'kind':'path','d':'M100 100 Q200 0 100 100','stroke':{'paint':'#ffffff','width':4}}]")).Single();
+        foreach (var box in new[] { b.Ink, b.Frame })
+        {
+            Assert.InRange(box.X, 90, 98);
+            Assert.InRange(box.Y, 40, 48);
+            Assert.InRange(box.X + box.W, 152, 160);
+            Assert.InRange(box.Y + box.H, 102, 110);
+        }
+    }
+
     [Theory]
     [InlineData("document/placeholder/invalid-scene.json", "a", "invalid")]
     [InlineData("document/placeholder/invalid-scene-schema.json", "a", "invalid")]

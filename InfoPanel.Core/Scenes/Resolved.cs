@@ -13,7 +13,7 @@ namespace InfoPanel.Scenes;
 /// <summary>An outline in a node's coordinates.</summary>
 internal abstract class RGeom
 {
-    /// <summary>The outline's bounds (control points for curves of static paths), without any stroke.</summary>
+    /// <summary>The outline's bounds (its curves' own extent, not their control points'), without any stroke.</summary>
     public abstract SKRect Bounds { get; }
 
     private SKPath? _drawn;
@@ -232,7 +232,10 @@ internal sealed class StaticPathGeom : RGeom
     {
         _path = path;
         _outline = SceneMath.Outline(path);
-        Bounds = path.Bounds; // computed now, so drawing never mutates the shared path
+        _ = path.Bounds; // computed now, so drawing never mutates the shared path
+        // The curves' own extent: an arc's control points lie up to 1.41 radii from its centre, its curve doesn't. Computed
+        // from the curves, not the TightBounds property, which can drop a curve that doubles back to where it starts.
+        Bounds = path.ComputeTightBounds();
     }
 
     public override SKRect Bounds { get; }
