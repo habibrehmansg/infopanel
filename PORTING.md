@@ -112,7 +112,7 @@ Both are done (the Persistence table above): the 1.x import reads guides from th
 | AIDA64 SensorPanel import | later | `InfoPanel/Models/SharedModel.SensorPanelImport.cs` |
 | ConfigModel / Settings (app settings) | the engine settings (`SettingsStore`, `GET`/`PATCH /api/settings`) hold the frame and graph rates, the log level, the sensor sources' settings and the others spec/docs/api.md lists ("Settings"); the devices', tray's, autostart's, hotkeys', autosave's and web server's settings later, each with its feature | `InfoPanel/Models/ConfigModel.cs`, `InfoPanel/Models/Settings.cs` |
 | JobObject (plugin host lifetime) | later (Windows; elsewhere a host exits when its pipe ends, and the engine kills what is left when it stops) | `InfoPanel/Utils/JobObject.cs` |
-| Installer | later | `InnoSetup/setup.iss` |
+| Installer | macOS: an app in a disk image, ad hoc signed, built by `packaging/macos/build.sh` (docs/2.0/packaging.md); Windows later | `InnoSetup/setup.iss` |
 
 ## 1.4.x bugs fixed in 2.0
 
