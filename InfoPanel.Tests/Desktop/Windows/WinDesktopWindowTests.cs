@@ -21,6 +21,7 @@ namespace InfoPanel.Tests.Desktop.Windows;
 /// display, on top and back, as large as 10,000 pixels, a transparent pixel still the window's, gone when turned off,
 /// and the display list equal to Windows' own.</item>
 /// <item>A window's frames on the screen: one frame, then another, read back from the screen's pixels.</item>
+/// <item>A window on the desktop: not topmost, below the test's own normal window, still below after a click on it.</item>
 /// <item>The cost of showing a frame (<c>ShowFrame</c>) at 800×480, 1920×1080 and 3840×2160, at 15 and 60 frames a
 /// second: measured and written to the test's output, not asserted.</item>
 /// <item>Drag and resize with the real mouse (<c>SendInput</c>, so the session must also be connected and unlocked): a
@@ -193,6 +194,61 @@ public sealed class WinDesktopWindowTests
             finally
             {
                 await WinUiThreadTests.On(thread, window.Dispose);
+            }
+        }
+        finally
+        {
+            thread.Stop(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
+    public async Task AWindowOnTheDesktop_IsntTopmost_AndStaysBelowANormalWindow_WhenClicked()
+    {
+        Assert.SkipUnless(Enabled, Skip);
+        if (OperatingSystem.IsWindows())
+            await DesktopLevel();
+    }
+
+    /// <summary>
+    /// A window on the desktop at (300, 300), 400×200, and the test's own normal window at (500, 350) over part of it:
+    /// the desktop one has no <c>WS_EX_TOPMOST</c> and is below the normal one in the z-order, and still is after a click
+    /// on its uncovered part at (350, 350) (which must show the desktop there: nothing else over it).
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static async Task DesktopLevel()
+    {
+        var thread = new WinUiThread();
+        try
+        {
+            var level = new WinDesktopLevel(thread);
+            var (desktop, normal) = await WinUiThreadTests.On(thread, () =>
+            {
+                var d = new WinWindow(new DesktopWindowStyle(WindowLevel.Desktop, true, true), new PointRect(300, 300, 400, 200), level);
+                var n = new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(500, 350, 400, 200));
+                d.SetVisible(true);
+                n.SetVisible(true);
+                d.ShowFrame(WinUiThreadTests.Solid(400, 200, 0, 160, 0));
+                n.ShowFrame(WinUiThreadTests.Solid(400, 200, 0, 0, 160));
+                return (d, n);
+            });
+            try
+            {
+                Assert.Equal(0u, WinTestInterop.Read(desktop.Handle).ExStyle & Topmost);
+                Assert.True(WinTestInterop.IsAbove(normal.Handle, desktop.Handle), "the normal window is above the desktop one");
+                await Until(() => Task.FromResult(WinTestInterop.TopLevelAt(350, 350) == desktop.Handle),
+                    "the desktop window at (350, 350): nothing else may cover it there");
+
+                await Gesture(m => DragGesture.Drag(m, 350, 350, 350, 350));
+                await Task.Delay(1000, Ct);
+
+                Assert.Equal(0u, WinTestInterop.Read(desktop.Handle).ExStyle & Topmost);
+                Assert.True(WinTestInterop.IsAbove(normal.Handle, desktop.Handle), "the normal window is still above the desktop one after the click");
+            }
+            finally
+            {
+                await WinUiThreadTests.On(thread, desktop.Dispose);
+                await WinUiThreadTests.On(thread, normal.Dispose);
             }
         }
         finally

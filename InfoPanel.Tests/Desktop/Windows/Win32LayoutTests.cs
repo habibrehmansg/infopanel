@@ -35,6 +35,7 @@ public sealed class Win32LayoutTests
         Assert.Equal(16, Unsafe.SizeOf<RECT>());
         Assert.Equal(8, Unsafe.SizeOf<POINT>());
         Assert.Equal(8, Unsafe.SizeOf<SIZE>());
+        Assert.Equal(40, Unsafe.SizeOf<WINDOWPOS>());
     }
 
     [Fact]
@@ -55,6 +56,9 @@ public sealed class Win32LayoutTests
 
         Assert.Equal(24, Offset<MINMAXINFO>(nameof(MINMAXINFO.PtMinTrackSize)));
         Assert.Equal(32, Offset<MINMAXINFO>(nameof(MINMAXINFO.PtMaxTrackSize)));
+
+        Assert.Equal(8, Offset<WINDOWPOS>(nameof(WINDOWPOS.HwndInsertAfter)));
+        Assert.Equal(32, Offset<WINDOWPOS>(nameof(WINDOWPOS.Flags)));
 
         Assert.Equal(3, Offset<BLENDFUNCTION>(nameof(BLENDFUNCTION.AlphaFormat)));
         Assert.Equal(8, Offset<USEROBJECTFLAGS>(nameof(USEROBJECTFLAGS.DwFlags)));

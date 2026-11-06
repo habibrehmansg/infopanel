@@ -104,6 +104,19 @@ internal struct BLENDFUNCTION
     public byte AlphaFormat;
 }
 
+/// <summary><c>WM_WINDOWPOSCHANGING</c>'s window position, which the window may change before it applies.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct WINDOWPOS
+{
+    public nint Hwnd;
+    public nint HwndInsertAfter;
+    public int X;
+    public int Y;
+    public int Cx;
+    public int Cy;
+    public uint Flags;
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal struct USEROBJECTFLAGS
 {
@@ -225,8 +238,10 @@ internal static unsafe partial class Win32
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
+    public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_NOOWNERZORDER = 0x0200;
 
+    public static readonly nint HWND_TOP = 0;
     public static readonly nint HWND_TOPMOST = -1;
     public static readonly nint HWND_NOTOPMOST = -2;
 
@@ -241,6 +256,7 @@ internal static unsafe partial class Win32
     public const uint WM_ENDSESSION = 0x0016;
     public const uint WM_MOUSEACTIVATE = 0x0021;
     public const uint WM_GETMINMAXINFO = 0x0024;
+    public const uint WM_WINDOWPOSCHANGING = 0x0046;
     public const uint WM_DISPLAYCHANGE = 0x007E;
     public const uint WM_NCHITTEST = 0x0084;
     public const uint WM_NCLBUTTONDOWN = 0x00A1;
@@ -258,6 +274,10 @@ internal static unsafe partial class Win32
     public const uint WM_APP = 0x8000;
 
     public const int MA_NOACTIVATE = 3;
+
+    public const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+    public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+    public const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
 
     /// <summary><c>IDC_ARROW</c>, the standard arrow cursor's resource id.</summary>
     public const nint IDC_ARROW = 32512;
@@ -349,6 +369,30 @@ internal static unsafe partial class Win32
 
     [LibraryImport(User32)]
     public static partial int ReleaseCapture();
+
+    [LibraryImport(User32)]
+    public static partial int IsWindowVisible(nint hwnd);
+
+    [LibraryImport(User32, SetLastError = true)]
+    public static partial int EnumWindows(delegate* unmanaged<nint, nint, int> callback, nint data);
+
+    [LibraryImport(User32)]
+    public static partial uint GetWindowThreadProcessId(nint hwnd, uint* processId);
+
+    // user32: the desktop level (the shell's desktop window and the foreground event)
+
+    [LibraryImport(User32)]
+    public static partial nint GetShellWindow();
+
+    [LibraryImport(User32)]
+    public static partial nint GetForegroundWindow();
+
+    [LibraryImport(User32, SetLastError = true)]
+    public static partial nint SetWinEventHook(uint eventMin, uint eventMax, nint module,
+        delegate* unmanaged<nint, uint, nint, int, int, uint, uint, void> callback, uint processId, uint threadId, uint flags);
+
+    [LibraryImport(User32)]
+    public static partial int UnhookWinEvent(nint hook);
 
     [LibraryImport(User32, SetLastError = true)]
     public static partial nuint SetTimer(nint hwnd, nuint id, uint elapse, nint timerProc);

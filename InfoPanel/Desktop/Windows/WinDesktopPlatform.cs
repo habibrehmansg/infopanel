@@ -32,9 +32,13 @@ internal sealed class WinDesktopPlatform : IDesktopPlatform
     public WinDesktopPlatform(WinUiThread thread)
     {
         _thread = thread;
+        DesktopLevel = new WinDesktopLevel(thread);
         _secondPass = new Timer(_ => _thread.Post(RaiseDisplaysChanged));
         _thread.AddMessageHook(OnMessage);
     }
+
+    /// <summary>The windows at <see cref="WindowLevel.Desktop"/>, kept directly above the shell's desktop window.</summary>
+    internal WinDesktopLevel DesktopLevel { get; }
 
     public bool IsSupported => _interactive.Value;
 
@@ -46,7 +50,7 @@ internal sealed class WinDesktopPlatform : IDesktopPlatform
 
     public IReadOnlyList<DisplayInfo> GetDisplays() => WinDisplays.Read();
 
-    public IDesktopWindow CreateWindow(DesktopWindowStyle style, PointRect frame) => new WinWindow(style, frame);
+    public IDesktopWindow CreateWindow(DesktopWindowStyle style, PointRect frame) => new WinWindow(style, frame, DesktopLevel);
 
     /// <summary>The hidden window's broadcasts (UI thread): display changes, resume, sessions connected or disconnected.</summary>
     private nint? OnMessage(uint msg, nint wParam, nint lParam)

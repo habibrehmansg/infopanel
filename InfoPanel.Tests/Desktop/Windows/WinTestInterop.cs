@@ -225,5 +225,29 @@ internal static class WinTestInterop
     });
 
     /// <summary>Whether the window is per-monitor DPI aware (v2).</summary>
+    public static readonly IntPtr HwndTop = 0, HwndBottom = 1, HwndTopmost = -1;
+    public const uint SwpNoSize = 0x0001, SwpNoMove = 0x0002, SwpNoActivate = 0x0010;
+
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hwnd, uint command);
+
+    /// <summary>The top-level window directly above <paramref name="hwnd"/> in the z-order (<c>GW_HWNDPREV</c>), hidden or not.</summary>
+    public static IntPtr Above(IntPtr hwnd) => GetWindow(hwnd, 3);
+
+    /// <summary>Whether <paramref name="upper"/> is above <paramref name="lower"/> in the z-order (walked up from <paramref name="lower"/>).</summary>
+    public static bool IsAbove(IntPtr upper, IntPtr lower)
+    {
+        for (var (h, n) = (GetWindow(lower, 3), 0); h != IntPtr.Zero && n < 100_000; (h, n) = (GetWindow(h, 3), n + 1))
+        {
+            if (h == upper)
+                return true;
+        }
+
+        return false;
+    }
+
     public static bool IsPerMonitorV2(IntPtr hwnd) => AreDpiAwarenessContextsEqual(GetWindowDpiAwarenessContext(hwnd), PerMonitorAwareV2);
 }

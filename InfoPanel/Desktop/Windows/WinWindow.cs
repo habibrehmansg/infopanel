@@ -84,15 +84,25 @@ internal sealed unsafe class WinWindow : IDesktopWindow
     private bool _inLoop;
     private bool _pressed;
 
-    public WinWindow(DesktopWindowStyle style, PointRect frame)
+    // The desktop level: set around the engine's own z-order changes, which the guard lets through.
+    private bool _placing;
+
+    /// <summary>The desktop level this window joins at <see cref="WindowLevel.Desktop"/>.</summary>
+    private readonly WinDesktopLevel _desktopLevel;
+
+    /// <summary>
+    /// A hidden window at <paramref name="frame"/>. <paramref name="desktopLevel"/>: the platform's desktop level, or (in
+    /// tests) one of the window's own with no foreground hook.
+    /// </summary>
+    public WinWindow(DesktopWindowStyle style, PointRect frame, WinDesktopLevel? desktopLevel = null)
     {
+        _desktopLevel = desktopLevel ?? new WinDesktopLevel(null);
         RegisterClass();
         var (x, y, width, height) = Pixels(frame);
         var instance = Win32.GetModuleHandleW(null);
         fixed (char* className = ClassName)
         fixed (char* title = "InfoPanel")
         {
-            // WindowLevel.Desktop is shown as Normal here for now (the desktop level on Windows is still to come).
             _hwnd = Win32.CreateWindowExW(ExStyle | (style.Level == WindowLevel.Top ? Win32.WS_EX_TOPMOST : 0), className, title, WindowStyle,
                 x, y, width, height, 0, 0, instance, 0);
         }
@@ -103,6 +113,8 @@ internal sealed unsafe class WinWindow : IDesktopWindow
         (_width, _height) = (width, height);
         Style = style;
         ByHandle[_hwnd] = this;
+        if (style.Level == WindowLevel.Desktop)
+            _desktopLevel.Track(this);
     }
 
     /// <summary>The window's handle (for tests).</summary>
@@ -181,14 +193,67 @@ internal sealed unsafe class WinWindow : IDesktopWindow
         if (_hwnd == 0 || style == Style)
             return;
 
-        if ((style.Level == WindowLevel.Top) != (Style.Level == WindowLevel.Top))
-        {
-            var after = style.Level == WindowLevel.Top ? Win32.HWND_TOPMOST : Win32.HWND_NOTOPMOST;
-            if (Win32.SetWindowPos(_hwnd, after, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE) == 0)
-                Logger.Warning("A desktop window couldn't be put {Where} ({Error})", style.Level == WindowLevel.Top ? "on top" : "back", Marshal.GetLastPInvokeError());
-        }
-
+        var (from, to) = (Style.Level, style.Level);
         Style = style;
+        if (from == to)
+            return;
+
+        // normal → top and desktop → top: topmost; top → normal: not topmost (and in front); desktop → normal: in front.
+        // → desktop: not topmost first when it was on top, then the desktop level's rule, tracked.
+        if (to == WindowLevel.Top)
+            Reorder(Win32.HWND_TOPMOST);
+        else if (from == WindowLevel.Top)
+            Reorder(Win32.HWND_NOTOPMOST);
+        else if (from == WindowLevel.Desktop)
+            Reorder(Win32.HWND_TOP);
+
+        if (to == WindowLevel.Desktop)
+        {
+            _desktopLevel.Track(this);
+            _desktopLevel.Place(this, show: false);
+        }
+        else if (from == WindowLevel.Desktop)
+        {
+            _desktopLevel.Untrack(this);
+        }
+    }
+
+    /// <summary>The engine's own z-order change (the guard lets it through).</summary>
+    private void Reorder(nint after)
+    {
+        _placing = true;
+        try
+        {
+            if (Win32.SetWindowPos(_hwnd, after, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE) == 0)
+                Logger.Warning("A desktop window's level couldn't be applied ({Error})", Marshal.GetLastPInvokeError());
+        }
+        finally
+        {
+            _placing = false;
+        }
+    }
+
+    /// <summary>
+    /// The desktop level's rule: directly after <paramref name="after"/> (null: where it is), shown in the same call with
+    /// <paramref name="show"/>, so it never shows above apps first.
+    /// </summary>
+    internal void PlaceAfter(nint? after, bool show)
+    {
+        if (_hwnd == 0)
+            return;
+
+        var flags = Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_NOOWNERZORDER
+            | (after is null ? Win32.SWP_NOZORDER : 0) | (show ? Win32.SWP_SHOWWINDOW : 0);
+        _placing = true;
+        try
+        {
+            if (Win32.SetWindowPos(_hwnd, after ?? 0, 0, 0, 0, 0, flags) == 0)
+                Logger.Warning("A desktop window couldn't be put above the desktop ({Error})", Marshal.GetLastPInvokeError());
+        }
+        finally
+        {
+            _placing = false;
+        }
     }
 
     public void SetVisible(bool visible)
@@ -206,7 +271,10 @@ internal sealed unsafe class WinWindow : IDesktopWindow
                 Present();
             }
 
-            Win32.ShowWindow(_hwnd, Win32.SW_SHOWNOACTIVATE);
+            if (Style.Level == WindowLevel.Desktop)
+                _desktopLevel.Place(this, show: true);
+            else
+                Win32.ShowWindow(_hwnd, Win32.SW_SHOWNOACTIVATE);
         }
         else
         {
@@ -230,6 +298,8 @@ internal sealed unsafe class WinWindow : IDesktopWindow
             return;
 
         ByHandle.TryRemove(_hwnd, out _);
+        if (Style.Level == WindowLevel.Desktop)
+            _desktopLevel.Untrack(this);
         Win32.DestroyWindow(_hwnd); // its retry timer and the mouse capture of a press too
         _hwnd = 0;
         _visible = false;
@@ -476,6 +546,10 @@ internal sealed unsafe class WinWindow : IDesktopWindow
             case Win32.WM_SIZE:
                 OnSized();
                 return 0;
+            case Win32.WM_WINDOWPOSCHANGING when Style.Level == WindowLevel.Desktop && !_placing:
+                // The guard: a z-order change the engine didn't make (a click, a drag's move loop, another app) is refused.
+                ((WINDOWPOS*)lParam)->Flags |= Win32.SWP_NOZORDER;
+                return null;
             default:
                 return null;
         }
