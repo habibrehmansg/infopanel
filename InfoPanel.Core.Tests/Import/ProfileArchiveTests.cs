@@ -705,6 +705,30 @@ public sealed class ProfileArchiveTests : IDisposable
         Assert.Equal(("json", "/document"), (notJson.Code, notJson.Errors[0].Path));
     }
 
+    /// <summary>
+    /// An archive an earlier engine exported, whose document has the draft's <c>window.topmost</c>: imported with
+    /// <c>level</c> (true as <c>top</c>, false as none), so the client's create with the answered document passes.
+    /// </summary>
+    [Theory]
+    [InlineData(true, "top")]
+    [InlineData(false, null)]
+    public void ADocumentWithTopmost_IsImportedWithItsLevel_AndCreates(bool topmost, string? level)
+    {
+        var document = Document();
+        document["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["topmost"] = topmost, ["resizable"] = false };
+        var target = NewWorkspace("target");
+
+        var contents = Open(WithDocument(document, ("blobs/" + Hex(Png), Png), ("blobs/" + Hex(Gif), Gif), ("blobs/" + Hex(Template), Template)), target);
+
+        var window = contents.Document.GetProperty("profile").GetProperty("window");
+        string[] members = level is null ? ["enabled", "resizable"] : ["enabled", "level", "resizable"];
+        Assert.Equal(members, window.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(level, window.TryGetProperty("level", out var value) ? value.GetString() : null);
+        var created = target.Create(Encoding.UTF8.GetBytes(new JsonObject { ["id"] = Id, ["document"] = JsonNode.Parse(contents.Document.GetRawText()) }.ToJsonString()));
+        Assert.True(created.Entry is not null, string.Join("; ", created.Invalid?.Errors.Select(e => $"{e.Code} {e.Path}") ?? []));
+        Assert.Equal(level, target.Open(Id)!.Current.Document.Profile.Window!.Level);
+    }
+
     [Theory]
     [InlineData("accented")]
     [InlineData("spelled")]

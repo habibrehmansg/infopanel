@@ -82,7 +82,7 @@
         "y": { "description": "Pixels from the top of the matched display.", "type": "integer", "minimum": -1000000, "maximum": 1000000, "default": 0 },
         "display": { "$ref": "#/$defs/displayMatch" },
         "strict": { "description": "Hide the window when no display matches `display` exactly.", "type": "boolean", "default": false },
-        "topmost": { "type": "boolean", "default": false },
+        "level": { "description": "Where the window sits among the computer's other windows: normal with them, top above them, desktop below every other window and above the desktop icons (docs/document.md).", "enum": ["normal", "top", "desktop"], "default": "normal" },
         "draggable": { "type": "boolean", "default": true },
         "resizable": { "type": "boolean", "default": true }
       }

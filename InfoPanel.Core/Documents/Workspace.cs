@@ -529,9 +529,11 @@ public sealed class Workspace : IDisposable
                 root = renamed.RootElement;
             }
 
+            // A window's topmost, as an earlier engine stored it, read as its level (the file is kept until a save).
+            using var withLevel = StoredTopmost.Read(root);
             using (renamed)
             {
-                var load = Generation.Load(root, 1, Limits, Support, null, jsonChecked: true);
+                var load = Generation.Load(withLevel?.RootElement ?? root, 1, Limits, Support, null, jsonChecked: true);
                 if (load.Generation is { } generation)
                 {
                     if (load.Check.Items.Count > 0)
@@ -627,9 +629,11 @@ public sealed class Workspace : IDisposable
         var renamed = document.TryGetProperty("id", out var ownId) && ownId.ValueKind == JsonValueKind.String && ownId.GetString() != id
             ? WithId(document, id)
             : null;
+        // A window's topmost, as an earlier engine kept it, read as its level.
+        using var withLevel = StoredTopmost.Read(renamed?.RootElement ?? document);
         using (renamed)
         {
-            var load = Generation.Load(renamed?.RootElement ?? document, 1, Limits, Support, null, jsonChecked: true);
+            var load = Generation.Load(withLevel?.RootElement ?? renamed?.RootElement ?? document, 1, Limits, Support, null, jsonChecked: true);
             if (load.Generation is not { } generation)
             {
                 var first = load.Check.Errors.FirstOrDefault() ?? new SpecError("", "schema", "The document can't be opened.");

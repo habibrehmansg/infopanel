@@ -101,13 +101,13 @@ public sealed class WinDesktopWindowTests
             Assert.Equal(foreground, WinTestInterop.GetForegroundWindow());
 
             // On top through a commit, and back.
-            await CommitWindow(api, id, new JsonObject { ["x"] = 200, ["y"] = 120, ["topmost"] = true });
+            await CommitWindow(api, id, new JsonObject { ["x"] = 200, ["y"] = 120, ["level"] = "top" });
             window = await OneWindow(process.Id, w => w.Bounds == new PointRect(200, 120, 400, 200) && (w.ExStyle & Topmost) != 0, "the moved, topmost window");
 
             // A fully transparent pixel of it is still the window's (the floor): a click there lands on the panel.
             await Until(() => Task.FromResult(WinTestInterop.TopLevelAt(400, 220) == window.Handle), "the window at its transparent pixel");
 
-            await CommitWindow(api, id, new JsonObject { ["topmost"] = false });
+            await CommitWindow(api, id, new JsonObject { ["level"] = "normal" });
             window = await OneWindow(process.Id, w => (w.ExStyle & Topmost) == 0, "the window back from the top");
             Assert.Equal(Layered | ToolWindow | NoActivate, window.ExStyle);
 
@@ -177,7 +177,7 @@ public sealed class WinDesktopWindowTests
         {
             var window = await WinUiThreadTests.On(thread, () =>
             {
-                var w = new WinWindow(new DesktopWindowStyle(true, true, true), new PointRect(100, 100, 200, 100));
+                var w = new WinWindow(new DesktopWindowStyle(WindowLevel.Top, true, true), new PointRect(100, 100, 200, 100));
                 w.SetVisible(true);
                 return w;
             });
@@ -224,7 +224,7 @@ public sealed class WinDesktopWindowTests
                 var frames = new[] { Frame(width, height, 0), Frame(width, height, 1) };
                 var window = await WinUiThreadTests.On(thread, () =>
                 {
-                    var w = new WinWindow(new DesktopWindowStyle(false, true, true), new PointRect(-30_000, -30_000, width, height));
+                    var w = new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(-30_000, -30_000, width, height));
                     w.SetVisible(true);
                     return w;
                 });
@@ -496,7 +496,7 @@ public sealed class WinDesktopWindowTests
             await Until(async () => (await Try(() => api.GetStringAsync("/healthz", Ct))) == "ok", "the engine to listen");
             var id = await CreateWithWindow(api, "Drag test", 400, 200, "#336699ff");
             await OneWindow(process.Id, w => w.Bounds == new PointRect(0, 0, 400, 200), "the new profile's window");
-            await CommitWindow(api, id, new JsonObject { ["x"] = 300, ["y"] = 300, ["topmost"] = true });
+            await CommitWindow(api, id, new JsonObject { ["x"] = 300, ["y"] = 300, ["level"] = "top" });
             var window = await OneWindow(process.Id, w => w.Bounds == new PointRect(300, 300, 400, 200) && (w.ExStyle & Topmost) != 0, "the window on top at (300, 300)");
             foreach (var (x, y) in new[] { (500, 400), (697, 497) })
                 Assert.True(WinTestInterop.TopLevelAt(x, y) == window.Handle, $"the window is under ({x}, {y})");

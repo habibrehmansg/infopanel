@@ -60,7 +60,8 @@ public sealed record WindowSettings
     public int? Y { get; init; }
     public DisplayMatch? Display { get; init; }
     public bool? Strict { get; init; }
-    public bool? Topmost { get; init; }
+    /// <summary><c>normal</c> (null: the default), <c>top</c> or <c>desktop</c>: where the window sits among the computer's other windows.</summary>
+    public string? Level { get; init; }
     public bool? Draggable { get; init; }
     public bool? Resizable { get; init; }
 }

@@ -12,7 +12,7 @@ namespace InfoPanel.Tests.Desktop.Windows;
 /// </summary>
 public sealed class WinHitTestTests
 {
-    private static readonly DesktopWindowStyle Both = new(false, true, true);
+    private static readonly DesktopWindowStyle Both = new(WindowLevel.Normal, true, true);
 
     [Theory]
     [InlineData(96, 10)]
@@ -56,22 +56,22 @@ public sealed class WinHitTestTests
     [Fact]
     public void TheBody_IsTheCaption_OnlyWhenTheWindowIsMovable()
     {
-        var fixedInPlace = new DesktopWindowStyle(false, false, true);
+        var fixedInPlace = new DesktopWindowStyle(WindowLevel.Normal, false, true);
 
         Assert.Equal(WinHitTest.HTCLIENT, WinHitTest.Hit(300, 150, 600, 300, 96, fixedInPlace));
         Assert.Equal(WinHitTest.HTBOTTOMRIGHT, WinHitTest.Hit(599, 299, 600, 300, 96, fixedInPlace)); // still resizable
-        Assert.Equal(WinHitTest.HTCLIENT, WinHitTest.Hit(300, 150, 600, 300, 96, new DesktopWindowStyle(true, false, false)));
+        Assert.Equal(WinHitTest.HTCLIENT, WinHitTest.Hit(300, 150, 600, 300, 96, new DesktopWindowStyle(WindowLevel.Top, false, false)));
     }
 
     [Fact]
     public void NoBand_WhenTheWindowIsntResizable()
     {
-        var movableOnly = new DesktopWindowStyle(false, true, false);
+        var movableOnly = new DesktopWindowStyle(WindowLevel.Normal, true, false);
 
         foreach (var (x, y) in new[] { (0, 0), (300, 0), (599, 299), (0, 150), (599, 150), (300, 299) })
         {
             Assert.Equal(WinHitTest.HTCAPTION, WinHitTest.Hit(x, y, 600, 300, 96, movableOnly));
-            Assert.Equal(WinHitTest.HTCLIENT, WinHitTest.Hit(x, y, 600, 300, 192, new DesktopWindowStyle(false, false, false)));
+            Assert.Equal(WinHitTest.HTCLIENT, WinHitTest.Hit(x, y, 600, 300, 192, new DesktopWindowStyle(WindowLevel.Normal, false, false)));
         }
     }
 

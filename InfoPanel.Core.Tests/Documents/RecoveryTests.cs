@@ -912,6 +912,52 @@ public sealed class RecoveryTests : IDisposable
             Assert.True(Path.Exists(path));
     }
 
+    /// <summary>
+    /// A checkpoint an earlier engine kept, whose document has the draft's <c>window.topmost</c>: restored, true as
+    /// <c>level: "top"</c>.
+    /// </summary>
+    [Fact]
+    public void AKeptDocumentWithTopmost_IsRestored_WithLevelTop()
+    {
+        var workspace = StartWorkspace();
+        Create(workspace);
+        workspace.Dispose();
+        var saved = File.ReadAllBytes(Paths.DocumentFile(A));
+        var kept = JsonNode.Parse(DocJson(A, Scene("a", 20, 10), Scene("b", 50, 10)))!.AsObject();
+        kept["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["topmost"] = true };
+        File.WriteAllText(RecoveryPath(), RecoveryJson(Hash(saved), kept.ToJsonString()));
+
+        var doc = StartWorkspace().Open(A)!;
+        Assert.Equal((2L, true), (doc.Rev, doc.Dirty));
+        Assert.NotNull(doc.Recovered);
+        Assert.Equal(20, X(doc.Current));
+        Assert.Equal("top", doc.Current.Document.Profile.Window!.Level);
+        Assert.Empty(RecoveryWarnings());
+    }
+
+    /// <summary>
+    /// A kept document with another id and the draft's <c>window.topmost: true</c>: restored under the folder's id, with
+    /// <c>level: "top"</c>.
+    /// </summary>
+    [Fact]
+    public void AKeptDocumentWithAnotherIdAndTopmost_IsRestored_UnderItsFolderId_WithLevelTop()
+    {
+        var workspace = StartWorkspace();
+        Create(workspace);
+        workspace.Dispose();
+        var saved = File.ReadAllBytes(Paths.DocumentFile(A));
+        var kept = JsonNode.Parse(DocJson(B, Scene("a", 20, 10), Scene("b", 50, 10)))!.AsObject();
+        kept["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["topmost"] = true };
+        File.WriteAllText(RecoveryPath(), RecoveryJson(Hash(saved), kept.ToJsonString()));
+
+        var doc = StartWorkspace().Open(A)!;
+        Assert.Equal((2L, true), (doc.Rev, doc.Dirty));
+        Assert.NotNull(doc.Recovered);
+        Assert.Equal((A, "top"), (doc.Current.Document.Id, doc.Current.Document.Profile.Window!.Level));
+        Assert.Equal(20, X(doc.Current));
+        Assert.Empty(RecoveryWarnings());
+    }
+
     [Fact]
     public void AStoredDocumentWhoseIdIsAnotherKeepsItsFolderIdWhenRestored()
     {

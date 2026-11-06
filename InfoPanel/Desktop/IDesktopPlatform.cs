@@ -39,8 +39,21 @@ public sealed record DisplayInfo(string Name, PointRect Frame, double Scale, str
     public int PixelHeight => (int)Math.Round(Frame.Height * Scale);
 }
 
-/// <summary>How a desktop window behaves: always on top, movable by dragging, resizable from its edges.</summary>
-public readonly record struct DesktopWindowStyle(bool Topmost, bool Movable, bool Resizable);
+/// <summary>Where a desktop window sits among the computer's other windows (the profile's <c>window.level</c>).</summary>
+public enum WindowLevel
+{
+    /// <summary>With the other windows: one brought forward covers it.</summary>
+    Normal,
+
+    /// <summary>Above the other windows.</summary>
+    Top,
+
+    /// <summary>Below every other window and above the desktop's icons; a platform that can't shows it as <see cref="Normal"/>.</summary>
+    Desktop,
+}
+
+/// <summary>How a desktop window behaves: its level, movable by dragging, resizable from its edges.</summary>
+public readonly record struct DesktopWindowStyle(WindowLevel Level, bool Movable, bool Resizable);
 
 /// <summary>
 /// One frame for a desktop window: RGBA, premultiplied (<c>SKColorType.Rgba8888</c>, <c>SKAlphaType.Premul</c>),

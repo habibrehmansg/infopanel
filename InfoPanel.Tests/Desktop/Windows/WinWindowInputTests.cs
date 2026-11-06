@@ -51,7 +51,7 @@ public sealed class WinWindowInputTests
         var thread = new WinUiThread();
         try
         {
-            var window = await WinUiThreadTests.On(thread, () => new WinWindow(new DesktopWindowStyle(false, true, true), new PointRect(100, 100, 400, 200)));
+            var window = await WinUiThreadTests.On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(100, 100, 400, 200)));
             try
             {
                 var arrow = LoadCursorW(IntPtr.Zero, IDC_ARROW);
@@ -83,7 +83,7 @@ public sealed class WinWindowInputTests
         var thread = new WinUiThread();
         try
         {
-            var window = await WinUiThreadTests.On(thread, () => new WinWindow(new DesktopWindowStyle(false, true, true), new PointRect(100, 100, 400, 200)));
+            var window = await WinUiThreadTests.On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(100, 100, 400, 200)));
             try
             {
                 int Hit(int x, int y) => (int)WinTestInterop.SendMessageW(window.Handle, WM_NCHITTEST, IntPtr.Zero, Point(x, y));
@@ -101,12 +101,12 @@ public sealed class WinWindowInputTests
                 Assert.Equal(HTBOTTOMRIGHT, Hit(-101, 239));
 
                 // Not movable: the body is the client, the edges still resize; not resizable either: all client.
-                await WinUiThreadTests.On(thread, () => window.SetStyle(new DesktopWindowStyle(false, false, true)));
+                await WinUiThreadTests.On(thread, () => window.SetStyle(new DesktopWindowStyle(WindowLevel.Normal, false, true)));
                 Assert.Equal(HTCLIENT, Hit(-300, 140));
                 Assert.Equal(HTBOTTOMRIGHT, Hit(-101, 239));
-                await WinUiThreadTests.On(thread, () => window.SetStyle(new DesktopWindowStyle(false, false, false)));
+                await WinUiThreadTests.On(thread, () => window.SetStyle(new DesktopWindowStyle(WindowLevel.Normal, false, false)));
                 Assert.Equal(HTCLIENT, Hit(-101, 239));
-                await WinUiThreadTests.On(thread, () => window.SetStyle(new DesktopWindowStyle(false, true, false)));
+                await WinUiThreadTests.On(thread, () => window.SetStyle(new DesktopWindowStyle(WindowLevel.Normal, true, false)));
                 Assert.Equal(HTCAPTION, Hit(-500, 40));
             }
             finally
@@ -134,7 +134,7 @@ public sealed class WinWindowInputTests
         var thread = new WinUiThread();
         try
         {
-            var window = await WinUiThreadTests.On(thread, () => new WinWindow(new DesktopWindowStyle(false, true, true), new PointRect(100, 100, 400, 200)));
+            var window = await WinUiThreadTests.On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(100, 100, 400, 200)));
             var events = new List<string>();
             var loops = new List<(nint WParam, bool Moving)>();
             Action<nint, nint>? inLoop = null;
@@ -215,7 +215,7 @@ public sealed class WinWindowInputTests
         var thread = new WinUiThread();
         try
         {
-            var window = await WinUiThreadTests.On(thread, () => new WinWindow(new DesktopWindowStyle(false, false, false), new PointRect(100, 100, 400, 200)));
+            var window = await WinUiThreadTests.On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, false, false), new PointRect(100, 100, 400, 200)));
             var moved = 0;
             await WinUiThreadTests.On(thread, () => window.UserMoved += () => moved++);
             try

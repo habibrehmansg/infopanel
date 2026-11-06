@@ -37,7 +37,8 @@ While `window.enabled` is true the profile is shown in a borderless desktop wind
 - `x`, `y`: the window's top-left, in pixels of the matched display, from that display's top-left (default 0, 0).
 - `display`: the display it belongs on. `name`, and `width` × `height`, the display's size in its own pixels, identify it. `display.x` and `display.y` are the display's top-left in the desktop's own coordinates, the system's layout of every display (on macOS these are points, which differ from pixels on a scaled display; on Windows they are pixels); they only tell apart displays with the same name and size. `GET /api/displays` lists the computer's displays, each in this shape ([API](api.md#displays)).
 - Matching: a display with `display`'s name and size matches exactly; of several, the one whose top-left is at `display.x`, `display.y`, else the first of them. With no exact match the window is hidden when `strict` is true (default false); otherwise it goes on the first display with that name, else the first with that size, else the main display. Without `display` the window is on the main display. Displays are matched again whenever they change.
-- `topmost` (default false) keeps the window above others; `draggable` and `resizable` (default true) let a user move and resize it.
+- `level` (default `normal`): `normal` sits with other windows (one brought forward covers it); `top` stays above them; `desktop` stays below every other window and above the desktop's icons, including while the desktop is shown. An engine that can't place a window on the desktop shows it as `normal`.
+- `draggable` and `resizable` (default true) let a user move and resize it.
 
 A user's drag of the window is an ordinary undoable change of `window`: its `x`, `y` and the `display` it ended on (name, size and top-left as above). A resize changes `width` and `height`, and `x`, `y` where the top-left moved.
 

@@ -270,7 +270,13 @@ public static partial class ProfileArchive
 
         using (json)
         {
-            if (workspace.CheckImportDocument(json.RootElement) is { Count: > 0 } errors)
+            // The JSON-level pass first; then a window's topmost, as an earlier engine exported it, is read as its level,
+            // in the document checked and answered (the client creates the profile with it).
+            if (ValidationText.CheckJson(json.RootElement, workspace.Limits.JsonDepth, "/document") is { } invalidJson)
+                throw new ImportRefusal(ValidationText.Cap(invalidJson));
+            using var withLevel = StoredTopmost.Read(json.RootElement);
+            var document = withLevel?.RootElement ?? json.RootElement;
+            if (workspace.CheckImportDocument(document) is { Count: > 0 } errors)
                 throw new ImportRefusal(errors);
 
             // Every blob is one the document refers to, before any is read.
@@ -304,7 +310,7 @@ public static partial class ProfileArchive
                 .Order(StringComparer.Ordinal)
                 .ToList();
 
-            return new ArchiveContents { Document = json.RootElement.Clone(), Blobs = blobs, Missing = missing };
+            return new ArchiveContents { Document = document.Clone(), Blobs = blobs, Missing = missing };
         }
     }
 }

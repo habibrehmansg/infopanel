@@ -11,7 +11,8 @@ namespace InfoPanel.Desktop.MacOS;
 /// <item>Coordinates: AppKit's global space (points, y up from the primary display's bottom-left) is flipped about
 /// the primary display (<c>NSScreen.screens[0]</c>) into <see cref="PointRect"/>'s top-left space.</item>
 /// <item>Windows: borderless (plus the resizable mask when resizable), not opaque, clear background, no shadow,
-/// floating level when topmost, on all Spaces and out of window cycling, movable by their background, never key,
+/// at the profile's level (<see cref="Placement"/>: floating when on top, just above the desktop icons and stationary
+/// when on the desktop), on all Spaces and out of window cycling, movable by their background, never key,
 /// taking every click (also on transparent pixels); a layer-hosting view whose layer shows the frame as a
 /// <c>CGImage</c>, one frame pixel per backing pixel, anchored top-left, nearest-neighbour, without implicit
 /// animations (a frame rendered below scale 1 is stretched to fill the window, filtered linearly).</item>
@@ -30,6 +31,26 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
 
     /// <summary><c>NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorIgnoresCycle</c>.</summary>
     private const nuint CollectionBehavior = (1 << 0) | (1 << 6);
+
+    /// <summary><c>NSWindowCollectionBehaviorStationary</c>: unaffected by Mission Control and Show Desktop, like the desktop.</summary>
+    private const nuint StationaryBehavior = 1 << 4;
+
+    /// <summary><c>kCGDesktopIconWindowLevelKey</c> (CoreGraphics' <c>CGWindowLevel.h</c>).</summary>
+    private const int DesktopIconWindowLevelKey = 18;
+
+    /// <summary>The desktop level: one above the desktop icons, below every app window. Read once.</summary>
+    private static readonly Lazy<nint> DesktopWindowLevel = new(() => ObjC.CGWindowLevelForKey(DesktopIconWindowLevelKey) + 1);
+
+    /// <summary>
+    /// A <see cref="WindowLevel"/>'s AppKit window level and collection behaviour: normal 0 and top floating (3), on every
+    /// Space and out of window cycling; desktop just above the desktop icons, stationary as well.
+    /// </summary>
+    internal static (nint Level, nuint Behavior) Placement(WindowLevel level) => level switch
+    {
+        WindowLevel.Top => (FloatingWindowLevel, CollectionBehavior),
+        WindowLevel.Desktop => (DesktopWindowLevel.Value, CollectionBehavior | StationaryBehavior),
+        _ => (NormalWindowLevel, CollectionBehavior),
+    };
 
     /// <summary>How often a moved window checks whether the mouse button is up again.</summary>
     private static readonly TimeSpan MouseUpPoll = TimeSpan.FromMilliseconds(50);
@@ -257,7 +278,6 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             ObjC.SendVoidId(_window, ObjC.Sel("setBackgroundColor:"), ObjC.Send(ObjC.Class("NSColor"), ObjC.Sel("clearColor")));
             ObjC.SendVoidBool(_window, ObjC.Sel("setHasShadow:"), 0);
             ObjC.SendVoidBool(_window, ObjC.Sel("setIgnoresMouseEvents:"), 0);
-            ObjC.SendVoidUInt(_window, ObjC.Sel("setCollectionBehavior:"), CollectionBehavior);
             ObjC.SendVoidBool(_window, ObjC.Sel("setMovableByWindowBackground:"), 1);
             ObjC.SendVoidInt(_window, ObjC.Sel("setAnimationBehavior:"), 2); // NSWindowAnimationBehaviorNone
 
@@ -337,7 +357,9 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
                 _settingFrame = false;
             }
 
-            ObjC.SendVoidInt(_window, ObjC.Sel("setLevel:"), style.Topmost ? FloatingWindowLevel : NormalWindowLevel);
+            var (level, behavior) = Placement(style.Level);
+            ObjC.SendVoidInt(_window, ObjC.Sel("setLevel:"), level);
+            ObjC.SendVoidUInt(_window, ObjC.Sel("setCollectionBehavior:"), behavior);
             ObjC.SendVoidBool(_window, ObjC.Sel("setMovable:"), style.Movable ? (byte)1 : (byte)0);
         }
 

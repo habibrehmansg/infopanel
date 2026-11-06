@@ -472,13 +472,13 @@ public sealed class McpEditToolTests
         using var factory = new EngineFactory();
         var host = Host(factory);
         var document = Seed(factory, "Desk");
-        TestDocs.Commit(document, TestDocs.Profile(new JsonObject { ["window"] = new JsonObject { ["enabled"] = false, ["topmost"] = true, ["x"] = 12 } }));
+        TestDocs.Commit(document, TestDocs.Profile(new JsonObject { ["window"] = new JsonObject { ["enabled"] = false, ["level"] = "desktop", ["x"] = 12 } }));
         document.Save();
 
         var (text, error) = await Call(host, "show_on_desktop", new JsonObject { ["profile"] = "Desk" });
         Assert.False(error, text);
         var window = document.Read().Document.Profile.Window!;
-        Assert.Equal((true, true, 12), (window.Enabled, window.Topmost!.Value, window.X!.Value));
+        Assert.Equal((true, "desktop", 12), (window.Enabled, window.Level, window.X!.Value));
         Assert.False(document.Dirty);
 
         (text, error) = await Call(host, "show_on_desktop", new JsonObject { ["profile"] = "Desk", ["show"] = false });

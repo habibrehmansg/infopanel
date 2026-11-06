@@ -835,6 +835,28 @@ public sealed class CommitTests
         Assert.Equal(("schema", "/ops/0/set/locale"), (Assert.Single(invalid.Invalid!.Errors).Code, invalid.Invalid.Errors[0].Path));
     }
 
+    /// <summary>
+    /// A commit is closed: the draft's <c>window.topmost</c> is a schema error at its path (only documents the engine
+    /// stored read it), and <c>level</c> takes its three values only.
+    /// </summary>
+    [Fact]
+    public void A_profile_commit_with_topmost_is_a_schema_error_and_level_takes_its_three_values()
+    {
+        using var doc = Open(Doc(Scene("a", 1, 1)));
+
+        var topmost = doc.Invalid(Commit(Profile(new JsonObject { ["window"] = new JsonObject { ["enabled"] = true, ["topmost"] = true } })));
+        Assert.Equal(("schema", "/ops/0/set/window/topmost"), (Assert.Single(topmost.Errors).Code, topmost.Errors[0].Path));
+        var bottom = doc.Invalid(Commit(Profile(new JsonObject { ["window"] = new JsonObject { ["enabled"] = true, ["level"] = "bottom" } })));
+        Assert.Equal(("schema", "/ops/0/set/window/level"), (Assert.Single(bottom.Errors).Code, bottom.Errors[0].Path));
+        Assert.Equal(1, doc.Rev);
+
+        foreach (var level in new[] { "desktop", "top", "normal" })
+        {
+            doc.Ok(Commit(Profile(new JsonObject { ["window"] = new JsonObject { ["enabled"] = true, ["level"] = level } })));
+            Assert.Equal(level, doc.Current.Document.Profile.Window!.Level);
+        }
+    }
+
     private static ExpiredProblem Expired(ProfileDocument doc, JsonElement body)
     {
         var outcome = doc.Commit(body);

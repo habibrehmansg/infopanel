@@ -165,6 +165,10 @@ internal static unsafe class ObjC
     [DllImport(CoreGraphicsPath, EntryPoint = "CGImageRelease")]
     public static extern void CGImageRelease(IntPtr image);
 
+    /// <summary>The window level of a <c>CGWindowLevelKey</c> (CoreGraphics' <c>CGWindowLevel.h</c>; both are <c>int32_t</c>).</summary>
+    [DllImport(CoreGraphicsPath, EntryPoint = "CGWindowLevelForKey")]
+    public static extern int CGWindowLevelForKey(int key);
+
     /// <summary><c>kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big</c>: bytes R, G, B, A, premultiplied (<c>SKColorType.Rgba8888</c>).</summary>
     public const uint RgbaPremultiplied = 1 | (4 << 12);
 

@@ -152,7 +152,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
 
         Assert.True(window.Visible);
         Assert.Equal(Rect(0, 0, 960, 240), window.Frame); // 1920×480 pixels at 2×
-        Assert.Equal(new DesktopWindowStyle(Topmost: false, Movable: true, Resizable: true), window.Style);
+        Assert.Equal(new DesktopWindowStyle(WindowLevel.Normal, Movable: true, Resizable: true), window.Style);
         Assert.Equal(1, doc.Rev);
         Assert.True(Render.IsRendering(doc.Id));
         AssertNoErrors();
@@ -215,16 +215,72 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TopmostDragResizeAndSize_AreAppliedLive()
+    public async Task LevelDragResizeAndSize_AreAppliedLive()
     {
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
 
-        await Patch(doc, new JsonObject { ["topmost"] = true, ["draggable"] = false, ["resizable"] = false });
-        Assert.Equal(new DesktopWindowStyle(Topmost: true, Movable: false, Resizable: false), window.Style);
+        await Patch(doc, new JsonObject { ["level"] = "top", ["draggable"] = false, ["resizable"] = false });
+        Assert.Equal(new DesktopWindowStyle(WindowLevel.Top, Movable: false, Resizable: false), window.Style);
 
         await Patch(doc, new JsonObject { ["width"] = 1000, ["height"] = 300 });
         Assert.Equal(Rect(0, 0, 500, 150), window.Frame);
+        Assert.Same(window, await WindowOf(doc.Id));
+        AssertNoErrors();
+    }
+
+    public static TheoryData<string, string> LevelChanges => new()
+    {
+        { "normal", "top" }, { "normal", "desktop" }, { "top", "normal" }, { "top", "desktop" }, { "desktop", "normal" }, { "desktop", "top" },
+    };
+
+    /// <summary>Each of the six changes between the three levels reaches the window at once, the same window, its other settings kept.</summary>
+    [Theory]
+    [MemberData(nameof(LevelChanges))]
+    public async Task EachLevelChange_IsAppliedLive_ToTheSameWindow(string from, string to)
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        await Patch(doc, new JsonObject { ["level"] = from, ["resizable"] = false });
+        Assert.Equal(new DesktopWindowStyle(LevelOf(from), Movable: true, Resizable: false), window.Style);
+
+        await Patch(doc, new JsonObject { ["level"] = to });
+
+        Assert.Equal(new DesktopWindowStyle(LevelOf(to), Movable: true, Resizable: false), window.Style);
+        Assert.Same(window, await WindowOf(doc.Id));
+        Assert.True(window.Visible);
+        AssertNoErrors();
+    }
+
+    private static WindowLevel LevelOf(string level) => level switch
+    {
+        "top" => WindowLevel.Top,
+        "desktop" => WindowLevel.Desktop,
+        _ => WindowLevel.Normal,
+    };
+
+    [Fact]
+    public async Task ALevelChange_IsAppliedLive_ThroughUndoAndRedo()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        await Patch(doc, new JsonObject { ["level"] = "top" });
+        await Patch(doc, new JsonObject { ["level"] = "desktop" });
+        Assert.Equal(WindowLevel.Desktop, window.Style.Level);
+
+        Undo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal((WindowLevel.Top, "top"), (window.Style.Level, W(doc).Level));
+        Undo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal((WindowLevel.Normal, null), (window.Style.Level, W(doc).Level));
+
+        Redo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal(WindowLevel.Top, window.Style.Level);
+        Redo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal((WindowLevel.Desktop, "desktop"), (window.Style.Level, W(doc).Level));
         Assert.Same(window, await WindowOf(doc.Id));
         AssertNoErrors();
     }
@@ -320,23 +376,25 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     {
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
-        // After the drop read the profile, before its commit: another client makes the window floating and fixed-size.
+        // After the drop read the profile, before its commit: another client puts the window on the desktop, fixed-size.
         Manager.BeforeCommit = _ =>
         {
             Manager.BeforeCommit = null;
-            var changed = JsonNode.Parse(JsonSerializer.Serialize(W(doc) with { Topmost = true, Resizable = false }, SpecJson.Options))!;
+            var changed = JsonNode.Parse(JsonSerializer.Serialize(W(doc) with { Level = "desktop", Resizable = false }, SpecJson.Options))!;
             TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["window"] = changed }));
         };
 
         await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
         await _platform.IdleAsync();
 
-        Assert.Equal((3L, 120, 64, "External", true, false), (doc.Rev, W(doc).X, W(doc).Y, W(doc).Display!.Name, W(doc).Topmost, W(doc).Resizable));
+        Assert.Equal((3L, 120, 64, "External", "desktop", false), (doc.Rev, W(doc).X, W(doc).Y, W(doc).Display!.Name, W(doc).Level, W(doc).Resizable));
+        Assert.Equal(new DesktopWindowStyle(WindowLevel.Desktop, Movable: true, Resizable: false), window.Style);
 
         // Undoing the drag leaves the other client's change.
         Undo(doc);
         await _platform.IdleAsync();
-        Assert.Equal((null, true, false), (W(doc).Display, W(doc).Topmost, W(doc).Resizable));
+        Assert.Equal((null, "desktop", false), (W(doc).Display, W(doc).Level, W(doc).Resizable));
+        Assert.Equal(WindowLevel.Desktop, window.Style.Level);
         AssertNoErrors();
     }
 
@@ -729,7 +787,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         Assert.Equal(1, Interlocked.Read(ref sink.FramesReceived));
 
         // An edit that leaves the pixels alone: the new revision reaches the sink, which skips the copy.
-        await Patch(doc, new JsonObject { ["topmost"] = true });
+        await Patch(doc, new JsonObject { ["level"] = "top" });
         _clock.Advance(TimeSpan.FromMilliseconds(40));
         Assert.Equal(1, Render.Tick(doc.Id));
         await _platform.IdleAsync();

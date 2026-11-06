@@ -71,16 +71,25 @@ public sealed class MacDesktopWindowTests
             Assert.Single(OnScreen(process.Id));
 
             // Moving it and putting it on top through a commit (a client's path).
-            await CommitWindow(api, id, new JsonObject { ["x"] = 200, ["y"] = 120, ["topmost"] = true });
+            await CommitWindow(api, id, new JsonObject { ["x"] = 200, ["y"] = 120, ["level"] = "top" });
             await Until(() => Task.FromResult(OnScreen(process.Id).Any(w =>
                 w.Bounds == new PointRect(200 / scale, 120 / scale, 400 / scale, 200 / scale) && w.Layer == 3)), "the moved, floating window");
+
+            // On the desktop: one level above the desktop icons; then on top again, then normal, each applied live.
+            var desktopLayer = MacWindowLevelTests.CGWindowLevelForKey(MacWindowLevelTests.DesktopIconKey) + 1;
+            foreach (var (level, layer) in new[] { ("desktop", desktopLayer), ("top", 3), ("normal", 0) })
+            {
+                await CommitWindow(api, id, new JsonObject { ["level"] = level });
+                await Until(() => Task.FromResult(OnScreen(process.Id).Any(w =>
+                    w.Bounds == new PointRect(200 / scale, 120 / scale, 400 / scale, 200 / scale) && w.Layer == layer)), $"the window at level {level}");
+            }
 
             // Its window disabled: the window closes.
             await CommitWindow(api, id, new JsonObject { ["enabled"] = false });
             await Until(() => Task.FromResult(OnScreen(process.Id).Count == 0), "the window to close");
 
-            // Moves made by the engine are no edits: the profile has the two commits' revisions only, the example is clean.
-            Assert.Equal(3, (await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", Ct)).GetProperty("rev").GetInt64());
+            // Moves made by the engine are no edits: the profile has the five commits' revisions only, the example is clean.
+            Assert.Equal(6, (await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{id}", Ct)).GetProperty("rev").GetInt64());
             Assert.False((await api.GetFromJsonAsync<JsonElement>($"/api/profiles/{example}", Ct)).GetProperty("dirty").GetBoolean());
 
             // Over the frame pixel cap: drawn at half the scale, the layer stretches it (contents scale halved, linear

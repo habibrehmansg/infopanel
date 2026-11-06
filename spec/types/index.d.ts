@@ -2080,8 +2080,11 @@ export interface WindowSettings {
    * @default false
    */
   strict?: boolean;
-  /** @default false */
-  topmost?: boolean;
+  /**
+   * Where the window sits among the computer's other windows: normal with them, top above them, desktop below every other window and above the desktop icons (docs/document.md).
+   * @default "normal"
+   */
+  level?: "normal" | "top" | "desktop";
   /** @default true */
   draggable?: boolean;
   /** @default true */

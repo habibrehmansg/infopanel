@@ -196,7 +196,7 @@ public sealed class DisplayEndpointTests
         foreach (var strict in new[] { false, true })
         {
             var document = TestDocs.Doc("Long " + strict, 400, 300, TestDocs.Scene("a", 10, 10, TestDocs.Rect("#00ff00", 40, 20)));
-            document["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["topmost"] = true };
+            document["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["level"] = "top" };
             var id = await TestDocs.CreateAsync(api, document, Ct);
             await platform.IdleAsync();
 
@@ -206,7 +206,7 @@ public sealed class DisplayEndpointTests
                 ["window"] = new JsonObject
                 {
                     ["enabled"] = true,
-                    ["topmost"] = true,
+                    ["level"] = "top",
                     ["strict"] = strict,
                     ["x"] = 0,
                     ["y"] = 0,
@@ -437,7 +437,7 @@ public sealed class DisplayEndpointTests
         var manager = factory.Services.GetRequiredService<DisplayWindowManager>();
 
         var document = TestDocs.Doc("Fill", 400, 300, TestDocs.Scene("a", 10, 10, TestDocs.Rect("#00ff00", 40, 20)));
-        document["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["topmost"] = true };
+        document["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["level"] = "top" };
         var id = await TestDocs.CreateAsync(api, document, Ct);
         await platform.IdleAsync();
 
@@ -452,7 +452,7 @@ public sealed class DisplayEndpointTests
                 ["window"] = new JsonObject
                 {
                     ["enabled"] = true,
-                    ["topmost"] = true,
+                    ["level"] = "top",
                     ["x"] = 0,
                     ["y"] = 0,
                     ["display"] = new JsonObject { ["name"] = name, ["width"] = width, ["height"] = height, ["x"] = x, ["y"] = y },

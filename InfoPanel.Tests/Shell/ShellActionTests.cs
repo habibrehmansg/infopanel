@@ -150,13 +150,13 @@ public sealed class ShellActionTests : IDisposable
     {
         await Shown();
         var doc = TestDocs.Doc("Neon core", 100, 50);
-        doc["profile"]!["window"] = new JsonObject { ["enabled"] = false, ["x"] = 40, ["y"] = 30, ["topmost"] = true };
+        doc["profile"]!["window"] = new JsonObject { ["enabled"] = false, ["x"] = 40, ["y"] = 30, ["level"] = "desktop" };
         var id = TestDocs.Create(Workspace, doc);
 
         await _shell.ClickAsync(ShellMenu.DesktopItem(id, show: true));
 
         var window = Doc(id).Current.Document.Profile.Window!;
-        Assert.Equal((true, 40, 30, true), (window.Enabled, window.X, window.Y, window.Topmost));
+        Assert.Equal((true, 40, 30, "desktop"), (window.Enabled, window.X, window.Y, window.Level));
     }
 
     [Fact]

@@ -14,7 +14,7 @@ namespace InfoPanel.Desktop;
 /// and every document's <see cref="ProfileDocument.Changed"/> (commits, undo, redo, revert). Every profile that can be
 /// opened is opened so its changes are seen; the settings are read from its <see cref="ProfileDocument.Current"/>
 /// generation.</item>
-/// <item>Applies the profile's <c>width</c> and <c>height</c> and its <c>window</c> (<c>enabled</c>, <c>topmost</c>,
+/// <item>Applies the profile's <c>width</c> and <c>height</c> and its <c>window</c> (<c>enabled</c>, <c>level</c>,
 /// <c>draggable</c>, <c>resizable</c>, <c>x</c>, <c>y</c>, <c>display</c>, <c>strict</c>) as they change, and re-matches
 /// displays when they change (<see cref="DisplayMatcher"/>). Its own moves never produce commits.</item>
 /// <item>The window's own changes are <c>profile</c> commits with a <c>gesture:</c> coalescing key of their own and the
@@ -428,7 +428,7 @@ public sealed class DisplayWindowManager(
     /// display when it was dragged to one, and its size when it was resized, as one <c>profile</c> op with a
     /// <c>gesture:</c> key of its own. The op sets the whole <c>window</c> as read, so it carries that read's revision
     /// as its <c>baseRev</c>: when another change to the profile came first (409), the latest window is read and the
-    /// place applied to it again, up to <see cref="CommitAttempts"/> times, so another client's <c>topmost</c>,
+    /// place applied to it again, up to <see cref="CommitAttempts"/> times, so another client's <c>level</c>,
     /// <c>resizable</c> or <c>enabled</c> is never undone. A commit that changes nothing makes no revision.
     /// </summary>
     private void Edit(WindowEntry entry, int x, int y, DisplayMatch? target, (int Width, int Height)? size, DisplayInfo display)
@@ -551,8 +551,16 @@ public sealed class DisplayWindowManager(
         {
             var p = doc.Current.Document.Profile;
             var w = p.Window;
-            return new Settings(w?.Enabled == true, new DesktopWindowStyle(w?.Topmost ?? false, w?.Draggable ?? true, w?.Resizable ?? true),
+            return new Settings(w?.Enabled == true, new DesktopWindowStyle(LevelOf(w?.Level), w?.Draggable ?? true, w?.Resizable ?? true),
                 Math.Max(1, p.Width), Math.Max(1, p.Height), w?.X ?? 0, w?.Y ?? 0, w?.Display, w?.Strict ?? false);
         }
+
+        /// <summary><c>window.level</c>: <c>top</c>, <c>desktop</c>, else (absent, <c>normal</c>) normal.</summary>
+        private static WindowLevel LevelOf(string? level) => level switch
+        {
+            "top" => WindowLevel.Top,
+            "desktop" => WindowLevel.Desktop,
+            _ => WindowLevel.Normal,
+        };
     }
 }

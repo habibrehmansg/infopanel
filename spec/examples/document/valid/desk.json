@@ -15,7 +15,7 @@
       "y": 50,
       "display": {"name": "Built-in Retina Display", "width": 3024, "height": 1964, "x": 0, "y": 0},
       "strict": false,
-      "topmost": true,
+      "level": "top",
       "draggable": true,
       "resizable": false
     },

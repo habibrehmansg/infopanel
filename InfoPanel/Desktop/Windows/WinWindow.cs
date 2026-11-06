@@ -92,7 +92,8 @@ internal sealed unsafe class WinWindow : IDesktopWindow
         fixed (char* className = ClassName)
         fixed (char* title = "InfoPanel")
         {
-            _hwnd = Win32.CreateWindowExW(ExStyle | (style.Topmost ? Win32.WS_EX_TOPMOST : 0), className, title, WindowStyle,
+            // WindowLevel.Desktop is shown as Normal here for now (the desktop level on Windows is still to come).
+            _hwnd = Win32.CreateWindowExW(ExStyle | (style.Level == WindowLevel.Top ? Win32.WS_EX_TOPMOST : 0), className, title, WindowStyle,
                 x, y, width, height, 0, 0, instance, 0);
         }
 
@@ -180,11 +181,11 @@ internal sealed unsafe class WinWindow : IDesktopWindow
         if (_hwnd == 0 || style == Style)
             return;
 
-        if (style.Topmost != Style.Topmost)
+        if ((style.Level == WindowLevel.Top) != (Style.Level == WindowLevel.Top))
         {
-            var after = style.Topmost ? Win32.HWND_TOPMOST : Win32.HWND_NOTOPMOST;
+            var after = style.Level == WindowLevel.Top ? Win32.HWND_TOPMOST : Win32.HWND_NOTOPMOST;
             if (Win32.SetWindowPos(_hwnd, after, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE) == 0)
-                Logger.Warning("A desktop window couldn't be put {Where} ({Error})", style.Topmost ? "on top" : "back", Marshal.GetLastPInvokeError());
+                Logger.Warning("A desktop window couldn't be put {Where} ({Error})", style.Level == WindowLevel.Top ? "on top" : "back", Marshal.GetLastPInvokeError());
         }
 
         Style = style;

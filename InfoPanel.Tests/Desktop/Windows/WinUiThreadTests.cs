@@ -221,7 +221,7 @@ public sealed class WinUiThreadTests
         var thread = new WinUiThread();
         try
         {
-            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(false, true, true), new PointRect(100, 100, 400, 200)));
+            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(100, 100, 400, 200)));
             var read = WinTestInterop.Read(window.Handle);
             Assert.Equal("InfoPanelDesktopWindow", read.Class);
             Assert.Equal(Popup, read.Style);
@@ -229,12 +229,16 @@ public sealed class WinUiThreadTests
             Assert.Equal((IntPtr)3, WinTestInterop.SendMessageW(window.Handle, WinTestInterop.WM_MOUSEACTIVATE, IntPtr.Zero, IntPtr.Zero)); // MA_NOACTIVATE
             Assert.True(WinTestInterop.IsPerMonitorV2(window.Handle));
 
-            await On(thread, () => window.SetStyle(new DesktopWindowStyle(true, true, true)));
+            await On(thread, () => window.SetStyle(new DesktopWindowStyle(WindowLevel.Top, true, true)));
             Assert.Equal(Layered | ToolWindow | NoActivate | Topmost, WinTestInterop.Read(window.Handle).ExStyle);
-            await On(thread, () => window.SetStyle(new DesktopWindowStyle(false, true, true)));
+            await On(thread, () => window.SetStyle(new DesktopWindowStyle(WindowLevel.Normal, true, true)));
+            Assert.Equal(Layered | ToolWindow | NoActivate, WinTestInterop.Read(window.Handle).ExStyle);
+            // On the desktop: never topmost, from the top too.
+            await On(thread, () => window.SetStyle(new DesktopWindowStyle(WindowLevel.Top, true, true)));
+            await On(thread, () => window.SetStyle(new DesktopWindowStyle(WindowLevel.Desktop, true, true)));
             Assert.Equal(Layered | ToolWindow | NoActivate, WinTestInterop.Read(window.Handle).ExStyle);
 
-            var topmost = await On(thread, () => new WinWindow(new DesktopWindowStyle(true, true, true), new PointRect(0, 0, 10, 10)));
+            var topmost = await On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Top, true, true), new PointRect(0, 0, 10, 10)));
             Assert.Equal(Layered | ToolWindow | NoActivate | Topmost, WinTestInterop.Read(topmost.Handle).ExStyle);
 
             // WM_CLOSE is ignored: a window closes when its profile's window is turned off.
@@ -266,7 +270,7 @@ public sealed class WinUiThreadTests
         var thread = new WinUiThread();
         try
         {
-            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(false, true, true), new PointRect(100, 100, 400, 200)));
+            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(100, 100, 400, 200)));
             Assert.Equal(new PointRect(100, 100, 400, 200), WinTestInterop.Read(window.Handle).Bounds);
             Assert.Equal(new PointRect(100, 100, 400, 200), await On(thread, () => window.Frame));
             Assert.Equal(1, window.BackingScale);
@@ -325,7 +329,7 @@ public sealed class WinUiThreadTests
         try
         {
             var updates = 0;
-            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(false, true, true), new PointRect(-30_000, -30_000, 40, 20))
+            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(-30_000, -30_000, 40, 20))
             {
                 UpdateLayered = () => ++updates > 2, // the first two updates fail
             });
@@ -369,7 +373,7 @@ public sealed class WinUiThreadTests
         {
             var updates = 0;
             var succeed = false;
-            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(false, true, true), new PointRect(-30_000, -30_000, 40, 20))
+            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(-30_000, -30_000, 40, 20))
             {
                 UpdateLayered = () =>
                 {
@@ -429,7 +433,7 @@ public sealed class WinUiThreadTests
         {
             foreach (var (width, height) in new[] { (400, 200), (500, 250) })
             {
-                var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(false, true, true), new PointRect(-30_000, -30_000, 400, 200)));
+                var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(-30_000, -30_000, 400, 200)));
                 await On(thread, () => window.ShowFrame(Solid(400, 200, 255, 0, 0)));
                 Assert.Equal(red, await On(thread, () => window.PixelAt(350, 175)));
 
