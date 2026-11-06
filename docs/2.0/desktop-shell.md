@@ -142,6 +142,9 @@ asked:
   answers on the channel, the engine holding the folder is stopping (it closes its channel before it lets go of the
   folder, which it keeps through its clean-up) or starting: the new process waits for the folder, up to 5 s, and starts
   once it is free; still held then, it exits 3. So a quick relaunch during a shutdown starts the engine again.
+- **opening the app again** on macOS (double-clicking InfoPanel in Finder or the Dock while it runs): no second process
+  starts; the running app is told (the app delegate's `applicationShouldHandleReopen:hasVisibleWindows:`) and runs Open
+  Editor. Only while the menu-bar item shows (not `--no-tray`), since the delegate is the item's.
 
 **What opens.** With no web client served here (no `--web-root`, no `wwwroot` beside the engine) and exactly one
 cross origin allowed, the engine opens that origin's code link (`{origin}/#engine=http://127.0.0.1:{port}&code={code}`):

@@ -35,6 +35,18 @@ public interface IShellPlatform
     event Action? TerminateRequested;
 
     /// <summary>
+    /// The app is opened again while it runs: on macOS, Finder or the Dock tells the running app (the app delegate's
+    /// <c>applicationShouldHandleReopen:hasVisibleWindows:</c>) instead of starting a second process. The engine runs Open
+    /// Editor, as a second launch does. A platform where opening again starts a second process (Windows: the local
+    /// channel's <c>launch</c>) keeps this default, which never raises it.
+    /// </summary>
+    event Action? ReopenRequested
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// Puts <paramref name="text"/> on the system's clipboard as plain text (Copy Engine Details). Any thread. A platform
     /// without a clipboard of its own keeps this default, which does nothing.
     /// </summary>

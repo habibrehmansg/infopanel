@@ -17,7 +17,8 @@ namespace InfoPanel.Shell.MacOS;
 /// engine's stop) could run until someone answered it. The engine's stop (<see cref="Remove"/>) dismisses an open
 /// prompt and answers every waiting one with its cancel button. The item's target is also the application's delegate: a system quit (<c>applicationShouldTerminate:</c>)
 /// answers <c>NSTerminateLater</c> and asks the engine to stop; <see cref="MacMainLoop"/> lets the quit go on once the
-/// host has stopped. Everything AppKit runs on the main thread, inside <see cref="MacMainLoop"/>.
+/// host has stopped. Opening the app again while it runs (Finder or the Dock: <c>applicationShouldHandleReopen:hasVisibleWindows:</c>)
+/// raises <see cref="ReopenRequested"/>, which opens the editor. Everything AppKit runs on the main thread, inside <see cref="MacMainLoop"/>.
 /// </summary>
 [SupportedOSPlatform("macos")]
 internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
@@ -78,6 +79,8 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
     public bool IsSupported => true;
 
     public event Action? TerminateRequested;
+
+    public event Action? ReopenRequested;
 
     public void Show(ShellIcon icon, Func<ShellMenu> menu, Func<string, Task> invoked) => loop.Post(() =>
     {
@@ -244,6 +247,13 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
         return image;
     }
 
+    /// <summary>
+    /// The reopen method's type encoding: <c>BOOL</c> is <c>bool</c> (<c>B</c>) on Apple silicon and <c>signed char</c>
+    /// (<c>c</c>) on Intel, and the managed method takes and returns that one byte.
+    /// </summary>
+    private static string ReopenTypes =>
+        RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@B" : "c@:@c";
+
     private void EnsureTarget()
     {
         _current = this;
@@ -253,7 +263,8 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
                 ("menuNeedsUpdate:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&MenuNeedsUpdate, "v@:@"),
                 ("invoke:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&Invoke, "v@:@"),
                 ("prompt:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&Prompt, "v@:@"),
-                ("applicationShouldTerminate:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, nuint>)&ShouldTerminate, "Q@:@"));
+                ("applicationShouldTerminate:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, nuint>)&ShouldTerminate, "Q@:@"),
+                ("applicationShouldHandleReopen:hasVisibleWindows:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, byte, byte>)&ShouldHandleReopen, ReopenTypes));
         }
 
         if (_target == IntPtr.Zero)
@@ -424,6 +435,17 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
             _current?.TerminateRequested?.Invoke();
         });
         return TerminateLater;
+    }
+
+    /// <summary>
+    /// The app was opened again while it runs: the engine opens the editor. Answers NO, so AppKit does nothing more (an
+    /// accessory app has no window of its own to bring back).
+    /// </summary>
+    [UnmanagedCallersOnly]
+    private static byte ShouldHandleReopen(IntPtr self, IntPtr sel, IntPtr app, byte hasVisibleWindows)
+    {
+        Guard(() => _current?.ReopenRequested?.Invoke());
+        return 0;
     }
 
     /// <summary>Exceptions must never unwind into Objective-C.</summary>

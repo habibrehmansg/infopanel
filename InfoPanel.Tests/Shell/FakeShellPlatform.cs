@@ -18,9 +18,15 @@ public sealed class FakeShellPlatform : IShellPlatform
     /// <summary>The host's lifetime, set when the fake is registered: <see cref="Show"/> notes whether the host had started.</summary>
     public IHostApplicationLifetime? Lifetime { get; set; }
 
-    public bool IsSupported => true;
+    /// <summary>True, unless a test makes the platform one without a menu-bar item (the shell off).</summary>
+    public bool IsSupported { get; init; } = true;
 
     public event Action? TerminateRequested;
+
+    public event Action? ReopenRequested;
+
+    /// <summary>Whether the engine listens for the app being opened again.</summary>
+    public bool ListensForReopen => ReopenRequested != null;
 
     /// <summary>The icon as shown, or null before <see cref="Show"/>.</summary>
     public ShellIcon? Icon { get; private set; }
@@ -111,4 +117,7 @@ public sealed class FakeShellPlatform : IShellPlatform
 
     /// <summary>The system asks the app to quit (logout, shutdown, Activity Monitor).</summary>
     public void RequestTerminate() => TerminateRequested?.Invoke();
+
+    /// <summary>The app is opened again while it runs (Finder or the Dock on macOS).</summary>
+    public void Reopen() => ReopenRequested?.Invoke();
 }

@@ -228,6 +228,50 @@ public sealed class ShellServiceTests : IDisposable
         Assert.Empty(_shell.Prompts);
     }
 
+    /// <summary>
+    /// Opening the app again while it runs (Finder or the Dock on macOS: the running app is told, no second process starts)
+    /// runs Open Editor once, as a second launch does; the engine stops listening for it when it stops.
+    /// </summary>
+    [Fact]
+    public async Task OpeningTheAppAgain_OpensTheEditorOnce()
+    {
+        await WaitUntil(() => _shell.Icon != null);
+
+        _shell.Reopen();
+
+        await WaitUntil(() => _browser.Opened.Count > 0);
+        await Task.Delay(200, Ct);
+        Assert.Equal([$"http://127.0.0.1:{EngineFactory.Port}/auth/{EngineFactory.Token}"], _browser.Opened);
+        Assert.False(Stopping);
+
+        _factory.Dispose();
+
+        Assert.False(_shell.ListensForReopen);
+    }
+
+    /// <summary>With the shell off (no menu-bar item), opening the app again opens nothing.</summary>
+    [Fact]
+    public async Task OpeningTheAppAgain_WithTheShellOff_OpensNothing()
+    {
+        using var engine = new EngineFactory();
+        var shell = new FakeShellPlatform { IsSupported = false };
+        var browser = new RecordingBrowserLauncher();
+        using var factory = engine.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IShellPlatform>(shell);
+            services.AddSingleton<BrowserLauncher>(browser);
+        }));
+        // Starts the host.
+        Assert.True(factory.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStarted.IsCancellationRequested);
+
+        shell.Reopen();
+
+        await Task.Delay(300, Ct);
+        Assert.False(shell.ListensForReopen);
+        Assert.Null(shell.Icon);
+        Assert.Empty(browser.Opened);
+    }
+
     [Theory]
     [InlineData("Production", false)]
     [InlineData("Development", false)]

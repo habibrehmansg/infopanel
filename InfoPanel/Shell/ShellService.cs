@@ -30,6 +30,7 @@ namespace InfoPanel.Shell;
 /// <item><b>Quit InfoPanel</b> stops the engine at once when no profile has unsaved changes; otherwise it asks first,
 /// naming them: Open Editor (the default), Cancel, or Quit Without Saving.</item>
 /// <item>A system quit (logout, shutdown, Activity Monitor) stops the engine without asking.</item>
+/// <item>Opening the app again while it runs (Finder or the Dock on macOS) runs Open Editor.</item>
 /// </list>
 /// Handlers leave the platform's UI thread before they do anything, so a prompt or a browser start never holds it.
 /// The host setting <see cref="TestPromptSetting"/> (tests set <c>Engine__ShellTestPrompt</c>) asks the Quit prompt once
@@ -78,6 +79,7 @@ public sealed class ShellService(
             return Task.CompletedTask;
 
         platform.TerminateRequested += OnTerminateRequested;
+        platform.ReopenRequested += OnReopenRequested;
         _started = lifetime.ApplicationStarted.Register(() =>
         {
             platform.Show(new ShellIcon($"InfoPanel — {runtime.BaseUrl}"), Menu, InvokedAsync);
@@ -97,6 +99,7 @@ public sealed class ShellService(
         _started.Dispose();
         _stopping.Dispose();
         platform.TerminateRequested -= OnTerminateRequested;
+        platform.ReopenRequested -= OnReopenRequested;
         NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
         await holder.StopAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -159,6 +162,13 @@ public sealed class ShellService(
     {
         logger.LogInformation("The system asked InfoPanel to quit");
         _ = Task.Run(lifetime.StopApplication);
+    }
+
+    /// <summary>The app was opened again while it runs (Finder or the Dock on macOS): Open Editor, as a second launch does.</summary>
+    private void OnReopenRequested()
+    {
+        logger.LogInformation("InfoPanel was opened again: opening the editor");
+        _ = InvokedAsync(ShellMenu.OpenEditor);
     }
 
     private async Task InvokedAsync(string id)
