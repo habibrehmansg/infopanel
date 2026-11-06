@@ -10,22 +10,24 @@ using Xunit;
 
 namespace InfoPanel.Tests;
 
-// The engine's own sources that read on every OS (the clock, the drives, the network, the weather): registered outside
-// mock mode and a replay, none in either; the network's public address lookup is left out under --offline, and follows
-// the engine's settings (sources.network.publicIp) as they change; the weather follows sources.weather.
+// The engine's own sources (the clock, the drives, the network, the weather on every OS; the volume on macOS):
+// registered outside mock mode and a replay, none in either; the network's public address lookup is left out under
+// --offline, and follows the engine's settings (sources.network.publicIp) as they change; the weather follows
+// sources.weather.
 public class BuiltInSourcesTests
 {
     [Theory]
     [InlineData(false, false, new[] { "infopanel.clock", "infopanel.drives", "infopanel.network", "infopanel.weather" })]
     [InlineData(true, false, new string[0])]
     [InlineData(false, true, new string[0])]
-    public void The_clock_the_drives_the_network_and_the_weather_are_registered_outside_mock_mode_and_a_replay(bool mock, bool replay, string[] expected)
+    public void The_clock_the_drives_the_network_the_weather_and_on_macOS_the_volume_are_registered_outside_mock_mode_and_a_replay(bool mock, bool replay, string[] everywhere)
     {
         var services = new ServiceCollection().AddSingleton(TimeProvider.System);
         services.AddBuiltInSources(new EngineOptions { Mock = mock, ReplaySensors = replay ? "recording" : null });
 
         using var provider = services.BuildServiceProvider();
 
+        string[] expected = OperatingSystem.IsMacOS() && everywhere.Length > 0 ? [.. everywhere, "infopanel.volume"] : everywhere;
         Assert.Equal(expected, provider.GetServices<ISensorSource>().Select(s => s.Id));
     }
 
