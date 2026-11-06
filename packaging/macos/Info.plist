@@ -2,7 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- The app bundle's Info.plist, a template: build.sh copies it into InfoPanel.app/Contents and sets
      CFBundleShortVersionString (the version's numeric part) and CFBundleVersion (the whole version) from its version
-     argument. LSUIElement: a menu-bar app, no Dock icon. LSMinimumSystemVersion: the oldest macOS .NET 10 supports. -->
+     argument. LSUIElement: a menu-bar app, no Dock icon. LSMinimumSystemVersion: the oldest macOS .NET 10 supports.
+     CFBundleURLTypes: the infopanel: link, which opens the editor (nothing in the link is read). -->
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
@@ -21,6 +22,17 @@
 	<string>InfoPanel</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>net.infopanel.InfoPanel</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>infopanel</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>0.0.0</string>
 	<key>CFBundleVersion</key>

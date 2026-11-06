@@ -32,6 +32,12 @@ public sealed partial class EngineOptions
 
     public bool NoBrowser { get; init; }
 
+    /// <summary>
+    /// A launch an <c>infopanel:</c> link asked for (<see cref="EngineCommandLine"/>: the link as the only argument, never
+    /// read): an engine it starts opens the editor once it listens; on a held folder it is a second launch.
+    /// </summary>
+    public bool FromLink { get; init; }
+
     /// <summary>Don't show active profiles as desktop windows (<c>--no-windows</c>).</summary>
     public bool NoWindows { get; init; }
 
@@ -184,6 +190,7 @@ public sealed partial class EngineOptions
 
         var mock = Flag(section, "Mock", "--mock", problems) || seed != null;
         var noBrowser = Flag(section, "NoBrowser", "--no-browser", problems);
+        var fromLink = Flag(section, "FromLink", "a link to InfoPanel", problems);
         var noWindows = Flag(section, "NoWindows", "--no-windows", problems);
         var noTray = Flag(section, "NoTray", "--no-tray", problems);
         var fresh = Flag(section, "Fresh", "--fresh", problems);
@@ -361,6 +368,7 @@ public sealed partial class EngineOptions
             V1Dir = fullV1Dir,
             WebRoot = webRoot == null ? null : Path.GetFullPath(webRoot),
             NoBrowser = noBrowser,
+            FromLink = fromLink,
             NoWindows = noWindows,
             NoTray = noTray,
             Token = token ?? NewToken(),

@@ -18,7 +18,10 @@ namespace InfoPanel.Shell.MacOS;
 /// prompt and answers every waiting one with its cancel button. The item's target is also the application's delegate: a system quit (<c>applicationShouldTerminate:</c>)
 /// answers <c>NSTerminateLater</c> and asks the engine to stop; <see cref="MacMainLoop"/> lets the quit go on once the
 /// host has stopped. Opening the app again while it runs (Finder or the Dock: <c>applicationShouldHandleReopen:hasVisibleWindows:</c>)
-/// raises <see cref="ReopenRequested"/>, which opens the editor. Everything AppKit runs on the main thread, inside <see cref="MacMainLoop"/>.
+/// raises <see cref="ReopenRequested"/>, which opens the editor; so does an <c>infopanel:</c> link (<c>application:openURLs:</c>,
+/// the URLs never read). The delegate is set before the AppKit loop runs (<see cref="InstallDelegate"/>), so a link that
+/// starts the app isn't lost; until the item shows, a system quit goes on at once. Everything AppKit runs on the main
+/// thread, inside <see cref="MacMainLoop"/>.
 /// </summary>
 [SupportedOSPlatform("macos")]
 internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
@@ -76,17 +79,87 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
     private bool _promptOpen;
     private bool _closed;
 
+    /// <summary><c>NSTerminateNow</c>: AppKit's own answer to a system quit.</summary>
+    private const nuint TerminateNow = 1;
+
+    // Main thread only: whether the item has shown (a system quit before it goes on at once).
+    private bool _shown;
+
+    private readonly Lock _reopenLock = new();
+    private Action? _reopen;
+    private bool _reopenMissed;
+
     public bool IsSupported => true;
 
     public event Action? TerminateRequested;
 
-    public event Action? ReopenRequested;
+    /// <summary>
+    /// Raised when the app is opened again or an <c>infopanel:</c> link is opened. One raised before anyone listens (a
+    /// link that started the app arrives while AppKit finishes launching, before the engine's services start) is kept
+    /// and given to the first listener as it subscribes, once.
+    /// </summary>
+    public event Action? ReopenRequested
+    {
+        add
+        {
+            bool missed;
+            lock (_reopenLock)
+            {
+                _reopen += value;
+                missed = _reopenMissed && value != null;
+                if (missed)
+                    _reopenMissed = false;
+            }
+
+            if (missed)
+                value!();
+        }
+        remove
+        {
+            lock (_reopenLock)
+                _reopen -= value;
+        }
+    }
+
+    private void RaiseReopen()
+    {
+        Action? handlers;
+        lock (_reopenLock)
+        {
+            handlers = _reopen;
+            if (handlers == null)
+                _reopenMissed = true;
+        }
+
+        handlers?.Invoke();
+    }
+
+    /// <summary>
+    /// Makes the item's target the application's delegate now, on the main thread before the AppKit loop runs, so a link
+    /// that started the app (delivered while AppKit finishes launching) reaches it. Until the item shows, the delegate
+    /// lets a system quit go on at once, as AppKit's default does.
+    /// </summary>
+    internal void InstallDelegate()
+    {
+        var pool = ObjC.AutoreleasePoolPush();
+        try
+        {
+            EnsureTarget();
+            var app = ObjC.Send(ObjC.Class("NSApplication"), ObjC.Sel("sharedApplication"));
+            ObjC.SendVoidId(app, ObjC.Sel("setDelegate:"), _target);
+        }
+        finally
+        {
+            ObjC.AutoreleasePoolPop(pool);
+        }
+    }
 
     public void Show(ShellIcon icon, Func<ShellMenu> menu, Func<string, Task> invoked) => loop.Post(() =>
     {
         if (_item != IntPtr.Zero)
             return;
         EnsureTarget();
+        _shown = true;
         _menuSource = menu;
         _invoked = invoked;
 
@@ -264,7 +337,8 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
                 ("invoke:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&Invoke, "v@:@"),
                 ("prompt:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&Prompt, "v@:@"),
                 ("applicationShouldTerminate:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, nuint>)&ShouldTerminate, "Q@:@"),
-                ("applicationShouldHandleReopen:hasVisibleWindows:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, byte, byte>)&ShouldHandleReopen, ReopenTypes));
+                ("applicationShouldHandleReopen:hasVisibleWindows:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, byte, byte>)&ShouldHandleReopen, ReopenTypes),
+                ("application:openURLs:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, void>)&OpenUrls, "v@:@@"));
         }
 
         if (_target == IntPtr.Zero)
@@ -426,9 +500,15 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
     [UnmanagedCallersOnly]
     private static void Prompt(IntPtr self, IntPtr sel, IntPtr argument) => Guard(() => _current?.ShowNextPrompt());
 
+    /// <summary>
+    /// A system quit: once the item has shown, answers <c>NSTerminateLater</c> and asks the engine to stop; before then
+    /// (the delegate is set before the loop runs), <c>NSTerminateNow</c>, as AppKit does without a delegate.
+    /// </summary>
     [UnmanagedCallersOnly]
     private static nuint ShouldTerminate(IntPtr self, IntPtr sel, IntPtr app)
     {
+        if (_current is not { _shown: true })
+            return TerminateNow;
         Guard(() =>
         {
             MacMainLoop.TerminateLater = true;
@@ -444,9 +524,20 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
     [UnmanagedCallersOnly]
     private static byte ShouldHandleReopen(IntPtr self, IntPtr sel, IntPtr app, byte hasVisibleWindows)
     {
-        Guard(() => _current?.ReopenRequested?.Invoke());
+        Guard(() => _current?.RaiseReopen());
         return 0;
     }
+
+    /// <summary>
+    /// An <c>infopanel:</c> link was opened (a web page, Finder, <c>open</c>): the same request as opening the app again,
+    /// which opens the editor. <paramref name="urls"/> is never read: nothing of the link is parsed, logged or passed on.
+    /// </summary>
+    [UnmanagedCallersOnly]
+    private static void OpenUrls(IntPtr self, IntPtr sel, IntPtr app, IntPtr urls) => Guard(() =>
+    {
+        Logger.Information("InfoPanel was opened from a link: opening the editor");
+        _current?.RaiseReopen();
+    });
 
     /// <summary>Exceptions must never unwind into Objective-C.</summary>
     private static void Guard(Action action)

@@ -325,6 +325,111 @@ public sealed class ShellServiceTests : IDisposable
 }
 
 /// <summary>
+/// The editor asked for before the engine listens: an <c>infopanel:</c> link that started InfoPanel (on macOS the app
+/// opened again before its services listen; on Windows the launch's flag) opens it once, after the server listens.
+/// </summary>
+public sealed class ShellEarlyOpenTests
+{
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    [Fact]
+    public async Task OpenedAgainBeforeTheEngineListens_OpensTheEditorOnce_AfterTheIconShows()
+    {
+        using var engine = new EngineFactory();
+        var shell = new FakeShellPlatform { ReopensAsTheEngineStarts = 2 };
+        var browser = new RecordingBrowserLauncher();
+        var shownWhenOpened = new List<bool>();
+        browser.Opening = () =>
+        {
+            lock (shownWhenOpened)
+                shownWhenOpened.Add(shell.Icon != null && shell.ShownAfterStart == true);
+        };
+        using var factory = engine.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IShellPlatform>(sp =>
+            {
+                shell.Lifetime = sp.GetRequiredService<IHostApplicationLifetime>();
+                return shell;
+            });
+            services.AddSingleton<BrowserLauncher>(browser);
+        }));
+        _ = factory.Services;
+
+        await WaitUntil(() => browser.Opened.Count > 0);
+        await Task.Delay(300, Ct);
+
+        Assert.Equal([$"http://127.0.0.1:{EngineFactory.Port}/auth/{EngineFactory.Token}"], browser.Opened);
+        lock (shownWhenOpened)
+            Assert.Equal([true], shownWhenOpened);
+
+        // Opened again once it listens: at once, as before.
+        shell.Reopen();
+        await WaitUntil(() => browser.Opened.Count > 1);
+        await Task.Delay(200, Ct);
+        Assert.Equal(2, browser.Opened.Count);
+    }
+
+    /// <summary>
+    /// A launch an <c>infopanel:</c> link asked for (the flag the command line sets for a sole link; here the setting)
+    /// that starts the engine opens the editor once, after the server listens, with the menu-bar item off too.
+    /// </summary>
+    [Fact]
+    public async Task ALinkLaunch_ThatStartsTheEngine_OpensTheEditorOnce_OnceItListens()
+    {
+        using var engine = new EngineFactory();
+        var browser = new RecordingBrowserLauncher();
+        IHostApplicationLifetime? lifetime = null;
+        var startedWhenOpened = new List<bool>();
+        browser.Opening = () =>
+        {
+            lock (startedWhenOpened)
+                startedWhenOpened.Add(lifetime?.ApplicationStarted.IsCancellationRequested == true);
+        };
+        using var factory = engine.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Engine:FromLink", "true");
+            builder.ConfigureTestServices(services => services.AddSingleton<BrowserLauncher>(sp =>
+            {
+                lifetime = sp.GetRequiredService<IHostApplicationLifetime>();
+                return browser;
+            }));
+        });
+        _ = factory.Services;
+
+        await WaitUntil(() => browser.Opened.Count > 0);
+        await Task.Delay(300, Ct);
+
+        Assert.Equal([$"http://127.0.0.1:{EngineFactory.Port}/auth/{EngineFactory.Token}"], browser.Opened);
+        lock (startedWhenOpened)
+            Assert.Equal([true], startedWhenOpened);
+    }
+
+    [Fact]
+    public async Task ALaunchNoLinkAskedFor_OpensNothing()
+    {
+        using var engine = new EngineFactory();
+        var browser = new RecordingBrowserLauncher();
+        using var factory = engine.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services => services.AddSingleton<BrowserLauncher>(browser)));
+        Assert.True(factory.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStarted.IsCancellationRequested);
+
+        await Task.Delay(300, Ct);
+
+        Assert.Empty(browser.Opened);
+    }
+
+    private static async Task WaitUntil(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "timed out");
+            await Task.Delay(10, Ct);
+        }
+    }
+}
+
+/// <summary>
 /// The menu's Open Editor and the token: what it hands the OS opener when that fails is kept out of the log file and the
 /// entries kept for clients.
 /// </summary>
@@ -397,8 +502,12 @@ public sealed class RecordingBrowserLauncher() : BrowserLauncher(
     /// <summary>The links' addresses, in order.</summary>
     public IReadOnlyList<string> Opened => [.. Links.Select(l => l.Url)];
 
+    /// <summary>Called as each link is asked for, before it is recorded.</summary>
+    public Action? Opening { get; set; }
+
     public override void Open(EditorLink link)
     {
+        Opening?.Invoke();
         lock (_lock)
             _links.Add(link);
     }

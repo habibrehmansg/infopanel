@@ -23,10 +23,27 @@ public sealed class FakeShellPlatform : IShellPlatform
 
     public event Action? TerminateRequested;
 
-    public event Action? ReopenRequested;
+    private Action? _reopen;
+
+    /// <summary>
+    /// How many times the app is opened again (a link opened, on macOS) as the engine starts listening for it, before the
+    /// server listens: the engine's services start before it does.
+    /// </summary>
+    public int ReopensAsTheEngineStarts { get; init; }
+
+    public event Action? ReopenRequested
+    {
+        add
+        {
+            _reopen += value;
+            for (var i = 0; i < ReopensAsTheEngineStarts; i++)
+                value?.Invoke();
+        }
+        remove => _reopen -= value;
+    }
 
     /// <summary>Whether the engine listens for the app being opened again.</summary>
-    public bool ListensForReopen => ReopenRequested != null;
+    public bool ListensForReopen => _reopen != null;
 
     /// <summary>The icon as shown, or null before <see cref="Show"/>.</summary>
     public ShellIcon? Icon { get; private set; }
@@ -119,5 +136,5 @@ public sealed class FakeShellPlatform : IShellPlatform
     public void RequestTerminate() => TerminateRequested?.Invoke();
 
     /// <summary>The app is opened again while it runs (Finder or the Dock on macOS).</summary>
-    public void Reopen() => ReopenRequested?.Invoke();
+    public void Reopen() => _reopen?.Invoke();
 }

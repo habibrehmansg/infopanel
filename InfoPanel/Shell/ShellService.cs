@@ -30,7 +30,8 @@ namespace InfoPanel.Shell;
 /// <item><b>Quit InfoPanel</b> stops the engine at once when no profile has unsaved changes; otherwise it asks first,
 /// naming them: Open Editor (the default), Cancel, or Quit Without Saving.</item>
 /// <item>A system quit (logout, shutdown, Activity Monitor) stops the engine without asking.</item>
-/// <item>Opening the app again while it runs (Finder or the Dock on macOS) runs Open Editor.</item>
+/// <item>Opening the app again while it runs (Finder or the Dock on macOS), or an <c>infopanel:</c> link, runs Open Editor;
+/// asked before the server listens, once, after the icon shows.</item>
 /// </list>
 /// Handlers leave the platform's UI thread before they do anything, so a prompt or a browser start never holds it.
 /// The host setting <see cref="TestPromptSetting"/> (tests set <c>Engine__ShellTestPrompt</c>) asks the Quit prompt once
@@ -66,6 +67,12 @@ public sealed class ShellService(
     private CancellationTokenRegistration _started;
     private CancellationTokenRegistration _stopping;
 
+    // The editor asked for before the server listens (the app opened again, or a link that started it, on macOS): opened
+    // once, after the icon shows.
+    private readonly Lock _early = new();
+    private bool _listening;
+    private bool _openWhenListening;
+
     /// <summary>The user's home folder and how its volume compares paths, probed once, at the first Copy Engine Details.</summary>
     private readonly Lazy<(string Home, StringComparison Rule)> _home = new(() =>
     {
@@ -83,6 +90,20 @@ public sealed class ShellService(
         _started = lifetime.ApplicationStarted.Register(() =>
         {
             platform.Show(new ShellIcon($"InfoPanel — {runtime.BaseUrl}"), Menu, InvokedAsync);
+            bool open;
+            lock (_early)
+            {
+                _listening = true;
+                open = _openWhenListening;
+                _openWhenListening = false;
+            }
+
+            if (open)
+            {
+                logger.LogInformation("InfoPanel listens: opening the editor it was asked for");
+                _ = InvokedAsync(ShellMenu.OpenEditor);
+            }
+
             if (environment?.IsEnvironment(TestEnvironment) == true && bool.TryParse(configuration?[TestPromptSetting], out var ask) && ask)
                 _ = AskTestPromptAsync();
         });
@@ -164,9 +185,23 @@ public sealed class ShellService(
         _ = Task.Run(lifetime.StopApplication);
     }
 
-    /// <summary>The app was opened again while it runs (Finder or the Dock on macOS): Open Editor, as a second launch does.</summary>
+    /// <summary>
+    /// The app was opened again while it runs (Finder or the Dock on macOS) or an <c>infopanel:</c> link was opened: Open
+    /// Editor, as a second launch does. Asked before the server listens, it opens once, after the icon shows.
+    /// </summary>
     private void OnReopenRequested()
     {
+        lock (_early)
+        {
+            if (!_listening)
+            {
+                if (!_openWhenListening)
+                    logger.LogInformation("InfoPanel was opened before it listens: opening the editor once it does");
+                _openWhenListening = true;
+                return;
+            }
+        }
+
         logger.LogInformation("InfoPanel was opened again: opening the editor");
         _ = InvokedAsync(ShellMenu.OpenEditor);
     }

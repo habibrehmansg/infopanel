@@ -107,7 +107,15 @@ public static class EngineCommandLine
                                 Replay a recording, looping, in place of the platform's sensors
                                 (any OS; for development and tests; not with --mock)
           --help                Show this help
+
+        Usage: InfoPanel infopanel:<link>
+
+          Started from a web page's infopanel: link (the only argument; nothing in it is read):
+          opens the editor, as starting InfoPanel again does
         """;
+
+    /// <summary>The scheme a web page's link to InfoPanel has (docs/2.0/desktop-shell.md, "Opening the editor").</summary>
+    private const string LinkScheme = "infopanel:";
 
     public static Result Parse(IReadOnlyList<string> args)
     {
@@ -117,6 +125,17 @@ public static class EngineCommandLine
         var allowOrigins = 0;
 
         Result Fail(string error) => new(settings, hostArgs, error, false);
+
+        // An infopanel: link, as the OS starts InfoPanel with it: accepted only as the only argument, and only as the
+        // flag that a link asked for this launch. Nothing of it is read, kept, logged or passed on; with anything else
+        // (a flag a crafted link added) the whole launch is refused, without repeating the link.
+        if (args.Any(arg => arg.StartsWith(LinkScheme, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (args.Count != 1)
+                return Fail("Unknown argument: a link to InfoPanel is accepted only as the only argument.");
+            settings[$"{EngineOptions.Section}:FromLink"] = "true";
+            return new Result(settings, hostArgs, null, false);
+        }
 
         for (var i = 0; i < args.Count; i++)
         {

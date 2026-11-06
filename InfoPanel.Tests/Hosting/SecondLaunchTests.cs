@@ -72,6 +72,72 @@ public sealed class SecondLaunchTests
     }
 
     /// <summary>
+    /// An <c>infopanel:</c> link (its only argument, as the OS starts InfoPanel with it) on a data folder an engine holds
+    /// is a second launch: the running engine opens the editor, at its own configured web client, and the launch exits 3.
+    /// The folders come from the environment, since a link launch takes no other argument (the run folder is every test
+    /// engine's, <c>Engine__RunDir</c>, inherited); <c>HOME</c> is a new folder, so a launch that missed them could never
+    /// reach this user's own data folder.
+    /// </summary>
+    [Fact]
+    public async Task ALinkLaunch_OnAHeldFolder_OpensTheEditorInTheRunningEngine_AndExits3()
+    {
+        using var engine = new EngineFactory();
+        var browser = new RecordingBrowserLauncher();
+        using var first = First(engine, browser);
+        await WaitForChannel(first);
+
+        var start = Engine();
+        start.ArgumentList.Add("infopanel://open?then=%23%2Fsettings%2Fengine");
+        start.Environment["HOME"] = Path.Combine(engine.Root, "link-home");
+        start.Environment["Engine__DataDir"] = engine.DataDir;
+        start.Environment["Engine__V1Dir"] = engine.DataDir + "-v1";
+        start.Environment["Engine__Port"] = EngineRuntime.FindFreePort().ToString();
+        start.Environment["Engine__NoWindows"] = "true";
+        start.Environment["Engine__NoTray"] = "true";
+        start.Environment["Engine__Mock"] = "true";
+        var (exit, said) = await RunToExit(start);
+
+        Assert.True(exit == 3, $"exit {exit}:\n{said}");
+        Assert.Contains("InfoPanel is already running; opened the editor", said);
+        Assert.DoesNotContain("settings", said);
+        var link = Assert.Single(browser.Links);
+        Assert.True(link.WebClient);
+        Assert.Matches(
+            $"^{System.Text.RegularExpressions.Regex.Escape($"{EngineFactory.CrossOrigin}/#engine=http://127.0.0.1:{EngineFactory.Port}&code=")}[A-Za-z0-9_-]{{22}}$",
+            link.Url);
+    }
+
+    /// <summary>
+    /// A link with a flag after it (one crafted to break out of its quotes on Windows) is refused whole, exit 2, before
+    /// anything is touched: <c>--fresh</c> wipes nothing.
+    /// </summary>
+    [Fact]
+    public async Task ALinkWithAFlag_IsRefused_Exit2_AndFreshWipesNothing()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "infopanel-link-tests-" + Guid.NewGuid().ToString("N"));
+        var data = Path.Combine(root, "data");
+        Directory.CreateDirectory(data);
+        File.WriteAllText(Path.Combine(data, "settings.json"), "{}");
+        try
+        {
+            var start = Engine();
+            foreach (var arg in new[] { "infopanel://open", "--fresh", "--data-dir", data, "--v1-dir", data + "-v1", "--no-windows", "--no-tray", "--mock" })
+                start.ArgumentList.Add(arg);
+            var (exit, said) = await RunToExit(start);
+
+            Assert.True(exit == 2, $"exit {exit}:\n{said}");
+            Assert.Contains("Unknown argument", said);
+            Assert.DoesNotContain("infopanel://open", said);
+            Assert.Equal(["settings.json"], Directory.GetFileSystemEntries(data).Select(Path.GetFileName));
+            Assert.Equal("{}", File.ReadAllText(Path.Combine(data, "settings.json")));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
     /// The channel serves a second launch: it opens the editor for one, answers no tool list or call (AI apps reach the
     /// engine through the configured service, docs/2.0/relay.md), and refuses an AI app's front at its hello.
     /// </summary>
@@ -427,16 +493,26 @@ public sealed class SecondLaunchTests
     }
 
     /// <summary>The built engine on <paramref name="data"/> as a second launch: its exit code and everything it said.</summary>
-    private static async Task<(int Exit, string Said)> Launch(string data, params string[] extra)
+    private static Task<(int Exit, string Said)> Launch(string data, params string[] extra)
     {
-        var start = new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "InfoPanel.exe" : "InfoPanel"))
+        var start = Engine();
+        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", data + "-v1", "--port", EngineRuntime.FindFreePort().ToString(), "--no-windows", "--no-tray", "--mock" }.Concat(extra))
+            start.ArgumentList.Add(arg);
+        return RunToExit(start);
+    }
+
+    /// <summary>The built engine, with no argument yet, its output read.</summary>
+    private static ProcessStartInfo Engine() =>
+        new(Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "InfoPanel.exe" : "InfoPanel"))
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", data + "-v1", "--port", EngineRuntime.FindFreePort().ToString(), "--no-windows", "--no-tray", "--mock" }.Concat(extra))
-            start.ArgumentList.Add(arg);
+
+    /// <summary>Runs <paramref name="start"/> to its exit, at most 30 s: its exit code and everything it said.</summary>
+    private static async Task<(int Exit, string Said)> RunToExit(ProcessStartInfo start)
+    {
         using var process = Process.Start(start)!;
         var output = process.StandardOutput.ReadToEndAsync(Ct);
         var errors = process.StandardError.ReadToEndAsync(Ct);

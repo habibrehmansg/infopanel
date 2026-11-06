@@ -31,7 +31,9 @@ major.minor.patch (`2.0.0`), `CFBundleVersion` the whole of it. The bundle id is
 menu-bar app with no Dock icon; `LSMinimumSystemVersion` is 15.0, the oldest macOS .NET 10 supports (Microsoft's
 [.NET 10 supported OS list](https://github.com/dotnet/core/blob/main/release-notes/10.0/supported-os.md): macOS 15, 26
 and 27). The icon is `packaging/macos/AppIcon.icns`, made from `Images/logo.png` by `packaging/macos/make-icon.sh`
-(`sips` and `iconutil`; run it when the logo changes and commit its output).
+(`sips` and `iconutil`; run it when the logo changes and commit its output). `CFBundleURLTypes` declares the `infopanel:` link
+(`CFBundleURLSchemes` `infopanel`, named `net.infopanel.InfoPanel`), which opens the editor; nothing is read from it
+(desktop-shell.md, "Opening the editor").
 
 **Its layout.** `codesign` takes every file in `Contents/MacOS` for code: a managed `.dll`, a `.json` or a folder there
 (the satellite assemblies, `plugins/InfoPanel.Extras`) makes it refuse to sign the bundle. So the publish goes to
@@ -174,6 +176,11 @@ The Task Scheduler can't hold a task and a folder of one name at its root: with 
   session, or started without its notification area icon) stops Setup or the uninstall with a message to quit it and
   Retry; a silent run answers Cancel (Setup exits 7, the uninstaller 1) and changes nothing.
 - Desktop shortcut: an optional task, on by default (as 1.x's).
+- **The `infopanel:` link**, per machine (`[Registry]`, `HKA`: HKLM in this administrative install):
+  `HKLM\Software\Classes\infopanel` with its default value `URL:InfoPanel` and an empty `URL Protocol`, `DefaultIcon`
+  `"C:\Program Files\InfoPanel 2\InfoPanel.exe",0` and `shell\open\command`
+  `"C:\Program Files\InfoPanel 2\InfoPanel.exe" "%1"`: the link is the engine's only argument, which it accepts only
+  alone and never reads (desktop-shell.md, "Opening the editor"). 1.x registers no such scheme.
 
 ### Uninstalling
 
@@ -188,7 +195,8 @@ The uninstaller (Settings › Apps, or Uninstall InfoPanel 2 in the Start menu):
 - removes the uninstalling user's Run value `InfoPanel 2` (and its Task Manager switch) when its program (the command
   line's first part, its path resolved; the arguments don't count) is this install's `InfoPanel.exe`; another user's
   stays, starting a program that is gone;
-- removes the program folder and the shortcuts;
+- removes the program folder and the shortcuts, and the `infopanel:` link's key, `HKLM\Software\Classes\infopanel`
+  (`uninsdeletekey`);
 - **keeps** `%LOCALAPPDATA%\InfoPanel\v2` (profiles, settings, logs), and touches nothing of 1.x's.
 
 ### Unsigned

@@ -80,6 +80,15 @@ Type: filesandordirs; Name: "{app}\pawnio"
 ; What the engine writes beside the helper when Read all sensors is turned on or off.
 Type: filesandordirs; Name: "{app}\sensor-helper"
 
+[Registry]
+; The infopanel: link (docs/2.0/desktop-shell.md): a web page's link starts InfoPanel, or asks the running one, to open the
+; editor. The link is the command's only argument and the engine reads nothing from it. Per machine (HKA is HKLM in this
+; administrative install); the whole key is removed at uninstall.
+Root: HKA; Subkey: "Software\Classes\infopanel"; ValueType: string; ValueName: ""; ValueData: "URL:InfoPanel"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\infopanel"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\infopanel\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExeName}"",0"
+Root: HKA; Subkey: "Software\Classes\infopanel\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExeName}"" ""%1"""
+
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"

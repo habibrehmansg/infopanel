@@ -549,6 +549,10 @@ try
 
     // Desktop windows and the menu-bar item: on macOS the main thread runs AppKit and the host runs on a worker (DesktopHost).
     var desktop = DesktopHost.Create(options);
+    // macOS: the app delegate goes in now, on the main thread before the AppKit loop runs, so an infopanel: link that
+    // started the app (delivered while AppKit finishes launching) isn't lost.
+    if (OperatingSystem.IsMacOS() && desktop.Shell is InfoPanel.Shell.MacOS.MacShellPlatform macShell)
+        macShell.InstallDelegate();
     builder.Services.AddSingleton(desktop.Platform);
     builder.Services.AddSingleton(desktop.Shell);
     builder.Services.AddHostedService<InfoPanel.Shell.ShellService>();
@@ -586,6 +590,26 @@ try
     app.MapDisplayEndpoints();
     app.MapPreviewSocket();
     app.MapClientFallback(webRoot);
+
+    // A launch an infopanel: link asked for (its only argument, never read) that started the engine: the editor opens
+    // once, when the server listens, as Open Editor does.
+    if (options.FromLink)
+        app.Lifetime.ApplicationStarted.Register(() =>
+        {
+            Log.Information("InfoPanel was opened from a link: opening the editor");
+            var editor = app.Services.GetRequiredService<EditorOpener>();
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    editor.Open();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "The editor couldn't be opened");
+                }
+            });
+        });
 
     await desktop.RunAsync(() => app.RunAsync());
     return 0;

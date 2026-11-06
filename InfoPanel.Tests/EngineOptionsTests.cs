@@ -243,6 +243,64 @@ public class EngineOptionsTests
         Assert.DoesNotContain("--mcp", EngineCommandLine.Usage);
     }
 
+    /// <summary>
+    /// An <c>infopanel:</c> link (the OS starts InfoPanel with it as the only argument), in any case, is a launch a link
+    /// asked for: the flag alone, nothing of the link kept or passed on.
+    /// </summary>
+    [Theory]
+    [InlineData("infopanel://open")]
+    [InlineData("INFOPANEL://open")]
+    [InlineData("InfoPanel:")]
+    [InlineData("infopanel://open/?then=%23%2Fsettings&data-dir=/x --fresh")]
+    public void ALinkAlone_IsALaunchALinkAskedFor_AndNothingOfItIsKept(string link)
+    {
+        var parsed = EngineCommandLine.Parse([link]);
+
+        Assert.Null(parsed.Error);
+        Assert.False(parsed.ShowHelp);
+        Assert.Empty(parsed.HostArgs);
+        Assert.Equal(new Dictionary<string, string?> { [$"{EngineOptions.Section}:FromLink"] = "true" }, parsed.Settings);
+        var options = Load([link], out var errors);
+        Assert.Empty(errors);
+        Assert.True(options!.FromLink);
+        Assert.Null(options.DataDir);
+        Assert.False(options.Fresh);
+        Assert.False(Load([], out _)!.FromLink);
+    }
+
+    /// <summary>
+    /// A link with anything else (a flag, another link, a value), or a link-like argument of another scheme, is refused
+    /// as any unknown argument is (exit 2), and the refusal doesn't repeat the link.
+    /// </summary>
+    [Theory]
+    [InlineData("infopanel://open", "--fresh")]
+    [InlineData("--fresh", "infopanel://open")]
+    [InlineData("infopanel://open", "--data-dir", "/tmp/x")]
+    [InlineData("infopanel://open", "infopanel://open")]
+    [InlineData("INFOPANEL://open", "--help")]
+    [InlineData("--help", "infopanel://open")]
+    [InlineData("--data-dir", "infopanel://open")]
+    [InlineData("https://open")]
+    [InlineData("infopanels://open")]
+    [InlineData(" infopanel://open")]
+    public void ALinkWithAnythingElse_OrAnotherScheme_IsRefused(params string[] args)
+    {
+        var parsed = EngineCommandLine.Parse(args);
+
+        Assert.NotNull(parsed.Error);
+        Assert.StartsWith("Unknown argument", parsed.Error);
+        Assert.False(parsed.ShowHelp);
+        Assert.DoesNotContain(parsed.Settings.Keys, k => k.EndsWith(":FromLink", StringComparison.OrdinalIgnoreCase));
+        if (args.Any(a => a.StartsWith("infopanel:", StringComparison.OrdinalIgnoreCase)))
+            Assert.DoesNotContain("://open", parsed.Error);
+    }
+
+    [Fact]
+    public void TheHelp_SaysALinkIsTheOnlyArgument()
+    {
+        Assert.Contains("infopanel:", EngineCommandLine.Usage);
+    }
+
     [Fact]
     public void Fresh_WithoutDataDir_IsRejected()
     {

@@ -85,7 +85,8 @@ name is null or empty, each without control characters; the name past 40 charact
   stopped while it is open (a system quit, `SIGTERM`), the engine closes it as Cancel and stops.
 - The system quits the app (logout, shutdown, Activity Monitor's Quit): the engine stops the same way without asking,
   since a logout can't wait on a browser. AppKit is told to wait (`NSTerminateLater`) until the engine has stopped, then
-  the quit goes on.
+  the quit goes on. Before the item shows (the engine still starting), the quit goes on at once, as it would without
+  the app delegate.
 - `SIGTERM` and Ctrl-C in a terminal stop it as before.
 
 ## Windows
@@ -144,7 +145,23 @@ asked:
   once it is free; still held then, it exits 3. So a quick relaunch during a shutdown starts the engine again.
 - **opening the app again** on macOS (double-clicking InfoPanel in Finder or the Dock while it runs): no second process
   starts; the running app is told (the app delegate's `applicationShouldHandleReopen:hasVisibleWindows:`) and runs Open
-  Editor. Only while the menu-bar item shows (not `--no-tray`), since the delegate is the item's.
+  Editor. Only with the menu-bar item on (not `--no-tray`), since the delegate is the item's target.
+- an **`infopanel:` link** (`infopanel://open`; a web page's, or `open infopanel://open` in Terminal, `start
+  infopanel://open` on Windows): the same as starting InfoPanel again. It starts InfoPanel if it isn't running, and opens
+  the editor at the engine's own configured web client with a new one-time code, exactly as Open Editor does. **Nothing
+  is read from the link**: not parsed, logged or passed on, so it can't choose a page, profile, port, folder, origin or
+  flag, and nothing goes back to the page that opened it. The browser asks the user before it opens the link.
+  - macOS: the app bundle declares the scheme (`CFBundleURLTypes` in `packaging/macos/Info.plist`); the app delegate's
+    `application:openURLs:` never reads its URLs and raises the same request as opening the app again. The delegate is
+    set on the main thread before the AppKit loop runs, so a link that starts the app (delivered while AppKit finishes
+    launching, before the engine's services start) is kept and opens the editor once the engine listens. Until the item
+    shows, a system quit goes on at once, as without a delegate.
+  - Windows: the installer registers the scheme per machine, its command `"{app}\InfoPanel.exe" "%1"`. The engine
+    accepts an argument starting with `infopanel:` (any case) only as its **only** argument, and drops it unread: a link
+    with anything else (a flag a crafted link added by breaking out of its quotes, a second link) is refused whole as an
+    unknown argument, exit 2, before anything is touched. On a held data folder it is a second launch (exit 3); a link
+    launch that starts the engine opens the editor once, when the server listens ("InfoPanel was opened from a link:
+    opening the editor").
 
 **What opens.** With no web client served here (no `--web-root`, no `wwwroot` beside the engine) and exactly one
 cross origin allowed, the engine opens that origin's code link (`{origin}/#engine=http://127.0.0.1:{port}&code={code}`):
@@ -259,7 +276,11 @@ release build). A build from source carries none and behaves as before.
 - `InfoPanel.Tests/Hosting/`: the link the engine opens (`WebClientLinkTests`: the built-in origin, the link's choice,
   no browser at start, the logs), the launcher and the redirect files (`BrowserLauncherTests`: the file's mode,
   contents and removal, no token in any argument, Chrome and the fallback per OS), a second launch as a child process
-  (`SecondLaunchTests`), and the build property (`WebClientOriginTargetTests`).
+  (`SecondLaunchTests`: an `infopanel:` link alone on a held folder, exit 3; a link with `--fresh`, exit 2 and nothing
+  wiped), and the build property (`WebClientOriginTargetTests`). The command line's link rule is in `EngineOptionsTests`;
+  the early open (an open asked before the server listens, once; a link launch that starts the engine) in
+  `ShellEarlyOpenTests`; the app delegate's `application:openURLs:` and its quit before the item shows in
+  `MacAppDelegateTests` (macOS); the plist template's scheme and the installer's key in `LinkRegistrationTests`.
 - `InfoPanel.Tests/Shell/Windows/` (any OS): the menu in Windows' words with its commands and default item, Show on
   desktop's submenu (its checks, none, 20 and more, a choice in it running the model's id), Start when
   I sign in (the Run value and Task Manager's switch, through a fake registry), a click, a double-click, a right click,

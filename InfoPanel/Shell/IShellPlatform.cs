@@ -36,9 +36,11 @@ public interface IShellPlatform
 
     /// <summary>
     /// The app is opened again while it runs: on macOS, Finder or the Dock tells the running app (the app delegate's
-    /// <c>applicationShouldHandleReopen:hasVisibleWindows:</c>) instead of starting a second process. The engine runs Open
-    /// Editor, as a second launch does. A platform where opening again starts a second process (Windows: the local
-    /// channel's <c>launch</c>) keeps this default, which never raises it.
+    /// <c>applicationShouldHandleReopen:hasVisibleWindows:</c>) instead of starting a second process, and so does an
+    /// <c>infopanel:</c> link (<c>application:openURLs:</c>, the link never read; one that started the app is raised as
+    /// the engine starts, before it listens). The engine runs Open Editor, as a second launch does. A platform where
+    /// opening again starts a second process (Windows: the local channel's <c>launch</c>, a link's included) keeps this
+    /// default, which never raises it.
     /// </summary>
     event Action? ReopenRequested
     {
