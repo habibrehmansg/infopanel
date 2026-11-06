@@ -28,8 +28,17 @@ public sealed record ShellMenuItem(string Id, string Label, ShellItemKind Kind =
     /// <summary>A check mark beside the line (Show on Desktop's profiles that are shown).</summary>
     public bool Checked { get; init; }
 
-    /// <summary>A second line beneath the label, in the secondary colour (who is signed in: the email, or Sign In…).</summary>
+    /// <summary>
+    /// A second line beneath the label (who is signed in: the email, in the secondary colour; or Sign In…, in the label
+    /// colour, <see cref="DetailIsAction"/>).
+    /// </summary>
     public string? Detail { get; init; }
+
+    /// <summary>
+    /// The second line is what choosing the line does (Sign In…): macOS draws it in the label colour and the label above
+    /// it in the secondary one, so the row doesn't read as disabled.
+    /// </summary>
+    public bool DetailIsAction { get; init; }
 
     /// <summary>The letter a round badge before the line shows (who is signed in); null for none.</summary>
     public string? Initial { get; init; }
@@ -39,7 +48,7 @@ public sealed record ShellMenuItem(string Id, string Label, ShellItemKind Kind =
 
     public bool Equals(ShellMenuItem? other) =>
         other is not null && Id == other.Id && Label == other.Label && Kind == other.Kind && KeyEquivalent == other.KeyEquivalent
-        && Checked == other.Checked && Detail == other.Detail && Initial == other.Initial && Children.SequenceEqual(other.Children);
+        && Checked == other.Checked && Detail == other.Detail && DetailIsAction == other.DetailIsAction && Initial == other.Initial && Children.SequenceEqual(other.Children);
 
     public override int GetHashCode() => HashCode.Combine(Id, Label, Kind, KeyEquivalent, Checked, Detail, Initial, Children.Count);
 }
@@ -113,7 +122,7 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
             Separator(),
         };
         if (!state.HasCredential)
-            items.Add(new(SignedIn, "Not signed in") { Detail = SignIn });
+            items.Add(new(SignedIn, "Not signed in") { Detail = SignIn, DetailIsAction = true });
         else if (state.SignedInAs is { } name)
             items.Add(new(SignedIn, name) { Detail = state.SignedInEmail, Initial = InitialOf(name) });
         if (items[^1].Id == SignedIn)

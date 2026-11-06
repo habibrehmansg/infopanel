@@ -27,9 +27,10 @@ public readonly record struct ServiceHolderState(bool Held, string? Name, string
 /// changes, and again every <see cref="Interval"/> after an answer while one is held. After a failed ask (unreachable, a
 /// 5xx, a malformed answer) it asks again sooner, as the weather source does: after <see cref="FirstRetry"/>, doubling
 /// with each failure in a row, or after the failure's <c>Retry-After</c> when that is longer, never later than
-/// <see cref="Interval"/>; and at once when the computer's network changes (<see cref="NetworkChanged"/>). An answer, a
-/// change of the credential or the address, or a network change starts the retries again at <see cref="FirstRetry"/>. A
-/// failure of the task itself is logged and the next change asks again. One request at a time, each bounded at
+/// <see cref="Interval"/>; and at once when the computer's network changes (<see cref="NetworkChanged"/>; during an ask,
+/// once it fails; once per failed ask). An answer, a change of the credential or the address, or a network change starts
+/// the retries again at <see cref="FirstRetry"/>; what an ask sent before a change of the credential or the address comes
+/// to schedules nothing. A failure of the task itself is logged and the next change asks again. One request at a time, each bounded at
 /// <see cref="RequestTimeout"/>, its answer read to at most <see cref="MaxBytes"/>. The name (else the email) and the
 /// email beside it are kept in memory only, tied to the credential's generation they were asked with, so an answer that
 /// comes after the credential was replaced or removed is never shown for another; a failure keeps what is known for that
@@ -57,6 +58,12 @@ public sealed class ServiceHolder : IDisposable
     /// <summary>The most characters (what reads as one, an emoji included) the name shows; past it, its first ones and "…".</summary>
     public const int MaxNameLength = 40;
 
+    /// <summary>
+    /// The most characters the email shows (beside the name, or in its place); past it, its first ones, "…" and its last
+    /// ones, so its domain stays.
+    /// </summary>
+    public const int MaxEmailLength = 32;
+
     private readonly ServiceClient? _client;
     private readonly ServiceCredentials _credentials;
     private readonly TimeProvider _time;
@@ -75,12 +82,21 @@ public sealed class ServiceHolder : IDisposable
 
     // Under _lock: an ask is due at once (at start, after a change); when the next is due (null: only after a change); the
     // name and email known and the credential's generation they were asked with; what the last ask came to (for the log,
-    // and a network change after a failure); the failed asks in a row since an answer or a change.
+    // and a network change after a failure); the failed asks in a row since an answer or a change. An ask under way (taken
+    // by the loop, not yet ended); whether it, or the last one, was a network change's probe (one per failed ask: until
+    // another ask, a network change asks nothing more); the ask due at once is one; the network changed while the ask was
+    // under way (asked at once when it fails). The resets of the retries by a change of the credential or the address: an
+    // ask's outcome from before the last one changes no retry state (the ask the change made is due already).
     private bool _pending = true;
     private long? _dueAt;
     private (long Generation, string Name, string? Email)? _known;
     private Kind? _last;
     private int _failures;
+    private bool _asking;
+    private bool _probed;
+    private bool _probeDue;
+    private bool _changedDuring;
+    private long _resets;
 
     private TaskCompletionSource _wake = NewWake();
     private CancellationTokenSource? _cts;
@@ -278,22 +294,21 @@ public sealed class ServiceHolder : IDisposable
 
     /// <summary>
     /// What a name or email shows as: its control characters (C0, DEL, C1) and line or paragraph separators dropped, white
-    /// space at its ends trimmed, past <see cref="MaxNameLength"/> characters its first ones and "…"; the name, else the
-    /// email; null when neither has anything to show.
+    /// space at its ends trimmed; the name, past <see cref="MaxNameLength"/> characters its first ones and "…", else the
+    /// email, shortened as <see cref="ShownBeside"/> does; null when neither has anything to show.
     /// </summary>
     internal static string? Shown(string? name, string email)
     {
         var shown = Clean(name);
-        if (shown.Length == 0)
-            shown = Clean(email);
-        return Shortened(shown);
+        return shown.Length == 0 ? ShortenedEmail(Clean(email)) : Shortened(shown);
     }
 
     /// <summary>
-    /// The email as it shows beside the name, cleaned and shortened as <see cref="Shown"/> does; null when there is no name
-    /// to show (the email shows in its place) or the email has nothing to show.
+    /// The email as it shows beside the name, cleaned as <see cref="Shown"/> does, past <see cref="MaxEmailLength"/>
+    /// characters shortened in its middle; null when there is no name to show (the email shows in its place) or the email
+    /// has nothing to show.
     /// </summary>
-    internal static string? ShownBeside(string? name, string email) => Clean(name).Length == 0 ? null : Shortened(Clean(email));
+    internal static string? ShownBeside(string? name, string email) => Clean(name).Length == 0 ? null : ShortenedEmail(Clean(email));
 
     private static string? Shortened(string shown)
     {
@@ -301,6 +316,19 @@ public sealed class ServiceHolder : IDisposable
             return null;
         var info = new StringInfo(shown);
         return info.LengthInTextElements <= MaxNameLength ? shown : info.SubstringByTextElements(0, MaxNameLength - 1) + "…";
+    }
+
+    /// <summary>An email past <see cref="MaxEmailLength"/> characters: its first 15, "…" and its last 16 (its domain).</summary>
+    private static string? ShortenedEmail(string email)
+    {
+        if (email.Length == 0)
+            return null;
+        var info = new StringInfo(email);
+        var count = info.LengthInTextElements;
+        if (count <= MaxEmailLength)
+            return email;
+        const int head = (MaxEmailLength - 1) / 2;
+        return info.SubstringByTextElements(0, head) + "…" + info.SubstringByTextElements(count - (MaxEmailLength - 1 - head));
     }
 
     private static string Clean(string? text)
@@ -320,13 +348,15 @@ public sealed class ServiceHolder : IDisposable
     // The credential or the address changed (provided, removed, refused, another address): an ask is due at once, and what
     // the menu reads is published again, never here: this can be raised under the credential's lock (a change of address
     // holds it through the settings' notification), while a publisher waits for that lock. A request under way finishes;
-    // what it brings is for the credential it was sent with.
+    // what it brings is for the credential it was sent with, and changes no retry state.
     private void CredentialChanged()
     {
         lock (_lock)
         {
             _pending = true;
+            _probeDue = false;
             _failures = 0;
+            _resets++;
         }
 
         Volatile.Read(ref _wake).TrySetResult();
@@ -335,26 +365,47 @@ public sealed class ServiceHolder : IDisposable
 
     /// <summary>
     /// The computer's network changed (the engine follows the system's address changes): after a failed ask, one is due at
-    /// once and the retries start again at <see cref="FirstRetry"/>; otherwise nothing changes. Answers whether it asks.
+    /// once and the retries start again at <see cref="FirstRetry"/>; during an ask, the same once it ends, when it fails;
+    /// otherwise nothing changes. Once per failed ask: a change while that probe is due or under way, or after it fails,
+    /// asks nothing more until the next ask (a burst of changes, or a network that keeps changing, asks once).
+    /// Answers whether this change asks.
     /// </summary>
     public bool NetworkChanged()
     {
         lock (_lock)
         {
-            if (_last != Kind.Failed || _dueAt is null)
+            if (_asking)
+            {
+                if (_probed || _changedDuring)
+                    return false;
+                _changedDuring = true;
+                return true;
+            }
+
+            if (_last != Kind.Failed || _dueAt is null || _pending || _probed)
                 return false;
-            _pending = true;
-            _failures = 0;
+            Probe();
         }
 
         Volatile.Read(ref _wake).TrySetResult();
         return true;
     }
 
+    /// <summary>Under <see cref="_lock"/>: a network change's probe, due at once, the retries started again.</summary>
+    private void Probe()
+    {
+        _pending = true;
+        _probeDue = true;
+        _failures = 0;
+    }
+
     private static TaskCompletionSource NewWake() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    /// <summary>Whether an ask is due now (consumed), or the wait until one is (null: none until a change).</summary>
-    private (bool Due, TimeSpan? Wait) TakeDue()
+    /// <summary>
+    /// Whether an ask is due now (consumed: it is under way, with the resets so far), or the wait until one is (null: none
+    /// until a change).
+    /// </summary>
+    private (bool Due, long Resets, TimeSpan? Wait) TakeDue()
     {
         lock (_lock)
         {
@@ -363,10 +414,23 @@ public sealed class ServiceHolder : IDisposable
             {
                 _pending = false;
                 _dueAt = null;
-                return (true, null);
+                _asking = true;
+                _probed = _probeDue;
+                _probeDue = false;
+                return (true, _resets, null);
             }
 
-            return (false, _dueAt is { } due ? _time.GetElapsedTime(now, due) : null);
+            return (false, 0, _dueAt is { } due ? _time.GetElapsedTime(now, due) : null);
+        }
+    }
+
+    /// <summary>The ask has ended, however (its outcome kept already, or the ask itself failed): nothing under way.</summary>
+    private void Asked()
+    {
+        lock (_lock)
+        {
+            _asking = false;
+            _changedDuring = false;
         }
     }
 
@@ -379,10 +443,18 @@ public sealed class ServiceHolder : IDisposable
             Volatile.Write(ref _wake, wake);
             try
             {
-                var (due, wait) = TakeDue();
+                var (due, resets, wait) = TakeDue();
                 if (due)
                 {
-                    await AskAsync(ct).ConfigureAwait(false);
+                    try
+                    {
+                        await AskAsync(resets, ct).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        Asked();
+                    }
+
                     continue;
                 }
 
@@ -442,8 +514,12 @@ public sealed class ServiceHolder : IDisposable
         Failed,
     }
 
-    /// <summary>One ask, its outcome kept for the credential's generation it was sent with. A request's failure is an outcome: it throws when <paramref name="ct"/> is cancelled, or when the ask itself can't be made.</summary>
-    private async Task AskAsync(CancellationToken ct)
+    /// <summary>
+    /// One ask, its outcome kept for the credential's generation it was sent with, and the retries scheduled from it when no
+    /// change of the credential or the address came since it was taken (<paramref name="resets"/>). A request's failure is
+    /// an outcome: it throws when <paramref name="ct"/> is cancelled, or when the ask itself can't be made.
+    /// </summary>
+    private async Task AskAsync(long resets, CancellationToken ct)
     {
         Interlocked.Increment(ref _asks);
         // Read before the request takes the credential: the generation only grows, so when it is the same once the answer
@@ -468,26 +544,51 @@ public sealed class ServiceHolder : IDisposable
         var wait = Interval;
         lock (_lock)
         {
+            // Ended: a network change from now on is handled as it comes; one that came meanwhile is handled here.
+            _asking = false;
+            var changed = _changedDuring;
+            _changedDuring = false;
+            // A change of the credential or the address since: the ask it made is due, and this outcome schedules nothing.
+            var current = resets == _resets;
             switch (outcome.Kind)
             {
                 case Kind.Named:
                     // A late answer never replaces what a later credential's answer brought.
                     if (_known is not { } known || known.Generation <= generation)
                         _known = (generation, outcome.Name!, outcome.Email);
-                    _failures = 0;
-                    _dueAt = _time.GetTimestamp() + Ticks(Interval);
+                    if (current)
+                    {
+                        _failures = 0;
+                        _dueAt = _time.GetTimestamp() + Ticks(Interval);
+                    }
+
                     break;
-                case Kind.Failed:
+                case Kind.Failed when current:
                     // Soon, then less often: the retry's wait, or the service's Retry-After when longer, never past the
-                    // interval (a service's wait of days would hold the next ask past what a wait can be).
+                    // interval (a service's wait of days would hold the next ask past what a wait can be). The network
+                    // changed during it: asked again at once, the retries started again.
                     wait = RetryWait(++_failures, outcome.RetryAfter);
                     _dueAt = _time.GetTimestamp() + Ticks(wait);
+                    if (changed)
+                    {
+                        Probe();
+                        wait = TimeSpan.Zero;
+                    }
+
+                    break;
+                case Kind.Failed:
+                    // Sent before a change of the credential or the address: the ask that change made is due at once.
+                    wait = TimeSpan.Zero;
                     break;
                 default:
                     // Nothing held to ask for, or refused: nothing kept, nothing asked until a change.
                     _known = null;
-                    _failures = 0;
-                    _dueAt = null;
+                    if (current)
+                    {
+                        _failures = 0;
+                        _dueAt = null;
+                    }
+
                     break;
             }
 

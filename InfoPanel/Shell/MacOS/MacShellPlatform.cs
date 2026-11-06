@@ -336,7 +336,8 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
     /// bold menu font and the label colour (a disabled item keeps the colour its title names, so it isn't greyed); a status
     /// line in the secondary colour; a line with a second line (who is signed in) as its label in the menu font and the
     /// label colour (named: an attributed title without a colour is drawn black, unreadable on a dark menu), then its
-    /// second line beneath in the small system size and the secondary colour.
+    /// second line beneath in the small system size and the secondary colour; the colours the other way round when the
+    /// second line is what the line does (Sign In…), so the row doesn't read as disabled.
     /// </summary>
     private static IntPtr Title(ShellMenuItem line)
     {
@@ -354,9 +355,11 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
 
         if (line.Detail is not { } detail)
             return IntPtr.Zero;
-        var title = Text(line.Label + "\n", menuFont, ObjC.Send(colour, ObjC.Sel("labelColor")));
+        var primary = ObjC.Send(colour, ObjC.Sel("labelColor"));
+        var secondary = ObjC.Send(colour, ObjC.Sel("secondaryLabelColor"));
+        var title = Text(line.Label + "\n", menuFont, line.DetailIsAction ? secondary : primary);
         var beneath = Text(detail, ObjC.SendIdDouble(font, ObjC.Sel("menuFontOfSize:"), ObjC.SendDouble(font, ObjC.Sel("smallSystemFontSize"))),
-            ObjC.Send(colour, ObjC.Sel("secondaryLabelColor")));
+            line.DetailIsAction ? primary : secondary);
         ObjC.SendVoidId(title, ObjC.Sel("appendAttributedString:"), beneath);
         ObjC.SendVoid(beneath, ObjC.Sel("release"));
         return title;

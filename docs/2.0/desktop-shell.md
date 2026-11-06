@@ -12,7 +12,8 @@ Click the hexagon. The menu is built afresh from the engine's state each time it
 2. — Who is signed in, one row: while the engine holds a credential for the configured service and knows its holder, a
    round initial (the first letter or digit of the name, else of the email, white on a grey disc; no picture is
    downloaded), the holder's name, and beneath it the email in the secondary colour; the email alone when the holder
-   has no name. "Not signed in" with "Sign In…" beneath while it holds none, or the service refused the one it holds.
+   has no name. "Not signed in" in the secondary colour with "Sign In…" beneath in the label colour (what the row does,
+   so it doesn't read as disabled) while it holds none, or the service refused the one it holds.
    No row (nor its separator) while it holds one whose holder isn't known yet. Clicking the row opens the editor at its
    sign-in settings, where this computer is connected (the link's `then`, below). The engine asks the configured
    service itself, with the credential (below, "Who is signed in"). The name and the email are attributed titles (the
@@ -50,7 +51,8 @@ The engine learns the credential's holder from the configured service, with the 
 {service address}/svc/v1/holder`, sent as every request to the service is (only to the address in effect, the credential
 as a bearer token, no redirect followed, with `--offline` only to a service on this computer), answered
 `{"name": string | null, "email": string}`. The row shows the name with the email beneath, or the email alone when the
-name is null or empty, each without control characters, and past 40 characters its first 39 and "…".
+name is null or empty, each without control characters; the name past 40 characters its first 39 and "…", the email
+(beneath the name or in its place) past 32 its first 15, "…" and its last 16, so its domain stays.
 
 - **When it asks:** while the menu-bar item shows, at start, whenever the credential changes (a client provides one,
   even the same again, or removes it; the service address changes), and again every 6 hours after an answer while it
@@ -58,8 +60,12 @@ name is null or empty, each without control characters, and past 40 characters i
   weather source does: after 1 minute, then 2, 4, 8… doubling with each failure in a row, or after the failure's
   `Retry-After` when that is longer, never later than 6 hours; and at once when the computer's network changes (an
   address comes or goes: a network joined, a sleep's end), so an engine started before its network or its service
-  shows the row within a minute or so of both being up. An answer, a change of the credential or the address, or such
-  a network change starts the retries again at 1 minute. One request at a time, each bounded at 15 s, its answer read
+  shows the row within a minute or so of both being up. A network change during an ask is kept for its end: asked
+  again at once if it fails. Once per failed ask: further changes while that ask is due or under way, or after it
+  fails, ask nothing more until the next ask (a burst of changes, or a network that keeps changing, asks once). An
+  answer, a change of the credential or the address, or such a network change starts the retries again at 1
+  minute; what an ask sent before a change of the credential or the address comes to changes no retry. One request at
+  a time, each bounded at 15 s, its answer read
   to at most 4 KiB. Should the asking itself fail, the next change asks again. Opening the menu never waits for the
   credential's store: it reads what the engine last learned.
 - **What it keeps:** the name and the email, in memory only, for the credential they were asked with. An answer that

@@ -64,6 +64,8 @@ public sealed class ShellMenuTests
 
         var row = Item(menu, ShellMenu.SignedIn);
         Assert.Equal(("habib rehman", "habib@example.com", "H", ShellItemKind.Action, true), (row.Label, row.Detail, row.Initial, row.Kind, row.Enabled));
+        // The name is the line that stands out; the email beneath is secondary.
+        Assert.False(row.DetailIsAction);
         Assert.Equal(3, menu.Items.ToList().IndexOf(row));
         Assert.Equal([ShellItemKind.Separator, ShellItemKind.Separator], new[] { menu.Items[2].Kind, menu.Items[4].Kind });
         Assert.Empty(row.Children);
@@ -87,6 +89,8 @@ public sealed class ShellMenuTests
             var row = Item(menu, ShellMenu.SignedIn);
             // A name kept without a credential (or after the service refused it) never shows.
             Assert.Equal(("Not signed in", "Sign In…", (string?)null, ShellItemKind.Action, true), (row.Label, row.Detail, row.Initial, row.Kind, row.Enabled));
+            // Sign In… is what choosing the row does: the line that stands out, "Not signed in" the secondary one.
+            Assert.True(row.DetailIsAction);
             Assert.Equal(3, menu.Items.ToList().IndexOf(row));
         }
     }

@@ -182,7 +182,9 @@ public sealed unsafe class MacShellMenuTests
 
         var row = Lines(new ShellState("2.0.0")).Single(l => l.Id == ShellMenu.SignedIn);
 
-        Assert.Equal(("Not signed in\nSign In…", "secondaryLabelColor", false, true, true), (row.Text, row.LastColour, row.HasImage, row.Enabled, row.HasAction));
+        Assert.Equal(("Not signed in\nSign In…", false, true, true), (row.Text, row.HasImage, row.Enabled, row.HasAction));
+        // "Not signed in" in the secondary colour, Sign In… (what the row does) in the label colour, so it doesn't read as disabled.
+        Assert.Equal(("secondaryLabelColor", "labelColor"), (row.FirstColour, row.LastColour));
     }
 
     [Fact]

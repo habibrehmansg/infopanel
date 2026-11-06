@@ -301,11 +301,35 @@ public sealed class ServiceHolderTests : IAsyncDisposable
     }
 
     [Fact]
-    public void ALongEmail_IsShortenedToo()
+    public void ALongEmail_ShownInTheNamesPlace_IsShortenedInItsMiddle()
     {
         var email = new string('e', 60) + "@example.test";
 
-        Assert.Equal(new string('e', 39) + "…", ServiceHolder.Shown(null, email));
+        Assert.Equal(new string('e', 15) + "…eee@example.test", ServiceHolder.Shown(null, email));
+        Assert.Equal(new string('e', 15) + "…eee@example.test", ServiceHolder.Shown(" ", email));
+    }
+
+    /// <summary>An email past 32 characters (what reads as one): its first 15, "…" and its last 16, so the domain stays.</summary>
+    [Theory]
+    [InlineData("abcdefghijklmnopqrst@example.com", "abcdefghijklmnopqrst@example.com")]
+    [InlineData("abcdefghijklmnopqrstu@example.com", "abcdefghijklmno…rstu@example.com")]
+    [InlineData("\tabcdefghijklmnopqrst@example.com\u0000 ", "abcdefghijklmnopqrst@example.com")]
+    public void TheEmail_Past32Characters_KeepsItsStartAndItsEnd(string email, string shown)
+    {
+        Assert.Equal(32, ServiceHolder.MaxEmailLength);
+        Assert.Equal(shown, ServiceHolder.ShownBeside("Ann Lee", email));
+    }
+
+    [Fact]
+    public void TheEmailsLength_CountsWhatReadsAsOneCharacter()
+    {
+        const string coder = "👩🏽‍💻";
+        var fits = string.Concat(Enumerable.Repeat(coder, 20)) + "@example.com";
+        var over = string.Concat(Enumerable.Repeat(coder, 21)) + "@example.com";
+
+        Assert.Equal(fits, ServiceHolder.ShownBeside("Ann Lee", fits));
+        Assert.Equal(string.Concat(Enumerable.Repeat(coder, 15)) + "…" + string.Concat(Enumerable.Repeat(coder, 4)) + "@example.com",
+            ServiceHolder.ShownBeside("Ann Lee", over));
     }
 
     // ---- The email beside the name ----
@@ -333,7 +357,7 @@ public sealed class ServiceHolderTests : IAsyncDisposable
 
     [Theory]
     [InlineData("\tzq\u0000-holder@example.test\u2028", "zq-holder@example.test")]
-    [InlineData("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee@example.test", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee…")]
+    [InlineData("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee@example.test", "eeeeeeeeeeeeeee…eee@example.test")]
     [InlineData(" ", null)]
     public async Task TheEmail_IsCleanedAndShortened_AsTheNameIs(string email, string? shown)
     {
@@ -635,6 +659,175 @@ public sealed class ServiceHolderTests : IAsyncDisposable
         _clock.Advance(TimeSpan.FromHours(1));
         await Until(() => holder.IsWaiting, "the wait");
         Assert.Equal(2, _service.Requests.Count);
+    }
+
+    /// <summary>What the fake service answers: a 503, once <paramref name="gate"/> is open.</summary>
+    private static Func<ServedRequest, CancellationToken, Task<(int Status, byte[] Body)>> FailAfter(TaskCompletionSource gate) => async (_, ct) =>
+    {
+        await gate.Task.WaitAsync(ct);
+        return (503, Array.Empty<byte>());
+    };
+
+    [Fact]
+    public async Task ANetworkChange_DuringAnAskThatFails_AsksAtOnceAfterIt_AndTheRetriesStartAgain()
+    {
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        _credentials.Put(Credential);
+        var holder = await Started();
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await Asked(holder, 2, 2);
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        await Asked(holder, 3, 3);
+
+        // The fourth ask, after 4 minutes, waits for its answer; the network changes meanwhile.
+        var gate = new TaskCompletionSource();
+        _answer = FailAfter(gate);
+        _clock.Advance(TimeSpan.FromMinutes(4));
+        await Until(() => _service.Requests.Count == 4, "the fourth request");
+        Assert.True(holder.NetworkChanged());
+
+        // It fails: asked again at once, no time passing, and the retries start again at a minute (not 8).
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        gate.SetResult();
+        await Asked(holder, 5, 5);
+        _clock.Advance(TimeSpan.FromMinutes(1) - TimeSpan.FromSeconds(1));
+        await Asked(holder, 5, 5);
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await Asked(holder, 6, 6);
+    }
+
+    [Fact]
+    public async Task ANetworkChange_DuringAnAskThatIsAnswered_AsksNothingMore()
+    {
+        _credentials.Put(Credential);
+        var holder = await Started();
+
+        var gate = new TaskCompletionSource();
+        _answer = async (_, ct) =>
+        {
+            await gate.Task.WaitAsync(ct);
+            return Answer(Name);
+        };
+        _clock.Advance(ServiceHolder.Interval);
+        await Until(() => _service.Requests.Count == 2, "the second request");
+        holder.NetworkChanged();
+        gate.SetResult();
+        await Asked(holder, 2, 2);
+
+        _clock.Advance(ServiceHolder.Interval - TimeSpan.FromSeconds(1));
+        await Asked(holder, 2, 2);
+        AssertShown(holder, held: true, name: Name);
+    }
+
+    [Fact]
+    public async Task ALateFailure_ForACredentialReplacedSince_DoesntAdvanceTheNewCredentialsRetries()
+    {
+        // The first credential's request waits; the second is provided meanwhile, then the first's request fails.
+        var gate = new TaskCompletionSource();
+        _answer = async (request, ct) =>
+        {
+            if (request.Header("Authorization") == $"Bearer {Credential}")
+                await gate.Task.WaitAsync(ct);
+            return (503, Array.Empty<byte>());
+        };
+        _credentials.Put(Credential);
+        var holder = Holder();
+        holder.Start();
+        await Until(() => _service.Requests.Count == 1, "the first request");
+
+        _credentials.Put(Other);
+        gate.SetResult();
+        await Asked(holder, 2, 2);
+        Assert.Equal($"Bearer {Other}", _service.Requests[1].Header("Authorization"));
+
+        // The new credential's first failure: asked again after a minute, not two.
+        _clock.Advance(TimeSpan.FromMinutes(1) - TimeSpan.FromSeconds(1));
+        await Asked(holder, 2, 2);
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await Asked(holder, 3, 3);
+    }
+
+    [Fact]
+    public async Task ALateFailure_ForAnAddressChangedSince_DoesntAdvanceTheRetries()
+    {
+        await using var next = new LocalHttpServer((_, stream, _) => LocalHttpServer.Answer(stream, 503, [], "application/json"));
+        var gate = new TaskCompletionSource();
+        _answer = FailAfter(gate);
+        _credentials.Put(Credential);
+        var holder = Holder();
+        holder.Start();
+        await Until(() => _service.Requests.Count == 1, "the first request");
+
+        // The address changes (the credential goes with it) and another is provided, while the first request waits.
+        _address = $"http://127.0.0.1:{next.Port}";
+        _credentials.AddressChanged();
+        _credentials.Put(Other);
+        gate.SetResult();
+        await Until(() => next.Requests.Count == 1 && holder.IsWaiting, "the new address's request");
+
+        _clock.Advance(TimeSpan.FromMinutes(1) - TimeSpan.FromSeconds(1));
+        await Until(() => holder.IsWaiting, "the wait");
+        Assert.Single(next.Requests);
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await Until(() => next.Requests.Count == 2 && holder.IsWaiting, "the retry after a minute");
+    }
+
+    [Fact]
+    public async Task ANetworkStorm_ProbesOncePerFailure_NotOncePerChange()
+    {
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        _credentials.Put(Credential);
+        var holder = await Started();
+
+        // After a failure: the first change asks at once; the changes after that ask's failure ask nothing.
+        Assert.True(holder.NetworkChanged());
+        await Asked(holder, 2, 2);
+        for (var i = 0; i < 10; i++)
+        {
+            Assert.False(holder.NetworkChanged());
+            await Asked(holder, 2, 2);
+        }
+
+        // A burst during the next ask (after the minute the probe's failure waits): one ask after it fails, not ten.
+        var gate = new TaskCompletionSource();
+        _answer = FailAfter(gate);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await Until(() => _service.Requests.Count == 3, "the third request");
+        var asked = 0;
+        for (var i = 0; i < 10; i++)
+            asked += holder.NetworkChanged() ? 1 : 0;
+        Assert.Equal(1, asked);
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        gate.SetResult();
+        await Asked(holder, 4, 4);
+        for (var i = 0; i < 10; i++)
+        {
+            Assert.False(holder.NetworkChanged());
+            await Asked(holder, 4, 4);
+        }
+
+        // The retries keep their schedule: the next after a minute.
+        _clock.Advance(TimeSpan.FromMinutes(1) - TimeSpan.FromSeconds(1));
+        await Asked(holder, 4, 4);
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await Asked(holder, 5, 5);
+    }
+
+    [Fact]
+    public async Task ANetworkBurst_WhileWaitingAfterAFailure_AsksOnce()
+    {
+        _answer = (_, _) => Task.FromResult((503, Array.Empty<byte>()));
+        _credentials.Put(Credential);
+        var holder = await Started();
+
+        var asked = 0;
+        for (var i = 0; i < 20; i++)
+            asked += holder.NetworkChanged() ? 1 : 0;
+        await Asked(holder, 2, 2);
+
+        Assert.Equal(1, asked);
+        await Task.Delay(100, Ct);
+        await Asked(holder, 2, 2);
     }
 
     // ---- Bounds ----
