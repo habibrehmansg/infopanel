@@ -95,22 +95,23 @@ public sealed class ShellServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Edit from Another Computer… opens the sign-in link with the engine settings page as its <c>then</c>, and the link
-    /// lands there: the sign-in's redirect carries the page after the token.
+    /// Edit from Another Computer… opens the sign-in link with the client's sign-in settings, where another computer is
+    /// set up to edit this one, as its <c>then</c>, and the link lands there: the sign-in's redirect carries the page after
+    /// the token.
     /// </summary>
     [Fact]
-    public async Task EditFromAnotherComputer_OpensTheSignInLink_ThatLandsOnTheEngineSettings()
+    public async Task EditFromAnotherComputer_OpensTheSignInLink_ThatLandsOnThePageForAnotherComputer()
     {
         await WaitUntil(() => _shell.Icon != null);
 
         await _shell.ClickAsync(ShellMenu.EditFromAnotherComputer);
 
         var link = Assert.Single(_browser.Opened);
-        Assert.Equal($"http://127.0.0.1:{EngineFactory.Port}/auth/{EngineFactory.Token}?then=%23%2Fsettings%2Fengine", link);
+        Assert.Equal($"http://127.0.0.1:{EngineFactory.Port}/auth/{EngineFactory.Token}?then=%23%2Fsettings%2Faccount", link);
         using var client = _factory.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false });
         using var response = await client.GetAsync(new Uri(link).PathAndQuery, Ct);
         Assert.Equal(System.Net.HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal($"/#token={EngineFactory.Token}&then=%23%2Fsettings%2Fengine", response.Headers.Location?.OriginalString);
+        Assert.Equal($"/#token={EngineFactory.Token}&then=%23%2Fsettings%2Faccount", response.Headers.Location?.OriginalString);
         Assert.False(Stopping);
     }
 

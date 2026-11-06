@@ -22,14 +22,14 @@ public sealed record EditorLink(string Url, bool WebClient)
 /// </summary>
 public static class EditorRoutes
 {
-    /// <summary>The client's engine settings, where another computer is set up to edit this one (the menu's Edit from Another Computer…).</summary>
-    public const string EngineSettings = "#/settings/engine";
-
-    /// <summary>The client's sign-in settings, where this computer is connected to the configured service (the menu's row of who is signed in).</summary>
+    /// <summary>
+    /// The client's sign-in settings, where this computer is connected to the configured service (the menu's row of who
+    /// is signed in) and another computer is set up to edit this one (the menu's Edit from Another Computer…).
+    /// </summary>
     public const string AccountSettings = "#/settings/account";
 
     /// <summary>Every page a link may land on.</summary>
-    public static IReadOnlyList<string> Known { get; } = [EngineSettings, AccountSettings];
+    public static IReadOnlyList<string> Known { get; } = [AccountSettings];
 
     /// <summary>The known page <paramref name="value"/> is (compared exactly), or null.</summary>
     public static string? Find(string? value)

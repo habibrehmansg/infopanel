@@ -20,8 +20,8 @@ Click the hexagon. The menu is built afresh from the engine's state each time it
    second line, and the item's image the initial), so the row stays a plain menu item, with no arrow: it opens a page,
    not a submenu.
 3. — **Open Editor**: opens the editor in the browser, already signed in (below, "Opening the editor"). **Edit from
-   Another Computer…**, under it: the same, at the editor's engine settings, where another computer is set up to edit
-   this one (the link's `then`, below).
+   Another Computer…**, under it: the same, at the editor's sign-in settings (the page the row of who is signed in
+   opens), where another computer is set up to edit this one (the link's `then`, below).
 4. — **Show on Desktop ▸**, only while desktop windows are on (not `--no-windows`): each profile that can be opened, in
    the library's order, with a check mark when its desktop window is on; "No Profiles Yet" (grey) when there are none;
    past 20, the first 20 and **More in the Editor…**, which opens the editor. Choosing a profile turns its window on or
@@ -150,13 +150,13 @@ a web client on another origin, which exchanges the code for the run's token and
 the session token is never in the link (`EngineRuntime.EditorLinkFor`, `EditorOpener`). Otherwise it opens the sign-in
 link (`/auth/{token}`) to the web client it serves.
 
-**At a page.** Edit from Another Computer… opens the same link with the client's page to open at, its engine settings
-(`#/settings/engine`, `EditorRoutes`), URL-encoded as `then`: the code link's last member
-(`{origin}/#engine=…&code=…&then=%23%2Fsettings%2Fengine`), or the sign-in link's query (`/auth/{token}?then=…`), whose
+**At a page.** Edit from Another Computer… and the row of who is signed in open the same link with the client's page
+to open at, its sign-in settings, where this computer is connected and another computer is set up to edit this one
+(`#/settings/account`, `EditorRoutes.AccountSettings`), URL-encoded as `then`: the code link's last member
+(`{origin}/#engine=…&code=…&then=%23%2Fsettings%2Faccount`), or the sign-in link's query (`/auth/{token}?then=…`), whose
 redirect hands it on after the token (`/#token=…&then=…`; [api.md, "Signing in"](../../spec/docs/api.md#signing-in)).
-The row of who is signed in opens it the same way at the client's sign-in settings (`EditorRoutes.AccountSettings`,
-`then=%23%2Fsettings%2Faccount`). The pages are constants the engine knows, never a caller's: the redirect carries only
-those, as the engine spells them, and leaves any other out. The client opens at it once the code is exchanged (after the reload that follows) or the token
+The page is a constant the engine knows, never a caller's: the redirect carries only that one, as the engine spells it,
+and leaves any other out. The client opens at it once the code is exchanged (after the reload that follows) or the token
 taken, and keeps neither the link nor `then` in its address; a client that doesn't know the member ignores it.
 
 The console prints only the links that lead somewhere: the sign-in

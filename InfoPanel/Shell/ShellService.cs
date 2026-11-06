@@ -19,8 +19,8 @@ namespace InfoPanel.Shell;
 /// <see cref="ServiceHolder"/>, which asks the configured service who holds the credential, for the signed-in line.
 /// <list type="bullet">
 /// <item><b>Open Editor</b> (and Show on Desktop's <b>More in the Editor…</b>) opens the editor through <see cref="EditorOpener"/>;
-/// <b>Edit from Another Computer…</b> opens it at its engine settings (<see cref="EditorRoutes.EngineSettings"/>), and
-/// the row of who is signed in at its sign-in settings (<see cref="EditorRoutes.AccountSettings"/>).</item>
+/// <b>Edit from Another Computer…</b> and the row of who is signed in open it at its sign-in settings, where another
+/// computer is set up to edit this one (<see cref="EditorRoutes.AccountSettings"/>).</item>
 /// <item><b>Show on Desktop</b>'s profiles turn a profile's desktop window on or off as the editor's switch does: one
 /// <c>profile</c> commit of <c>window.enabled</c> at the revision read (read again and retried on a conflict), saved at
 /// once at that revision when the profile had no unsaved changes before it, else left unsaved with them.</item>
@@ -175,7 +175,7 @@ public sealed class ShellService(
                         editor.Open();
                         break;
                     case ShellMenu.EditFromAnotherComputer:
-                        editor.Open(EditorRoutes.EngineSettings);
+                        editor.Open(EditorRoutes.AccountSettings);
                         break;
                     case ShellMenu.SignedIn:
                         editor.Open(EditorRoutes.AccountSettings);

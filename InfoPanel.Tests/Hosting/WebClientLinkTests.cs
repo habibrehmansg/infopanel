@@ -91,24 +91,10 @@ public sealed class WebClientLinkTests
     }
 
     /// <summary>
-    /// A link to a page of the client (the menu's Edit from Another Computer…) carries it as <c>then</c>, URL-encoded: after
-    /// the code link's members, or as the sign-in link's query, which its redirect hands on after the token.
+    /// A link to the client's sign-in settings (the menu's Edit from Another Computer… and its row of who is signed in)
+    /// carries it as <c>then</c>, URL-encoded: after the code link's members, or as the sign-in link's query, which its
+    /// redirect hands on after the token. It is the only page the engine knows.
     /// </summary>
-    [Fact]
-    public void ALinkToAPage_CarriesItAsThen_InTheCodeLink_AndTheSignInLink()
-    {
-        var code = new EngineRuntime(5300, "tok", [], ["https://client.example"]) { WebRootServed = false };
-        var signIn = new EngineRuntime(5300, "tok", [], []) { WebRootServed = true };
-
-        Assert.Equal(
-            new EditorLink("https://client.example/#engine=http://127.0.0.1:5300&code=q3Zt0vK8Lw2NxR5yB7mC1A&then=%23%2Fsettings%2Fengine", WebClient: true),
-            code.EditorLinkFor(() => "q3Zt0vK8Lw2NxR5yB7mC1A", EditorRoutes.EngineSettings));
-        Assert.Equal(new EditorLink("http://127.0.0.1:5300/auth/tok?then=%23%2Fsettings%2Fengine", WebClient: false),
-            signIn.EditorLinkFor(() => throw new InvalidOperationException(), EditorRoutes.EngineSettings));
-        Assert.Equal("#/settings/engine", EditorRoutes.EngineSettings);
-    }
-
-    /// <summary>The client's sign-in settings (the menu's row of who is signed in) is a page the engine knows too.</summary>
     [Fact]
     public void ALinkToTheSignInSettings_CarriesItAsThen_InTheCodeLink_AndTheSignInLink()
     {
@@ -120,14 +106,16 @@ public sealed class WebClientLinkTests
             code.EditorLinkFor(() => "q3Zt0vK8Lw2NxR5yB7mC1A", EditorRoutes.AccountSettings));
         Assert.Equal(new EditorLink("http://127.0.0.1:5300/auth/tok?then=%23%2Fsettings%2Faccount", WebClient: false),
             signIn.EditorLinkFor(() => throw new InvalidOperationException(), EditorRoutes.AccountSettings));
-        Assert.Equal([EditorRoutes.EngineSettings, EditorRoutes.AccountSettings], EditorRoutes.Known);
+        Assert.Equal("#/settings/account", EditorRoutes.AccountSettings);
+        Assert.Equal([EditorRoutes.AccountSettings], EditorRoutes.Known);
     }
 
     /// <summary>The page is one the engine knows, never a caller's: any other is refused before a code is minted.</summary>
     [Theory]
     [InlineData("#/profiles")]
+    [InlineData("#/settings/engine")]
     [InlineData("https://elsewhere.example/")]
-    [InlineData("#/settings/engine&token=x")]
+    [InlineData("#/settings/account&token=x")]
     [InlineData("")]
     public void ALinkToAPageTheEngineDoesntKnow_IsRefused(string then)
     {
@@ -202,11 +190,11 @@ public sealed class WebClientLinkTests
     }
 
     /// <summary>
-    /// The menu's Edit from Another Computer… opens the web client's code link with the engine settings page as its
-    /// <c>then</c>, after a new code; Open Editor's has none.
+    /// The menu's Edit from Another Computer… opens the web client's code link with the sign-in settings, where another
+    /// computer is set up to edit this one, as its <c>then</c>, after a new code; Open Editor's has none.
     /// </summary>
     [Fact]
-    public async Task EditFromAnotherComputer_WithoutAWebRoot_OpensACodeLink_ThatLandsOnTheEngineSettings()
+    public async Task EditFromAnotherComputer_WithoutAWebRoot_OpensACodeLink_ThatLandsOnThePageForAnotherComputer()
     {
         using var engine = new EngineFactory();
         var browser = new RecordingBrowserLauncher();
@@ -231,7 +219,7 @@ public sealed class WebClientLinkTests
         Assert.Equal(2, browser.Links.Count);
         Assert.All(browser.Links, l => Assert.True(l.WebClient));
         var prefix = System.Text.RegularExpressions.Regex.Escape($"{EngineFactory.CrossOrigin}/#engine=http://127.0.0.1:{EngineFactory.Port}&code=");
-        Assert.Matches($"^{prefix}[A-Za-z0-9_-]{{22}}&then=%23%2Fsettings%2Fengine$", browser.Links[0].Url);
+        Assert.Matches($"^{prefix}[A-Za-z0-9_-]{{22}}&then=%23%2Fsettings%2Faccount$", browser.Links[0].Url);
         Assert.Matches($"^{prefix}[A-Za-z0-9_-]{{22}}$", browser.Links[1].Url);
         Assert.DoesNotContain(EngineFactory.Token, browser.Links[0].Url);
     }

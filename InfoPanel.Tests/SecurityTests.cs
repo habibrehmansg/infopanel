@@ -230,10 +230,10 @@ public class SecurityTests(EngineFactory factory) : IClassFixture<EngineFactory>
     public async Task Auth_WithThePageTheEngineKnows_RedirectsWithItAfterTheToken()
     {
         using var client = factory.CreateRawClient();
-        using var response = await client.GetAsync($"/auth/{EngineFactory.Token}?then=%23%2Fsettings%2Fengine", Ct);
+        using var response = await client.GetAsync($"/auth/{EngineFactory.Token}?then=%23%2Fsettings%2Faccount", Ct);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal($"/#token={EngineFactory.Token}&then=%23%2Fsettings%2Fengine", response.Headers.Location?.OriginalString);
+        Assert.Equal($"/#token={EngineFactory.Token}&then=%23%2Fsettings%2Faccount", response.Headers.Location?.OriginalString);
         Assert.True(response.Headers.CacheControl?.NoStore);
         AssertSecurityHeaders(response);
     }
@@ -241,12 +241,13 @@ public class SecurityTests(EngineFactory factory) : IClassFixture<EngineFactory>
     /// <summary>Any other <c>then</c> (a page it doesn't know, two of them, an empty one) is left out: never echoed.</summary>
     [Theory]
     [InlineData("?then=%23%2Fprofiles")]
+    [InlineData("?then=%23%2Fsettings%2Fengine")]
     [InlineData("?then=https%3A%2F%2Felsewhere.example%2F")]
-    [InlineData("?then=%23%2FSettings%2Fengine")]
-    [InlineData("?then=%23%2Fsettings%2Fengine%26token%3Dx")]
-    [InlineData("?then=%23%2Fsettings%2Fengine&then=%23%2Fsettings%2Fengine")]
+    [InlineData("?then=%23%2FSettings%2Faccount")]
+    [InlineData("?then=%23%2Fsettings%2Faccount%26token%3Dx")]
+    [InlineData("?then=%23%2Fsettings%2Faccount&then=%23%2Fsettings%2Faccount")]
     [InlineData("?then=")]
-    [InlineData("?other=%23%2Fsettings%2Fengine")]
+    [InlineData("?other=%23%2Fsettings%2Faccount")]
     public async Task Auth_WithAnyOtherThen_RedirectsWithTheTokenOnly(string query)
     {
         using var client = factory.CreateRawClient();
@@ -260,7 +261,7 @@ public class SecurityTests(EngineFactory factory) : IClassFixture<EngineFactory>
     public async Task Auth_WithWrongToken_AndThePage_Is401()
     {
         using var client = factory.CreateRawClient();
-        using var response = await client.GetAsync("/auth/not-the-token?then=%23%2Fsettings%2Fengine", Ct);
+        using var response = await client.GetAsync("/auth/not-the-token?then=%23%2Fsettings%2Faccount", Ct);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Null(response.Headers.Location);

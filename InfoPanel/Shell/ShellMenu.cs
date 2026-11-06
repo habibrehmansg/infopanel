@@ -109,9 +109,9 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
     /// The header "InfoPanel" and "Running · {version}"; who is signed in, one line that opens the editor at its sign-in
     /// settings: the name with the email beneath and the name's initial while a credential is held and its holder known
     /// (the email alone without a name), "Not signed in" with "Sign In…" beneath without one or when the service refused it,
-    /// none while the holder isn't known; Open Editor; Edit from Another Computer… (the editor at its engine settings); Show
-    /// on Desktop with each profile (when desktop windows are on); Show Data Folder in Finder, Open Logs Folder, Copy Engine
-    /// Details; Quit InfoPanel (⌘Q).
+    /// none while the holder isn't known; Open Editor; Edit from Another Computer… (the editor at the same sign-in settings,
+    /// where another computer is set up to edit this one); Show on Desktop with each profile (when desktop windows are on);
+    /// Show Data Folder in Finder, Open Logs Folder, Copy Engine Details; Quit InfoPanel (⌘Q).
     /// </summary>
     public static ShellMenu Build(ShellState state)
     {
