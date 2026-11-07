@@ -47,6 +47,8 @@ public sealed class PanelsNotSavedException(Exception inner) : Exception("The pa
 /// stopped, its screen off, its settings kept. A session that fails is started again on the next pass, its reason kept
 /// and logged once. A profile whose frames stop (deleted, or it can't be drawn) turns the panel off until the profiles
 /// change (a change while it was running counts too: a profile deleted and made again is tried).</item>
+/// <item>Sleep and wake (<see cref="Power.PanelPower"/>): <see cref="SuspendAsync"/> turns every panel off and holds
+/// passes and starts until <see cref="ResumeAsync"/>, which runs a pass.</item>
 /// </list>
 /// </summary>
 public sealed class PanelManager : IAsyncDisposable
@@ -58,6 +60,7 @@ public sealed class PanelManager : IAsyncDisposable
     private readonly PanelStore _store;
     private readonly PanelHost _host;
     private readonly TimeProvider _time;
+    private readonly Func<TimeSpan>? _sinceBoot; // a monotonic clock that counts sleep (PowerEvents.SinceBoot); null: _time does
     private readonly PanelRunnerOptions _runnerOptions;
     private readonly ILogger _logger;
     private readonly BlockingCollection<Action> _queue = new();
@@ -71,14 +74,22 @@ public sealed class PanelManager : IAsyncDisposable
     private Thread? _thread;
     private ITimer? _timer;
     private volatile bool _stopping; // set under _liveLock; read anywhere
+    private volatile bool _suspended; // the computer is going to sleep or asleep (SuspendAsync to ResumeAsync); set under _liveLock
+    private (long Timestamp, TimeSpan SinceBoot) _asleepFrom; // when SuspendAsync came, on both clocks (under _liveLock)
     private int _passQueued; // 1 while a timer's pass is queued or running: further ticks are dropped
     private long _profilesGeneration; // how many times the profiles changed (the manager's thread)
     private long _version; // how many times the list changed this run (written on the manager's thread)
     private IReadOnlyList<PanelStatus> _published; // the list as the version last counted it (the manager's thread)
     private long? _statsCountedAt; // when a change of the stats alone was last counted
 
-    public PanelManager(IUsbBackend backend, PanelStore store, PanelHost host, TimeProvider time, ILogger logger, PanelRunnerOptions? runnerOptions = null)
+    /// <param name="sinceBoot">
+    /// A monotonic clock that keeps counting while the computer sleeps (<see cref="Power.PowerEvents.SinceBoot"/>), for
+    /// the time asleep when <paramref name="time"/>'s timestamps stop then (macOS's do); null when they don't.
+    /// </param>
+    public PanelManager(IUsbBackend backend, PanelStore store, PanelHost host, TimeProvider time, ILogger logger, PanelRunnerOptions? runnerOptions = null,
+        Func<TimeSpan>? sinceBoot = null)
     {
+        _sinceBoot = sinceBoot;
         if (store.Problem != null)
             throw new ArgumentException("A store the engine can't hold runs no panels.", nameof(store));
         _backend = backend;
@@ -322,14 +333,17 @@ public sealed class PanelManager : IAsyncDisposable
     {
         var runtime = RuntimeOf(saved.Id);
         var runner = runtime.Runner;
-        var waiting = runtime.Usb != null && runner == null && Wanted(saved, runtime) && SettleLeft(runtime) != null;
+        // Asleep, a panel without a session is off with no reason (a failure is kept for the wake's start).
+        var asleep = _suspended && runtime.Usb != null && runner == null;
+        var waiting = !asleep && runtime.Usb != null && runner == null && Wanted(saved, runtime) && SettleLeft(runtime) != null;
         var state = runtime.Usb == null ? "notConnected"
             : runner is { Running: true } ? "running"
             : runner != null ? "starting"
+            : asleep ? "off"
             : waiting ? "waiting"
             : runtime.Reason != null && Wanted(saved, runtime) ? "failed"
             : "off";
-        var reason = runner is { Running: true } ? null
+        var reason = runner is { Running: true } || asleep ? null
             : waiting ? $"the panel takes no new stream until {JpegSettle.TotalSeconds:0} s after its JPEG stream ended"
             : runtime.Reason;
         var code = reason == null ? null : waiting ? "settling" : runtime.ReasonCode;
@@ -365,7 +379,7 @@ public sealed class PanelManager : IAsyncDisposable
     /// <summary>The manager's thread: detection, then every saved panel's session to match what it wants.</summary>
     private void Pass()
     {
-        if (_stopping)
+        if (_stopping || _suspended)
             return;
 
         IReadOnlyList<UsbDeviceId> listed;
@@ -399,8 +413,8 @@ public sealed class PanelManager : IAsyncDisposable
 
         foreach (var usb in panels)
         {
-            if (_stopping)
-                return; // the stop doesn't wait for the rest of the panels' queries
+            if (_stopping || _suspended)
+                return; // the stop and the sleep don't wait for the rest of the panels' queries
             if (_seen.TryGetValue((usb.Bus, usb.Address), out var seen) && (seen.DeviceId != null || seen.Ignored))
                 continue;
             Identify(usb, seen);
@@ -573,8 +587,8 @@ public sealed class PanelManager : IAsyncDisposable
             _time, _runnerOptions, _logger, encoding);
         lock (_liveLock)
         {
-            if (_stopping)
-                return; // the stop has asked every runner it will wait for
+            if (_stopping || _suspended)
+                return; // the stop (or the sleep) has asked every runner it will wait for
             _live.Add(started);
         }
         runtime.Runner = started;
@@ -666,6 +680,74 @@ public sealed class PanelManager : IAsyncDisposable
                 _threadEnded.Task.IsCompleted ? "" : " (a panel's query was still under way)");
         return ended;
     }
+
+    /// <summary>
+    /// The computer is going to sleep: every running panel is asked to stop at once, whatever the manager's thread is
+    /// doing, each turning its screen off; until <see cref="ResumeAsync"/> no pass runs (one under way stops before its
+    /// next panel's query) and no panel starts. Waits at most <paramref name="bound"/> from the call for the panels; a
+    /// panel still writing then is left to its thread. True when every panel asked has ended.
+    /// </summary>
+    public async Task<bool> SuspendAsync(TimeSpan bound)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        List<PanelRunner> runners;
+        lock (_liveLock)
+        {
+            if (_stopping)
+                return true; // the stop has them
+            if (!_suspended && _sinceBoot != null)
+                _asleepFrom = (_time.GetTimestamp(), _sinceBoot());
+            _suspended = true;
+            runners = [.. _live];
+        }
+        foreach (var runner in runners)
+            runner.RequestStop();
+        _logger.Information("USB panels: the computer is going to sleep; {Count} turned off", runners.Count);
+        if (runners.Count == 0)
+            return true;
+
+        var all = Task.WhenAll(runners.Select(r => r.Ended));
+        var left = bound - TimeProvider.System.GetElapsedTime(started);
+        var ended = left > TimeSpan.Zero && await Task.WhenAny(all, Task.Delay(left, TimeProvider.System)).ConfigureAwait(false) == all;
+        if (!ended)
+            _logger.Warning("USB panels: {Count} didn't turn off within {Bound} s; the computer sleeps anyway", runners.Count(r => !r.Ended.IsCompleted), bound.TotalSeconds);
+        return ended;
+    }
+
+    /// <summary>
+    /// The computer is awake: passes run again and one runs now, starting the panels that want to run. The time asleep
+    /// counts toward a panel's <see cref="JpegSettle"/> (the manager's clock may stop while the computer sleeps, as
+    /// macOS's does; the boot clock it was given doesn't, and a wall-clock correction moves neither). A wake without a
+    /// sleep is just a pass. <paramref name="stillAwake"/>, asked
+    /// with the sleep's lock held: false (a sleep came since the wake) does nothing.
+    /// </summary>
+    public Task ResumeAsync(Func<bool>? stillAwake = null) => Ask(() =>
+    {
+        lock (_liveLock)
+        {
+            if (_stopping || stillAwake?.Invoke() == false)
+                return false;
+            if (_suspended)
+            {
+                _suspended = false;
+                // The time the boot clock counted and the manager's didn't: the time asleep, when the manager's stops then.
+                var uncounted = _sinceBoot == null ? TimeSpan.Zero
+                    : _sinceBoot() - _asleepFrom.SinceBoot - _time.GetElapsedTime(_asleepFrom.Timestamp);
+                if (uncounted > TimeSpan.Zero)
+                {
+                    var ticks = (long)(uncounted.TotalSeconds * _time.TimestampFrequency);
+                    foreach (var runtime in _runtime.Values)
+                        if (runtime.JpegEndedAt is { } ended)
+                            runtime.JpegEndedAt = ended - ticks;
+                    foreach (var (usb, ended) in _forgottenJpegEnds.ToList())
+                        _forgottenJpegEnds[usb] = ended - ticks;
+                }
+                _logger.Information("USB panels: the computer is awake; looking for panels");
+            }
+        }
+        Pass();
+        return true;
+    });
 
     public async ValueTask DisposeAsync()
     {

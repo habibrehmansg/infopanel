@@ -137,6 +137,109 @@ public sealed class PanelHostTests
         Assert.Equal(0, device.OpenHandles);
     }
 
+    /// <summary>
+    /// Quit while the computer is going to sleep and a panel's screen-off hangs: the source's disposal waits for the
+    /// will-sleep under way, and the panels' stop gets only what is left of the one 3 s deadline.
+    /// </summary>
+    [Fact]
+    public async Task A_quit_during_a_will_sleep_whose_screen_off_hangs_takes_3_s_in_all()
+    {
+        var backend = new FakeUsbBackend();
+        var device = backend.Add(new FakeUsbDevice(new UsbDeviceId(BeadaPanelProtocol.VendorId, BeadaPanelProtocol.ProductId, 0, 4, "0-1"))
+        {
+            Reply = PanelReplies.Info(2, 5, 21, 1920, 480, "934072005c"),
+        });
+        var power = new QuitWaitsForWillSleep();
+        using var release = new ManualResetEventSlim(false);
+        using var hung = new ManualResetEventSlim(false);
+        var backlightOff = BeadaPanelProtocol.StatusLink(StatusLinkType.SetBacklight, [0]);
+        var engine = new EngineFactory();
+        var factory = engine.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Engine:NoPanels", "false");
+            builder.ConfigureTestServices(services => services.AddSingleton(new PanelServiceOptions
+            {
+                Backend = () => backend,
+                Runner = new PanelRunnerOptions { KeepAlive = Timeout.InfiniteTimeSpan },
+                Power = _ => power,
+            }));
+        });
+        try
+        {
+            using var api = factory.CreateClient();
+            api.DefaultRequestHeaders.Authorization = new("Bearer", EngineFactory.Token);
+            var profiles = await api.GetFromJsonAsync<JsonElement>("/api/profiles", Ct);
+            var profile = profiles.EnumerateArray().First(p => p.GetProperty("name").GetString() == "Wide bar").GetProperty("id").GetString()!;
+            var service = factory.Services.GetRequiredService<PanelService>();
+            var manager = service.Manager!;
+            var found = await WaitFor(manager, s => s.State == "off");
+            await manager.UpdateAsync(found.Saved.Id, s => s with { Enabled = true, ProfileId = profile });
+            await WaitFor(manager, s => s.State == "running");
+            device.OnWrite = write =>
+            {
+                if (write.Data.AsSpan().SequenceEqual(backlightOff))
+                {
+                    hung.Set();
+                    release.Wait(TimeSpan.FromSeconds(20)); // the screen-off hangs
+                }
+                return null;
+            };
+
+            var sleep = power.SleepAsync();
+            Assert.True(hung.Wait(TimeSpan.FromSeconds(10), Ct));
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await service.StopAsync(Ct);
+            var took = watch.Elapsed;
+            Assert.False(await sleep);
+
+            Assert.True(took < TimeSpan.FromSeconds(3.5), $"the quit took {took}"); // 3 s in all, written out
+        }
+        finally
+        {
+            release.Set();
+            await factory.DisposeAsync();
+            await engine.DisposeAsync();
+        }
+    }
+
+    /// <summary>A power source like macOS's at quit: its disposal waits for a will-sleep under way, at most 3 s.</summary>
+    private sealed class QuitWaitsForWillSleep : InfoPanel.Panels.Power.IPowerEvents
+    {
+        private readonly SemaphoreSlim _inWillSleep = new(1, 1);
+        private InfoPanel.Panels.Power.PowerHandlers? _handlers;
+
+        public string Name => "the test's power source";
+
+        public bool Start(InfoPanel.Panels.Power.PowerHandlers handlers)
+        {
+            _handlers = handlers;
+            return true;
+        }
+
+        /// <summary>Will-sleep on a thread of its own; true when the panels were off before the sleep was allowed.</summary>
+        public Task<bool> SleepAsync()
+        {
+            _inWillSleep.Wait();
+            return Task.Run(() =>
+            {
+                try
+                {
+                    return InfoPanel.Panels.Power.PowerEvents.WaitForSuspending(_handlers!.Suspending, TimeSpan.FromSeconds(3));
+                }
+                finally
+                {
+                    _inWillSleep.Release();
+                }
+            });
+        }
+
+        public void Dispose()
+        {
+            if (_inWillSleep.Wait(TimeSpan.FromSeconds(3)))
+                _inWillSleep.Release();
+        }
+    }
+
     private static async Task<PanelStatus> WaitFor(PanelManager manager, Func<PanelStatus, bool> wanted)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
