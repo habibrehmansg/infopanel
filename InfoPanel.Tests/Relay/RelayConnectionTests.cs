@@ -100,14 +100,16 @@ public sealed class RelayConnectionTests
     }
 
     [Fact]
-    public async Task AFrameOver9MiB_ClosesWith1009_AndTheEngineConnectsAgainAfterItsBackoff()
+    public async Task AFrameOver9MiB_ClosesWith1009_LogsTheEndOnce_AndTheEngineConnectsAgainAfterItsBackoff()
     {
-        await using var rig = await StartAsync();
+        var (lines, sink) = RelayDropLogTests.Capture();
+        await using var rig = await StartAsync(log: sink);
         var peer = await rig.ConnectAsync();
         var big = "{\"type\":\"note\",\"text\":\"" + new string('x', RelayFrames.MaxFrameBytes) + "\"}";
         await peer.SendTextAsync(big);
         Assert.Equal(WebSocketCloseStatus.MessageTooBig, await peer.Closed.WaitAsync(RelayRig.Limit, Ct));
         await rig.Clocks.TimerArmedAsync(TimeSpan.FromSeconds(1)).WaitAsync(RelayRig.Limit, Ct);
+        Assert.Equal("too big", RelayDropLogTests.Text(Assert.Single(lines), "Reason"));
         rig.Clocks.Advance(TimeSpan.FromSeconds(1));
         await rig.ConnectAsync();
     }

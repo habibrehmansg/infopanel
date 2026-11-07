@@ -239,13 +239,13 @@ public sealed class RelayPeer
         }
     }
 
-    /// <summary>The relay closes the connection with <paramref name="code"/>.</summary>
-    public async Task CloseAsync(int code)
+    /// <summary>The relay closes the connection with <paramref name="code"/> (and <paramref name="description"/>).</summary>
+    public async Task CloseAsync(int code, string? description = null)
     {
         await _send.WaitAsync();
         try
         {
-            await _socket.CloseOutputAsync((WebSocketCloseStatus)code, null, CancellationToken.None);
+            await _socket.CloseOutputAsync((WebSocketCloseStatus)code, description, CancellationToken.None);
         }
         finally
         {
@@ -277,10 +277,21 @@ public sealed class TwoClocks : TimeProvider
 
     public TwoClocks(DateTimeOffset start) => _start = start;
 
+    /// <summary>Thrown once, by the next read of the wall clock: a failure the test chooses, where the client reads it.</summary>
+    public Exception? FailNextWallRead { get; set; }
+
     public override DateTimeOffset GetUtcNow()
     {
         lock (_lock)
+        {
+            if (FailNextWallRead is { } failure)
+            {
+                FailNextWallRead = null;
+                throw failure;
+            }
+
             return _start + _wall;
+        }
     }
 
     public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;

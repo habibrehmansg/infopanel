@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -613,6 +614,8 @@ public sealed class RelayClient : IAsyncDisposable
         private EndReason _endReason;
         private bool _welcomed;
         private long _welcomedAt;
+        private ClockSnapshot _opened, _lastMessage;
+        private int _ended;
 
         public Session(RelayClient client, ClientWebSocket socket, string address, long generation)
         {
@@ -686,7 +689,8 @@ public sealed class RelayClient : IAsyncDisposable
         public async Task<Outcome> RunAsync(CancellationToken stop)
         {
             using var shutdown = stop.Register(() => End(EndReason.Shutdown));
-            var started = Time.GetTimestamp();
+            _opened = _lastMessage = ClockSnapshot.Take(Time);
+            var started = _opened.Monotonic;
             try
             {
                 await SendAsync(RelayFrames.Hello(_client._options.EngineVersion)).ConfigureAwait(false);
@@ -694,6 +698,7 @@ public sealed class RelayClient : IAsyncDisposable
             }
             catch (Exception ex) when (ex is WebSocketException or IOException or ObjectDisposedException or OperationCanceledException or InvalidOperationException)
             {
+                LogEnded(Failure(ex));
                 return Ended(started, ex.GetType().Name);
             }
             finally
@@ -702,6 +707,57 @@ public sealed class RelayClient : IAsyncDisposable
                 TripAll("closed");
             }
         }
+
+        /// <summary>
+        /// One line per connection that ended: why, how old it was, and the time since the last message it received, on the
+        /// wall clock (the running clock stops while macOS sleeps), or the running clock's when the wall clock was set back;
+        /// with how long the computer slept when the wall clock ran over 5 s ahead of the running clock. Only the first reason
+        /// given is logged, so a close that then fails or stalls adds no second line.
+        /// </summary>
+        private void LogEnded(string reason)
+        {
+            if (Interlocked.Exchange(ref _ended, 1) != 0)
+                return;
+            bool cancelled;
+            lock (_lock)
+                cancelled = _endReason != EndReason.None;
+            var now = ClockSnapshot.Take(Time);
+            TimeSpan Since(ClockSnapshot then) => TimeSpan.FromTicks(Math.Max((now.Wall - then.Wall).Ticks, Time.GetElapsedTime(then.Monotonic, now.Monotonic).Ticks));
+            var age = Since(_opened).TotalSeconds;
+            var idle = Since(_lastMessage).TotalSeconds;
+            var asleep = (now.Wall - _opened.Wall - Time.GetElapsedTime(_opened.Monotonic, now.Monotonic)).TotalSeconds;
+            if (asleep > 5)
+                _client._logger.Information("AI apps elsewhere: the connection ended ({Reason}) after {Age:0.#} s, asleep about {Asleep:0} s; the last message came {Idle:0.#} s before",
+                    cancelled ? "cancelled" : reason, age, Math.Round(asleep), idle);
+            else
+                _client._logger.Information("AI apps elsewhere: the connection ended ({Reason}) after {Age:0.#} s; the last message came {Idle:0.#} s before",
+                    cancelled ? "cancelled" : reason, age, idle);
+        }
+
+        /// <summary>A failure as its type and codes; never its message, which can carry an address or what came from elsewhere.</summary>
+        private static string Failure(Exception ex)
+        {
+            var codes = new List<string>();
+            if (ex is WebSocketException webSocket)
+                codes.Add(webSocket.WebSocketErrorCode.ToString());
+            for (var inner = ex; inner is not null; inner = inner.InnerException)
+                if (inner is SocketException socket)
+                {
+                    codes.Add(socket.SocketErrorCode.ToString());
+                    break;
+                }
+
+            codes.Add($"0x{ex.HResult:X8}");
+            return $"{ex.GetType().Name} ({string.Join(", ", codes)})";
+        }
+
+        /// <summary>A close's description, when it is one the relay is known to send; any other text from elsewhere isn't logged.</summary>
+        private static string Closing(int? code, string? description) => description switch
+        {
+            null or "" => $"closed {code}",
+            "bye" or "replaced" => $"closed {code} ({description})",
+            _ => $"closed {code} (description withheld)",
+        };
 
         private Outcome Ended(long started, string reason)
         {
@@ -728,6 +784,7 @@ public sealed class RelayClient : IAsyncDisposable
                 {
                     // Over 9 MiB as it arrives: the rest isn't read.
                     _client._logger.Warning("AI apps elsewhere: the relay sent a frame over {Limit} bytes; closing", RelayFrames.MaxFrameBytes);
+                    LogEnded("too big");
                     await _socket.CloseOutputAsync(WebSocketCloseStatus.MessageTooBig, null, CancellationToken.None).ConfigureAwait(false);
                     return Outcome.Failed("tooBig");
                 }
@@ -738,6 +795,7 @@ public sealed class RelayClient : IAsyncDisposable
 
                 var wall = Time.GetUtcNow();
                 var monotonic = Time.GetTimestamp();
+                _lastMessage = new ClockSnapshot(wall, monotonic);
                 var bytes = message.GetBuffer().AsMemory(0, (int)message.Length);
                 if (received.MessageType == WebSocketMessageType.Binary)
                     await SendAsync(RelayFrames.Error("unsupported", null)).ConfigureAwait(false);
@@ -750,6 +808,7 @@ public sealed class RelayClient : IAsyncDisposable
         private Outcome Closed(long started)
         {
             var code = (int?)_socket.CloseStatus;
+            LogEnded(Closing(code, _socket.CloseStatusDescription));
             switch (code)
             {
                 case ClosedRemoved:
