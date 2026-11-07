@@ -376,11 +376,12 @@ public class TokenTests(EngineFactory factory) : IClassFixture<EngineFactory>
             var name = $"{string.Join(",", methods)} {pattern}";
             // The token endpoints, the paired clients, the engine settings, the configured service, the recent log entries,
             // the engine's folders, the PawnIO driver's install, reading all sensors, the plugins' requests but their list and the
-            // devices' changes (not their list, GET /api/devices) are the session token's alone.
+            // devices' saves and changes (not their list, GET /api/devices) are the session token's alone.
             var sessionEndpoint = pattern is "/api/tokens" or "/api/pairings" or "/api/settings" or "/api/logs" or "/api/folders/{folder}/open"
                 or "/api/sensors/sources/libre/driver" or "/api/sensors/sources/libre/elevation" or "/api/service" or "/api/service/credential"
                 || pattern.StartsWith("/api/tokens/", StringComparison.Ordinal) || pattern.StartsWith("/api/pairings/", StringComparison.Ordinal)
-                || pattern.StartsWith("/api/plugins/", StringComparison.Ordinal) || pattern == "/api/devices/{id}";
+                || pattern.StartsWith("/api/plugins/", StringComparison.Ordinal) || pattern == "/api/devices/{id}"
+                || (pattern == "/api/devices" && methods.Contains("POST"));
             var reads = methods.All(m => m is "GET" or "HEAD") || pattern == "/api/{**rest}";
             ApiScope? expected = sessionEndpoint ? ApiScope.Session : reads ? ApiScope.Read : ApiScope.Edit;
             if (scope != expected)

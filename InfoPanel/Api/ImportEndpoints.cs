@@ -72,7 +72,7 @@ public static class ImportEndpoints
             var report = SpecJson.Read<V1MigrationRequest>(json.RootElement);
             try
             {
-                return Json(folder.WriteRecord(paths, report.Profiles, report.Settings, DateTimeOffset.UtcNow));
+                return Json(folder.WriteRecord(paths, report.Profiles, report.Settings, DateTimeOffset.UtcNow, report.Devices));
             }
             catch (ImportRefusal refusal)
             {

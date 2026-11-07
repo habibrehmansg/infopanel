@@ -1,0 +1,25 @@
+{
+  "state": "done",
+  "folder": "C:\\Users\\Ada\\AppData\\Local\\InfoPanel",
+  "record": {
+    "completed": "2026-11-08T03:30:00Z",
+    "folder": "C:\\Users\\Ada\\AppData\\Local\\InfoPanel",
+    "profiles": [
+      {
+        "v1Id": "6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7",
+        "id": "6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7",
+        "outcome": "imported"
+      }
+    ],
+    "settings": "imported",
+    "devices": [
+      {
+        "family": "beada",
+        "deviceId": "USB\\VID_4E58&PID_1001\\934072005C",
+        "deviceLocation": "Port_#0002.Hub_#0001",
+        "id": "3c2b1a09-8f7e-4d6c-9b5a-493827160504",
+        "outcome": "imported"
+      }
+    ]
+  }
+}

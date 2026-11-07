@@ -56,6 +56,9 @@ public sealed class PanelManager : IAsyncDisposable
     /// <summary>How often the USB devices are listed.</summary>
     public static readonly TimeSpan PassInterval = TimeSpan.FromSeconds(1);
 
+    /// <summary>The most identities forgotten panels are remembered by in a run (<see cref="ForgetAsync"/>): past it no saved panel adopts one.</summary>
+    public const int MaxForgotten = 256;
+
     private readonly IUsbBackend _backend;
     private readonly PanelStore _store;
     private readonly PanelHost _host;
@@ -68,6 +71,8 @@ public sealed class PanelManager : IAsyncDisposable
     private readonly Dictionary<string, Runtime> _runtime = new(StringComparer.Ordinal);
     private readonly Dictionary<(byte Bus, byte Address), Seen> _seen = [];
     private readonly Dictionary<UsbDeviceId, long> _forgottenJpegEnds = []; // a forgotten panel's JPEG end, kept while it stays plugged in
+    private readonly HashSet<string> _forgotten = new(StringComparer.Ordinal); // the forgotten panels' identities this run (IdentitiesOf), at most MaxForgotten: never adopted
+    private bool _adoptionOff; // an identity couldn't be remembered (_forgotten is full): no saved panel adopts one for the rest of the run
     private readonly TaskCompletionSource _threadEnded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Lock _liveLock = new();
     private readonly HashSet<PanelRunner> _live = []; // runners started and not yet ended, for the stop (under _liveLock)
@@ -262,8 +267,8 @@ public sealed class PanelManager : IAsyncDisposable
 
     /// <summary>
     /// Forgets a saved panel: its session stopped with its screen off, its settings removed and saved. A connected panel
-    /// is identified again once its session has ended, and saved as new (off, without a profile). False when there is no
-    /// such panel.
+    /// is identified again once its session has ended, and saved as new (off, without a profile): for the rest of the
+    /// run no saved panel adopts it (<see cref="Adopt"/>). False when there is no such panel.
     /// </summary>
     /// <exception cref="PanelsNotSavedException">The panels file couldn't be written: nothing changed.</exception>
     public Task<bool> ForgetAsync(string id) => Ask(() =>
@@ -274,6 +279,7 @@ public sealed class PanelManager : IAsyncDisposable
         List<SavedPanel> next = [.. _devices];
         next.RemoveAt(index);
         SaveChange(next);
+        Remember(IdentitiesOf(_devices[index].Serial, _devices[index].Port));
         _devices.RemoveAt(index);
         var runtime = RuntimeOf(id);
         if (runtime.Runner is { } runner)
@@ -288,6 +294,24 @@ public sealed class PanelManager : IAsyncDisposable
         else
             Release(id);
         return true;
+    });
+
+    /// <summary>
+    /// Saves a panel that need not be plugged in (a client's), after the saved ones, written before it is listed, and
+    /// answers its state as saved (in the same turn of the manager's thread, so a change queued meanwhile can't come
+    /// between); it is matched to a panel plugged in as every saved panel is, and, without a serial, as
+    /// <see cref="Adopt"/> says. Null when a saved panel of its family has its serial.
+    /// </summary>
+    /// <exception cref="PanelsNotSavedException">The panels file couldn't be written: nothing changed.</exception>
+    public Task<PanelStatus?> AddAsync(SavedPanel panel) => Ask(() =>
+    {
+        if (panel.Serial != null && _devices.Any(d => d.Family == panel.Family && d.Serial == panel.Serial))
+            return null;
+        List<SavedPanel> next = [.. _devices, panel];
+        SaveChange(next);
+        _devices.Add(panel);
+        _logger.Information("Panel {Panel}: saved by a client, serial {Serial}", Label(panel.Id), panel.Serial ?? "none");
+        return (PanelStatus?)StatusOf(panel);
     });
 
     /// <summary>
@@ -411,20 +435,108 @@ public sealed class PanelManager : IAsyncDisposable
             }
         }
 
+        var unmatched = new List<Unmatched>();
         foreach (var usb in panels)
         {
             if (_stopping || _suspended)
-                return; // the stop and the sleep don't wait for the rest of the panels' queries
+                return; // the stop and the sleep don't wait for the rest of the panels' queries (those found are found again)
             if (_seen.TryGetValue((usb.Bus, usb.Address), out var seen) && (seen.DeviceId != null || seen.Ignored))
                 continue;
-            Identify(usb, seen);
+            if (Identify(usb, seen) is { } panel)
+                unmatched.Add(panel);
         }
+        Adopt(unmatched);
 
         foreach (var saved in _devices)
             Reconcile(saved);
     }
 
-    private void Identify(UsbDeviceId usb, Seen? seen)
+    /// <summary>
+    /// A panel identified in this pass that matches no saved panel, while a saved one might take it (<see cref="Adopt"/>):
+    /// <paramref name="Ambiguous"/> or <paramref name="HeldElsewhere"/> when its serial clashes, so it is new whatever.
+    /// </summary>
+    private sealed record Unmatched(UsbDeviceId Usb, BeadaPanelInfo Info, string? Serial, bool Ambiguous, bool HeldElsewhere);
+
+    /// <summary>
+    /// Every identity a panel has for <see cref="_forgotten"/>: its serial (when known) and its port (when it has had
+    /// one), both, because a later pass may read only one of them: a serial that couldn't be read now, or one that
+    /// couldn't be then. None for a saved panel never plugged in, without a serial.
+    /// </summary>
+    private static List<string> IdentitiesOf(string? serial, string? port)
+    {
+        List<string> identities = [];
+        if (serial != null)
+            identities.Add("serial:" + serial);
+        if (port != null)
+            identities.Add("port:" + port);
+        return identities;
+    }
+
+    /// <summary>
+    /// Remembers a forgotten panel by every identity it had, up to <see cref="MaxForgotten"/> in all. One that doesn't
+    /// fit is not remembered, and nothing already remembered is dropped: adoption stops for the rest of the run instead,
+    /// logged once.
+    /// </summary>
+    private void Remember(List<string> identities)
+    {
+        var fresh = identities.Where(i => !_forgotten.Contains(i)).ToList();
+        if (_forgotten.Count + fresh.Count <= MaxForgotten)
+        {
+            _forgotten.UnionWith(fresh);
+            return;
+        }
+        if (!_adoptionOff)
+        {
+            _adoptionOff = true;
+            _logger.Information("Adoption is off until the engine restarts: {Count} forgotten panel identities are remembered, the most there is room for", _forgotten.Count);
+        }
+    }
+
+    /// <summary>
+    /// A saved BeadaPanel of <paramref name="model"/> that has never been plugged in and has no serial (a client saved it
+    /// so, from what another program knew of it): it may take a panel that matches no saved one (<see cref="Adopt"/>).
+    /// </summary>
+    private List<int> NeverSeen(string model) =>
+        [.. Enumerable.Range(0, _devices.Count).Where(i => _devices[i] is { Family: SavedPanel.BeadaPanelFamily, Serial: null, Port: null } d && d.Model == model)];
+
+    /// <summary>
+    /// The panels found in this pass that match no saved one (serial clashes included), while a saved panel without a
+    /// serial that has never been plugged in might take them: such a saved panel takes one only when that can't be
+    /// mistaken: it is the only such saved panel of the model, the panel is the only one of its model found unmatched in
+    /// the pass (every one counted, a serial clash too), its serial doesn't clash, it isn't a panel forgotten this run
+    /// (<see cref="ForgetAsync"/>: its serial or its port is one a forgotten panel had), and the memory of those isn't
+    /// full (<see cref="MaxForgotten"/>: then none is adopted). Otherwise each is saved as new and the saved one stays not connected.
+    /// </summary>
+    private void Adopt(List<Unmatched> unmatched)
+    {
+        foreach (var panel in unmatched)
+        {
+            var model = panel.Info.Model.Id;
+            var candidates = NeverSeen(model);
+            var found = unmatched.Count(p => p.Info.Model.Id == model);
+            var clashes = panel.Ambiguous || panel.HeldElsewhere;
+            var forgotten = IdentitiesOf(panel.Serial, panel.Usb.PortPath).Any(_forgotten.Contains);
+            var index = candidates.Count == 1 && found == 1 && !clashes && !forgotten && !_adoptionOff ? candidates[0] : -1;
+            if (index < 0 && !clashes)
+            {
+                if (forgotten)
+                    _logger.Information("BeadaPanel {Model} at {Port}: forgotten this run, so no saved panel takes it", model, panel.Usb.PortPath);
+                else if (_adoptionOff)
+                    _logger.Information("BeadaPanel {Model} at {Port}: no saved panel takes a panel any more (the forgotten panels' memory is full)", model, panel.Usb.PortPath);
+                else
+                    _logger.Information("BeadaPanel {Model} at {Port}: {Count} saved panels of its model without a serial that were never plugged in, and {Found} found: none takes it",
+                        model, panel.Usb.PortPath, candidates.Count, found);
+            }
+            Claim(panel.Usb, panel.Info, panel.Serial, index, panel.Ambiguous, panel.HeldElsewhere, adopted: index >= 0);
+        }
+    }
+
+    /// <summary>
+    /// Identifies a panel and matches it to a saved one, or saves it as new; null once that is done (or it can't be
+    /// identified). A panel that matches none while a saved panel without a serial that was never plugged in might take
+    /// it is answered instead, for <see cref="Adopt"/>.
+    /// </summary>
+    private Unmatched? Identify(UsbDeviceId usb, Seen? seen)
     {
         var identity = BeadaPanelSession.Identify(_backend, usb);
         if (identity.Status != UsbStatus.Ok || identity.Info is not { } info)
@@ -433,7 +545,7 @@ public sealed class PanelManager : IAsyncDisposable
             {
                 _seen[(usb.Bus, usb.Address)] = new Seen(usb) { Ignored = true };
                 _logger.Information("A BeadaPanel at {Port} reports model code {Code}, which InfoPanel doesn't know: it isn't driven", usb.PortPath, identity.ModelCode);
-                return;
+                return null;
             }
             if (seen == null)
             {
@@ -441,7 +553,7 @@ public sealed class PanelManager : IAsyncDisposable
                 _logger.Information("A BeadaPanel at {Port} couldn't be identified ({Status}{Error}): tried again every second",
                     usb.PortPath, identity.Status, identity.Error == BeadaPanelInfoError.None ? "" : $", {identity.Error}");
             }
-            return;
+            return null;
         }
 
         var serial = info.Serial.Length > 0 ? info.Serial : identity.UsbSerial is { Length: > 0 } s && s.All(char.IsAsciiLetterOrDigit) ? s : null;
@@ -473,6 +585,18 @@ public sealed class PanelManager : IAsyncDisposable
         if (index < 0 && !ambiguous)
             index = _devices.FindIndex(d => d.Family == SavedPanel.BeadaPanelFamily && d.Serial == null && d.Port == usb.PortPath && !claimed.Contains(d.Id));
 
+        if (index < 0 && NeverSeen(info.Model.Id).Count > 0)
+            return new Unmatched(usb, info, serial, ambiguous, heldElsewhere); // counted by Adopt, then claimed
+        Claim(usb, info, serial, index, ambiguous, heldElsewhere, adopted: false);
+        return null;
+    }
+
+    /// <summary>
+    /// The identified panel at <paramref name="usb"/> taken as the saved panel at <paramref name="index"/> (its new port,
+    /// model and serial saved), or, at -1, saved as new, off and without a profile.
+    /// </summary>
+    private void Claim(UsbDeviceId usb, BeadaPanelInfo info, string? serial, int index, bool ambiguous, bool heldElsewhere, bool adopted)
+    {
         SavedPanel saved;
         if (index < 0)
         {
@@ -497,6 +621,9 @@ public sealed class PanelManager : IAsyncDisposable
                 _devices[index] = saved;
                 Save();
             }
+            if (adopted)
+                _logger.Information("BeadaPanel {Model} at {Port}, serial {Serial}: taken as the saved panel {Id}, saved without a serial and never plugged in before",
+                    info.Model.Id, usb.PortPath, serial ?? "none", saved.Id);
             _logger.Information("BeadaPanel {Model} connected at {Port} ({Id}, {State})", info.Model.Id, usb.PortPath, saved.Id, saved.Enabled ? "on" : "off");
         }
 

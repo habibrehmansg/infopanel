@@ -291,6 +291,137 @@ public sealed class PanelManagerTests : IAsyncDisposable
         Assert.Equal((Second, "0-2", "p-2", true), (list[1].Saved.Id, list[1].Saved.Port, list[1].Saved.ProfileId, list[1].Connected));
     }
 
+    private static SavedPanel NeverSeenPanel(string id, string? serial = null) =>
+        new(id, SavedPanel.BeadaPanelFamily, "8", serial, null);
+
+    /// <summary>Saves and forgets panels that had a serial and a port each until the memory holds exactly <see cref="PanelManager.MaxForgotten"/> identities.</summary>
+    private static async Task ForgetUpToTheCap(PanelManager manager)
+    {
+        for (var i = 0; i < PanelManager.MaxForgotten / 2; i++)
+        {
+            var id = Guid.NewGuid().ToString();
+            Assert.NotNull(await manager.AddAsync(new SavedPanel(id, SavedPanel.BeadaPanelFamily, "8", $"CAP{i}", $"9-{i}")));
+            Assert.True(await manager.ForgetAsync(id));
+        }
+    }
+
+    [Fact]
+    public async Task A_forgotten_panel_whose_serial_could_be_read_is_not_adopted_when_a_later_pass_cant_read_it()
+    {
+        const string never = "00000000-0000-4000-8000-0000000000a1";
+        var device = Plug(4, "0-1", serial: ""); // the info payload has none: its serial is the USB descriptor's
+        device.UsbSerial = "ABC123";
+        var manager = Manager();
+        await manager.RunPassAsync();
+        var forgotten = Assert.Single(await manager.ListAsync()).Saved;
+        Assert.Equal("ABC123", forgotten.Serial);
+
+        Assert.NotNull(await manager.AddAsync(NeverSeenPanel(never)));
+        Assert.True(await manager.ForgetAsync(forgotten.Id));
+
+        device.UsbSerial = null; // the descriptor transfer fails this time
+        await manager.RunPassAsync();
+
+        var list = await manager.ListAsync();
+        Assert.Equal(2, list.Count);
+        Assert.Equal((never, "notConnected"), (list[0].Saved.Id, list[0].State));
+        Assert.True(list[1].Connected);
+        Assert.NotEqual(never, list[1].Saved.Id);
+        Assert.Contains(_events, e => e.RenderMessage().Contains("forgotten this run"));
+    }
+
+    [Fact]
+    public async Task A_forgotten_panel_whose_serial_could_not_be_read_is_not_adopted_when_a_later_pass_reads_it()
+    {
+        const string never = "00000000-0000-4000-8000-0000000000a1";
+        var device = Plug(4, "0-1", serial: "");
+        device.UsbSerial = null;
+        var manager = Manager();
+        await manager.RunPassAsync();
+        var forgotten = Assert.Single(await manager.ListAsync()).Saved;
+        Assert.Null(forgotten.Serial);
+
+        Assert.NotNull(await manager.AddAsync(NeverSeenPanel(never)));
+        Assert.True(await manager.ForgetAsync(forgotten.Id));
+
+        device.UsbSerial = "ABC123"; // readable now, at the port it had
+        await manager.RunPassAsync();
+
+        var list = await manager.ListAsync();
+        Assert.Equal(2, list.Count);
+        Assert.Equal((never, "notConnected"), (list[0].Saved.Id, list[0].State));
+        Assert.True(list[1].Connected);
+        Assert.NotEqual(never, list[1].Saved.Id);
+    }
+
+    [Fact]
+    public async Task A_forgotten_panel_with_a_serial_is_not_adopted_at_another_port_either()
+    {
+        const string never = "00000000-0000-4000-8000-0000000000a1";
+        var device = Plug(4, "0-1", serial: "");
+        device.UsbSerial = "ABC123";
+        var manager = Manager();
+        await manager.RunPassAsync();
+        var forgotten = Assert.Single(await manager.ListAsync()).Saved;
+
+        Assert.NotNull(await manager.AddAsync(NeverSeenPanel(never)));
+        Assert.True(await manager.ForgetAsync(forgotten.Id));
+
+        _backend.Unplug(device);
+        await manager.RunPassAsync();
+        Plug(9, "0-2", serial: "", modelCode: 21).UsbSerial = "ABC123";
+        await manager.RunPassAsync();
+
+        var list = await manager.ListAsync();
+        Assert.Equal(2, list.Count);
+        Assert.Equal((never, "notConnected"), (list[0].Saved.Id, list[0].State));
+        Assert.True(list[1].Connected);
+    }
+
+    [Fact]
+    public async Task With_the_forgotten_identities_at_their_cap_adoption_stops_for_the_run_logged_once_and_nothing_is_forgotten()
+    {
+        const string never = "00000000-0000-4000-8000-0000000000a1";
+        var manager = Manager();
+        await ForgetUpToTheCap(manager);
+        Assert.DoesNotContain(_events, e => e.RenderMessage().Contains("Adoption is off"));
+
+        // The first identity that can't be remembered stops adoption, for this and every later one.
+        for (var i = 0; i < 3; i++)
+        {
+            var id = Guid.NewGuid().ToString();
+            Assert.NotNull(await manager.AddAsync(NeverSeenPanel(id, serial: $"OVER{i}")));
+            Assert.True(await manager.ForgetAsync(id));
+        }
+        Assert.Single(_events, e => e.RenderMessage().Contains("Adoption is off"));
+
+        // A panel nobody forgot isn't taken by the saved panel that could have taken it: it is new.
+        Assert.NotNull(await manager.AddAsync(NeverSeenPanel(never)));
+        Plug(4, "0-1", serial: "FRESH1");
+        await manager.RunPassAsync();
+        var list = await manager.ListAsync();
+        Assert.Equal(2, list.Count);
+        Assert.Equal((never, "notConnected"), (list[0].Saved.Id, list[0].State));
+        Assert.True(list[1].Connected);
+        Assert.Equal("FRESH1", list[1].Saved.Serial);
+        Assert.Single(_events, e => e.RenderMessage().Contains("Adoption is off"));
+    }
+
+    [Fact]
+    public async Task At_exactly_the_cap_an_unambiguous_panel_is_still_adopted()
+    {
+        const string never = "00000000-0000-4000-8000-0000000000a1";
+        var manager = Manager();
+        await ForgetUpToTheCap(manager);
+
+        Assert.NotNull(await manager.AddAsync(NeverSeenPanel(never)));
+        Plug(4, "0-1", serial: "FRESH1");
+        await manager.RunPassAsync();
+
+        var only = Assert.Single(await manager.ListAsync());
+        Assert.Equal((never, true, "FRESH1"), (only.Saved.Id, only.Connected, only.Saved.Serial));
+    }
+
     [Fact]
     public async Task A_serial_two_saved_panels_share_at_ports_neither_had_is_listed_as_new()
     {

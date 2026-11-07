@@ -111,7 +111,7 @@ public sealed record DuplicateProfileRequest
     public required string Id { get; init; }
 }
 
-/// <summary>409: a profile with the requested id already exists.</summary>
+/// <summary>409: a profile with the requested id already exists, or a device with the family and serial a save names.</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/existsProblem")]
 public sealed record ExistsProblem
 {
@@ -1220,6 +1220,19 @@ public sealed record DeviceSettingsChange : IRemovesMembers
     /// <summary>The members this change clears (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
     public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
+
+/// <summary>
+/// POST /api/devices: a panel to save that need not be plugged in: its family, model, serial (absent when unknown) and
+/// settings (a setting left out takes a new panel's).
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/createDeviceRequest")]
+public sealed record CreateDeviceRequest
+{
+    public required string Family { get; init; }
+    public required string Model { get; init; }
+    public string? Serial { get; init; }
+    public required DeviceSettingsChange Settings { get; init; }
 }
 
 // The preview socket's text messages (the schema's clientMessage and serverMessage; docEvent is above).

@@ -32,6 +32,7 @@ Every request under `/api` needs a token ([authentication](#authentication)): wi
 | `POST /api/folders/{folder}/open` | | 204; 404 for a `folder` other than `data`, `logs` and `plugins`; 500 when the engine can't open it ([below](#folders)) |
 | `GET /api/displays` | | `displayList`; 500 when the engine can't list the displays ([below](#displays)) |
 | `GET /api/devices` | | `deviceList` ([below](#devices)) |
+| `POST /api/devices` | `createDeviceRequest` | 201 `deviceEntry`; 409 `existsProblem` for a panel of the family with the serial saved already, 409 `problem` where the engine drives no panels, while it can't hold its devices file, or when it can't write it; 422 `invalidProblem` ([below](#saving-a-device)) |
 | `PATCH /api/devices/{id}` | `deviceChange` | `deviceEntry`; 404 `problem` for no such device; 409 `problem` while the engine can't hold its devices file, or when it can't write it; 422 `invalidProblem` ([below](#changing-a-device)) |
 | `DELETE /api/devices/{id}` | | 204; 404 `problem` for no such device; 409 `problem` while the engine can't hold its devices file, or when it can't write it ([below](#forgetting-a-device)) |
 | `GET /api/profiles` | | An array of `profileEntry`, in display order |
@@ -459,6 +460,12 @@ USB panels the engine drives, under the session's `devices` feature ([session](#
 - `supports`, the settings its family honours: all four for a BeadaPanel, none for a family the engine doesn't drive (one a later engine saved);
 - `stats`, while it is `running`: `fps`, frames written a second, and `frameTimeMs`, the time a frame takes to write; else null;
 - `details`, each null when the engine doesn't know it: `usbId` (`4e58:1001`), `port`, the USB port path it was last seen at, `serial`, and `firmware`, once it is identified this run.
+
+### Saving a device
+
+`POST /api/devices` (the session token's) saves a panel that need not be plugged in (`createDeviceRequest`), such as one a client brings over from another program, and answers 201 with its entry: `family`, the protocol it is driven with; `model`, its model's id within the family; `serial`, the serial number it reports, left out when it isn't known; and `settings`, as a change gives them, a setting left out taking a new panel's (off, no profile, rotation 0, brightness 100). The engine stores the panel as it is given, under a new `id`, after the panels it has saved; it is `notConnected` until it is plugged in. The engine checks, in order, and the first failure answers, nothing saved: it drives panels this run (else 409 `problem`) and can hold its devices file (else 409 `problem`); the body, as every body: within `requestBytes`, then JSON as the formats read it and `createDeviceRequest`; then `family` is one the engine drives (else 422 `invalidProblem` with `device.family` at `/family`), `model` is one of that family's (`device.model` at `/model`), and every setting given is one the family honours (`device.setting` at `/settings/{name}`); then no panel of the family with that `serial` is saved already (else 409 `existsProblem`, `exists`: a save retried after its first attempt succeeded gets it too). It is written to the devices file before it is listed: when the file can't be written, it answers 409 `problem` and nothing is saved.
+
+A panel plugged in is matched to a saved one by its serial. A saved panel without a serial that has never been plugged in takes the first panel of its model plugged in that matches no saved panel, but only when that can't be mistaken: when it is the only such saved panel of its model and that panel is the only new one of its model found at that moment. Otherwise it stays `notConnected`, and the panel plugged in is saved as new, off and without a profile.
 
 ### Changing a device
 

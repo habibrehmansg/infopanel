@@ -229,6 +229,9 @@ public sealed record V1MigrationRecord
 
     /// <summary><c>imported</c> or <c>skipped</c>.</summary>
     public required string Settings { get; init; }
+
+    /// <summary>The 1.x panel devices' outcomes; null (absent) when the client reported none.</summary>
+    public IReadOnlyList<V1DeviceOutcome>? Devices { get; init; }
 }
 
 /// <summary>
@@ -242,6 +245,30 @@ public sealed record V1MigrationRequest
 
     /// <summary><c>imported</c> or <c>skipped</c>.</summary>
     public required string Settings { get; init; }
+
+    /// <summary>The 1.x panel devices' outcomes; null (absent) when it dealt with none.</summary>
+    public IReadOnlyList<V1DeviceOutcome>? Devices { get; init; }
+}
+
+/// <summary>
+/// What a migration did with one 1.x panel device, named by its 1.x family, <c>DeviceId</c> and <c>DeviceLocation</c> as
+/// stored (as 1.x's hotkeys name it), and the saved device's <see cref="Id"/>, or null.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/v1DeviceOutcome")]
+public sealed record V1DeviceOutcome
+{
+    public required string Family { get; init; }
+    public required string DeviceId { get; init; }
+    public required string DeviceLocation { get; init; }
+
+    /// <summary>The saved device's id (a lower-case UUID), or null when there is none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public required string? Id { get; init; }
+
+    /// <summary><c>imported</c>, <c>skipped</c> or <c>failed</c>.</summary>
+    public required string Outcome { get; init; }
+
+    public string? Reason { get; init; }
 }
 
 [SpecDef("urn:infopanel:api:1#/$defs/v1MigrationOutcome")]

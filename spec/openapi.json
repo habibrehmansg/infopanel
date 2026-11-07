@@ -531,6 +531,32 @@
           },
           "401": {"$ref": "#/components/responses/unauthorized"}
         }
+      },
+      "post": {
+        "operationId": "createDevice",
+        "summary": "Saves a panel that need not be plugged in, with its model, serial when known, and settings (the devices feature).",
+        "description": "docs/api.md#saving-a-device.",
+        "security": [{"bearer": ["session"]}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/createDeviceRequest"}}}},
+        "responses": {
+          "201": {
+            "description": "Saved: the panel's entry.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/deviceEntry"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "409": {
+            "description": "A panel of the family with the serial is saved already (existsProblem); or the engine drives no panels this run, couldn't read its devices file when it started, or couldn't write it (problem). Nothing was saved.",
+            "content": {"application/problem+json": {"schema": {"oneOf": [
+              {"$ref": "urn:infopanel:api:1#/$defs/existsProblem"},
+              {"$ref": "urn:infopanel:api:1#/$defs/problem"}
+            ]}}}
+          },
+          "422": {
+            "description": "The body breaks its definition or `requestBytes`, or names a family the engine doesn't drive (`device.family` at /family), a model the family doesn't have (`device.model` at /model) or a setting the family doesn't honour (`device.setting` at /settings/{name}); nothing was saved.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          }
+        }
       }
     },
     "/api/devices/{id}": {

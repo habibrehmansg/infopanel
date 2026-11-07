@@ -262,7 +262,7 @@
       }
     },
     "existsProblem": {
-      "description": "409 application/problem+json: a profile with the requested id already exists (a create or duplicate whose first attempt succeeded, retried, gets this). Nothing was created.",
+      "description": "409 application/problem+json: a profile with the requested id already exists (a create or duplicate whose first attempt succeeded, retried, gets this), or a device with the family and serial a save names (POST /api/devices). Nothing was created.",
       "type": "object",
       "required": ["status", "code"],
       "additionalProperties": false,
@@ -1933,6 +1933,18 @@
         "brightness": { "type": "integer", "minimum": 0, "maximum": 100 }
       }
     },
+    "createDeviceRequest": {
+      "description": "POST /api/devices: a panel to save that need not be plugged in, such as one a client brings over from another program (docs/api.md#saving-a-device). A panel with the same family and serial saved already: 409 existsProblem. Answered 201 with its deviceEntry.",
+      "type": "object",
+      "required": ["family", "model", "settings"],
+      "additionalProperties": false,
+      "properties": {
+        "family": { "description": "The kind of panel, as deviceEntry.family names it: `beadapanel`. A family the engine doesn't drive is refused (`device.family`).", "type": "string", "minLength": 1, "maxLength": 64 },
+        "model": { "description": "Its model's id within the family, as deviceModel.id names it (\"6C\"). A model the family doesn't have is refused (`device.model`).", "type": "string", "minLength": 1, "maxLength": 64 },
+        "serial": { "description": "The serial number the panel reports, letters and digits; absent when it isn't known. A panel without one is matched to the first unknown panel of its model plugged in only when that can't be mistaken (docs/api.md#saving-a-device).", "type": "string", "pattern": "^[A-Za-z0-9]{1,128}$" },
+        "settings": { "$ref": "#/$defs/deviceSettingsChange", "description": "Its settings, as a change gives them; a setting left out takes a new panel's: off, no profile, rotation 0, brightness 100." }
+      }
+    },
 
     "clientMessage": {
       "description": "A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket).",
@@ -2100,7 +2112,8 @@
       "additionalProperties": false,
       "properties": {
         "profiles": { "description": "One outcome per 1.x profile the migration dealt with, in any order.", "type": "array", "items": { "$ref": "#/$defs/v1MigrationOutcome" } },
-        "settings": { "description": "Whether the client applied the 1.x settings (`imported`) or not (`skipped`). A client reading it treats a value it doesn't know as `skipped`.", "enum": ["imported", "skipped"] }
+        "settings": { "description": "Whether the client applied the 1.x settings (`imported`) or not (`skipped`). A client reading it treats a value it doesn't know as `skipped`.", "enum": ["imported", "skipped"] },
+        "devices": { "description": "One outcome per 1.x panel device the migration dealt with, in any order; absent when it dealt with none (a migration before devices were brought over leaves it out).", "type": "array", "items": { "$ref": "#/$defs/v1DeviceOutcome" }, "maxItems": 512 }
       }
     },
     "v1MigrationRecord": {
@@ -2112,7 +2125,8 @@
         "completed": { "$ref": "#/$defs/timestamp", "description": "When the engine stored the record, in UTC to the second." },
         "folder": { "description": "The 1.x folder the engine read then, as a full path.", "type": "string", "minLength": 1 },
         "profiles": { "type": "array", "items": { "$ref": "#/$defs/v1MigrationOutcome" }, "maxItems": 1000 },
-        "settings": { "description": "Whether the client applied the 1.x settings (`imported`) or not (`skipped`). A client treats a value it doesn't know as `skipped`.", "enum": ["imported", "skipped"] }
+        "settings": { "description": "Whether the client applied the 1.x settings (`imported`) or not (`skipped`). A client treats a value it doesn't know as `skipped`.", "enum": ["imported", "skipped"] },
+        "devices": { "description": "The 1.x panel devices' outcomes, as the client reported them; absent when its report had none.", "type": "array", "items": { "$ref": "#/$defs/v1DeviceOutcome" }, "maxItems": 512 }
       }
     },
     "v1MigrationOutcome": {
@@ -2127,6 +2141,26 @@
           "oneOf": [{ "$ref": "urn:infopanel:common:1#/$defs/documentId" }, { "type": "null" }]
         },
         "outcome": { "description": "`imported`, `skipped` (the user left it out) or `failed`. A client treats an outcome it doesn't know as `failed`.", "enum": ["imported", "skipped", "failed"] },
+        "reason": { "description": "Why, for people: display text.", "type": "string", "maxLength": 256 }
+      }
+    },
+    "v1DeviceOutcome": {
+      "description": "What a migration did with one 1.x panel device: the device, named as 1.x's hotkeys name it, and the device saved from it.",
+      "type": "object",
+      "required": ["family", "deviceId", "deviceLocation", "id", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "description": "Its 1.x device family, as `v1Device.family` names it. A client treats a family it doesn't know as one it brings nothing over from.",
+          "enum": ["beada", "turing", "lianLi", "thermalright", "thermaltake", "jl", "jonsbo", "vmax"]
+        },
+        "deviceId": { "description": "Its `DeviceId` as 1.x stored it (empty when it had none).", "type": "string", "maxLength": 1024 },
+        "deviceLocation": { "description": "Its `DeviceLocation` as 1.x stored it (empty when it had none).", "type": "string", "maxLength": 1024 },
+        "id": {
+          "description": "The device saved from it or matched to it (deviceEntry.id), or null when there is none.",
+          "oneOf": [{ "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }, { "type": "null" }]
+        },
+        "outcome": { "description": "`imported`, `skipped` (the user left it out, or the client doesn't bring its family over) or `failed`. A client treats an outcome it doesn't know as `failed`.", "enum": ["imported", "skipped", "failed"] },
         "reason": { "description": "Why, for people: display text.", "type": "string", "maxLength": 256 }
       }
     },

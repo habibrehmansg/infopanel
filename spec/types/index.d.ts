@@ -248,7 +248,7 @@ export interface DuplicateProfileRequest {
   id: DocumentId;
 }
 
-/** 409 application/problem+json: a profile with the requested id already exists (a create or duplicate whose first attempt succeeded, retried, gets this). Nothing was created. */
+/** 409 application/problem+json: a profile with the requested id already exists (a create or duplicate whose first attempt succeeded, retried, gets this), or a device with the family and serial a save names (POST /api/devices). Nothing was created. */
 export interface ExistsProblem {
   type?: string;
   title?: string;
@@ -1824,6 +1824,27 @@ export interface DeviceSettingsChange {
   brightness?: number;
 }
 
+/** POST /api/devices: a panel to save that need not be plugged in, such as one a client brings over from another program (docs/api.md#saving-a-device). A panel with the same family and serial saved already: 409 existsProblem. Answered 201 with its deviceEntry. */
+export interface CreateDeviceRequest {
+  /**
+   * The kind of panel, as deviceEntry.family names it: `beadapanel`. A family the engine doesn't drive is refused (`device.family`).
+   * Length: 1–64.
+   */
+  family: string;
+  /**
+   * Its model's id within the family, as deviceModel.id names it ("6C"). A model the family doesn't have is refused (`device.model`).
+   * Length: 1–64.
+   */
+  model: string;
+  /**
+   * The serial number the panel reports, letters and digits; absent when it isn't known. A panel without one is matched to the first unknown panel of its model plugged in only when that can't be mistaken (docs/api.md#saving-a-device).
+   * Pattern: `^[A-Za-z0-9]{1,128}$`.
+   */
+  serial?: string;
+  /** Its settings, as a change gives them; a setting left out takes a new panel's: off, no profile, rotation 0, brightness 100. */
+  settings: DeviceSettingsChange;
+}
+
 /** A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket). */
 export type ClientMessage = AuthMessage | SubscribeMessage | ViewMessage | KeyframeMessage | UnsubscribeMessage;
 
@@ -1960,6 +1981,11 @@ export interface V1MigrationRequest {
   profiles: V1MigrationOutcome[];
   /** Whether the client applied the 1.x settings (`imported`) or not (`skipped`). A client reading it treats a value it doesn't know as `skipped`. */
   settings: "imported" | "skipped";
+  /**
+   * One outcome per 1.x panel device the migration dealt with, in any order; absent when it dealt with none (a migration before devices were brought over leaves it out).
+   * Items: ≤ 512.
+   */
+  devices?: V1DeviceOutcome[];
 }
 
 /** The run-once record: what a migration did, as a client reported it, with when the engine stored it and the 1.x folder it read. */
@@ -1975,6 +2001,11 @@ export interface V1MigrationRecord {
   profiles: V1MigrationOutcome[];
   /** Whether the client applied the 1.x settings (`imported`) or not (`skipped`). A client treats a value it doesn't know as `skipped`. */
   settings: "imported" | "skipped";
+  /**
+   * The 1.x panel devices' outcomes, as the client reported them; absent when its report had none.
+   * Items: ≤ 512.
+   */
+  devices?: V1DeviceOutcome[];
 }
 
 /** What a migration did with one 1.x profile. */
@@ -1984,6 +2015,31 @@ export interface V1MigrationOutcome {
   /** The profile created from it, or null when none was. */
   id: DocumentId | null;
   /** `imported`, `skipped` (the user left it out) or `failed`. A client treats an outcome it doesn't know as `failed`. */
+  outcome: "imported" | "skipped" | "failed";
+  /**
+   * Why, for people: display text.
+   * Length: ≤ 256.
+   */
+  reason?: string;
+}
+
+/** What a migration did with one 1.x panel device: the device, named as 1.x's hotkeys name it, and the device saved from it. */
+export interface V1DeviceOutcome {
+  /** Its 1.x device family, as `v1Device.family` names it. A client treats a family it doesn't know as one it brings nothing over from. */
+  family: "beada" | "turing" | "lianLi" | "thermalright" | "thermaltake" | "jl" | "jonsbo" | "vmax";
+  /**
+   * Its `DeviceId` as 1.x stored it (empty when it had none).
+   * Length: ≤ 1024.
+   */
+  deviceId: string;
+  /**
+   * Its `DeviceLocation` as 1.x stored it (empty when it had none).
+   * Length: ≤ 1024.
+   */
+  deviceLocation: string;
+  /** The device saved from it or matched to it (deviceEntry.id), or null when there is none. */
+  id: string | null;
+  /** `imported`, `skipped` (the user left it out, or the client doesn't bring its family over) or `failed`. A client treats an outcome it doesn't know as `failed`. */
   outcome: "imported" | "skipped" | "failed";
   /**
    * Why, for people: display text.
@@ -4835,6 +4891,28 @@ export interface ApiOperations {
       200: DeviceList;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
+    };
+  };
+  /**
+   * createDevice: Saves a panel that need not be plugged in, with its model, serial when known, and settings (the devices feature).
+   *
+   * docs/api.md#saving-a-device.
+   */
+  "POST /api/devices": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: CreateDeviceRequest;
+    responses: {
+      /** Saved: the panel's entry. */
+      201: DeviceEntry;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** A panel of the family with the serial is saved already (existsProblem); or the engine drives no panels this run, couldn't read its devices file when it started, or couldn't write it (problem). Nothing was saved. */
+      409: ExistsProblem | Problem;
+      /** The body breaks its definition or `requestBytes`, or names a family the engine doesn't drive (`device.family` at /family), a model the family doesn't have (`device.model` at /model) or a setting the family doesn't honour (`device.setting` at /settings/{name}); nothing was saved. */
+      422: InvalidProblem;
     };
   };
   /**

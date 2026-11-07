@@ -10,7 +10,8 @@ namespace InfoPanel.Api;
 
 /// <summary>
 /// The USB panel devices (spec/docs/api.md "Devices", the <c>devices</c> feature): <c>GET /api/devices</c> (every
-/// token's) lists the saved panels and their state from <see cref="PanelManager"/>; the session token's <c>PATCH
+/// token's) lists the saved panels and their state from <see cref="PanelManager"/>; the session token's <c>POST
+/// /api/devices</c> saves a panel that need not be plugged in (as given: its family, model, serial and settings), <c>PATCH
 /// /api/devices/{id}</c> merges settings into a panel's (applied at once, saved to <c>devices.json</c>) and <c>DELETE</c>
 /// forgets it. Where the engine drives no panels the list is empty and <c>supported</c> false with why; while
 /// <c>devices.json</c> can't be held, every change is 409 and the file is left as it is; a change the file can't take
@@ -19,6 +20,8 @@ namespace InfoPanel.Api;
 public static class DeviceEndpoints
 {
     private const string ChangeSchema = SpecSchemas.Api + "#/$defs/deviceChange";
+
+    private const string CreateSchema = SpecSchemas.Api + "#/$defs/createDeviceRequest";
 
     /// <summary>The settings a BeadaPanel honours, in the order the API lists them.</summary>
     private static readonly string[] BeadaPanelSettings = ["enabled", "profileId", "rotation", "brightness"];
@@ -37,6 +40,63 @@ public static class DeviceEndpoints
             var list = await manager.ListAsync();
             return Json(new DeviceList { Supported = true, Reason = null, Version = version, Devices = [.. list.Select(EntryOf)] });
         }).RequireScope(ApiScope.Read);
+
+        devices.MapPost("", async (HttpRequest request, PanelService panels, Workspace workspace, CancellationToken ct) =>
+        {
+            if (panels.Unsupported == "store")
+                return StoreUnheld();
+            if (panels.Manager is not { } manager)
+                return TypedResults.Problem(statusCode: StatusCodes.Status409Conflict, title: "Conflict",
+                    detail: "The engine drives no USB panels this run, so it saves none; see GET /api/devices for why.");
+
+            var limits = workspace.Limits;
+            var (bytes, over) = await ReadBodyAsync(request, limits.RequestBytes, ct);
+            if (over)
+                return Invalid("", "limit.requestBytes", $"The body is over the limit of {limits.RequestBytes} bytes (requestBytes).");
+            using var json = ParseJson(bytes);
+            if (json == null)
+                return Invalid("", "json", "The body isn't JSON.");
+            var check = SpecSchemas.Strict.Validate(json.RootElement, CreateSchema, limits.JsonDepth);
+            if (!check.IsValid)
+                return InvalidBody([.. check.Errors.Select(ErrorBody)]);
+
+            // The engine stores what it is given: a family it drives, one of its models, the settings it honours.
+            var body = SpecJson.Read<CreateDeviceRequest>(json.RootElement);
+            if (body.Family != SavedPanel.BeadaPanelFamily)
+                return Invalid("/family", "device.family", $"The engine drives no '{body.Family}' devices.");
+            if (BeadaPanelModel.All.All(m => m.Id != body.Model))
+                return Invalid("/model", "device.model", $"A {body.Family} device has no model '{body.Model}'.");
+            var supports = SupportsOf(body.Family);
+            var refused = json.RootElement.GetProperty("settings").EnumerateObject().Where(m => !supports.Contains(m.Name)).Select(m => new ValidationErrorBody
+            {
+                Path = $"/settings/{m.Name}",
+                Code = "device.setting",
+                Message = $"A {body.Family} device has no setting '{m.Name}'.",
+            }).ToList();
+            if (refused.Count > 0)
+                return InvalidBody(refused);
+
+            var fresh = new SavedPanel(Guid.NewGuid().ToString("D"), body.Family, body.Model, body.Serial, Port: null);
+            PanelStatus? saved;
+            try
+            {
+                saved = await manager.AddAsync(Merge(fresh, body.Settings));
+            }
+            catch (PanelsNotSavedException)
+            {
+                return StoreUnwritten();
+            }
+            if (saved == null)
+                return Problem(new ExistsProblem
+                {
+                    Title = "The device already exists",
+                    Status = StatusCodes.Status409Conflict,
+                    Code = "exists",
+                    Detail = $"A {body.Family} device with serial '{body.Serial}' is saved already; nothing was saved.",
+                }, StatusCodes.Status409Conflict);
+            // The device as saved, from the save itself: a change since (another client's DELETE) doesn't change the answer.
+            return Json(EntryOf(saved), StatusCodes.Status201Created);
+        }).WithOwnBodyLimit().RequireScope(ApiScope.Session);
 
         devices.MapPatch("/{id}", async (string id, HttpRequest request, PanelService panels, Workspace workspace, CancellationToken ct) =>
         {

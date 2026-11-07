@@ -383,8 +383,9 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         }
 
         // The USB panel devices (the devices feature), every token's to read and the session token's to change: none on
-        // this engine (no panels); an engine of its own over the fake USB backend finds one, changes it, refuses a value
-        // and an unknown device, sends the devices message and forgets it; another, on a devices.json it can't hold, 409.
+        // this engine (no panels); an engine of its own over the fake USB backend finds one, changes it, saves another
+        // that isn't plugged in (then 409 for its serial, 422 for a model the family doesn't have), refuses a value and an
+        // unknown device, sends the devices message and forgets it; another, on a devices.json it can't hold, 409.
         await Send(reader, "GET", "/api/devices", 200);
         var devicesReceived = new List<string>();
         var panels = new InfoPanel.Core.Tests.Panels.Usb.FakeUsbBackend();
@@ -410,6 +411,9 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
             }
             Assert.NotNull(device);
             await Send(drivingSession, "PATCH", $"/api/devices/{device}", 200, Body("""{"settings":{"brightness":50}}"""));
+            await Send(drivingSession, "POST", "/api/devices", 201, Body("""{"family":"beadapanel","model":"6C","serial":"ABC123","settings":{"enabled":true}}"""));
+            await Send(drivingSession, "POST", "/api/devices", 409, Body("""{"family":"beadapanel","model":"6C","serial":"ABC123","settings":{}}"""));
+            await Send(drivingSession, "POST", "/api/devices", 422, Body("""{"family":"beadapanel","model":"6X","settings":{}}"""));
             await Send(drivingSession, "PATCH", $"/api/devices/{device}", 422, Body("""{"settings":{"brightness":101}}"""));
             await Send(drivingSession, "PATCH", $"/api/devices/{AbsentProfile}", 404, Body("""{"settings":{"brightness":50}}"""));
             await devicesSocket.ReceiveTextAsync("devices", Ct);
@@ -427,6 +431,7 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
             unheldSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
             await Send(unheldSession, "PATCH", $"/api/devices/{AbsentProfile}", 409, Body("""{"settings":{"brightness":50}}"""));
             await Send(unheldSession, "DELETE", $"/api/devices/{AbsentProfile}", 409);
+            await Send(unheldSession, "POST", "/api/devices", 409, Body("""{"family":"beadapanel","model":"6C","settings":{}}"""));
         }
 
         // Profiles: create (from a document and empty), duplicate, list.

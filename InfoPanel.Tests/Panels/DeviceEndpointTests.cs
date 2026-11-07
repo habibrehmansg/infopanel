@@ -391,6 +391,383 @@ public sealed class DeviceEndpointTests
         Assert.Equal(HttpStatusCode.NotFound, (await Send(api, HttpMethod.Delete, $"/api/devices/{id}")).Status);
     }
 
+    // ---- saving a device (POST /api/devices) ----------------------------------------------------------------------
+
+    private const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+
+    /// <summary>A <c>devices.json</c> holding <paramref name="devices"/> (each a JSON object), written before the engine starts.</summary>
+    private static void SavedBefore(EngineFactory engine, params string[] devices)
+    {
+        Directory.CreateDirectory(engine.DataDir);
+        File.WriteAllText(Path.Combine(engine.DataDir, "devices.json"), $$"""{"format": "infopanel.devices/1", "devices": [{{string.Join(", ", devices)}}]}""");
+    }
+
+    /// <summary>A saved BeadaPanel that was never plugged in and has no serial, as a save without one leaves it.</summary>
+    private static string NeverSeen(string id, string model) =>
+        $$"""{"id": "{{id}}", "family": "beadapanel", "model": "{{model}}", "serial": null, "port": null, "enabled": false, "profileId": null, "rotation": 0, "brightness": 70}""";
+
+    [Fact]
+    public async Task A_saved_panel_need_not_be_plugged_in_and_is_listed_changed_and_written_to_devices_json()
+    {
+        await using var engine = new EngineFactory();
+        await using var factory = WithPanels(engine, new FakeUsbBackend());
+        using var api = Client(factory);
+        const string profile = "0b6f1c2d-3e4a-4b5c-8d6e-7f8091a2b3c4";
+        var before = (await List(api)).GetProperty("version").GetInt64();
+
+        var (status, entry) = await Send(api, HttpMethod.Post, "/api/devices",
+            $$$"""{"family":"beadapanel","model":"6C","serial":"ABC123","settings":{"enabled":true,"profileId":"{{{profile}}}","rotation":90,"brightness":80}}""");
+        Assert.Equal(HttpStatusCode.Created, status);
+        var id = entry.GetProperty("id").GetString()!;
+        Assert.Matches(Uuid, id);
+        Assert.Equal("beadapanel", entry.GetProperty("family").GetString());
+        Assert.Equal("6C", entry.GetProperty("model").GetProperty("id").GetString());
+        Assert.Equal(1280, entry.GetProperty("model").GetProperty("width").GetInt32());
+        Assert.Equal(480, entry.GetProperty("model").GetProperty("height").GetInt32());
+        Assert.False(entry.GetProperty("connected").GetBoolean());
+        Assert.Equal("notConnected", entry.GetProperty("state").GetString());
+        Assert.Equal(JsonValueKind.Null, entry.GetProperty("reason").ValueKind);
+        var settings = entry.GetProperty("settings");
+        Assert.True(settings.GetProperty("enabled").GetBoolean());
+        Assert.Equal(profile, settings.GetProperty("profileId").GetString());
+        Assert.Equal(90, settings.GetProperty("rotation").GetInt32());
+        Assert.Equal(80, settings.GetProperty("brightness").GetInt32());
+        Assert.Equal(["enabled", "profileId", "rotation", "brightness"], entry.GetProperty("supports").EnumerateArray().Select(s => s.GetString()));
+        Assert.Equal(JsonValueKind.Null, entry.GetProperty("stats").ValueKind);
+        var details = entry.GetProperty("details");
+        Assert.Equal("4e58:1001", details.GetProperty("usbId").GetString());
+        Assert.Equal(JsonValueKind.Null, details.GetProperty("port").ValueKind);
+        Assert.Equal("ABC123", details.GetProperty("serial").GetString());
+        Assert.Equal(JsonValueKind.Null, details.GetProperty("firmware").ValueKind);
+
+        // Listed as answered, the list's version moved on, and written to devices.json as given.
+        var list = await List(api);
+        Assert.True(list.GetProperty("version").GetInt64() > before);
+        var listed = Assert.Single(list.GetProperty("devices").EnumerateArray());
+        Assert.Equal(entry.ToString(), listed.ToString());
+        using (var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(engine.DataDir, "devices.json"))))
+        {
+            var device = Assert.Single(saved.RootElement.GetProperty("devices").EnumerateArray());
+            Assert.Equal(id, device.GetProperty("id").GetString());
+            Assert.Equal("6C", device.GetProperty("model").GetString());
+            Assert.Equal("ABC123", device.GetProperty("serial").GetString());
+            Assert.Equal(JsonValueKind.Null, device.GetProperty("port").ValueKind);
+            Assert.True(device.GetProperty("enabled").GetBoolean());
+            Assert.Equal(90, device.GetProperty("rotation").GetInt32());
+        }
+
+        // Changed as any saved panel is.
+        (status, entry) = await Send(api, HttpMethod.Patch, $"/api/devices/{id}", """{"settings":{"brightness":40,"enabled":false}}""");
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Equal(40, entry.GetProperty("settings").GetProperty("brightness").GetInt32());
+        Assert.False(entry.GetProperty("settings").GetProperty("enabled").GetBoolean());
+        Assert.Equal(90, entry.GetProperty("settings").GetProperty("rotation").GetInt32());
+
+        // Without a serial or settings: a new panel's settings, after the first.
+        (status, entry) = await Send(api, HttpMethod.Post, "/api/devices", """{"family":"beadapanel","model":"8","settings":{}}""");
+        Assert.Equal(HttpStatusCode.Created, status);
+        Assert.False(entry.GetProperty("settings").GetProperty("enabled").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, entry.GetProperty("settings").GetProperty("profileId").ValueKind);
+        Assert.Equal(0, entry.GetProperty("settings").GetProperty("rotation").GetInt32());
+        Assert.Equal(100, entry.GetProperty("settings").GetProperty("brightness").GetInt32());
+        Assert.Equal(JsonValueKind.Null, entry.GetProperty("details").GetProperty("serial").ValueKind);
+        var devices = (await List(api)).GetProperty("devices");
+        Assert.Equal([id, entry.GetProperty("id").GetString()], devices.EnumerateArray().Select(d => d.GetProperty("id").GetString()));
+    }
+
+    [Fact]
+    public async Task A_save_naming_a_saved_serial_is_409_exists_and_saves_nothing()
+    {
+        await using var engine = new EngineFactory();
+        var backend = new FakeUsbBackend();
+        Panel(backend);
+        await using var factory = WithPanels(engine, backend);
+        using var api = Client(factory);
+        await Until(api, d => d.GetProperty("state").GetString() == "off");
+
+        // The serial of a panel found plugged in, and of one saved by a save: each is there already.
+        var (status, problem) = await Send(api, HttpMethod.Post, "/api/devices", $$$"""{"family":"beadapanel","model":"8","serial":"{{{Serial}}}","settings":{"enabled":true}}""");
+        Assert.Equal(HttpStatusCode.Conflict, status);
+        Assert.Equal("exists", problem.GetProperty("code").GetString());
+        Assert.Equal(HttpStatusCode.Created, (await Send(api, HttpMethod.Post, "/api/devices", """{"family":"beadapanel","model":"6C","serial":"ABC123","settings":{}}""")).Status);
+        (status, problem) = await Send(api, HttpMethod.Post, "/api/devices", """{"family":"beadapanel","model":"5","serial":"ABC123","settings":{"brightness":10}}""");
+        Assert.Equal(HttpStatusCode.Conflict, status);
+        Assert.Equal("exists", problem.GetProperty("code").GetString());
+
+        var devices = (await List(api)).GetProperty("devices");
+        Assert.Equal(2, devices.GetArrayLength());
+        Assert.False(devices[0].GetProperty("settings").GetProperty("enabled").GetBoolean());
+        Assert.Equal("6C", devices[1].GetProperty("model").GetProperty("id").GetString());
+        Assert.Equal(100, devices[1].GetProperty("settings").GetProperty("brightness").GetInt32());
+        using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(engine.DataDir, "devices.json")));
+        Assert.Equal(2, saved.RootElement.GetProperty("devices").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_save_with_a_bad_body_family_or_model_is_422_and_saves_nothing()
+    {
+        await using var engine = new EngineFactory();
+        await using var factory = WithPanels(engine, new FakeUsbBackend());
+        using var api = Client(factory);
+
+        foreach (var (body, code, path) in new[]
+        {
+            ("""{"family":"turing","model":"3.5","settings":{}}""", "device.family", "/family"),
+            ("""{"family":"beadapanel","model":"6X","settings":{}}""", "device.model", "/model"),
+            ("""{"family":"beadapanel","model":"6c","settings":{}}""", "device.model", "/model"),
+            ("""{"family":"beadapanel","model":"6C","settings":{"brightness":101}}""", "schema", "/settings/brightness"),
+            ("""{"family":"beadapanel","model":"6C","settings":{"name":"Desk"}}""", "schema", "/settings/name"),
+            ("""{"family":"beadapanel","model":"6C","serial":"","settings":{}}""", "schema", "/serial"),
+            ("""{"family":"beadapanel","model":"6C","serial":null,"settings":{}}""", "schema", "/serial"),
+            ("""{"family":"beadapanel","model":"6C","port":"0-1","settings":{}}""", "schema", "/port"),
+            ("""{"family":"beadapanel","model":"6C"}""", "schema", ""),
+            ("{ not json", "json", ""),
+        })
+        {
+            var (status, problem) = await Send(api, HttpMethod.Post, "/api/devices", body);
+            Assert.True(status == HttpStatusCode.UnprocessableEntity, $"{body}: {status}");
+            Assert.Contains(problem.GetProperty("errors").EnumerateArray(), e => e.GetProperty("code").GetString() == code && e.GetProperty("path").GetString() == path);
+        }
+
+        Assert.Equal(0, (await List(api)).GetProperty("devices").GetArrayLength());
+        Assert.False(File.Exists(Path.Combine(engine.DataDir, "devices.json")));
+    }
+
+    [Fact]
+    public async Task Only_the_session_token_saves_a_device()
+    {
+        await using var engine = new EngineFactory();
+        await using var factory = WithPanels(engine, new FakeUsbBackend());
+        using var session = Client(factory);
+        using var integration = Client(factory, await ReadToken(session));
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(integration, HttpMethod.Post, "/api/devices", """{"family":"beadapanel","model":"6C","settings":{}}""")).Status);
+        Assert.Equal(0, (await List(session)).GetProperty("devices").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_save_is_409_where_the_engine_drives_no_panels_or_cant_hold_or_write_its_devices_file()
+    {
+        const string body = """{"family":"beadapanel","model":"6C","serial":"ABC123","settings":{}}""";
+
+        // Under --no-panels, and without libusb: nothing is saved, and no file written.
+        await using (var engine = new EngineFactory())
+        {
+            using var api = engine.CreateApiClient();
+            var (status, problem) = await Send(api, HttpMethod.Post, "/api/devices", body);
+            Assert.Equal(HttpStatusCode.Conflict, status);
+            Assert.False(problem.TryGetProperty("code", out _));
+            Assert.False(File.Exists(Path.Combine(engine.DataDir, "devices.json")));
+        }
+        await using (var engine = new EngineFactory())
+        {
+            await using var factory = WithPanels(engine, null, () => [Path.Combine(engine.Root, "no-libusb", "libusb-1.0.dylib")]);
+            using var api = Client(factory);
+            Assert.Equal(HttpStatusCode.Conflict, (await Send(api, HttpMethod.Post, "/api/devices", body)).Status);
+            Assert.False(File.Exists(Path.Combine(engine.DataDir, "devices.json")));
+        }
+
+        // A devices.json it can't hold: refused, the file as it was.
+        await using (var engine = new EngineFactory())
+        {
+            Directory.CreateDirectory(engine.DataDir);
+            var file = Path.Combine(engine.DataDir, "devices.json");
+            const string unheld = """{"format": "infopanel.devices/1", "devices": [{"id": "not a uuid"}]}""";
+            File.WriteAllText(file, unheld);
+            await using var factory = WithPanels(engine, new FakeUsbBackend());
+            using var api = Client(factory);
+            Assert.Equal(HttpStatusCode.Conflict, (await Send(api, HttpMethod.Post, "/api/devices", body)).Status);
+            Assert.Equal(unheld, File.ReadAllText(file));
+        }
+
+        // A devices.json it can't write (a folder stands where it was): refused, nothing listed.
+        await using (var engine = new EngineFactory())
+        {
+            await using var factory = WithPanels(engine, new FakeUsbBackend());
+            using var api = Client(factory);
+            Assert.True((await List(api)).GetProperty("supported").GetBoolean());
+            Directory.CreateDirectory(Path.Combine(engine.DataDir, "devices.json"));
+            var (status, problem) = await Send(api, HttpMethod.Post, "/api/devices", body);
+            Assert.Equal(HttpStatusCode.Conflict, status);
+            Assert.False(problem.TryGetProperty("code", out _));
+            Assert.Equal(0, (await List(api)).GetProperty("devices").GetArrayLength());
+        }
+    }
+
+    [Fact]
+    public async Task A_saved_panel_without_a_serial_takes_the_only_new_panel_of_its_model_plugged_in()
+    {
+        await using var engine = new EngineFactory();
+        var backend = new FakeUsbBackend();
+        await using var factory = WithPanels(engine, backend);
+        using var api = Client(factory);
+        var (status, entry) = await Send(api, HttpMethod.Post, "/api/devices", """{"family":"beadapanel","model":"8","settings":{"brightness":60,"rotation":180}}""");
+        Assert.Equal(HttpStatusCode.Created, status);
+        var id = entry.GetProperty("id").GetString();
+
+        Panel(backend);
+        var device = await Until(api, d => d.GetProperty("connected").GetBoolean());
+        Assert.Equal(id, device.GetProperty("id").GetString());
+        Assert.Equal("off", device.GetProperty("state").GetString());
+        Assert.Equal(60, device.GetProperty("settings").GetProperty("brightness").GetInt32());
+        Assert.Equal(180, device.GetProperty("settings").GetProperty("rotation").GetInt32());
+        Assert.Equal(Serial, device.GetProperty("details").GetProperty("serial").GetString());
+        Assert.Equal("0-1", device.GetProperty("details").GetProperty("port").GetString());
+        using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(engine.DataDir, "devices.json")));
+        var stored = Assert.Single(saved.RootElement.GetProperty("devices").EnumerateArray());
+        Assert.Equal(Serial, stored.GetProperty("serial").GetString());
+        Assert.Equal("0-1", stored.GetProperty("port").GetString());
+    }
+
+    [Fact]
+    public async Task A_saved_panel_without_a_serial_takes_no_panel_when_that_could_be_mistaken()
+    {
+        const string first = "00000000-0000-4000-8000-0000000000b1", second = "00000000-0000-4000-8000-0000000000b2";
+
+        // Two such saved panels of the model: the panel plugged in is new.
+        await using (var engine = new EngineFactory())
+        {
+            SavedBefore(engine, NeverSeen(first, "8"), NeverSeen(second, "8"));
+            var backend = new FakeUsbBackend();
+            Panel(backend);
+            await using var factory = WithPanels(engine, backend);
+            using var api = Client(factory);
+            var found = await Until(api, d => d.GetProperty("connected").GetBoolean(), count: 3);
+            Assert.DoesNotContain(found.GetProperty("id").GetString(), new[] { first, second });
+            Assert.Equal(100, found.GetProperty("settings").GetProperty("brightness").GetInt32());
+            var devices = (await List(api)).GetProperty("devices");
+            Assert.All(devices.EnumerateArray().Take(2), d => Assert.Equal("notConnected", d.GetProperty("state").GetString()));
+        }
+
+        // Two new panels of the model found at once: each is new.
+        await using (var engine = new EngineFactory())
+        {
+            SavedBefore(engine, NeverSeen(first, "8"));
+            var backend = new FakeUsbBackend();
+            Panel(backend, address: 4, port: "0-1", serial: "AAAA1111");
+            Panel(backend, address: 5, port: "0-2", serial: "BBBB2222");
+            await using var factory = WithPanels(engine, backend);
+            using var api = Client(factory);
+            await Until(api, d => d.GetProperty("connected").GetBoolean(), count: 3);
+            var devices = (await List(api)).GetProperty("devices");
+            Assert.Equal(first, devices[0].GetProperty("id").GetString());
+            Assert.Equal("notConnected", devices[0].GetProperty("state").GetString());
+            Assert.True(devices[1].GetProperty("connected").GetBoolean());
+        }
+
+        // Another model's panel: new.
+        await using (var engine = new EngineFactory())
+        {
+            SavedBefore(engine, NeverSeen(first, "6C"));
+            var backend = new FakeUsbBackend();
+            Panel(backend);
+            await using var factory = WithPanels(engine, backend);
+            using var api = Client(factory);
+            var found = await Until(api, d => d.GetProperty("connected").GetBoolean(), count: 2);
+            Assert.NotEqual(first, found.GetProperty("id").GetString());
+            Assert.Equal("notConnected", (await List(api)).GetProperty("devices")[0].GetProperty("state").GetString());
+        }
+
+        // A panel found before the save is claimed by its own entry: the saved one stays not connected.
+        await using (var engine = new EngineFactory())
+        {
+            var backend = new FakeUsbBackend();
+            Panel(backend);
+            await using var factory = WithPanels(engine, backend);
+            using var api = Client(factory);
+            var plugged = (await Until(api, d => d.GetProperty("connected").GetBoolean())).GetProperty("id").GetString();
+            var (status, entry) = await Send(api, HttpMethod.Post, "/api/devices", """{"family":"beadapanel","model":"8","settings":{}}""");
+            Assert.Equal(HttpStatusCode.Created, status);
+            await Task.Delay(PanelManager.PassInterval * 2, Ct); // passes run meanwhile
+            var devices = (await List(api)).GetProperty("devices");
+            Assert.Equal(2, devices.GetArrayLength());
+            Assert.Equal(plugged, devices[0].GetProperty("id").GetString());
+            Assert.True(devices[0].GetProperty("connected").GetBoolean());
+            Assert.Equal(entry.GetProperty("id").GetString(), devices[1].GetProperty("id").GetString());
+            Assert.Equal("notConnected", devices[1].GetProperty("state").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task A_saved_panel_without_a_serial_counts_every_new_panel_of_its_model_a_serial_clash_too()
+    {
+        const string held = "00000000-0000-4000-8000-0000000000c1", first = "00000000-0000-4000-8000-0000000000b1";
+        await using var engine = new EngineFactory();
+        SavedBefore(engine,
+            $$"""{"id": "{{held}}", "family": "beadapanel", "model": "8", "serial": "DUP0001", "port": "0-1", "enabled": false, "profileId": null, "rotation": 0, "brightness": 70}""",
+            NeverSeen(first, "8"));
+        var backend = new FakeUsbBackend();
+        Panel(backend, address: 4, port: "0-1", serial: "DUP0001"); // the saved panel
+        Panel(backend, address: 5, port: "0-2", serial: "NEW0002"); // new
+        Panel(backend, address: 6, port: "0-3", serial: "DUP0001"); // new: reports the serial of a panel connected already
+        await using var factory = WithPanels(engine, backend);
+        using var api = Client(factory);
+
+        // Two new panels of the model were found in the pass: neither is taken, each is saved as new.
+        await Until(api, d => d.GetProperty("connected").GetBoolean(), count: 4);
+        var devices = (await List(api)).GetProperty("devices");
+        Assert.Equal(held, devices[0].GetProperty("id").GetString());
+        Assert.True(devices[0].GetProperty("connected").GetBoolean());
+        Assert.Equal(first, devices[1].GetProperty("id").GetString());
+        Assert.Equal("notConnected", devices[1].GetProperty("state").GetString());
+        Assert.All(devices.EnumerateArray().Skip(2), d => Assert.Equal(100, d.GetProperty("settings").GetProperty("brightness").GetInt32()));
+    }
+
+    [Fact]
+    public async Task A_forgotten_panel_found_again_is_new_though_a_saved_panel_without_a_serial_could_take_it()
+    {
+        await using var engine = new EngineFactory();
+        var backend = new FakeUsbBackend();
+        Panel(backend);
+        await using var factory = WithPanels(engine, backend);
+        using var api = Client(factory);
+        var id = (await Until(api, d => d.GetProperty("state").GetString() == "off")).GetProperty("id").GetString()!;
+        var (status, entry) = await Send(api, HttpMethod.Post, "/api/devices", """{"family":"beadapanel","model":"8","settings":{"enabled":true,"brightness":60}}""");
+        Assert.Equal(HttpStatusCode.Created, status);
+        var saved = entry.GetProperty("id").GetString();
+
+        Assert.Equal(HttpStatusCode.NoContent, (await Send(api, HttpMethod.Delete, $"/api/devices/{id}")).Status);
+
+        // Found again, it is a new panel, off: the saved one doesn't take what was forgotten.
+        var again = await Until(api, d => d.GetProperty("connected").GetBoolean(), count: 2);
+        Assert.NotEqual(id, again.GetProperty("id").GetString());
+        Assert.NotEqual(saved, again.GetProperty("id").GetString());
+        Assert.False(again.GetProperty("settings").GetProperty("enabled").GetBoolean());
+        Assert.Equal(100, again.GetProperty("settings").GetProperty("brightness").GetInt32());
+        var first = (await List(api)).GetProperty("devices")[0];
+        Assert.Equal(saved, first.GetProperty("id").GetString());
+        Assert.Equal("notConnected", first.GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task A_save_forgotten_as_soon_as_it_is_written_is_still_answered_201_with_what_was_saved()
+    {
+        await using var engine = new EngineFactory();
+        PanelManager? manager = null;
+        var armed = 0;
+        await using var factory = WithPanels(engine, new FakeUsbBackend(), storeWriter: (path, bytes, replaced) =>
+        {
+            AtomicFile.Write(path, bytes, null, replaced);
+            if (Interlocked.Exchange(ref armed, 0) == 1)
+            {
+                // Another client's DELETE of the device just written, queued on the manager before the save is answered.
+                using var written = JsonDocument.Parse(bytes);
+                _ = manager!.ForgetAsync(written.RootElement.GetProperty("devices")[0].GetProperty("id").GetString()!);
+            }
+        });
+        using var api = Client(factory);
+        Assert.Equal(0, (await List(api)).GetProperty("devices").GetArrayLength());
+        manager = factory.Services.GetRequiredService<PanelService>().Manager!;
+        Volatile.Write(ref armed, 1);
+
+        var (status, entry) = await Send(api, HttpMethod.Post, "/api/devices", """{"family":"beadapanel","model":"6C","serial":"ABC123","settings":{"brightness":80}}""");
+        Assert.Equal(HttpStatusCode.Created, status);
+        Assert.Equal("6C", entry.GetProperty("model").GetProperty("id").GetString());
+        Assert.Equal(80, entry.GetProperty("settings").GetProperty("brightness").GetInt32());
+        Assert.Equal(0, (await List(api)).GetProperty("devices").GetArrayLength());
+        Assert.Equal(HttpStatusCode.NotFound, (await Send(api, HttpMethod.Delete, $"/api/devices/{entry.GetProperty("id").GetString()}")).Status);
+    }
+
     [Fact]
     public async Task Forgetting_a_running_panel_turns_its_screen_off_and_it_comes_back_as_new_and_off()
     {

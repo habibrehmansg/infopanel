@@ -46,9 +46,15 @@ public sealed class V1Folder
     private static readonly string[] SettingsOutcomes = ["imported", "skipped"];
 
     /// <summary>The record's own members; any other is a later engine's, ignored when read and kept when replaced.</summary>
-    private static readonly string[] RecordMembers = ["completed", "folder", "profiles", "settings"];
+    private static readonly string[] RecordMembers = ["completed", "folder", "profiles", "settings", "devices"];
 
     private const string RecordSchema = SpecSchemas.Api + "#/$defs/v1MigrationRecord";
+
+    /// <summary>The most 1.x device outcomes a record holds: <c>v1Devices</c> for each of 1.x's eight families (the schema's <c>maxItems</c>, 512).</summary>
+    private static readonly int RecordDevices = V1SettingsReader.Families.Length * SpecLimits.Default.V1Devices;
+
+    /// <summary>The longest <c>deviceId</c> or <c>deviceLocation</c> of a device outcome: <c>v1SettingLength</c> (the schema's <c>maxLength</c>, 1,024).</summary>
+    private static readonly int DeviceFieldLength = SpecLimits.Default.V1SettingLength;
 
     /// <summary>The record is the engine's own file, read tolerantly: members this engine doesn't know are ignored.</summary>
     private static readonly JsonSerializerOptions RecordReading = new(SpecJson.Options) { UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip };
@@ -425,9 +431,12 @@ public sealed class V1Folder
         }
 
         List<JsonMemberText> unknown;
+        JsonMemberText? stored; // a member it knows stored as null, which no member of the record may be
         try
         {
-            unknown = EngineJson.Members(bytes).Where(member => member.Name is null || !RecordMembers.Contains(member.Name)).ToList();
+            var members = EngineJson.Members(bytes);
+            unknown = members.Where(member => member.Name is null || !RecordMembers.Contains(member.Name)).ToList();
+            stored = members.FirstOrDefault(member => member.Name is { } name && RecordMembers.Contains(name) && member.Value.AsSpan().SequenceEqual("null"u8));
         }
         catch (JsonException ex)
         {
@@ -438,6 +447,9 @@ public sealed class V1Folder
 
         try
         {
+            // Checked on the member as stored: read, a null optional member (devices) would be taken as absent.
+            if (stored is { Name: var nulled })
+                throw new JsonException($"/{nulled}: null isn't one of its values.");
             var record = JsonSerializer.Deserialize<V1MigrationRecord>(bytes, RecordReading)
                 ?? throw new JsonException("The record is null.");
             if (Check(record) is { } invalid)
@@ -460,14 +472,16 @@ public sealed class V1Folder
 
     /// <summary>
     /// Replaces the run-once record with what a client reports (<c>completed</c> is now, <c>folder</c> this folder) and
-    /// answers the new state. Written atomically by the store's write rules, in the data folder, never the 1.x folder.
+    /// answers the new state, with the 1.x panel devices' outcomes when the client gave them (<paramref name="devices"/>;
+    /// none: the record has no <c>devices</c>). Written atomically by the store's write rules, in the data folder, never the 1.x folder.
     /// The record it replaces keeps its members this engine doesn't know (a later engine's), as written, after the new
     /// ones; a record the engine can't hold whole (<see cref="InspectRecord"/>) is left as it is and the write refused.
     /// </summary>
     /// <exception cref="ImportRefusal">More than <see cref="ImportLimits.RecordOutcomes"/> outcomes, a value outside the
     /// record's rules, or larger than <see cref="ImportLimits.RecordBytes"/> as stored.</exception>
     /// <exception cref="IOException">The record couldn't be written, or the one there can't be held whole; it is unchanged.</exception>
-    public V1Migration WriteRecord(DataPaths data, IReadOnlyList<V1MigrationOutcome> profiles, string settings, DateTimeOffset now)
+    public V1Migration WriteRecord(DataPaths data, IReadOnlyList<V1MigrationOutcome> profiles, string settings, DateTimeOffset now,
+        IReadOnlyList<V1DeviceOutcome>? devices = null)
     {
         var record = new V1MigrationRecord
         {
@@ -475,6 +489,7 @@ public sealed class V1Folder
             Folder = Root,
             Profiles = profiles,
             Settings = settings,
+            Devices = devices,
         };
         if (Check(record) is { } invalid)
             throw invalid;
@@ -514,6 +529,35 @@ public sealed class V1Folder
             // Counted in characters (code points), as the schema's maxLength counts it, and refused with its code.
             if (outcome.Reason is { } reason && reason.EnumerateRunes().Count() > Limits.RecordReasonLength)
                 return new ImportRefusal("schema", $"reason is longer than {Limits.RecordReasonLength} characters.", $"/profiles/{i}/reason");
+        }
+        return record.Devices is { } devices ? CheckDevices(devices) : null;
+    }
+
+    /// <summary>
+    /// Why the record's 1.x device outcomes break its rules, or null. They are stored as the client gives them: no 1.x
+    /// field is read or mapped here.
+    /// </summary>
+    private ImportRefusal? CheckDevices(IReadOnlyList<V1DeviceOutcome> devices)
+    {
+        if (devices.Count > RecordDevices)
+            return new ImportRefusal("schema", $"The record has {devices.Count} device outcomes; at most {RecordDevices} are allowed.", "/devices");
+        for (var i = 0; i < devices.Count; i++)
+        {
+            var outcome = devices[i];
+            if (outcome is null)
+                return new ImportRefusal("record.outcome", $"The device outcome at /devices/{i} is null.", $"/devices/{i}");
+            if (!V1SettingsReader.Families.Any(f => f.Family == outcome.Family))
+                return new ImportRefusal("schema", "family must be one of 1.x's device families.", $"/devices/{i}/family");
+            if (outcome.DeviceId.EnumerateRunes().Count() > DeviceFieldLength)
+                return new ImportRefusal("schema", $"deviceId is longer than {DeviceFieldLength} characters.", $"/devices/{i}/deviceId");
+            if (outcome.DeviceLocation.EnumerateRunes().Count() > DeviceFieldLength)
+                return new ImportRefusal("schema", $"deviceLocation is longer than {DeviceFieldLength} characters.", $"/devices/{i}/deviceLocation");
+            if (outcome.Id is not null && (!Guid.TryParseExact(outcome.Id, "D", out var id) || id.ToString() != outcome.Id))
+                return new ImportRefusal("record.id", "id must be a device's id (a UUID in lower case) or null.", $"/devices/{i}/id");
+            if (!Outcomes.Contains(outcome.Outcome))
+                return new ImportRefusal("record.outcome", "outcome must be 'imported', 'skipped' or 'failed'.", $"/devices/{i}/outcome");
+            if (outcome.Reason is { } reason && reason.EnumerateRunes().Count() > Limits.RecordReasonLength)
+                return new ImportRefusal("schema", $"reason is longer than {Limits.RecordReasonLength} characters.", $"/devices/{i}/reason");
         }
         return null;
     }

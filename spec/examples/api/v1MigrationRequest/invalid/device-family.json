@@ -1,0 +1,7 @@
+{
+  "profiles": [],
+  "settings": "imported",
+  "devices": [
+    {"family": "beadapanel", "deviceId": "USB\\VID_4E58&PID_1001\\934072005C", "deviceLocation": "", "id": null, "outcome": "failed"}
+  ]
+}
