@@ -224,7 +224,7 @@ public sealed class PanelHostTests
             {
                 try
                 {
-                    return InfoPanel.Panels.Power.PowerEvents.WaitForSuspending(_handlers!.Suspending, TimeSpan.FromSeconds(3));
+                    return InfoPanel.Panels.Power.PowerEvents.WaitForSuspending(_handlers!, TimeSpan.FromSeconds(3), Serilog.Core.Logger.None);
                 }
                 finally
                 {

@@ -9,8 +9,8 @@ namespace InfoPanel.Panels.Power;
 
 /// <summary>
 /// macOS's sleep and wake: IOKit's system power notifications (<c>IORegisterForSystemPower</c>) on a CoreFoundation
-/// run loop of their own, on a thread of their own, so they come with or without the AppKit loop. Will-sleep runs
-/// <see cref="PowerHandlers.Suspending"/> and allows the sleep (<c>IOAllowPowerChange</c>) once it has finished or
+/// run loop of their own, on a thread of their own, so they come with or without the AppKit loop. Will-sleep tells
+/// <see cref="PowerHandlers.SleepArriving"/>, runs the sleep's work and allows the sleep (<c>IOAllowPowerChange</c>) once it has finished or
 /// <see cref="PowerEvents.SuspendBound"/> has passed; an idle sleep's question is allowed at once (the panels stop at its
 /// will-sleep); powered-on runs <see cref="PowerHandlers.Resumed"/>. <see cref="Dispose"/> stops the run loop (only
 /// while its thread is still in it: CoreFoundation frees it when the thread ends), the thread unregisters, and it waits
@@ -151,7 +151,7 @@ public sealed class MacPowerEvents : IPowerEvents
                 Allow(argument); // an idle sleep may go ahead; its will-sleep turns the panels off
                 break;
             case SystemWillSleep:
-                if (handlers != null && !PowerEvents.WaitForSuspending(handlers.Suspending, PowerEvents.SuspendBound))
+                if (handlers != null && !PowerEvents.WaitForSuspending(handlers, PowerEvents.SuspendBound, _logger))
                     _logger.Warning("USB panels: the computer sleeps before every panel was off ({Bound} s)", PowerEvents.SuspendBound.TotalSeconds);
                 Allow(argument);
                 break;

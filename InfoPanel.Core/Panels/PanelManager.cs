@@ -685,9 +685,10 @@ public sealed class PanelManager : IAsyncDisposable
     /// The computer is going to sleep: every running panel is asked to stop at once, whatever the manager's thread is
     /// doing, each turning its screen off; until <see cref="ResumeAsync"/> no pass runs (one under way stops before its
     /// next panel's query) and no panel starts. Waits at most <paramref name="bound"/> from the call for the panels; a
-    /// panel still writing then is left to its thread. True when every panel asked has ended.
+    /// panel still writing then is left to its thread. True when every panel asked has ended. <paramref name="stillAsleep"/>,
+    /// asked with the sleep's lock held: false (a wake came since the sleep) does nothing.
     /// </summary>
-    public async Task<bool> SuspendAsync(TimeSpan bound)
+    public async Task<bool> SuspendAsync(TimeSpan bound, Func<bool>? stillAsleep = null)
     {
         var started = TimeProvider.System.GetTimestamp();
         List<PanelRunner> runners;
@@ -695,6 +696,11 @@ public sealed class PanelManager : IAsyncDisposable
         {
             if (_stopping)
                 return true; // the stop has them
+            if (stillAsleep?.Invoke() == false)
+            {
+                _logger.Information("USB panels: the computer woke before the sleep's turn-off ran; nothing turned off");
+                return true;
+            }
             if (!_suspended && _sinceBoot != null)
                 _asleepFrom = (_time.GetTimestamp(), _sinceBoot());
             _suspended = true;

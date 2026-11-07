@@ -13,7 +13,7 @@ namespace InfoPanel.Core.Tests.Panels.Power;
 /// Sleep and wake (InfoPanel 1.4's: suspend stops every panel, resume waits 1 s and starts them, session end and quit
 /// stop them) through a fake power source, over the fake USB backend: will-sleep turns every panel's screen off before
 /// the sleep is allowed, at most 3 s; powered-on runs a detection pass 1 s later (a manual clock); quit turns each panel
-/// off once; a sleep during a pass and a wake without a sleep do no harm.
+/// off once; a sleep during a pass and a wake without a sleep do no harm, nor does a sleep's work that runs after the wake.
 /// </summary>
 public sealed class PanelPowerTests : IAsyncDisposable
 {
@@ -141,6 +141,7 @@ public sealed class PanelPowerTests : IAsyncDisposable
         var (finished, waited) = await Task.Run(_source.Sleep, TestContext.Current.CancellationToken);
 
         Assert.False(finished);
+        Assert.Equal(TimeSpan.FromSeconds(3), PowerEvents.SuspendBound); // the bound itself: the real-time check is tolerant
         Assert.InRange(waited, TimeSpan.FromSeconds(2.9), TimeSpan.FromSeconds(5)); // 3 s, written out
         Assert.True(EndsWithScreenOff(a)); // the other panel went dark as usual
         Assert.Equal(1, ScreenOffs(hanging)); // the hanging one was asked, and is left to its thread
@@ -269,6 +270,30 @@ public sealed class PanelPowerTests : IAsyncDisposable
 
         Assert.True(All(await manager.ListAsync(), 1, "off"));
         Assert.Equal((1, 1), (Starts(a), ScreenOffs(a)));
+    }
+
+    [Fact]
+    public async Task A_sleeps_work_that_runs_only_after_the_wake_turns_nothing_off_and_the_wake_still_looks_for_panels()
+    {
+        var a = Plug(4, "0-1", SerialA);
+        var manager = Manager(Saved(IdA, SerialA, "0-1"));
+        await manager.RunPassAsync();
+        await Until(manager, l => All(l, 1, "running"));
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // The thread pool is starved at will-sleep: the source lets the computer sleep at its bound, the work not yet run.
+        var (finished, work) = await Task.Run(() => _source.SleepHeld(held.Task, TimeSpan.FromMilliseconds(100)), TestContext.Current.CancellationToken);
+        Assert.False(finished);
+        Plug(5, "0-2", SerialB); // plugged in while asleep
+        _source.Wake();
+        held.SetResult(); // the sleep's work runs only now, after the wake
+        await work;
+        _resumeClock.Advance(PanelPower.ResumeDelay);
+
+        // The wake's pass ran (it found the new panel) and the old sleep turned nothing off.
+        var awake = await Until(manager, l => l.Count == 2 && l[0].State == "running" && l[1].State == "off");
+        Assert.Equal(SerialB, awake[1].Saved.Serial);
+        Assert.Equal((1, 0), (Starts(a), ScreenOffs(a)));
     }
 
     /// <summary>

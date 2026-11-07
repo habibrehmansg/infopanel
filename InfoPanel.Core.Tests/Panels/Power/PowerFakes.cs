@@ -26,8 +26,38 @@ internal sealed class FakePowerEvents : IPowerEvents
     public (bool Finished, TimeSpan Waited) Sleep()
     {
         var watch = Stopwatch.StartNew();
-        var finished = PowerEvents.WaitForSuspending(_handlers!.Suspending, PowerEvents.SuspendBound);
+        var finished = PowerEvents.WaitForSuspending(_handlers!, PowerEvents.SuspendBound, Serilog.Core.Logger.None);
         return (finished, watch.Elapsed);
+    }
+
+    /// <summary>
+    /// Will-sleep whose work gets no thread until <paramref name="held"/> completes (a starved thread pool): it arrives
+    /// as usual, and the sleep is allowed at <paramref name="bound"/> without it. The work's own task, once it ran.
+    /// </summary>
+    public (bool Finished, Task<bool> Work) SleepHeld(Task held, TimeSpan bound)
+    {
+        var handlers = _handlers!;
+        var ran = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var starved = new PowerHandlers(() =>
+        {
+            var work = handlers.SleepArriving();
+            return async () =>
+            {
+                await held;
+                try
+                {
+                    var finished = await work();
+                    ran.SetResult(finished);
+                    return finished;
+                }
+                catch (Exception ex)
+                {
+                    ran.SetException(ex);
+                    throw;
+                }
+            };
+        }, handlers.Resumed);
+        return (PowerEvents.WaitForSuspending(starved, bound, Serilog.Core.Logger.None), ran.Task);
     }
 
     public void Wake() => _handlers!.Resumed();
@@ -44,8 +74,19 @@ internal sealed class KeptLog : Serilog.Core.ILogEventSink
 
     public void Emit(Serilog.Events.LogEvent logEvent)
     {
+        var line = logEvent.Exception == null ? logEvent.RenderMessage() : $"{logEvent.RenderMessage()} ({logEvent.Exception.Message})";
         lock (_lines)
-            _lines.Add(logEvent.RenderMessage());
+            _lines.Add(line);
+    }
+
+    /// <summary>The lines so far, one per event.</summary>
+    public IReadOnlyList<string> Lines
+    {
+        get
+        {
+            lock (_lines)
+                return [.. _lines];
+        }
     }
 
     public override string ToString()
