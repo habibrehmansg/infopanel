@@ -8,13 +8,19 @@
 # -Out must be new or empty, a plain path (no junction or link in it) writable only by the user building: the publish and
 # the installer go there, nothing is deleted. The two files it bundles are downloaded into -Out (or taken from
 # -PawnIoSetup and -DotnetRuntime) and refused unless their hashes are the pinned ones: PawnIO's setup against
-# PawnIoInstaller.BundledSha256, the .NET runtime installer against $Runtime.Sha512 below.
+# PawnIoInstaller.BundledSha256, the .NET runtime installer against $Runtime.Sha512 below. The USB panels' library,
+# libusb-1.0.dll, comes from libusb's release (its 7z downloaded, or -LibusbArchive, and unpacked with Windows' own tar),
+# the archive and the DLL both checked against native\libusb\pins.txt, and goes into the publish beside the engine, with
+# libusb's licence text, libusb-COPYING.txt: the COPYING of the release's source tarball (downloaded, or -LibusbSource),
+# the tarball and the file both checked against pins.txt too.
 param(
   [Parameter(Mandatory = $true)][string]$Version,
   [Parameter(Mandatory = $true)][string]$AllowOrigin,
   [Parameter(Mandatory = $true)][string]$Out,
   [string]$PawnIoSetup,
   [string]$DotnetRuntime,
+  [string]$LibusbArchive,
+  [string]$LibusbSource,
   [string]$Iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 )
 $ErrorActionPreference = 'Stop'
@@ -75,6 +81,31 @@ if ($pawnIoSource -notmatch 'BundledVersion = "([^"]+)"') { throw 'PawnIoInstall
 $pawnIoVersion = $Matches[1]
 if ($pawnIoSource -notmatch 'BundledSha256 = "([0-9a-fA-F]{64})"') { throw 'PawnIoInstaller.BundledSha256 not found.' }
 $pawnIoSha256 = $Matches[1]
+# libusb-1.0.dll (USB panels): the release's x64 DLL, the version and both SHA-256 values pinned in native\libusb\pins.txt.
+$libusbPins = @{}
+foreach ($line in Get-Content -LiteralPath (Join-Path $repo 'native\libusb\pins.txt')) {
+  if ($line -match '^([a-z0-9_]+)=(.+)$') { $libusbPins[$Matches[1]] = $Matches[2] }
+}
+foreach ($key in 'version', 'source_sha256', 'source_copying_sha256', 'windows_archive_sha256', 'windows_dll_path', 'windows_dll_sha256') {
+  if (-not $libusbPins[$key]) { throw "native\libusb\pins.txt has no $key." }
+}
+$libusbArchiveName = "libusb-$($libusbPins.version).7z"
+$libusbArchivePath = Get-Pinned $libusbArchiveName "https://github.com/libusb/libusb/releases/download/v$($libusbPins.version)/$libusbArchiveName" $LibusbArchive 'SHA256' $libusbPins.windows_archive_sha256
+$libusbUnpacked = (New-Item -ItemType Directory -Path (Join-Path $downloads 'libusb')).FullName
+& tar.exe -xf $libusbArchivePath -C $libusbUnpacked $libusbPins.windows_dll_path
+if ($LASTEXITCODE -ne 0) { throw "tar.exe couldn't unpack $libusbArchivePath (exit $LASTEXITCODE)." }
+$libusbDll = Join-Path $libusbUnpacked ($libusbPins.windows_dll_path -replace '/', '\')
+Assert-Pinned $libusbDll 'SHA256' $libusbPins.windows_dll_sha256
+# libusb's licence text: the 7z holds none, so it is the COPYING of the release's source tarball (downloaded, or
+# -LibusbSource), the tarball and the file both checked against pins.txt; installed beside the engine as libusb-COPYING.txt.
+$libusbSourceName = "libusb-$($libusbPins.version).tar.bz2"
+$libusbSourcePath = Get-Pinned $libusbSourceName "https://github.com/libusb/libusb/releases/download/v$($libusbPins.version)/$libusbSourceName" $LibusbSource 'SHA256' $libusbPins.source_sha256
+$libusbSourceUnpacked = (New-Item -ItemType Directory -Path (Join-Path $downloads 'libusb-source')).FullName
+& tar.exe -xf $libusbSourcePath -C $libusbSourceUnpacked "libusb-$($libusbPins.version)/COPYING"
+if ($LASTEXITCODE -ne 0) { throw "tar.exe couldn't unpack $libusbSourcePath (exit $LASTEXITCODE)." }
+$libusbCopying = Join-Path $libusbSourceUnpacked "libusb-$($libusbPins.version)\COPYING"
+Assert-Pinned $libusbCopying 'SHA256' $libusbPins.source_copying_sha256
+
 $pawnIo = Get-Pinned 'PawnIO_setup.exe' "https://github.com/namazso/PawnIO.Setup/releases/download/$pawnIoVersion/PawnIO_setup.exe" $PawnIoSetup 'SHA256' $pawnIoSha256
 $runtimeName = Split-Path -Leaf $Runtime.Url
 $runtimeInstaller = Get-Pinned $runtimeName $Runtime.Url $DotnetRuntime 'SHA512' $Runtime.Sha512
@@ -83,6 +114,10 @@ $runtimeInstaller = Get-Pinned $runtimeName $Runtime.Url $DotnetRuntime 'SHA512'
 & dotnet publish (Join-Path $repo 'InfoPanel\InfoPanel.csproj') -c Release -r win-x64 --self-contained true `
   "-p:Version=$Version" "-p:InfoPanelAllowOrigin=$AllowOrigin" -o $publish --nologo
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish exited $LASTEXITCODE." }
+$libusbFinal = Join-Path $publish 'libusb-1.0.dll'
+Copy-Item -LiteralPath $libusbDll -Destination $libusbFinal
+$libusbCopyingFinal = Join-Path $publish 'libusb-COPYING.txt'
+Copy-Item -LiteralPath $libusbCopying -Destination $libusbCopyingFinal
 $pawnIoDir = (New-Item -ItemType Directory -Path (Join-Path $publish 'pawnio')).FullName
 $pawnIoFinal = Join-Path $pawnIoDir 'PawnIO_setup.exe'
 Copy-Item -LiteralPath $pawnIo -Destination $pawnIoFinal
@@ -92,7 +127,7 @@ Copy-Item -LiteralPath $pawnIo -Destination $pawnIoFinal
 # (during the publish) is refused; none can be replaced while the compiler runs.
 $held = @()
 try {
-  foreach ($pin in @(@($pawnIoFinal, 'SHA256', $pawnIoSha256), @($runtimeInstaller, 'SHA512', $Runtime.Sha512))) {
+  foreach ($pin in @(@($pawnIoFinal, 'SHA256', $pawnIoSha256), @($libusbFinal, 'SHA256', $libusbPins.windows_dll_sha256), @($libusbCopyingFinal, 'SHA256', $libusbPins.source_copying_sha256), @($runtimeInstaller, 'SHA512', $Runtime.Sha512))) {
     $stream = [IO.File]::Open($pin[0], [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     $held += $stream
     $actual = (Get-FileHash -InputStream $stream -Algorithm $pin[1]).Hash

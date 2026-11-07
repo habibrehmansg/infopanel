@@ -1,0 +1,12 @@
+# The libusb release the engine ships (native/libusb/build.sh on macOS, packaging/windows/build.ps1 on Windows), pinned by
+# version and SHA-256. Both scripts read this file: key=value, '#' lines are comments. The tarball and the 7z are the release
+# assets at https://github.com/libusb/libusb/releases (their digests are on that page). windows_dll is the x64 MinGW build in
+# the 7z (MinGW64/dll/libusb-1.0.dll: it imports only Windows' own KERNEL32, USER32 and msvcrt, so it needs no Visual C++
+# runtime). source_copying_sha256 is the tarball's libusb-<version>/COPYING, libusb's licence text, which both packages
+# carry as libusb-COPYING.txt (the 7z holds no copy of it, so the Windows build takes it from the tarball too).
+version=1.0.30
+source_sha256=fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf
+source_copying_sha256=5df07007198989c622f5d41de8d703e7bef3d0e79d62e24332ee739a452af62a
+windows_archive_sha256=7fb1dfec805b97983763d7d0ae244320da12add1003d4249c96cc4d586398c79
+windows_dll_path=MinGW64/dll/libusb-1.0.dll
+windows_dll_sha256=5bd409849825009b6fe25861a6147f76d256aab248f07049d78387e3bff12d94

@@ -336,6 +336,12 @@ Only in a publish for Windows (`dotnet publish InfoPanel -r win-x64`), in its ow
 - **Copyright**: © VideoLAN and dav1d authors
 - **Project**: https://code.videolan.org/videolan/dav1d
 
+### libusb 1.0.30 (USB panels)
+- **Use**: libusb-1.0 as a shared library, dynamically linked: the engine loads it by full path from beside itself and calls it through its own function pointers (`InfoPanel.Core/Panels/Usb/LibUsb.cs`), so it can be replaced by another build of the same library. The macOS app carries `libusb-1.0.dylib`, built unmodified by `native/libusb/build.sh` from libusb 1.0.30's release source; the Windows installer carries the release's x64 `libusb-1.0.dll`, unmodified. Both are pinned by SHA-256 in `native/libusb/pins.txt`. Not in this repository: the source is the release at https://github.com/libusb/libusb/releases/tag/v1.0.30 (`libusb-1.0.30.tar.bz2`). Linux uses the system's libusb.
+- **Licence**: LGPL-2.1-or-later. Its full text, the `COPYING` of that release's source (its SHA-256 pinned in `native/libusb/pins.txt` too), comes with both packages as `libusb-COPYING.txt` beside this file: in the Mac app's `Contents/Resources` and on its disk image, and in the Windows install folder.
+- **Copyright**: © the libusb contributors
+- **Project**: https://libusb.info/ (https://github.com/libusb/libusb)
+
 ### PawnIO installer 2.2.0 (Windows)
 - **Use**: a Windows package carries PawnIO 2.2.0's `PawnIO_setup.exe`, unmodified, in `pawnio/` beside the engine, its SHA-256 pinned (`InfoPanel.Core/Sensors/Libre/PawnIoInstaller.cs`); the engine runs it only when a client asks it to install the driver. Not in this repository.
 - **Licence**: as the installer and PawnIO's repository state

@@ -5,8 +5,11 @@ self-contained publish of the engine into the download. The scripts name no web 
 client's origin are arguments, and the origin is built in as `--allow-origin`'s default (`InfoPanelAllowOrigin`, see
 the security model in `CLAUDE.md`), so the engine opens that web client from Open Editor without any flag.
 
-The downloads carry the engine only: no web client (`wwwroot`) and no FFmpeg (video files and cameras need FFmpeg's
-libraries beside the engine, [video.md](video.md)).
+The downloads carry the engine and libusb-1.0 (USB panels, [panels.md](panels.md)): no web client (`wwwroot`) and no
+FFmpeg (video files and cameras need FFmpeg's libraries beside the engine, [video.md](video.md)). libusb is pinned by
+version and SHA-256 in `native/libusb/pins.txt` and comes from libusb's own release: the Mac app's `libusb-1.0.dylib`
+is built from its source by `native/libusb/build.sh`, the Windows installer carries the release's x64
+`libusb-1.0.dll`. Linux has no download here and uses the system's library.
 
 ## macOS: the app and its disk image
 
@@ -17,14 +20,18 @@ packaging/macos/build.sh --version 2.0.0-beta.1 --allow-origin https://client.ex
 `--version` is a SemVer (`2.0.0`, `2.0.0-beta.1`, `2.0.0+build.1`); `--allow-origin` is what the engine accepts as an origin:
 https, a host and an optional port, with no user info, path, query or fragment (`--check-args` only checks both).
 
-On a Mac with the .NET SDK `global.json` pins; `codesign`, `hdiutil`, `plutil` and `ditto` are macOS's own. It writes:
+On a Mac with the .NET SDK `global.json` pins and Xcode's command line tools; `codesign`, `hdiutil`, `plutil` and
+`ditto` are macOS's own. The script first builds libusb from its pinned source with `native/libusb/build.sh`, into
+`<out>/libusb` (`--libusb-source <libusb-<version>.tar.bz2>` takes the release tarball fetched elsewhere instead of
+downloading it; it is refused unless its SHA-256 is the pinned one). It writes:
 
+- `<out>/libusb/`: libusb's build, `libusb-1.0.dylib` and `libusb-COPYING.txt`;
 - `<out>/publish/`: the self-contained `osx-arm64` Release publish (`-p:Version`, `-p:InfoPanelAllowOrigin`, no debug
-  symbols);
+  symbols) with `libusb-1.0.dylib` copied into its top level;
 - `<out>/dmg/InfoPanel.app`: the app;
 - `<out>/InfoPanel-<version>-mac-arm64.dmg`: the disk image (`hdiutil create -format UDZO`, an HFS+ volume named
-  "InfoPanel <version>") holding the app, a link to `/Applications`, `LICENSE` and `LICENSES.md`; its SHA-256 is printed
-  last.
+  "InfoPanel <version>") holding the app, a link to `/Applications`, `LICENSE`, `LICENSES.md` and `libusb-COPYING.txt`;
+  its SHA-256 is printed last.
 
 **The app.** `Info.plist` is `packaging/macos/Info.plist` with the version set: `CFBundleShortVersionString` its
 major.minor.patch (`2.0.0`), `CFBundleVersion` the whole of it. The bundle id is `net.infopanel.InfoPanel`; `LSUIElement` makes it a
@@ -42,6 +49,19 @@ and 27). The icon is `packaging/macos/AppIcon.icns`, made from `Images/logo.png`
 and managed files beside it; .NET takes the app's folder from `InfoPanel.dll`'s real path, `Contents/Resources/engine`,
 and finds the libraries there through the links, and the bundled plugins in `plugins/` beside it. A Mach-O file below
 the publish's top level stops the script: this layout would seal it as a resource rather than sign it as code.
+
+**libusb.** `native/libusb/build.sh` downloads libusb's release tarball (the version in `native/libusb/pins.txt`), refuses
+it unless its SHA-256 is the pinned one, builds it for arm64 and leaves one regular file, `libusb-1.0.dylib`, whose
+install name is `@rpath/libusb-1.0.dylib`, linked against macOS's own libraries only (`--source` takes a tarball fetched
+elsewhere; it is checked the same way). It builds for the app's minimum macOS, not the building Mac's:
+`MACOSX_DEPLOYMENT_TARGET` is `Info.plist`'s `LSMinimumSystemVersion` for the compile and the link, and a library whose
+minimum (its `LC_BUILD_VERSION`'s `minos`, `vtool -show-build`) is newer is refused, after the build and again by
+`build.sh` before packaging (`native/libusb/build.sh --verify <dylib>` runs those checks alone). It also leaves
+`libusb-COPYING.txt`, the source's `COPYING` (libusb's licence text, its SHA-256 pinned in `pins.txt` too), which the
+app's `Contents/Resources` and the disk image carry beside `LICENSES.md`. `build.sh` copies the library into the publish
+before the layout step, so the rule above moves it to `Contents/MacOS` (linked from `Contents/Resources/engine`) and
+signs it with the rest; the engine finds it beside itself (`InfoPanel.Core/Panels/Usb/LibUsb.cs`). There is no option
+to package a library built elsewhere. To move to a new libusb release, change `pins.txt`.
 
 **Signing.** Ad hoc only: every Mach-O file is signed (`codesign --force --sign -`), the deepest first, then the bundle,
 with no hardened runtime; then `codesign --verify --deep --strict` checks it. Nothing is notarised.
@@ -114,17 +134,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1 
 - It runs on Windows because only a build on Windows writes the manifest and the icon into `InfoPanel.exe`.
 
 `build.ps1` publishes the engine self-contained for `win-x64` (with the sensor helper in `sensor-helper\` and the
-bundled plugin in `plugins\InfoPanel.Extras\`), adds two files it downloads and checks, and compiles the installer:
+bundled plugin in `plugins\InfoPanel.Extras\`), adds four files it downloads (or takes from a download) and checks, and compiles the installer:
 
 | File | Where from | Checked against | Installed |
 |---|---|---|---|
 | `PawnIO_setup.exe` | PawnIO's GitHub release, at `PawnIoInstaller.BundledVersion` | `PawnIoInstaller.BundledSha256` (SHA-256), read from the engine's source | `pawnio\` beside the engine, never run by the installer (the engine's Install PawnIO runs it when asked) |
+| `libusb-1.0.dll` (x64) | libusb's GitHub release, the 7z at the version in `native\libusb\pins.txt`, unpacked with Windows' own `tar` | the SHA-256 of the 7z and of the DLL (the release's `MinGW64\dll\libusb-1.0.dll`, which needs no Visual C++ runtime), both in `pins.txt` | beside the engine in `{app}`, where the engine finds it (the installer takes the publish's whole top level) |
+| `libusb-COPYING.txt` | libusb's licence text: the `COPYING` of the release's source tarball (`libusb-<version>.tar.bz2`, at the same version; the 7z holds none), unpacked with Windows' own `tar` | the SHA-256 of the tarball and of the file, both in `pins.txt` | beside the engine in `{app}`, with `LICENSES.md` (as the DLL, from the publish's top level) |
 | `dotnet-runtime-<v>-win-x64.exe` | Microsoft, the version pinned in `build.ps1` | the SHA-512 pinned beside it (from Microsoft's release metadata) | not installed as a file: run `/install /quiet /norestart` only when no stable .NET 8 or later (x64) is installed |
 
 A file whose hash isn't the pinned one stops the build before anything is published. Right before the compiler
-packs them, both (PawnIO's in its final place in the publish) are opened read only, so that nothing can change, replace
+packs them, all four (PawnIO's and libusb's in their final places in the publish) are opened read only, so that nothing can change, replace
 or rename them, hashed again through that handle and held until the compiler has finished: one replaced during the
-publish stops the build, and none can be replaced while the compiler runs. `-PawnIoSetup` and
+publish stops the build, and none can be replaced while the compiler runs. `-PawnIoSetup`, `-LibusbArchive` (the 7z), `-LibusbSource` (the tarball) and
 `-DotnetRuntime` take local copies instead of downloading them; they are checked the same way. To move to a new .NET
 runtime, change `$Runtime` in `build.ps1` (its version, URL and SHA-512 from
 `https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`).
@@ -160,7 +182,7 @@ The Task Scheduler can't hold a task and a folder of one name at its root: with 
   write) is refused before anything is stopped or written (exit code 7).
 - **Per machine**, administrator rights asked once (UAC). Read all sensors registers its SYSTEM task only for a helper
   under Program Files, whose files a user can't write. x64 Windows 10 or later only.
-- The licence page shows `LICENSE`; `LICENSE` and `LICENSES.md` are installed beside the engine.
+- The licence page shows `LICENSE`; `LICENSE`, `LICENSES.md` and `libusb-COPYING.txt` are installed beside the engine.
 - The finish page's "Launch InfoPanel 2" starts the engine as the user who started Setup, not with Setup's administrator
   rights, and is offered only when that user's token is unelevated (integrity Medium). Setup started elevated (Run as
   administrator, an elevated prompt, UAC off) offers no launch, since it would start the engine elevated. A silent

@@ -5,7 +5,7 @@ The engine drives small USB screens (panels) itself: each shows one profile, liv
 ## What is driven
 
 - **BeadaPanel**, every model InfoPanel 1.4 knows (21; their ids, `2` to `Z`, are in `InfoPanel.Core/Panels/BeadaPanel/BeadaPanelModel.cs`), over USB through libusb-1.0, as InfoPanel 1.4 speaks to them byte for byte: the info query, the start sequence, frames in RGB565, brightness, and the screen turned off when a panel stops. Panels known to decode JPEG get JPEG frames instead (below), about twice the frame rate on a 1920 × 480 panel.
-- **libusb-1.0** is looked for, by full path: beside the engine, then in the folder `INFOPANEL_LIBUSB_DIR` names (a full path), then on macOS in `/opt/homebrew/lib` and `/usr/local/lib`, and on Linux the system's `libusb-1.0.so.0`. Without it panels are unsupported, with one line in the log, and nothing else changes. On macOS, `brew install libusb` puts it in place.
+- **libusb-1.0** is looked for, by full path: beside the engine, then in the folder `INFOPANEL_LIBUSB_DIR` names (a full path), then on macOS in `/opt/homebrew/lib` and `/usr/local/lib`, and on Linux the system's `libusb-1.0.so.0`. Without it panels are unsupported, with one line in the log, and nothing else changes. The Mac app and the Windows installer carry it beside the engine ([packaging.md](packaging.md)); an engine built from source on macOS finds it after `brew install libusb`.
 - **Another program holding a panel** keeps it: the engine never resets a device or takes it from a driver, sets its configuration only when it has none, and a panel it can't claim is tried again every second with one line in the log.
 - **`--no-panels`** turns all of it off: no USB device is listed, opened or written.
 

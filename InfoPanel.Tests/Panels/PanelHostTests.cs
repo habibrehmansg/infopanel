@@ -55,7 +55,9 @@ public sealed class PanelHostTests
 
         Assert.Equal("ok", await api.GetStringAsync("/healthz", Ct));
         Assert.Null(factory.Services.GetRequiredService<PanelService>().Manager);
-        var logged = factory.Services.GetRequiredService<RecentLog>().After(0).Where(e => e.Message.Contains("USB panels", StringComparison.Ordinal) || e.Message.Contains("libusb", StringComparison.Ordinal));
+        // The panel service's own lines (its logger's source), not every line naming libusb: the host's content root path
+        // can name it too (a checkout's folder).
+        var logged = factory.Services.GetRequiredService<RecentLog>().After(0).Where(e => e.Source == typeof(PanelService).FullName);
         var line = Assert.Single(logged);
         Assert.Contains("USB panels are unsupported", line.Message);
         Assert.Contains(missing, line.Message);
