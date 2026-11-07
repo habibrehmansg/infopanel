@@ -325,7 +325,7 @@ Only in a publish for Windows (`dotnet publish InfoPanel -r win-x64`), in its ow
 - **Project**: https://github.com/dotnet/runtime, https://github.com/dotnet/aspnetcore
 
 ### FFmpeg 9.0.2 (video decoding)
-- **Use**: libavutil, libavcodec, libavformat and libswscale as shared libraries, built decode-only by `native/ffmpeg/build.sh` from FFmpeg 9.0.2's release source, configured without `--enable-gpl` and `--enable-nonfree`. Not in this repository: the engine looks for them beside itself, then in `INFOPANEL_FFMPEG_DIR` (`InfoPanel.Core/Images/Video/FFmpeg.cs`).
+- **Use**: libavutil, libavcodec, libavformat and libswscale as shared libraries, built decode-only by `native/ffmpeg/build.sh` from FFmpeg 9.0.2's release source, configured without `--enable-gpl` and `--enable-nonfree`. Not in this repository: the engine looks for them beside itself, then in `INFOPANEL_FFMPEG_DIR` (`InfoPanel.Core/Images/Video/FFmpeg.cs`). Not redistributed: the Mac app and the Windows installer carry neither FFmpeg nor dav1d ([packaging](docs/2.0/packaging.md)); the engine loads the FFmpeg libraries installed on the computer.
 - **Licence**: LGPL-2.1-or-later (built without `--enable-gpl` and `--enable-nonfree`)
 - **Copyright**: © the FFmpeg developers
 - **Project**: https://ffmpeg.org/
