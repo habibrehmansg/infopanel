@@ -221,6 +221,49 @@ public sealed class PreviewChecksTests
     }
 
     /// <summary>
+    /// A ring drawn as an SVG path: a circle of radius 48 about (50, 50) stroked 4 wide (default miter join), its stroke
+    /// just touching (0, 0)–(100, 100), in a group with <paramref name="transform"/>.
+    /// </summary>
+    private static JsonObject RingIn(string transform) => JsonNode.Parse($$$"""
+        {"kind": "group", "transform": {{{transform}}}, "children": [
+          {"kind": "path", "d": "M2 50A48 48 0 1 1 98 50A48 48 0 1 1 2 50Z", "stroke": {"paint": "#ffffff", "width": 4}}]}
+        """)!.AsObject();
+
+    /// <summary>
+    /// A ring scaled 1.2 at the canvas's left edge, its stroke touching its 120 × 120 box: not past the canvas (a miter
+    /// reach all round the smooth ring once put it about 7 px past the left edge).
+    /// </summary>
+    [Fact]
+    public async Task AScaledRingTouchingTheCanvasEdge_IsntPastIt()
+    {
+        using var factory = new EngineFactory();
+        var checks = await Checks(factory, Doc(400, 300, "#000000",
+            TestDocs.Scene("ring", 0, 0, Scene(RingIn("""[{"type": "scale", "x": 1.2, "y": 1.2}]""")),
+                new JsonObject { ["name"] = "Ring", ["layout"] = new JsonObject { ["w"] = 120, ["h"] = 120 } })));
+        Assert.Equal("", LineAbout(checks, "Ring"));
+        Assert.Contains("The checks found nothing", checks);
+    }
+
+    /// <summary>
+    /// A card drawn first, a ring scaled 1.2 and turned 135° set 4 px inside its edges, and a header text above the card:
+    /// the card holds the ring and the ring doesn't reach the header (its turned box, boxed again, once reached both).
+    /// </summary>
+    [Fact]
+    public async Task ATurnedRingInsideItsCard_IsHeld_AndDoesntReachTheHeaderAbove()
+    {
+        using var factory = new EngineFactory();
+        var checks = await Checks(factory, Doc(400, 300, "#000000",
+            Item("Card", 40, 60, Rect(240, 140, "#202020")),
+            TestDocs.Scene("ring", 44, 64, Scene(RingIn("""[{"type": "scale", "x": 1.2, "y": 1.2}, {"type": "rotate", "angle": 135, "cx": 50, "cy": 50}]""")),
+                new JsonObject { ["name"] = "Ring" }),
+            Item("Header", 44, 20, Text("CPU", "#ffffff"))));
+        Assert.Equal("", LineAbout(checks, "Card"));
+        Assert.Equal("", LineAbout(checks, "Ring"));
+        Assert.Equal("", LineAbout(checks, "Header"));
+        Assert.Contains("The checks found nothing", checks);
+    }
+
+    /// <summary>
     /// A chip set on its card's top edge, half above it: the same overlap whether the two are at the top level or in one
     /// group (the group at the card's place, their x, y from it). Grouping items doesn't clear what their drawings do.
     /// </summary>
