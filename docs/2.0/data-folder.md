@@ -26,6 +26,7 @@ The engine keeps everything it stores in one folder: `{LocalApplicationData}/Inf
 | `plugins/` | Plugins the user added, one `InfoPanel.{Name}` folder each ([plugins](plugins.md)); a package folder that is a link isn't followed |
 | `plugin-settings/{package}/{plugin id}.json` | Configurable plugins' settings, written by their hosts |
 | `plugin-state.json` | The plugin packages the user turned off, by folder name; written only when the user turns one on or off ([below](#the-plugin-state)) |
+| `devices.json` | The USB panels the engine has identified and their settings; written when a panel is first found, moves to another port, or its settings change ([below](#the-panels)) |
 | `profiles.xml`, `profiles/{guid}.xml`, `assets/` | Step-1 data, left untouched and unread |
 
 Every file the engine replaces is written to `{name}.{32 hex}.tmp` beside it, flushed and renamed over it, so a crash leaves the old file or the new one. `--fresh` (a development flag) wipes a folder only when it holds nothing but these entries and their temp files.
@@ -99,6 +100,10 @@ Changes that aren't saved yet live in the engine's memory; so that they survive 
 `plugin-state.json` is `{"format": "infopanel.plugin-state/1", "off": ["InfoPanel.X"]}`: the packages the user turned off, by folder name, compared ignoring case ([plugins](plugins.md#on-off-and-reload)). Only the user's choice is written, never a crash, a give-up, a refusal or a package that doesn't run on this operating system; a name with no package is kept. It is read when the engine starts, held to 1 MiB, and written through a temp file renamed over it, keeping every member it doesn't know as it was written. A file the engine can't hold whole (another format, over 1 MiB, a link, not JSON) is never rewritten: every package runs, and turning one on or off is refused for the run.
 
 The member `v1Migration`, `{"completed": "<UTC time>"}`, is reserved for the 1.x upgrade's plugin migration (a later part, on Windows): the engine keeps it as written and never writes it, and the file's presence never means that migration ran.
+
+## The panels
+
+`devices.json` is `{"format": "infopanel.devices/1", "devices": [{"id", "family", "model", "serial", "port", "enabled", "profileId", "rotation", "brightness"}]}`, one entry per USB panel the engine has identified, in the order first seen ([panels](panels.md)): `id` a lower-case UUID the engine made, `family` (`beadapanel`), `model` (the model's id, `8`), `serial` (the panel's, or null) and `port` (the USB port path it was last seen at), then the settings: `enabled` (false for a new panel), `profileId` (null for a new panel), `rotation` (0, 90, 180 or 270) and `brightness` (0–100, 100 by default). A missing setting takes its default. It is read when the engine starts, through the engine's tolerant reading: members it doesn't know, in the file and in each panel, are kept as written. A file it can't hold whole (over 1 MiB, nested deeper than it reads, a link, not a regular file, not JSON, another format or major version, or a member it knows that is missing or of the wrong kind) is logged and never rewritten, and panels are off for the run. To edit it by hand, stop the engine first.
 
 ## The engine's last port
 

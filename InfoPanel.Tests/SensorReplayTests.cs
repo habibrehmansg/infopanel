@@ -307,7 +307,7 @@ public sealed class SensorReplayTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in new[] { "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"), "--port", EngineRuntime.FindFreePort().ToString(), "--no-browser", "--no-windows", "--no-tray", "--no-plugins", "--offline", "--mock", "--replay-sensors", HwInfoFixture.Folder })
+        foreach (var arg in new[] { "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"), "--port", EngineRuntime.FindFreePort().ToString(), "--no-browser", "--no-windows", "--no-tray", "--no-plugins", "--no-panels", "--offline", "--mock", "--replay-sensors", HwInfoFixture.Folder })
             start.ArgumentList.Add(arg);
 
         using var process = System.Diagnostics.Process.Start(start)!;

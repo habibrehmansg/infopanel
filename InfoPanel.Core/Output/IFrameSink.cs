@@ -7,7 +7,7 @@ namespace InfoPanel.Output;
 /// <see cref="FrameScale.Normalize"/>), at most <paramref name="MaxFps"/> frames a second (1–60; 0 or less means
 /// <see cref="RenderLoop.DefaultFps"/>), and whether it uses <see cref="RenderedFrame.Bounds"/>.
 /// </summary>
-public sealed record FrameRequest(float Scale, int MaxFps, bool IncludeBounds = true); // later: ColorType, PanelRotation
+public sealed record FrameRequest(float Scale, int MaxFps, bool IncludeBounds = true);
 
 /// <summary>Why <see cref="IFrameSink.OnClosed"/> was called.</summary>
 public enum FrameSinkClosedReason
@@ -26,7 +26,7 @@ public enum FrameSinkClosedReason
 }
 
 /// <summary>
-/// Receives a profile's rendered frames from its <see cref="RenderLoop"/> (preview sockets now; panels and overlays later).
+/// Receives a profile's rendered frames from its <see cref="RenderLoop"/> (preview sockets, desktop windows, USB panels).
 /// <list type="bullet">
 /// <item><see cref="OnFrame"/> runs on the render thread and must not block: hand the bytes to your own queue. It
 /// must not take the workspace's lock either.</item>

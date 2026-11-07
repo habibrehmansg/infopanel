@@ -88,14 +88,22 @@ public sealed unsafe class LibUsb
 
     /// <summary>
     /// The first of <paramref name="candidates"/> that loads and has every function this binding calls; null, with
-    /// <paramref name="why"/>, when none does. A full path that doesn't exist is passed over without loading anything.
+    /// <paramref name="why"/>, when none does. A full path that doesn't exist is passed over without loading anything, and
+    /// so is a relative one (but <see cref="LinuxSystemLibrary"/>).
     /// </summary>
     public static LibUsb? Load(IEnumerable<string> candidates, out string why)
     {
         var reasons = new List<string>();
         foreach (var candidate in candidates)
         {
-            var isPath = System.IO.Path.IsPathRooted(candidate);
+            // Only a full path is loaded (a relative one would load from the working directory); Linux's system library
+            // is the one bare name, found by the system's loader.
+            if (!System.IO.Path.IsPathFullyQualified(candidate) && candidate != LinuxSystemLibrary)
+            {
+                reasons.Add($"{candidate}: not a full path, skipped");
+                continue;
+            }
+            var isPath = System.IO.Path.IsPathFullyQualified(candidate);
             if (isPath && !File.Exists(candidate))
             {
                 reasons.Add($"{candidate}: not found");

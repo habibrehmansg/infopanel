@@ -86,6 +86,20 @@ public class LibUsbLoaderTests
     }
 
     [Fact]
+    public void A_relative_place_is_skipped_never_loaded()
+    {
+        // A relative INFOPANEL_LIBUSB_DIR (".") would load native code from the working directory.
+        var candidates = LibUsb.Candidates(Engine, ".", OSPlatform.OSX);
+        Assert.Null(LibUsb.Load([candidates[1]], out var why));
+        Assert.Contains("not a full path", why);
+        Assert.Null(LibUsb.Load([Path.Combine("relative", "libusb-1.0.dylib")], out why));
+        Assert.Contains("not a full path", why);
+        // Linux's system library is the one bare name taken.
+        LibUsb.Load([LibUsb.LinuxSystemLibrary], out why);
+        Assert.DoesNotContain("not a full path", why);
+    }
+
+    [Fact]
     public void Homebrews_libusb_loads_where_it_is_installed()
     {
         var path = "/opt/homebrew/lib/libusb-1.0.dylib";

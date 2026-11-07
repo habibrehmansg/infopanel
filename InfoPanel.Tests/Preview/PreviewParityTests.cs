@@ -25,8 +25,11 @@ namespace InfoPanel.Tests.Preview;
 /// <item><see cref="APanelSinkAndAPreviewSocket_OnOneLoop_GetIdenticalPixelsForTheSameFrame"/>: a panel-style
 /// <see cref="IFrameSink"/> at scale 1 and a <c>/ws</c> subscriber at scale 1 on the same loop receive the same
 /// <see cref="RenderedFrame"/> (same <c>FrameId</c>), and the pixels the panel sink copies during <c>OnFrame</c> equal
-/// the decoded <c>/ws</c> pixels byte for byte. A real panel driver's own conversion (colour format, rotation) comes
-/// later and is not covered.</item>
+/// the decoded <c>/ws</c> pixels byte for byte.</item>
+/// <item><see cref="TheRealPanelSink_WritesThePanelTransformOfTheSocketsFrame"/>: a USB panel's own sink and thread
+/// (<see cref="InfoPanel.Panels.PanelRunner"/>) over the fake USB backend write, for the frame the socket sent, exactly
+/// <see cref="InfoPanel.Panels.PanelTransform"/> of the decoded <c>/ws</c> frame: preview = panel, the panel's
+/// conversion included.</item>
 /// </list>
 /// </summary>
 public sealed class PreviewParityTests : IAsyncLifetime
@@ -213,6 +216,50 @@ public sealed class PreviewParityTests : IAsyncLifetime
         var firstDifference = expected.AsSpan().CommonPrefixLength(actual);
         Assert.True(firstDifference == expected.Length,
             $"pixels differ from byte {firstDifference} (pixel {firstDifference / 4 % 1920}, {firstDifference / 4 / 1920})");
+    }
+
+    [Fact]
+    public async Task TheRealPanelSink_WritesThePanelTransformOfTheSocketsFrame()
+    {
+        var id = await ExampleProfileId();
+        await using var client = await Subscribe(id, 1);
+        var backend = new InfoPanel.Core.Tests.Panels.Usb.FakeUsbBackend();
+        var device = backend.Add(new InfoPanel.Core.Tests.Panels.Usb.FakeUsbDevice(
+            new InfoPanel.Panels.Usb.UsbDeviceId(0x4E58, 0x1001, 0, 4, "0-1"))
+        {
+            Reply = InfoPanel.Tests.Panels.PanelReplies.Info(2, 5, 21, 1920, 480, "934072005c"),
+        });
+        var runner = new InfoPanel.Panels.PanelRunner(backend, device.Id, "parity panel", id, 100, InfoPanel.Panels.PanelRotation.None,
+            Render.Attach, Render.Detach, Render.RequestChanged, Render.Refresh, () => 30, TimeProvider.System,
+            new InfoPanel.Panels.PanelRunnerOptions { KeepAlive = Timeout.InfiniteTimeSpan }, Serilog.Core.Logger.None);
+        runner.Start();
+        using (var started = CancellationTokenSource.CreateLinkedTokenSource(Ct))
+        {
+            started.CancelAfter(TimeSpan.FromSeconds(10));
+            while (!runner.Running)
+                await Task.Delay(5, started.Token);
+        }
+
+        Assert.Equal(2, Render.Tick(id));
+        var (header, png) = await client.ReceiveFrameAsync(Ct);
+        using (var written = CancellationTokenSource.CreateLinkedTokenSource(Ct))
+        {
+            written.CancelAfter(TimeSpan.FromSeconds(10));
+            while (runner.LastFrameId != header.FrameId)
+                await Task.Delay(5, written.Token);
+        }
+        var panelBytes = device.Transfers.Last(t => t.Data.Length == 1920 * 480 * 2).Data;
+        runner.RequestStop();
+        await runner.Ended;
+
+        // The socket's frame, decoded premultiplied (the form the render loop hands sinks), through the panel's transform.
+        using var decoded = SKBitmap.Decode(png.ToArray(), new SKImageInfo(1920, 480, SKColorType.Rgba8888, SKAlphaType.Premul));
+        var expected = new byte[InfoPanel.Panels.PanelTransform.TargetLength(1920, 480, InfoPanel.Panels.PanelPixelFormat.Rgb565Le)];
+        using (var pixmap = decoded.PeekPixels())
+            InfoPanel.Panels.PanelTransform.Render(pixmap, expected, 1920, 480, InfoPanel.Panels.PanelRotation.None, InfoPanel.Panels.PanelPixelFormat.Rgb565Le);
+        var firstDifference = expected.AsSpan().CommonPrefixLength(panelBytes);
+        Assert.True(firstDifference == expected.Length,
+            $"the panel's bytes differ from byte {firstDifference} (pixel {firstDifference / 2 % 1920}, {firstDifference / 2 / 1920})");
     }
 
     [Fact]

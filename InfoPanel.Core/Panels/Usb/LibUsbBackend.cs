@@ -96,6 +96,11 @@ public sealed unsafe class LibUsbBackend : IUsbBackend
                     var dev = list[i];
                     if (_lib.libusb_get_bus_number(dev) != device.Bus || _lib.libusb_get_device_address(dev) != device.Address)
                         continue;
+                    // Another device at the listed bus and address (the listed one went) is never opened.
+                    LibUsbDeviceDescriptor descriptor;
+                    if (_lib.libusb_get_device_descriptor(dev, &descriptor) < 0 || descriptor.idVendor != device.VendorId
+                        || descriptor.idProduct != device.ProductId || PortPath(dev) != device.PortPath)
+                        return UsbStatus.NoDevice;
                     void* handle = null;
                     var code = _lib.libusb_open(dev, &handle);
                     if (code < 0)

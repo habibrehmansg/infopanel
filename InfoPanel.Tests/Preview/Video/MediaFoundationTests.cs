@@ -1552,7 +1552,7 @@ public class MediaFoundationTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", data + "-v1", "--no-browser", "--no-windows", "--no-tray", "--mock" }.Concat(more))
+        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", data + "-v1", "--no-browser", "--no-windows", "--no-tray", "--no-panels", "--mock" }.Concat(more))
             start.ArgumentList.Add(arg);
         start.Environment["PATH"] = path;
         return start;

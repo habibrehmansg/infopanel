@@ -94,6 +94,7 @@ public sealed class SecondLaunchTests
         start.Environment["Engine__Port"] = EngineRuntime.FindFreePort().ToString();
         start.Environment["Engine__NoWindows"] = "true";
         start.Environment["Engine__NoTray"] = "true";
+        start.Environment["Engine__NoPanels"] = "true";
         start.Environment["Engine__Mock"] = "true";
         var (exit, said) = await RunToExit(start);
 
@@ -121,7 +122,7 @@ public sealed class SecondLaunchTests
         try
         {
             var start = Engine();
-            foreach (var arg in new[] { "infopanel://open", "--fresh", "--data-dir", data, "--v1-dir", data + "-v1", "--no-windows", "--no-tray", "--mock" })
+            foreach (var arg in new[] { "infopanel://open", "--fresh", "--data-dir", data, "--v1-dir", data + "-v1", "--no-windows", "--no-tray", "--no-panels", "--mock" })
                 start.ArgumentList.Add(arg);
             var (exit, said) = await RunToExit(start);
 
@@ -469,7 +470,7 @@ public sealed class SecondLaunchTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", data + "-v1", "--port", EngineRuntime.FindFreePort().ToString(), "--no-windows", "--no-tray", "--mock" }.Concat(extra))
+        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", data + "-v1", "--port", EngineRuntime.FindFreePort().ToString(), "--no-windows", "--no-tray", "--no-panels", "--mock" }.Concat(extra))
             start.ArgumentList.Add(arg);
         var process = Process.Start(start)!;
         process.OutputDataReceived += (_, e) => { lock (said) said.AppendLine(e.Data); };
@@ -496,7 +497,7 @@ public sealed class SecondLaunchTests
     private static Task<(int Exit, string Said)> Launch(string data, params string[] extra)
     {
         var start = Engine();
-        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", data + "-v1", "--port", EngineRuntime.FindFreePort().ToString(), "--no-windows", "--no-tray", "--mock" }.Concat(extra))
+        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", data + "-v1", "--port", EngineRuntime.FindFreePort().ToString(), "--no-windows", "--no-tray", "--no-panels", "--mock" }.Concat(extra))
             start.ArgumentList.Add(arg);
         return RunToExit(start);
     }

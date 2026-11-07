@@ -105,6 +105,9 @@ public sealed partial class EngineOptions
     /// <summary>Start no plugin hosts (<c>--no-plugins</c>): the <c>plugins</c> source stays empty.</summary>
     public bool NoPlugins { get; init; }
 
+    /// <summary>Drive no USB panels (<c>--no-panels</c>): no USB device is listed, opened or written. Tests and their engines.</summary>
+    public bool NoPanels { get; init; }
+
     /// <summary>
     /// The bundled plugins' folder (<c>--bundled-plugins</c>), a full path to a folder that exists; null means
     /// <c>{BaseDirectory}/plugins</c>.
@@ -196,6 +199,7 @@ public sealed partial class EngineOptions
         var fresh = Flag(section, "Fresh", "--fresh", problems);
         var offline = Flag(section, "Offline", "--offline", problems);
         var noPlugins = Flag(section, "NoPlugins", "--no-plugins", problems);
+        var noPanels = Flag(section, "NoPanels", "--no-panels", problems);
 
         var token = Value(section, "Token");
         if (token != null && !TokenPattern().IsMatch(token))
@@ -382,6 +386,7 @@ public sealed partial class EngineOptions
             Offline = offline,
             RunDir = fullRunDir,
             NoPlugins = noPlugins,
+            NoPanels = noPanels,
             BundledPlugins = bundledPlugins == null ? null : Path.GetFullPath(bundledPlugins),
             H264 = h264,
             Ffmpeg = fullFfmpeg,

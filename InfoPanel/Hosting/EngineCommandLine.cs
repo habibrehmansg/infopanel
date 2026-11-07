@@ -42,6 +42,7 @@ public static class EngineCommandLine
         ["--mock"] = "Mock",
         ["--offline"] = "Offline",
         ["--no-plugins"] = "NoPlugins",
+        ["--no-panels"] = "NoPanels",
         ["--scrub"] = "Scrub",
     };
 
@@ -88,6 +89,7 @@ public static class EngineCommandLine
           --mock-seed <n>       Seed for the mock sensors (implies --mock)
           --offline             Media providers connect only to this computer (tests)
           --no-plugins          Start no plugin hosts
+          --no-panels           Drive no USB panels (tests)
           --bundled-plugins <dir>
                                 The bundled plugins' folder (default: plugins next to the engine)
           --h264 <mode>         H.264 encoders the live preview's video may use: auto (default;

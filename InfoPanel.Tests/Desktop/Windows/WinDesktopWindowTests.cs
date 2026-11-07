@@ -63,7 +63,7 @@ public sealed class WinDesktopWindowTests
             CreateNoWindow = true,
         };
         foreach (var arg in new[] { "--port", port.ToString(), "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"), "--token", "wt",
-                     "--no-browser", "--no-tray", "--no-plugins", "--offline", "--mock-seed", "42" })
+                     "--no-browser", "--no-tray", "--no-plugins", "--no-panels", "--offline", "--mock-seed", "42" })
             start.ArgumentList.Add(arg);
 
         using var process = Process.Start(start)!;
@@ -534,7 +534,7 @@ public sealed class WinDesktopWindowTests
             CreateNoWindow = true,
         };
         foreach (var arg in new[] { "--port", port.ToString(), "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"), "--token", "wt",
-                     "--no-browser", "--no-tray", "--no-plugins", "--offline", "--mock-seed", "42" })
+                     "--no-browser", "--no-tray", "--no-plugins", "--no-panels", "--offline", "--mock-seed", "42" })
             start.ArgumentList.Add(arg);
 
         var home = WinMouse.Instance.Position;

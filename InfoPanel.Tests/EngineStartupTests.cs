@@ -247,7 +247,7 @@ public class EngineStartupTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", v1 ?? data + "-v1", "--port", port.ToString(), "--token", EngineFactory.Token, "--no-browser", "--no-windows", "--no-tray", "--mock" })
+        foreach (var arg in new[] { "--data-dir", data, "--v1-dir", v1 ?? data + "-v1", "--port", port.ToString(), "--token", EngineFactory.Token, "--no-browser", "--no-windows", "--no-tray", "--no-panels", "--mock" })
             start.ArgumentList.Add(arg);
         return start;
     }
@@ -673,6 +673,7 @@ public class EngineStartupTests
             builder.UseSetting("Engine:Port", port.ToString());
             builder.UseSetting("Engine:NoBrowser", "true");
             builder.UseSetting("Engine:NoTray", "true");
+            builder.UseSetting("Engine:NoPanels", "true");
             builder.UseSetting("Engine:MockSeed", "42");
             builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(extra));
         }

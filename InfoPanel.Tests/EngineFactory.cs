@@ -83,6 +83,8 @@ public class EngineFactory : WebApplicationFactory<Program>
         builder.UseSetting("Engine:Offline", "true");
         // No plugin hosts unless a test asks (Engine:NoPlugins false, Engine:BundledPlugins its folder).
         builder.UseSetting("Engine:NoPlugins", "true");
+        // No USB panels: no test engine lists, opens or writes a USB device (a test that drives panels gives a fake backend).
+        builder.UseSetting("Engine:NoPanels", "true");
         builder.UseSetting("Engine:DevOrigins:0", DevOrigin);
         builder.UseSetting("Engine:AllowOrigins:0", CrossOrigin);
         // No video decoder, whatever the machine has (INFOPANEL_FFMPEG_DIR included): a test that plays video sets its own.

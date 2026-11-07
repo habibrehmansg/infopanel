@@ -34,13 +34,23 @@ public enum UsbStatus
 /// The engine's way to USB devices: the libusb backend (<see cref="LibUsbBackend"/>) in the engine, a fake in tests.
 /// Deliberately small: it has no reset and no kernel-driver detach, so nothing above it can take a device from another
 /// program (<see cref="UsbClaim"/> is the one way a device is opened for transfers).
+/// <para>
+/// It has no alternate-setting call either, and its bulk writes never send a zero-length packet. Both are deliberate:
+/// on BeadaPanel firmware, a zero-length packet on the stream's endpoint, or an alternate setting selected after the
+/// claim (a SET_INTERFACE request, even for setting 0), makes the panel stop reading both its stream and its status
+/// endpoints, and it answers again only once it is unplugged and plugged in again. Keep both out of this seam and out
+/// of every backend behind it.
+/// </para>
 /// </summary>
 public interface IUsbBackend : IDisposable
 {
     /// <summary>The devices connected now (no I/O to any of them).</summary>
     IReadOnlyList<UsbDeviceId> ListDevices();
 
-    /// <summary>Opens a listed device; <see cref="UsbStatus.NoDevice"/> when it is gone.</summary>
+    /// <summary>
+    /// Opens a listed device; <see cref="UsbStatus.NoDevice"/> when it is gone, or its bus and address now hold a device
+    /// with other ids or another port path.
+    /// </summary>
     UsbStatus Open(UsbDeviceId device, out IUsbDevice? opened);
 }
 

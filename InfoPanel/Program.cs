@@ -559,6 +559,11 @@ try
     builder.Services.AddSingleton<DisplayWindowManager>();
     builder.Services.AddSingleton<DisplayLister>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<DisplayWindowManager>());
+    // USB panels (docs/2.0/panels.md): after the render service, so the host stops them, each screen turned off, first.
+    builder.Services.AddSingleton(sp => new InfoPanel.Panels.PanelService(options, paths, sp.GetRequiredService<Workspace>(),
+        sp.GetRequiredService<RenderService>(), settings, sp.GetRequiredService<TimeProvider>(), engineLogger.ForContext<InfoPanel.Panels.PanelService>(),
+        sp.GetService<InfoPanel.Panels.PanelServiceOptions>()));
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<InfoPanel.Panels.PanelService>());
 
     var app = builder.Build();
     // Opened now, so a credential kept for another address than the one in effect is removed at start.

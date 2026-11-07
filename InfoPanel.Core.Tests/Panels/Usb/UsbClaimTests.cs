@@ -78,4 +78,24 @@ public class UsbClaimTests
         Assert.Contains("libusb_claim_interface", bound);
         Assert.DoesNotContain(bound, f => f.Contains("reset") || f.Contains("detach") || f.Contains("kernel_driver"));
     }
+
+    [Fact]
+    public void A_bus_address_now_holding_another_device_isnt_opened()
+    {
+        // The panel was listed at bus 2, address 7; it went, and another device came at the same bus and address.
+        var backend = new FakeUsbBackend();
+        var panel = backend.Add(new FakeUsbDevice(Id));
+        backend.Unplug(panel);
+        var other = backend.Add(new FakeUsbDevice(Id with { VendorId = 0x1234, ProductId = 0x5678 }));
+
+        Assert.Equal(UsbStatus.NoDevice, UsbClaim.Open(backend, Id, 1, 0, out var opened));
+        Assert.Null(opened);
+        Assert.Empty(other.Calls);
+
+        // The same at another port path.
+        var moved = new FakeUsbBackend();
+        var elsewhere = moved.Add(new FakeUsbDevice(Id with { PortPath = "2-4" }));
+        Assert.Equal(UsbStatus.NoDevice, UsbClaim.Open(moved, Id, 1, 0, out _));
+        Assert.Empty(elsewhere.Calls);
+    }
 }

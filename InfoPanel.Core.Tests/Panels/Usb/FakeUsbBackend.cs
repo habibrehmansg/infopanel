@@ -60,6 +60,9 @@ public sealed record FakeTransfer(long AtMs, byte Endpoint, byte[] Data)
     public bool In => (Endpoint & 0x80) != 0;
 }
 
+/// <summary>One write as <see cref="FakeUsbDevice.OnWrite"/> sees it: its number (from 1), endpoint, bytes and timeout.</summary>
+public sealed record FakeWrite(int Number, byte Endpoint, byte[] Data, int TimeoutMs);
+
 /// <summary>
 /// A scripted USB device: its configuration, what opening and claiming it answer, its info reply, a delay per write,
 /// a failure or an unplug at a given write. Every transfer is recorded (<see cref="Transfers"/>) and every call by name
@@ -71,6 +74,7 @@ public sealed class FakeUsbDevice(UsbDeviceId id)
     private readonly List<FakeTransfer> _transfers = [];
     private readonly List<string> _calls = [];
     private readonly Dictionary<int, UsbStatus> _failures = [];
+    private readonly List<int> _timeouts = [];
     private int _writes;
 
     public UsbDeviceId Id { get; } = id;
@@ -98,6 +102,12 @@ public sealed class FakeUsbDevice(UsbDeviceId id)
 
     /// <summary>Handles open now.</summary>
     public int OpenHandles { get; internal set; }
+
+    /// <summary>
+    /// Called on every write after it is recorded, outside the device's lock, on the writing thread: it may block, move
+    /// the clock or cancel something, and its non-null answer is the write's status.
+    /// </summary>
+    public Func<FakeWrite, UsbStatus?>? OnWrite { get; set; }
 
     /// <summary>The write (counted from 1) that fails with <paramref name="status"/>.</summary>
     public void FailWrite(int write, UsbStatus status)
@@ -130,13 +140,25 @@ public sealed class FakeUsbDevice(UsbDeviceId id)
             _calls.Add(name);
     }
 
-    internal UsbStatus Write(FakeUsbClock clock, byte endpoint, ReadOnlySpan<byte> data)
+    /// <summary>The timeout each write was given, in milliseconds, in order.</summary>
+    public int[] WriteTimeouts
     {
+        get
+        {
+            lock (Gate)
+                return [.. _timeouts];
+        }
+    }
+
+    internal UsbStatus Write(FakeUsbClock clock, byte endpoint, ReadOnlySpan<byte> data, int timeoutMs)
+    {
+        FakeWrite write;
         lock (Gate)
         {
             if (!Connected)
                 return UsbStatus.NoDevice;
             _writes++;
+            _timeouts.Add(timeoutMs);
             _transfers.Add(new FakeTransfer(clock.NowMs, endpoint, data.ToArray()));
             if (UnplugAtWrite == _writes)
             {
@@ -145,7 +167,10 @@ public sealed class FakeUsbDevice(UsbDeviceId id)
             }
             if (_failures.TryGetValue(_writes, out var failure))
                 return failure;
+            write = new FakeWrite(_writes, endpoint, data.ToArray(), timeoutMs);
         }
+        if (OnWrite?.Invoke(write) is { } answer)
+            return answer;
         if (WriteDelay > TimeSpan.Zero)
             clock.Advance(WriteDelay);
         return UsbStatus.Ok;
@@ -212,7 +237,7 @@ public sealed class FakeUsbBackend(FakeUsbClock? clock = null) : IUsbBackend
         opened = null;
         FakeUsbDevice? found;
         lock (_lock)
-            found = _devices.Find(d => d.Id == device && d.Connected);
+            found = _devices.Find(d => d.Id.Bus == device.Bus && d.Id.Address == device.Address && d.Connected); // as libusb: by bus and address
         if (found is null)
             return UsbStatus.NoDevice;
         found.Call("open");
@@ -269,7 +294,7 @@ public sealed class FakeUsbBackend(FakeUsbClock? clock = null) : IUsbBackend
             ObjectDisposedException.ThrowIf(_closed, this);
             if (data.IsEmpty)
                 throw new ArgumentException("A bulk write is never empty (no zero-length packet).", nameof(data));
-            return device.Write(owner.Clock, endpoint, data);
+            return device.Write(owner.Clock, endpoint, data, timeoutMs);
         }
 
         public UsbStatus BulkRead(byte endpoint, Span<byte> buffer, int timeoutMs, out int read)

@@ -33,7 +33,7 @@ public sealed class MacShellTests
             UseShellExecute = false,
         };
         foreach (var arg in new[] { "--port", EngineRuntime.FindFreePort().ToString(), "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"),
-                     "--no-browser", "--no-windows", "--mock-seed", "42" })
+                     "--no-browser", "--no-windows", "--no-panels", "--mock-seed", "42" })
             start.ArgumentList.Add(arg);
 
         using var process = Process.Start(start)!;
@@ -90,7 +90,7 @@ public sealed class MacShellTests
             UseShellExecute = false,
         };
         foreach (var arg in new[] { "--port", EngineRuntime.FindFreePort().ToString(), "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"),
-                     "--no-browser", "--no-windows", "--mock-seed", "42" })
+                     "--no-browser", "--no-windows", "--no-panels", "--mock-seed", "42" })
             start.ArgumentList.Add(arg);
         start.Environment["ASPNETCORE_ENVIRONMENT"] = ShellService.TestEnvironment;
         start.Environment["Engine__ShellTestPrompt"] = "true";

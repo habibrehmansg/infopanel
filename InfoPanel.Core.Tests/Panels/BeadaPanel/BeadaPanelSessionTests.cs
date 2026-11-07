@@ -322,6 +322,149 @@ public class BeadaPanelSessionTests
         Assert.Empty(device.Calls);
     }
 
+    // A short or sizeless info reply, a start that fails after the reset, and the stop's every-command rule within its
+    // bound.
+
+    [Fact]
+    public void A_short_info_reply_isnt_taken_and_nothing_more_is_written()
+    {
+        var (backend, device) = Panel(V.InfoReply(2, 0, 3, 480, 320)[..13]);
+
+        var start = BeadaPanelSession.Start(backend, PanelId, 100, backend.Clock, CancellationToken.None);
+        Assert.Equal(UsbStatus.NotSupported, start.Status);
+        Assert.Null(start.Session);
+        Assert.Equal(2, device.Transfers.Length); // the query and its reply, nothing after
+        Assert.Equal(0, device.OpenHandles);
+
+        var identity = BeadaPanelSession.Identify(backend, PanelId);
+        Assert.Equal(UsbStatus.NotSupported, identity.Status);
+        Assert.Equal(BeadaPanelInfoError.Short, identity.Error);
+    }
+
+    [Fact]
+    public void A_reply_with_no_size_isnt_taken()
+    {
+        var (backend, device) = Panel(V.InfoReply(2, 0, 3, 0, 320)); // platform 0: the reported size, 0 wide
+        var start = BeadaPanelSession.Start(backend, PanelId, 100, backend.Clock, CancellationToken.None);
+        Assert.Equal(UsbStatus.NotSupported, start.Status);
+        Assert.Equal(2, device.Transfers.Length);
+        Assert.Equal(BeadaPanelInfoError.NoSize, BeadaPanelSession.Identify(backend, PanelId).Error);
+    }
+
+    [Fact]
+    public void A_start_that_fails_after_the_reset_turns_the_screen_off_before_letting_go()
+    {
+        var (backend, device) = Panel(V.InfoReply(2, 1, 0, 800, 480));
+        device.FailWrite(4, UsbStatus.Timeout); // writes: info, reset, backlight, then the stream's start
+
+        var start = BeadaPanelSession.Start(backend, PanelId, 50, backend.Clock, CancellationToken.None);
+
+        Assert.Equal(UsbStatus.Timeout, start.Status);
+        Assert.Null(start.Session);
+        AssertTranscript(
+        [
+            new(1300, 0x01, V.StartMediaStream800x480),
+            new(1300, 0x02, V.SetBacklight(0)),
+            new(1300, 0x01, new byte[800 * 480 * 2]),
+            new(1300, 0x01, V.EndMediaStream),
+        ], device.Transfers.Skip(4).ToArray());
+        Assert.Equal(0, device.OpenHandles);
+    }
+
+    [Fact]
+    public void A_backlight_timeout_on_stop_still_sends_the_black_frame_and_the_end()
+    {
+        var (backend, device) = Panel(V.InfoReply(2, 1, 0, 800, 480));
+        device.FailWrite(5, UsbStatus.Timeout); // writes: info, reset, backlight, start, then the stop's backlight
+        var session = Started(backend);
+
+        session.Stop();
+
+        AssertTranscript(
+        [
+            new(1300, 0x02, V.SetBacklight(0)),
+            new(1300, 0x01, new byte[session.FrameLength]),
+            new(1300, 0x01, V.EndMediaStream),
+        ], device.Transfers.Skip(5).ToArray());
+        Assert.Equal(0, device.OpenHandles);
+    }
+
+    [Fact]
+    public void The_stop_stays_within_its_bound_with_each_write_delayed()
+    {
+        var (backend, device) = Panel(V.InfoReply(2, 1, 0, 800, 480));
+        var session = Started(backend);
+        device.WriteDelay = TimeSpan.FromMilliseconds(1500);
+
+        session.Stop();
+
+        // 3 s for the whole screen-off: the backlight and the black frame fit, the end doesn't start.
+        AssertTranscript(
+        [
+            new(1300, 0x02, V.SetBacklight(0)),
+            new(2800, 0x01, new byte[session.FrameLength]),
+        ], device.Transfers.Skip(5).ToArray());
+        Assert.Equal(0, device.OpenHandles);
+    }
+
+    [Fact]
+    public void A_start_cancelled_during_the_backlight_sends_no_stream_start_and_turns_the_screen_off_within_the_bound()
+    {
+        var (backend, device) = Panel(V.InfoReply(2, 1, 0, 800, 480));
+        using var stop = new CancellationTokenSource();
+        long cancelledAt = -1;
+        device.OnWrite = write =>
+        {
+            if (write.Number != 3) // writes: info, reset, then the backlight, which is slow and is cancelled on its way
+                return null;
+            cancelledAt = backend.Clock.NowMs;
+            stop.Cancel();
+            backend.Clock.Advance(TimeSpan.FromMilliseconds(write.TimeoutMs));
+            return null;
+        };
+
+        Assert.ThrowsAny<OperationCanceledException>(() => BeadaPanelSession.Start(backend, PanelId, 50, backend.Clock, stop.Token));
+
+        // No stream start: the screen-off follows the backlight at once, its writes given only what is left of 3 s.
+        AssertTranscript(
+        [
+            new(3300, 0x02, V.SetBacklight(0)),
+            new(3300, 0x01, new byte[800 * 480 * 2]),
+            new(3300, 0x01, V.EndMediaStream),
+        ], device.Transfers.Skip(4).ToArray());
+        Assert.Equal(1300, cancelledAt);
+        Assert.All(device.WriteTimeouts.Skip(3), timeout => Assert.True(timeout <= 1000, $"a screen-off write was given {timeout} ms"));
+        Assert.True(backend.Clock.NowMs - cancelledAt <= 3000);
+        Assert.Equal(0, device.OpenHandles);
+    }
+
+    [Fact]
+    public void A_start_cancelled_during_the_info_query_reads_nothing_and_lets_go_within_the_bound()
+    {
+        var (backend, device) = Panel(V.InfoReply(2, 1, 0, 800, 480));
+        using var stop = new CancellationTokenSource();
+        long cancelledAt = -1;
+        device.OnWrite = write =>
+        {
+            if (write.Number != 1) // the info query's write, slow, cancelled on its way, then taken near its timeout
+                return null;
+            cancelledAt = backend.Clock.NowMs;
+            stop.Cancel();
+            backend.Clock.Advance(TimeSpan.FromMilliseconds(write.TimeoutMs - 1));
+            return null;
+        };
+
+        Assert.ThrowsAny<OperationCanceledException>(() => BeadaPanelSession.Start(backend, PanelId, 50, backend.Clock, stop.Token));
+
+        // Only the query's write: no reply read is started, nothing changed the panel, so nothing more is written.
+        var transfers = device.Transfers;
+        Assert.Single(transfers);
+        Assert.Equal(0x02, transfers[0].Endpoint);
+        Assert.Equal(300, cancelledAt);
+        Assert.True(backend.Clock.NowMs - cancelledAt <= BeadaPanelSession.ScreenOffBound.TotalMilliseconds);
+        Assert.Equal(0, device.OpenHandles);
+    }
+
     private static void AssertTranscript(FakeTransfer[] expected, FakeTransfer[] actual)
     {
         Assert.Equal(expected.Length, actual.Length);

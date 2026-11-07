@@ -16,6 +16,8 @@ public enum BeadaPanelInfoError
     Type,
     /// <summary>A model code the table doesn't hold (code 1, or a newer model).</summary>
     UnknownModel,
+    /// <summary>A stream size of zero pixels across or down.</summary>
+    NoSize,
 }
 
 /// <summary>A panel's answer to GetPanelInfo.</summary>
@@ -43,7 +45,8 @@ public sealed record BeadaPanelInfo(
 
     /// <summary>
     /// Parses a GetPanelInfo reply: at least 100 bytes, <c>STATUS-LINK</c> at 0, type 1 at 12, the payload from 20.
-    /// Null, with the <paramref name="error"/> and the <paramref name="modelCode"/> read (when it got that far), otherwise.
+    /// Null, with the <paramref name="error"/> and the <paramref name="modelCode"/> read (when it got that far), otherwise;
+    /// a stream of no width or height is refused too.
     /// </summary>
     public static BeadaPanelInfo? Parse(ReadOnlySpan<byte> reply, out BeadaPanelInfoError error, out byte modelCode)
     {
@@ -71,8 +74,7 @@ public sealed record BeadaPanelInfo(
             error = BeadaPanelInfoError.UnknownModel;
             return null;
         }
-        error = BeadaPanelInfoError.None;
-        return new BeadaPanelInfo(
+        var info = new BeadaPanelInfo(
             Firmware: BinaryPrimitives.ReadUInt16LittleEndian(payload),
             PanelLinkVersion: payload[2],
             StatusLinkVersion: payload[3],
@@ -84,6 +86,13 @@ public sealed record BeadaPanelInfo(
             StorageKb: BinaryPrimitives.ReadUInt32LittleEndian(payload[74..]),
             MaxBrightness: payload[78],
             CurrentBrightness: payload[79]);
+        if (info.Width <= 0 || info.Height <= 0)
+        {
+            error = BeadaPanelInfoError.NoSize;
+            return null;
+        }
+        error = BeadaPanelInfoError.None;
+        return info;
     }
 
     /// <summary>1.4's rule: ASCII, NULs then white space trimmed from both ends, empty unless letters and digits only.</summary>
