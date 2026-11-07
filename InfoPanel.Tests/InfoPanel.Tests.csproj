@@ -24,6 +24,8 @@
   <ItemGroup>
     <Compile Include="..\InfoPanel.Core.Tests\Fifo.cs" Link="Linked\Fifo.cs" />
     <Compile Include="..\InfoPanel.Core.Tests\Images\LocalHttpServer.cs" Link="Linked\LocalHttpServer.cs" />
+    <!-- The fake USB backend and its clock, for the panel tests over the engine. -->
+    <Compile Include="..\InfoPanel.Core.Tests\Panels\Usb\FakeUsbBackend.cs" Link="Linked\FakeUsbBackend.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel\InfoPanel.csproj" />
