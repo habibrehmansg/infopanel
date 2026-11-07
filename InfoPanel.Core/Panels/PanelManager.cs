@@ -11,8 +11,8 @@ using Serilog;
 
 namespace InfoPanel.Panels;
 
-/// <summary>What the manager knows of a saved panel now (for the API later, and tests).</summary>
-public sealed record PanelStatus(SavedPanel Saved, bool Connected, string State, string? Reason, BeadaPanelInfo? Info, double? Fps, double? FrameTimeMs);
+/// <summary>What the manager knows of a saved panel now (for the API later, and tests). <see cref="Jpeg"/>: whether a running panel streams JPEG.</summary>
+public sealed record PanelStatus(SavedPanel Saved, bool Connected, string State, string? Reason, BeadaPanelInfo? Info, double? Fps, double? FrameTimeMs, bool? Jpeg = null);
 
 /// <summary>What the manager is given of the engine: profiles, the render service, the frame rate setting.</summary>
 public sealed record PanelHost(
@@ -184,7 +184,8 @@ public sealed class PanelManager : IAsyncDisposable
     /// <summary>
     /// Changes a saved panel's settings and saves them; applied at once: brightness between frames, rotation from the
     /// next frame, another profile by moving the panel's sink to it (the session kept, the screen not turned off), and
-    /// turning it off by stopping the session (screen off). Null when there is no such panel.
+    /// turning it off by stopping the session (screen off); another encoding stops the session too, and the next pass
+    /// starts it in the new one. Null when there is no such panel.
     /// </summary>
     public Task<SavedPanel?> UpdateAsync(string id, Func<SavedPanel, SavedPanel> change) => Ask(() =>
     {
@@ -198,7 +199,7 @@ public sealed class PanelManager : IAsyncDisposable
         var runtime = RuntimeOf(id);
         if (runtime.Runner is { } runner && !runtime.Stopping)
         {
-            if (after.Enabled != before.Enabled)
+            if (after.Enabled != before.Enabled || after.Encoding != before.Encoding)
             {
                 runtime.Stopping = true;
                 runner.RequestStop();
@@ -223,13 +224,36 @@ public sealed class PanelManager : IAsyncDisposable
     {
         var runtime = RuntimeOf(saved.Id);
         var runner = runtime.Runner;
+        var waiting = runtime.Usb != null && runner == null && Wanted(saved, runtime) && SettleLeft(runtime) != null;
         var state = runtime.Usb == null ? "notConnected"
             : runner is { Running: true } ? "running"
             : runner != null ? "starting"
+            : waiting ? "waiting"
             : runtime.Reason != null && Wanted(saved, runtime) ? "failed"
             : "off";
-        return new PanelStatus(saved, runtime.Usb != null, state, runner is { Running: true } ? null : runtime.Reason, runtime.Info,
-            runner is { Running: true } ? runner.Fps : null, runner is { Running: true } ? runner.FrameTimeMs : null);
+        var reason = runner is { Running: true } ? null
+            : waiting ? $"the panel takes no new stream until {JpegSettle.TotalSeconds:0} s after its JPEG stream ended"
+            : runtime.Reason;
+        return new PanelStatus(saved, runtime.Usb != null, state, reason, runtime.Info,
+            runner is { Running: true } ? runner.Fps : null, runner is { Running: true } ? runner.FrameTimeMs : null,
+            runner is { Running: true } ? runner.Jpeg : null);
+    }
+
+    /// <summary>
+    /// How long a panel is given after a JPEG session ends before a new session starts: a T113 BeadaPanel takes no
+    /// transfer for 20 to 30 s after a JPEG stream ends (measured on a BeadaPanel 8, whether the stream ends with the type 6
+    /// end tag or a PanelLinkReset, and whatever the next stream is), so a start sooner fails. Only this engine's own
+    /// sessions are counted; a session that never got past its start tag counts too once it was JPEG.
+    /// </summary>
+    public static readonly TimeSpan JpegSettle = TimeSpan.FromSeconds(30);
+
+    /// <summary>What is left of <see cref="JpegSettle"/> since the panel's last JPEG session ended; null when nothing is.</summary>
+    private TimeSpan? SettleLeft(Runtime runtime)
+    {
+        if (runtime.JpegEndedAt is not { } ended)
+            return null;
+        var left = JpegSettle - _time.GetElapsedTime(ended);
+        return left > TimeSpan.Zero ? left : null;
     }
 
     private Runtime RuntimeOf(string id)
@@ -407,9 +431,21 @@ public sealed class PanelManager : IAsyncDisposable
         if (!wanted || runtime.Usb is not { } usb)
             return;
 
+        // After a JPEG stream the panel takes no new one for a while: the start waits for it (the next passes try again).
+        if (SettleLeft(runtime) is { } left)
+        {
+            if (!runtime.Settling)
+                _logger.Information("Panel {Panel}: starting again in {Seconds:0} s, once the panel takes a stream after its JPEG one", Label(saved.Id), Math.Ceiling(left.TotalSeconds));
+            runtime.Settling = true;
+            return;
+        }
+        runtime.Settling = false;
+
+        // A panel that refused the JPEG start once this run is raw until the engine restarts, whatever its setting.
+        var encoding = runtime.JpegRefused ? PanelEncoding.Raw : saved.Encoding;
         var started = new PanelRunner(_backend, usb, Label(saved.Id), saved.ProfileId!, saved.Brightness, saved.Rotation,
             sink => _host.Attach(sink), sink => _host.Detach(sink), sink => _host.RequestChanged(sink), sink => _host.Refresh(sink), _host.FrameRate,
-            _time, _runnerOptions, _logger);
+            _time, _runnerOptions, _logger, encoding);
         lock (_liveLock)
         {
             if (_stopping)
@@ -435,6 +471,10 @@ public sealed class PanelManager : IAsyncDisposable
             return;
         runtime.Runner = null;
         runtime.Stopping = false;
+        if (runner.JpegRefused != null)
+            runtime.JpegRefused = true;
+        if (runner.Jpeg)
+            runtime.JpegEndedAt = _time.GetTimestamp();
         if (end.SinkClosed is { } closed)
         {
             // Held against this profile only while the profiles are as they were when the runner started.
@@ -506,6 +546,9 @@ public sealed class PanelManager : IAsyncDisposable
         public string? ClosedProfile;
         public long ClosedGeneration;
         public long StartedGeneration;
+        public bool JpegRefused; // the panel didn't take a JPEG start this run: raw from now on
+        public long? JpegEndedAt; // when its last JPEG session ended (the manager's clock), for JpegSettle
+        public bool Settling; // a start is waiting out JpegSettle (logged once)
     }
 
     private sealed class Seen(UsbDeviceId usb)

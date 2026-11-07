@@ -115,7 +115,8 @@ public sealed class PanelHostTests
             await manager.UpdateAsync(found.Saved.Id, s => s with { Enabled = true, ProfileId = profile });
             await WaitFor(manager, s => s.State == "running");
             var deadline = DateTime.UtcNow.AddSeconds(10);
-            while (!device.Transfers.Any(t => t.Data.Length == 1920 * 480 * 2))
+            // A new panel is saved Auto, and this one is a T113 at PanelLink 2: JPEG frames.
+            while (!device.Transfers.Any(t => Jpeg.Is(t.Data)))
             {
                 Assert.True(DateTime.UtcNow < deadline, "no frame was written");
                 await Task.Delay(10, Ct);
@@ -129,7 +130,7 @@ public sealed class PanelHostTests
 
         var t = device.Transfers;
         Assert.Equal(BeadaPanelProtocol.StatusLink(StatusLinkType.SetBacklight, [0]), t[^3].Data);
-        Assert.True(t[^2].Data.Length == 1920 * 480 * 2 && t[^2].Data.All(b => b == 0), "the stop's black frame");
+        Assert.True(Jpeg.IsBlack(t[^2].Data), "the stop's black frame");
         Assert.Equal(BeadaPanelProtocol.EndStream(BeadaPanelInfo.Parse(device.Reply!, out _, out _)!), t[^1].Data);
         Assert.Equal(0, device.OpenHandles);
     }

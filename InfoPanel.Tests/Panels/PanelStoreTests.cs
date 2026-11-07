@@ -37,7 +37,7 @@ public sealed class PanelStoreTests : IDisposable
 
         Assert.Equal(
             "{\"format\":\"infopanel.devices/1\",\"devices\":[{\"id\":\"" + Id1 + "\",\"family\":\"beadapanel\",\"model\":\"8\","
-            + "\"serial\":\"934072005c00481401044f2420751fd6\",\"port\":\"0-1\",\"enabled\":false,\"profileId\":null,\"rotation\":0,\"brightness\":100}]}",
+            + "\"serial\":\"934072005c00481401044f2420751fd6\",\"port\":\"0-1\",\"enabled\":false,\"profileId\":null,\"rotation\":0,\"brightness\":100,\"encoding\":\"auto\"}]}",
             File.ReadAllText(FilePath));
         // Written by renaming a temp file over it: nothing else is left in the folder.
         Assert.Equal([PanelStore.FileName], Directory.GetFileSystemEntries(_folder).Select(Path.GetFileName));
@@ -67,7 +67,7 @@ public sealed class PanelStoreTests : IDisposable
 
         store.Save([store.Devices[0] with { Brightness = 41 }, store.Devices[1]]);
         var written = File.ReadAllText(FilePath);
-        Assert.Contains("\"brightness\":41,\"future\":\"x\"}", written);
+        Assert.Contains("\"brightness\":41,\"encoding\":\"auto\",\"future\":\"x\"}", written);
         Assert.EndsWith("],\"later\":{\"a\":[1,2]}}", written);
         var again = PanelStore.Read(FilePath, Logged().Logger);
         Assert.Equal(41, again.Devices[0].Brightness);

@@ -78,8 +78,9 @@ public sealed class PanelManagerTests : IAsyncDisposable
         }
     }
 
+    /// <summary>Raw: these tests hold the raw stream's transcript (its start, black frame and end); <see cref="PanelJpegManagerTests"/> runs Auto.</summary>
     private static SavedPanel Saved(string? serial = Serial, string port = "0-1", bool enabled = true, string? profile = "p-1") =>
-        new("0f8e4a52-6c1b-4f38-9a57-2d1c3b4e5f60", SavedPanel.BeadaPanelFamily, "8", serial, port, enabled, profile);
+        new("0f8e4a52-6c1b-4f38-9a57-2d1c3b4e5f60", SavedPanel.BeadaPanelFamily, "8", serial, port, enabled, profile, Encoding: PanelEncoding.Raw);
 
     private static bool EndsWithScreenOff(FakeUsbDevice device)
     {

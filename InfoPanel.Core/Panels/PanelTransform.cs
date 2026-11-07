@@ -9,6 +9,7 @@ namespace InfoPanel.Panels;
 /// The profile's frame as a panel shows it: cleared to opaque black, turned clockwise, scaled uniformly to fit and
 /// centred with 1.4.x's integer offsets (<c>SKBitmapExtensions.EnsureBitmapSize</c>), drawn source-over, so a
 /// transparent background is black. A frame already the panel's size with no rotation is copied without resampling.
+/// Written as RGB565 (a raw stream) or as opaque RGBA (a JPEG stream's frame, before <see cref="PanelJpeg"/> encodes it).
 /// Pure: no device, no state.
 /// </summary>
 public static class PanelTransform
@@ -21,6 +22,7 @@ public static class PanelTransform
         return format switch
         {
             PanelPixelFormat.Rgb565Le => checked(panelWidth * panelHeight * 2),
+            PanelPixelFormat.Rgba8888 => checked(panelWidth * panelHeight * 4),
             _ => throw new ArgumentOutOfRangeException(nameof(format), format, "Unknown pixel format."),
         };
     }
@@ -44,8 +46,11 @@ public static class PanelTransform
         using var image = SKImage.FromPixels(source)
             ?? throw new ArgumentException("Skia could not read the frame's pixels.", nameof(source));
 
-        // Skia's RGB565 is a native-endian 16-bit word, red in the top 5 bits: drawn straight into the target.
-        var info = new SKImageInfo(panelWidth, panelHeight, SKColorType.Rgb565, SKAlphaType.Opaque);
+        // Skia's RGB565 is a native-endian 16-bit word, red in the top 5 bits: drawn straight into the target. RGBA is
+        // bytes in order, opaque: the frame a JPEG is encoded from.
+        var info = format == PanelPixelFormat.Rgba8888
+            ? new SKImageInfo(panelWidth, panelHeight, SKColorType.Rgba8888, SKAlphaType.Opaque)
+            : new SKImageInfo(panelWidth, panelHeight, SKColorType.Rgb565, SKAlphaType.Opaque);
         fixed (byte* pixels = target)
         {
             using (var surface = SKSurface.Create(info, (IntPtr)pixels, info.RowBytes)
@@ -58,7 +63,7 @@ public static class PanelTransform
             }
         }
 
-        if (!BitConverter.IsLittleEndian)
+        if (format == PanelPixelFormat.Rgb565Le && !BitConverter.IsLittleEndian)
         {
             var words = MemoryMarshal.Cast<byte, ushort>(target);
             BinaryPrimitives.ReverseEndianness(words, words);

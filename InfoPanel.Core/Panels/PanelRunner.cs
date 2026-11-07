@@ -23,15 +23,19 @@ public sealed record PanelRunnerOptions
     public TimeSpan FirstStats { get; init; } = TimeSpan.FromSeconds(10);
 
     public TimeSpan StatsEvery { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>Called on the panel's thread right after each JPEG encode (tests: to stand for the encode's time on a fake clock); null: nothing.</summary>
+    public Action? AfterEncode { get; init; }
 }
 
 /// <summary>
 /// One running BeadaPanel, on a thread of its own: the start sequence, then frames from its <see cref="PanelSink"/>
-/// (transformed to the panel's size, rotation and RGB565), the brightness re-sent between frames when it changed, the
-/// last frame re-sent after <see cref="PanelRunnerOptions.KeepAlive"/> without a new one; on any stop, the screen-off.
-/// Waits go through the <see cref="TimeProvider"/>. Its pacing (InfoPanel 1.4's): the sink asks for at most
-/// 1000 / (0.9 × the mean write time) frames a second, checked once a second; the fps is writes per 0.5 s, the frame
-/// time the mean of the last 60 writes.
+/// (transformed to the panel's size and rotation, as RGB565, or on a JPEG stream as RGBA encoded once as JPEG), the
+/// brightness re-sent between frames when it changed, the last frame re-sent (not encoded again) after
+/// <see cref="PanelRunnerOptions.KeepAlive"/> without a new one; on any stop, the screen-off. Waits go through the
+/// <see cref="TimeProvider"/>. Its pacing (InfoPanel 1.4's): the sink asks for at most 1000 / (0.9 × the mean frame time)
+/// frames a second, checked once a second; the fps is writes per 0.5 s, the frame time the mean of the last 60 writes,
+/// each with its encode on a JPEG stream.
 /// </summary>
 public sealed class PanelRunner
 {
@@ -55,6 +59,10 @@ public sealed class PanelRunner
     private volatile int _rotation;
     private volatile string _profileId;
     private volatile StrongBox<FrameSinkClosedReason>? _sinkClosed;
+    private readonly PanelEncoding _encoding;
+    private volatile bool _jpeg;
+    private volatile StrongBox<UsbStatus>? _jpegRefused;
+    private long _encodes;
     private PanelSink? _attached;
     private long _stopAskedAt = -1;
     private int _writes;
@@ -67,9 +75,10 @@ public sealed class PanelRunner
     private double _frameTimeMs;
 
     /// <param name="attach">Attaches the sink to the render service (false: the profile can't be rendered now).</param>
+    /// <param name="encoding">How frames are sent (<see cref="BeadaPanelProtocol.StreamsJpeg"/>); raw unless given.</param>
     public PanelRunner(IUsbBackend backend, UsbDeviceId usb, string label, string profileId, int brightness, PanelRotation rotation,
         Func<PanelSink, bool> attach, Action<PanelSink> detach, Action<PanelSink> requestChanged, Action<PanelSink> refresh, Func<int> frameRate,
-        TimeProvider time, PanelRunnerOptions options, ILogger logger)
+        TimeProvider time, PanelRunnerOptions options, ILogger logger, PanelEncoding encoding = PanelEncoding.Raw)
     {
         _backend = backend;
         _usb = usb;
@@ -85,6 +94,7 @@ public sealed class PanelRunner
         _time = time;
         _options = options;
         _logger = logger;
+        _encoding = encoding;
     }
 
     /// <summary>
@@ -101,6 +111,15 @@ public sealed class PanelRunner
         }
     }
 
+    /// <summary>True once the session has started as a JPEG stream, and still after it ends (false before, and on a raw stream).</summary>
+    public bool Jpeg => _jpeg;
+
+    /// <summary>Why the panel didn't take the JPEG start tag, so this session went raw; null otherwise.</summary>
+    public UsbStatus? JpegRefused => _jpegRefused?.Value;
+
+    /// <summary>Frames encoded as JPEG (for tests: a frame re-sent isn't encoded again).</summary>
+    public long Encodes => Interlocked.Read(ref _encodes);
+
     /// <summary>The panel's sink once the start sequence has run (null before).</summary>
     public PanelSink? Sink { get; private set; }
 
@@ -113,7 +132,7 @@ public sealed class PanelRunner
     /// <summary>Frames written a second, over the last 0.5 s window (0 until measured).</summary>
     public double Fps => Volatile.Read(ref _fps);
 
-    /// <summary>The mean of the last 60 write times, in milliseconds.</summary>
+    /// <summary>The mean of the last 60 write times (a JPEG frame's with its encode), in milliseconds.</summary>
     public double FrameTimeMs => Volatile.Read(ref _frameTimeMs);
 
     /// <summary>The render service's id of the last frame written (0 before the first).</summary>
@@ -190,13 +209,19 @@ public sealed class PanelRunner
         BeadaPanelSession? session = null;
         try
         {
-            var start = BeadaPanelSession.Start(_backend, _usb, _brightness, _time, _stop.Token);
+            // A refused JPEG start is kept at once, so the manager remembers it whatever the start comes to.
+            var start = BeadaPanelSession.Start(_backend, _usb, _brightness, _encoding, _time, _stop.Token, refused =>
+            {
+                _jpegRefused = new StrongBox<UsbStatus>(refused);
+                _logger.Information("Panel {Panel}: the JPEG start wasn't taken ({Status}): raw frames, for this panel until the engine restarts", _label, refused);
+            });
             if (start.Session is null)
             {
                 end = new PanelRunEnd(true, start.Status, start.Message);
                 return;
             }
             session = start.Session;
+            _jpeg = session.Jpeg;
             end = Loop(session);
         }
         catch (OperationCanceledException)
@@ -270,9 +295,16 @@ public sealed class PanelRunner
         if (AttachSink(profileId) is not { } sink)
             return new PanelRunEnd(true, UsbStatus.Ok, $"profile {profileId} can't be rendered", FrameSinkClosedReason.ProfileDeleted);
         Running = true;
-        _logger.Information("Panel {Panel}: running, {Width} x {Height}, profile {ProfileId}", _label, session.Width, session.Height, profileId);
+        var jpeg = session.Jpeg;
+        _jpeg = jpeg;
+        _logger.Information("Panel {Panel}: running, {Width} x {Height}, {Encoding:l}, profile {ProfileId}", _label, session.Width, session.Height,
+            jpeg ? $"JPEG q{BeadaPanelProtocol.JpegQuality}" : "raw RGB565", profileId);
 
-        var target = new byte[PanelTransform.TargetLength(session.Width, session.Height, PanelPixelFormat.Rgb565Le)];
+        // A raw stream writes the transformed frame; a JPEG one encodes it once, and a re-send writes the same JPEG.
+        var format = jpeg ? PanelPixelFormat.Rgba8888 : PanelPixelFormat.Rgb565Le;
+        var target = new byte[PanelTransform.TargetLength(session.Width, session.Height, format)];
+        var encoded = Array.Empty<byte>();
+        var encodedLength = 0;
         var written = false;
         long lastWrite = 0;
         var started = _time.GetTimestamp();
@@ -301,16 +333,24 @@ public sealed class PanelRunner
                 break; // asked to stop during the brightness: no frame now, the screen-off next
 
             var frame = sink.Take();
+            long? encodeStarted = null;
             if (frame != null)
             {
                 try
                 {
-                    Transform(frame, target, session.Width, session.Height);
+                    Transform(frame, target, session.Width, session.Height, format);
                     _frameId = frame.FrameId;
                 }
                 finally
                 {
                     sink.Return(frame);
+                }
+                if (jpeg)
+                {
+                    encodeStarted = _time.GetTimestamp();
+                    encodedLength = PanelJpeg.Encode(target, session.Width, session.Height, BeadaPanelProtocol.JpegQuality, ref encoded);
+                    Interlocked.Increment(ref _encodes);
+                    _options.AfterEncode?.Invoke();
                 }
             }
             else if (!(written && _options.KeepAlive != Timeout.InfiniteTimeSpan && _time.GetElapsedTime(lastWrite) >= _options.KeepAlive))
@@ -324,8 +364,9 @@ public sealed class PanelRunner
 
             if (_stop.IsCancellationRequested)
                 break;
-            var before = _time.GetTimestamp();
-            status = session.WriteFrame(target);
+            // A JPEG frame's time counts its encode too: the panel's thread spends both on it.
+            var before = encodeStarted ?? _time.GetTimestamp();
+            status = session.WriteFrame(jpeg ? encoded.AsSpan(0, encodedLength) : target);
             if (status != UsbStatus.Ok)
                 return Failed(status, "a frame wasn't taken");
             lastWrite = _time.GetTimestamp();
@@ -405,13 +446,13 @@ public sealed class PanelRunner
         }
     }
 
-    /// <summary>The copied frame (Rgba8888, premultiplied) into the panel's RGB565 buffer, at its rotation.</summary>
-    private static unsafe void Transform(PanelFrame frame, byte[] target, int width, int height)
+    /// <summary>The copied frame (Rgba8888, premultiplied) into the panel's buffer (RGB565, or opaque RGBA to encode), at its rotation.</summary>
+    private static unsafe void Transform(PanelFrame frame, byte[] target, int width, int height, PanelPixelFormat format)
     {
         fixed (byte* pixels = frame.Pixels)
         {
             using var pixmap = new SKPixmap(new SKImageInfo(frame.Width, frame.Height, SKColorType.Rgba8888, SKAlphaType.Premul), (IntPtr)pixels, frame.RowBytes);
-            PanelTransform.Render(pixmap, target, width, height, frame.Rotation, PanelPixelFormat.Rgb565Le);
+            PanelTransform.Render(pixmap, target, width, height, frame.Rotation, format);
         }
     }
 }

@@ -14,8 +14,8 @@ namespace InfoPanel.Panels;
 /// A panel the engine has identified once, as <c>devices.json</c> keeps it: <see cref="Id"/> (a lower-case UUID the
 /// engine made), the <see cref="Family"/> (<c>beadapanel</c>), the <see cref="Model"/> id (<c>8</c>), the panel's
 /// <see cref="Serial"/> and the USB <see cref="Port"/> path it was last seen at, and the settings: <see cref="Enabled"/>,
-/// <see cref="ProfileId"/>, <see cref="Rotation"/>, <see cref="Brightness"/> (0–100). <see cref="Kept"/> holds the
-/// members this engine doesn't know, written back as read.
+/// <see cref="ProfileId"/>, <see cref="Rotation"/>, <see cref="Brightness"/> (0–100), <see cref="Encoding"/>.
+/// <see cref="Kept"/> holds the members this engine doesn't know, written back as read.
 /// </summary>
 public sealed record SavedPanel(
     string Id,
@@ -26,21 +26,41 @@ public sealed record SavedPanel(
     bool Enabled = false,
     string? ProfileId = null,
     PanelRotation Rotation = PanelRotation.None,
-    int Brightness = 100)
+    int Brightness = 100,
+    PanelEncoding Encoding = PanelEncoding.Auto)
 {
     public const string BeadaPanelFamily = "beadapanel";
 
     public IReadOnlyList<JsonMemberText> Kept { get; init; } = [];
+
+    /// <summary>The encoding in effect; setting it (<c>with { Encoding = … }</c>) replaces an <see cref="UnknownEncoding"/>.</summary>
+    public PanelEncoding Encoding
+    {
+        get;
+        init
+        {
+            field = value;
+            UnknownEncoding = null;
+        }
+    } = Encoding;
+
+    /// <summary>
+    /// The stored <c>encoding</c> as written (its JSON value) when it isn't one this engine knows, such as a later engine's:
+    /// it reads as <see cref="PanelEncoding.Auto"/> and is written back unchanged until the encoding is set.
+    /// </summary>
+    public byte[]? UnknownEncoding { get; init; }
 }
 
 /// <summary>
 /// <c>devices.json</c> in the data folder (docs/2.0/data-folder.md): <c>{"format": "infopanel.devices/1", "devices":
-/// [{"id", "family", "model", "serial", "port", "enabled", "profileId", "rotation", "brightness"}]}</c>, in the order the
+/// [{"id", "family", "model", "serial", "port", "enabled", "profileId", "rotation", "brightness", "encoding"}]}</c>, in the order the
 /// panels were first seen. Read once at start through <see cref="EngineJson"/>, members it doesn't know (in the file and
 /// in each device) kept as written; written through <see cref="AtomicFile"/>. A file it can't hold whole (over
 /// <see cref="MaxBytes"/>, nested deeper than it reads, a link, not a regular file, not JSON, another format or major
 /// version, or a member it knows that is missing or of the wrong kind) is never rewritten, and panels are off for the run
-/// (<see cref="Problem"/>), as <c>plugin-state.json</c>.
+/// (<see cref="Problem"/>), as <c>plugin-state.json</c>. The one exception is <c>encoding</c>: any value but
+/// <c>"auto"</c>, <c>"jpeg"</c> or <c>"raw"</c> reads as <c>auto</c>, so a value a later engine writes keeps panels running, and
+/// is written back as it was until the encoding is set (<see cref="SavedPanel.UnknownEncoding"/>).
 /// </summary>
 public sealed partial class PanelStore
 {
@@ -224,11 +244,13 @@ public sealed partial class PanelStore
         var enabled = false;
         var rotation = PanelRotation.None;
         var brightness = 100;
+        var encoding = PanelEncoding.Auto;
+        byte[]? unknownEncoding = null;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var kept = new List<JsonMemberText>();
         foreach (var member in members)
         {
-            if (member.Name is not ("id" or "family" or "model" or "serial" or "port" or "enabled" or "profileId" or "rotation" or "brightness"))
+            if (member.Name is not ("id" or "family" or "model" or "serial" or "port" or "enabled" or "profileId" or "rotation" or "brightness" or "encoding"))
             {
                 kept.Add(member);
                 continue;
@@ -251,6 +273,7 @@ public sealed partial class PanelStore
                 "enabled" => Bool(value, out enabled),
                 "rotation" => Rotation(value, out rotation),
                 "brightness" => Brightness(value, out brightness),
+                "encoding" => Encoding(value, member.Value, out encoding, out unknownEncoding),
                 _ => false,
             };
             if (!ok)
@@ -272,7 +295,7 @@ public sealed partial class PanelStore
         }
 
         why = null;
-        return new SavedPanel(id, family, model, serial, port, enabled, profileId, rotation, brightness) { Kept = kept };
+        return new SavedPanel(id, family, model, serial, port, enabled, profileId, rotation, brightness, encoding) { Kept = kept, UnknownEncoding = unknownEncoding };
     }
 
     /// <summary>A JSON string (or null, when <paramref name="nullable"/>); a string that isn't valid text (a lone surrogate) isn't one.</summary>
@@ -317,6 +340,30 @@ public sealed partial class PanelStore
         brightness = b;
         return true;
     }
+
+    /// <summary>
+    /// Always read: <c>"auto"</c>, <c>"jpeg"</c> and <c>"raw"</c> as written; anything else (another string, another kind)
+    /// as auto, with its JSON value (<paramref name="written"/>) kept in <paramref name="unknown"/> to be written back.
+    /// </summary>
+    private static bool Encoding(JsonElement? value, byte[] written, out PanelEncoding encoding, out byte[]? unknown)
+    {
+        unknown = null;
+        if (value is { ValueKind: JsonValueKind.String } s && (s.ValueEquals("auto") || s.ValueEquals("jpeg") || s.ValueEquals("raw")))
+        {
+            encoding = s.ValueEquals("jpeg") ? PanelEncoding.Jpeg : s.ValueEquals("raw") ? PanelEncoding.Raw : PanelEncoding.Auto;
+            return true;
+        }
+        encoding = PanelEncoding.Auto;
+        unknown = written;
+        return true;
+    }
+
+    private static string EncodingText(PanelEncoding encoding) => encoding switch
+    {
+        PanelEncoding.Jpeg => "jpeg",
+        PanelEncoding.Raw => "raw",
+        _ => "auto",
+    };
 
     /// <summary>
     /// Replaces the saved panels with <paramref name="devices"/> and writes the file. The change counts only once written:
@@ -373,6 +420,13 @@ public sealed partial class PanelStore
             WriteOrNull(writer, "profileId", device.ProfileId);
             writer.WriteNumber("rotation", (int)device.Rotation);
             writer.WriteNumber("brightness", device.Brightness);
+            if (device.UnknownEncoding is { } unknown)
+            {
+                writer.WritePropertyName("encoding");
+                writer.WriteRawValue(unknown, skipInputValidation: true); // as it was read: a JSON value
+            }
+            else
+                writer.WriteString("encoding", EncodingText(device.Encoding));
             writer.WriteEndObject();
         }
 

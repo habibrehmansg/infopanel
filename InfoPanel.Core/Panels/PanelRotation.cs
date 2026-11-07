@@ -8,4 +8,7 @@ public enum PanelPixelFormat
 {
     /// <summary>16 bits a pixel, little-endian, red in the top 5 bits, then 6 of green and 5 of blue.</summary>
     Rgb565Le,
+
+    /// <summary>32 bits a pixel, opaque: red, green, blue, then 255 (the frame a JPEG is encoded from).</summary>
+    Rgba8888,
 }

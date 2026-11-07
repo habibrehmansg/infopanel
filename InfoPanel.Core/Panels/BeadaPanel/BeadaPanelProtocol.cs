@@ -127,6 +127,33 @@ public static class BeadaPanelProtocol
         PanelLink(info.PanelLinkVersion == 1 ? PanelLinkType.LegacyCommand1 : PanelLinkType.StartMediaStream,
             Encoding.ASCII.GetBytes(FormatString(info)));
 
+    /// <summary>The JPEG stream's format string (Panel-Link Rev 1.0 p. 7, table 2-5): no size fields.</summary>
+    public const string JpegFormat = "image/jpeg";
+
+    /// <summary>The quality frames are encoded at: within 7 % of q75's rate on a BeadaPanel 8, and safest for thin text.</summary>
+    public const int JpegQuality = 90;
+
+    /// <summary>
+    /// Whether <see cref="PanelEncoding.Auto"/> streams JPEG to a panel. Nothing documents which panels decode it (no
+    /// format list or capability bit in the info reply, Status-Link Rev 1.3 p. 7), so only where it has been seen to work:
+    /// platform 5 (T113) with PanelLink 2 or later (PanelLink 1 takes the legacy tags, not type 5). Everything else: raw.
+    /// </summary>
+    public static bool TakesJpeg(BeadaPanelInfo info) => info.Platform == 5 && info.PanelLinkVersion >= 2;
+
+    /// <summary>Whether a session with <paramref name="encoding"/> starts a JPEG stream on this panel.</summary>
+    public static bool StreamsJpeg(PanelEncoding encoding, BeadaPanelInfo info) => encoding switch
+    {
+        PanelEncoding.Jpeg => true,
+        PanelEncoding.Raw => false,
+        _ => TakesJpeg(info),
+    };
+
+    /// <summary>The JPEG stream's start: type 5 with <see cref="JpegFormat"/>, on any PanelLink version.</summary>
+    public static byte[] StartJpegStream() => PanelLink(PanelLinkType.StartMediaStream, Encoding.ASCII.GetBytes(JpegFormat));
+
+    /// <summary>The JPEG stream's end: type 6, as the start was type 5.</summary>
+    public static byte[] EndJpegStream() => PanelLink(PanelLinkType.EndMediaStream);
+
     /// <summary>The message that ends the stream (PanelLink version 1: LegacyCommand2).</summary>
     public static byte[] EndStream(BeadaPanelInfo info) =>
         PanelLink(info.PanelLinkVersion == 1 ? PanelLinkType.LegacyCommand2 : PanelLinkType.EndMediaStream);

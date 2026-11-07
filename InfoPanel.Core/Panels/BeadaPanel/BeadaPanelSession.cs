@@ -14,7 +14,7 @@ public sealed record BeadaPanelIdentity(UsbStatus Status, BeadaPanelInfo? Info, 
 
 /// <summary>
 /// One BeadaPanel stream, as InfoPanel 1.4 runs it: the start sequence, frames, brightness between frames, and the
-/// screen-off stop. Its calls block (bulk transfers, and the start's waits through the <see cref="TimeProvider"/>); one
+/// screen-off stop; or the same as a JPEG stream (<see cref="Jpeg"/>), where the panel takes one. Its calls block (bulk transfers, and the start's waits through the <see cref="TimeProvider"/>); one
 /// thread drives it.
 /// </summary>
 public sealed class BeadaPanelSession : IDisposable
@@ -26,17 +26,26 @@ public sealed class BeadaPanelSession : IDisposable
 
     private readonly IUsbDevice _device;
     private readonly TimeProvider _time;
+    private readonly byte[]? _blackJpeg; // the stop's black frame on a JPEG stream; null on a raw one
     private byte _backlight;
     private bool _stopped;
     private bool _disposed;
 
-    private BeadaPanelSession(IUsbDevice device, BeadaPanelInfo info, byte backlight, TimeProvider time)
+    private BeadaPanelSession(IUsbDevice device, BeadaPanelInfo info, byte backlight, TimeProvider time, byte[]? blackJpeg, UsbStatus? jpegRefused)
     {
         _device = device;
         _time = time;
         Info = info;
         _backlight = backlight;
+        _blackJpeg = blackJpeg;
+        JpegRefused = jpegRefused;
     }
+
+    /// <summary>True when the stream is JPEG: each frame one JPEG (<see cref="WriteFrame"/>), the stop's black frame one too.</summary>
+    public bool Jpeg => _blackJpeg != null;
+
+    /// <summary>Why the panel didn't take the JPEG start tag, so the session went raw; null when it did or none was sent.</summary>
+    public UsbStatus? JpegRefused { get; }
 
     /// <summary>The panel's info reply read at the start.</summary>
     public BeadaPanelInfo Info { get; }
@@ -83,7 +92,19 @@ public sealed class BeadaPanelSession : IDisposable
     /// between transfers, and a start that got as far as the reset turns the screen off first, within
     /// <see cref="ScreenOffBound"/> counted from the cancellation.
     /// </summary>
-    public static BeadaPanelStart Start(IUsbBackend backend, UsbDeviceId id, int brightness, TimeProvider time, CancellationToken cancellation)
+    public static BeadaPanelStart Start(IUsbBackend backend, UsbDeviceId id, int brightness, TimeProvider time, CancellationToken cancellation) =>
+        Start(backend, id, brightness, PanelEncoding.Raw, time, cancellation);
+
+    /// <summary>
+    /// The start sequence with the stream's <paramref name="encoding"/>: as the raw one, but where
+    /// <see cref="BeadaPanelProtocol.StreamsJpeg"/> says JPEG, the JPEG start tag in place of the raw one. A JPEG start tag
+    /// the panel doesn't take (any failure but the panel gone) is told to <paramref name="jpegRefused"/> at once, whatever
+    /// the start then comes to (a failure, a cancellation), and followed by the recovery the start itself makes, PanelLinkReset,
+    /// 1000 ms, SetBacklight, then by the raw start tag: the session is raw, and <see cref="BeadaPanelSession.JpegRefused"/>
+    /// says why. A recovery write that isn't taken fails the start with its reason.
+    /// </summary>
+    public static BeadaPanelStart Start(IUsbBackend backend, UsbDeviceId id, int brightness, PanelEncoding encoding, TimeProvider time, CancellationToken cancellation,
+        Action<UsbStatus>? jpegRefused = null)
     {
         var backlightFor = brightness; // checked before anything is opened
         ArgumentOutOfRangeException.ThrowIfLessThan(backlightFor, 0, nameof(brightness));
@@ -123,12 +144,41 @@ public sealed class BeadaPanelSession : IDisposable
                 return new BeadaPanelStart(null, status, $"the backlight wasn't taken ({status})");
 
             cancellation.ThrowIfCancellationRequested();
-            status = device.BulkWrite(BeadaPanelProtocol.PanelOut, BeadaPanelProtocol.StartStream(info), timeout);
-            if (status != UsbStatus.Ok)
-                return new BeadaPanelStart(null, status, $"the stream's start wasn't taken ({status})");
+            byte[]? blackJpeg = null;
+            UsbStatus? refused = null;
+            if (BeadaPanelProtocol.StreamsJpeg(encoding, info))
+            {
+                status = device.BulkWrite(BeadaPanelProtocol.PanelOut, BeadaPanelProtocol.StartJpegStream(), timeout);
+                if (status == UsbStatus.NoDevice)
+                    return new BeadaPanelStart(null, status, $"the stream's start wasn't taken ({status})");
+                if (status == UsbStatus.Ok)
+                    blackJpeg = PanelJpeg.Black(info.Width, info.Height, BeadaPanelProtocol.JpegQuality);
+                else
+                {
+                    refused = status;
+                    jpegRefused?.Invoke(status);
+                    // A tag that wasn't taken (a partial write, a stalled pipe) leaves the stream's state unknown: the
+                    // panel's PanelLink is reset and settles as at the start before the raw tag goes.
+                    cancellation.ThrowIfCancellationRequested();
+                    status = device.BulkWrite(BeadaPanelProtocol.StatusOut, BeadaPanelProtocol.StatusLink(StatusLinkType.PanelLinkReset), timeout);
+                    if (status != UsbStatus.Ok)
+                        return new BeadaPanelStart(null, status, $"the reset after the JPEG start wasn't taken ({status})");
+                    Wait(BeadaPanelProtocol.ResetDelay, time, cancellation);
+                    status = device.BulkWrite(BeadaPanelProtocol.StatusOut, BeadaPanelProtocol.StatusLink(StatusLinkType.SetBacklight, [backlight]), timeout);
+                    if (status != UsbStatus.Ok)
+                        return new BeadaPanelStart(null, status, $"the backlight after the JPEG start wasn't taken ({status})");
+                    cancellation.ThrowIfCancellationRequested();
+                }
+            }
+            if (blackJpeg == null)
+            {
+                status = device.BulkWrite(BeadaPanelProtocol.PanelOut, BeadaPanelProtocol.StartStream(info), timeout);
+                if (status != UsbStatus.Ok)
+                    return new BeadaPanelStart(null, status, $"the stream's start wasn't taken ({status})");
+            }
 
             started = true;
-            return new BeadaPanelStart(new BeadaPanelSession(device, info, backlight, time), UsbStatus.Ok, "");
+            return new BeadaPanelStart(new BeadaPanelSession(device, info, backlight, time, blackJpeg, refused), UsbStatus.Ok, "");
         }
         finally
         {
@@ -136,7 +186,7 @@ public sealed class BeadaPanelSession : IDisposable
             {
                 // A start that got as far as changing the panel turns its screen off again before letting it go.
                 if (changed != null)
-                    ScreenOff(device!, changed, time, cancellation.IsCancellationRequested ? Interlocked.Read(ref cancelledAt) : time.GetTimestamp());
+                    ScreenOff(device!, changed, null, time, cancellation.IsCancellationRequested ? Interlocked.Read(ref cancelledAt) : time.GetTimestamp());
                 LetGo(device!);
             }
         }
@@ -171,13 +221,21 @@ public sealed class BeadaPanelSession : IDisposable
         return info is null ? UsbStatus.NotSupported : UsbStatus.Ok;
     }
 
-    /// <summary>Writes one frame (<see cref="FrameLength"/> bytes of RGB565 little-endian) on the stream.</summary>
-    public UsbStatus WriteFrame(ReadOnlySpan<byte> rgb565)
+    /// <summary>
+    /// Writes one frame on the stream, in one write of at most 2000 ms: on a raw stream <see cref="FrameLength"/> bytes of
+    /// RGB565 little-endian, on a JPEG one (<see cref="Jpeg"/>) one JPEG of the panel's size.
+    /// </summary>
+    public UsbStatus WriteFrame(ReadOnlySpan<byte> frame)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (rgb565.Length != FrameLength)
-            throw new ArgumentException($"A frame is {FrameLength} bytes ({Width} x {Height}, RGB565); this one is {rgb565.Length}.", nameof(rgb565));
-        return _device.BulkWrite(BeadaPanelProtocol.PanelOut, rgb565, BeadaPanelProtocol.SessionTimeoutMs);
+        if (Jpeg)
+        {
+            if (frame.Length < 4 || frame[0] != 0xFF || frame[1] != 0xD8)
+                throw new ArgumentException("A JPEG stream takes one JPEG a frame; this one doesn't start with its marker.", nameof(frame));
+        }
+        else if (frame.Length != FrameLength)
+            throw new ArgumentException($"A frame is {FrameLength} bytes ({Width} x {Height}, RGB565); this one is {frame.Length}.", nameof(frame));
+        return _device.BulkWrite(BeadaPanelProtocol.PanelOut, frame, BeadaPanelProtocol.SessionTimeoutMs);
     }
 
     /// <summary>Sends the backlight when <paramref name="brightness"/> differs from the last one sent.</summary>
@@ -206,7 +264,7 @@ public sealed class BeadaPanelSession : IDisposable
         _stopped = true;
         try
         {
-            ScreenOff(_device, Info, _time, since ?? _time.GetTimestamp());
+            ScreenOff(_device, Info, _blackJpeg, _time, since ?? _time.GetTimestamp());
         }
         finally
         {
@@ -216,19 +274,20 @@ public sealed class BeadaPanelSession : IDisposable
 
     /// <summary>
     /// The screen-off sequence, as 1.4 sends it: the backlight at raw 0 (any PanelLink version), a black frame, the
-    /// stream's end, each tried whatever the one before came to, but none once the panel is gone
-    /// (<see cref="UsbStatus.NoDevice"/>), and all within <see cref="ScreenOffBound"/> from <paramref name="started"/>: each
-    /// write's timeout is what is left of it (at most 2000 ms), and a write isn't started once it is spent. The first
-    /// failure, or Ok.
+    /// stream's end (on a JPEG stream, <paramref name="blackJpeg"/> and the type 6 end), each tried whatever the one before
+    /// came to, but none once the panel is gone (<see cref="UsbStatus.NoDevice"/>), and all within
+    /// <see cref="ScreenOffBound"/> from <paramref name="started"/>: each write's timeout is what is left of it (at most
+    /// 2000 ms), and a write isn't started once it is spent. The first failure, or Ok. A T113 panel takes no new stream
+    /// for a while after a JPEG one ends, whatever ends it (<see cref="PanelManager.JpegSettle"/>).
     /// </summary>
-    private static UsbStatus ScreenOff(IUsbDevice device, BeadaPanelInfo info, TimeProvider time, long started)
+    private static UsbStatus ScreenOff(IUsbDevice device, BeadaPanelInfo info, byte[]? blackJpeg, TimeProvider time, long started)
     {
         var first = UsbStatus.Ok;
         var steps = new (byte Endpoint, Func<byte[]> Data)[]
         {
             (BeadaPanelProtocol.StatusOut, () => BeadaPanelProtocol.StatusLink(StatusLinkType.SetBacklight, [0])),
-            (BeadaPanelProtocol.PanelOut, () => new byte[info.Width * info.Height * 2]),
-            (BeadaPanelProtocol.PanelOut, () => BeadaPanelProtocol.EndStream(info)),
+            (BeadaPanelProtocol.PanelOut, () => blackJpeg ?? new byte[info.Width * info.Height * 2]),
+            (BeadaPanelProtocol.PanelOut, () => blackJpeg != null ? BeadaPanelProtocol.EndJpegStream() : BeadaPanelProtocol.EndStream(info)),
         };
         foreach (var (endpoint, data) in steps)
         {
