@@ -277,7 +277,6 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             ObjC.SendVoidBool(_window, ObjC.Sel("setOpaque:"), 0);
             ObjC.SendVoidId(_window, ObjC.Sel("setBackgroundColor:"), ObjC.Send(ObjC.Class("NSColor"), ObjC.Sel("clearColor")));
             ObjC.SendVoidBool(_window, ObjC.Sel("setHasShadow:"), 0);
-            ObjC.SendVoidBool(_window, ObjC.Sel("setIgnoresMouseEvents:"), 0);
             ObjC.SendVoidBool(_window, ObjC.Sel("setMovableByWindowBackground:"), 1);
             ObjC.SendVoidInt(_window, ObjC.Sel("setAnimationBehavior:"), 2); // NSWindowAnimationBehaviorNone
 
@@ -361,6 +360,10 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             ObjC.SendVoidInt(_window, ObjC.Sel("setLevel:"), level);
             ObjC.SendVoidUInt(_window, ObjC.Sel("setCollectionBehavior:"), behavior);
             ObjC.SendVoidBool(_window, ObjC.Sel("setMovable:"), style.Movable ? (byte)1 : (byte)0);
+
+            // An explicit NO is what makes transparent pixels take clicks; YES lets every click, scroll and the pointer
+            // through to what's beneath, so no drag or resize reaches the window (Movable and the style mask are kept).
+            ObjC.SendVoidBool(_window, ObjC.Sel("setIgnoresMouseEvents:"), style.ClickThrough ? (byte)1 : (byte)0);
         }
 
         public void SetVisible(bool visible)

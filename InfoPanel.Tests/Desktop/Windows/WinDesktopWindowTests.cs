@@ -258,6 +258,59 @@ public sealed class WinDesktopWindowTests
     }
 
     [Fact]
+    public async Task AClickThroughWindow_LetsThePointerReachTheWindowBeneath_OnlyWhileOn()
+    {
+        Assert.SkipUnless(Enabled, Skip);
+        if (OperatingSystem.IsWindows())
+            await ClickThrough();
+    }
+
+    /// <summary>
+    /// The test's own normal window at (300, 300), 400×200, and a window on top over it at (350, 350), 200×100: at the top
+    /// window's centre (450, 400) the window under the pointer (<c>WindowFromPoint</c>) is the top one while it takes
+    /// clicks, the normal one beneath while click-through is on (turned on live, the level unchanged), the top one again
+    /// once it is off.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static async Task ClickThrough()
+    {
+        var thread = new WinUiThread();
+        try
+        {
+            var (beneath, panel) = await WinUiThreadTests.On(thread, () =>
+            {
+                var n = new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(300, 300, 400, 200));
+                var t = new WinWindow(new DesktopWindowStyle(WindowLevel.Top, true, true), new PointRect(350, 350, 200, 100));
+                n.SetVisible(true);
+                t.SetVisible(true);
+                n.ShowFrame(WinUiThreadTests.Solid(400, 200, 0, 0, 160));
+                t.ShowFrame(WinUiThreadTests.Solid(200, 100, 160, 0, 0));
+                return (n, t);
+            });
+            try
+            {
+                await Until(() => Task.FromResult(WinTestInterop.TopLevelAt(450, 400) == panel.Handle), "the top window under the pointer while it takes clicks");
+
+                await WinUiThreadTests.On(thread, () => panel.SetStyle(new DesktopWindowStyle(WindowLevel.Top, true, true, ClickThrough: true)));
+                await Until(() => Task.FromResult(WinTestInterop.TopLevelAt(450, 400) == beneath.Handle), "the window beneath under the pointer while clicks pass through");
+                Assert.NotEqual(0u, WinTestInterop.Read(panel.Handle).ExStyle & Topmost);
+
+                await WinUiThreadTests.On(thread, () => panel.SetStyle(new DesktopWindowStyle(WindowLevel.Top, true, true)));
+                await Until(() => Task.FromResult(WinTestInterop.TopLevelAt(450, 400) == panel.Handle), "the top window under the pointer once it takes clicks again");
+            }
+            finally
+            {
+                await WinUiThreadTests.On(thread, panel.Dispose);
+                await WinUiThreadTests.On(thread, beneath.Dispose);
+            }
+        }
+        finally
+        {
+            thread.Stop(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
     public async Task ShowingAFrame_IsMeasured_At3SizesAnd2Rates()
     {
         Assert.SkipUnless(Enabled, Skip);

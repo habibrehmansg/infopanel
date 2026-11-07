@@ -223,6 +223,7 @@ internal static unsafe partial class Win32
 
     public const uint WS_POPUP = 0x80000000;
     public const uint WS_EX_TOPMOST = 0x00000008;
+    public const uint WS_EX_TRANSPARENT = 0x00000020;
     public const uint WS_EX_TOOLWINDOW = 0x00000080;
     public const uint WS_EX_APPWINDOW = 0x00040000;
     public const uint WS_EX_LAYERED = 0x00080000;
@@ -238,6 +239,7 @@ internal static unsafe partial class Win32
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
+    public const uint SWP_FRAMECHANGED = 0x0020;
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_NOOWNERZORDER = 0x0200;
 
@@ -360,6 +362,9 @@ internal static unsafe partial class Win32
 
     [LibraryImport(User32, EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     public static partial nint GetWindowLongPtrW(nint hwnd, int index);
+
+    [LibraryImport(User32, EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    public static partial nint SetWindowLongPtrW(nint hwnd, int index, nint value);
 
     [LibraryImport(User32, SetLastError = true)]
     public static partial nint LoadCursorW(nint instance, nint name);

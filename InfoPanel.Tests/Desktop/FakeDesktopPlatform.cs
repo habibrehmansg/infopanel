@@ -154,6 +154,9 @@ public sealed class FakeWindow(FakeDesktopPlatform platform, DesktopWindowStyle 
 
     public DesktopWindowStyle Style { get; private set; } = style;
 
+    /// <summary>The style the window was created with.</summary>
+    public DesktopWindowStyle CreatedStyle { get; } = style;
+
     public bool Disposed { get; private set; }
 
     /// <summary>Calls to <see cref="SetFrame"/>.</summary>

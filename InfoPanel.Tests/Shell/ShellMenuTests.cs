@@ -30,6 +30,7 @@ public sealed class ShellMenuTests
             (ShellMenu.EditFromAnotherComputer, "Edit from Another Computer…", ShellItemKind.Action),
             ("", "", ShellItemKind.Separator),
             (ShellMenu.ShowOnDesktop, "Show on Desktop", ShellItemKind.Submenu),
+            (ShellMenu.ClickThrough, "Click-Through", ShellItemKind.Submenu),
             ("", "", ShellItemKind.Separator),
             (ShellMenu.ShowDataFolder, "Show Data Folder in Finder", ShellItemKind.Action),
             (ShellMenu.OpenLogsFolder, "Open Logs Folder", ShellItemKind.Action),
@@ -42,6 +43,7 @@ public sealed class ShellMenuTests
         Assert.False(Item(menu, ShellMenu.Status).Enabled);
         Assert.True(Item(menu, ShellMenu.SignedIn).Enabled);
         Assert.True(Item(menu, ShellMenu.ShowOnDesktop).Enabled);
+        Assert.True(Item(menu, ShellMenu.ClickThrough).Enabled);
         Assert.All(menu.Items.Where(i => i.Kind == ShellItemKind.Action), i => Assert.True(i.Enabled));
         // Only the row of who is signed in has a second line or an image.
         Assert.All(menu.Items.Where(i => i.Id != ShellMenu.SignedIn), i => Assert.Equal((null, null), (i.Detail, i.Initial)));
@@ -201,6 +203,7 @@ public sealed class ShellMenuTests
         var menu = ShellMenu.Build(State(new ShellProfile("a", "Desk overlay", Shown: true)) with { DesktopWindows = false });
 
         Assert.DoesNotContain(menu.Items, i => i.Id == ShellMenu.ShowOnDesktop);
+        Assert.DoesNotContain(menu.Items, i => i.Id == ShellMenu.ClickThrough);
         // No two separators in a row: the folders follow the editor's lines' separator.
         Assert.Equal([ShellMenu.Header, ShellMenu.Status, "", ShellMenu.SignedIn, "", ShellMenu.OpenEditor, ShellMenu.EditFromAnotherComputer, "", ShellMenu.ShowDataFolder],
             menu.Items.Take(9).Select(i => i.Id));
@@ -227,12 +230,77 @@ public sealed class ShellMenuTests
     }
 
     [Fact]
+    public void ClickThrough_ListsOnlyTheShownWindows_InOrder_CheckedWhileClicksPassThrough()
+    {
+        var menu = ShellMenu.Build(State(
+            new ShellProfile("a", "Desk overlay", Shown: true, ClickThrough: true),
+            new ShellProfile("b", "Wide bar", Shown: false, ClickThrough: true),
+            new ShellProfile("c", "Mac overview", Shown: true)));
+
+        var children = Item(menu, ShellMenu.ClickThrough).Children;
+        Assert.Equal(["Desk overlay", "Mac overview"], children.Select(c => c.Label));
+        Assert.Equal([true, false], children.Select(c => c.Checked));
+        Assert.All(children, c => Assert.Equal(ShellItemKind.Action, c.Kind));
+        // Choosing one asks for the other state: a checked line lets the window take clicks again, an unchecked one lets them through.
+        Assert.Equal([ShellMenu.ClickThroughItem("a", on: false), ShellMenu.ClickThroughItem("c", on: true)], children.Select(c => c.Id));
+        // Show on Desktop is as it was: every profile, a click away.
+        Assert.Equal(3, Item(menu, ShellMenu.ShowOnDesktop).Children.Count);
+    }
+
+    [Fact]
+    public void ClickThrough_WithNoWindowShown_SaysNoWindowsShown_Greyed()
+    {
+        foreach (var state in new[] { State(), State(new ShellProfile("a", "Desk overlay", Shown: false, ClickThrough: true)) })
+        {
+            var only = Assert.Single(Item(ShellMenu.Build(state), ShellMenu.ClickThrough).Children);
+            Assert.Equal((ShellMenu.NoWindowsShown, "No Windows Shown", ShellItemKind.Status), (only.Id, only.Label, only.Kind));
+            Assert.False(only.Enabled);
+        }
+    }
+
+    [Fact]
+    public void ClickThrough_ListsTheShownWindows_OfTheFirstTwentyProfiles_WithNoMoreLine()
+    {
+        ShellProfile[] profiles = [.. Enumerable.Range(1, 22).Select(i => new ShellProfile($"p{i}", $"Profile {i}", Shown: true))];
+
+        var children = Item(ShellMenu.Build(State(profiles)), ShellMenu.ClickThrough).Children;
+
+        Assert.Equal(Enumerable.Range(1, 20).Select(i => $"Profile {i}"), children.Select(c => c.Label));
+    }
+
+    [Theory]
+    [InlineData("a", true)]
+    [InlineData("1c6f2a9e-0b7d-4d3e-9a41-5f2b8c7d6e10", false)]
+    [InlineData("with:colon", true)]
+    public void AClickThroughItemsId_ReadsBack_AsItsProfileAndState(string profile, bool on)
+    {
+        Assert.True(ShellMenu.TryReadClickThroughItem(ShellMenu.ClickThroughItem(profile, on), out var id, out var asked));
+        Assert.Equal((profile, on), (id, asked));
+        Assert.False(ShellMenu.TryReadDesktopItem(ShellMenu.ClickThroughItem(profile, on), out _, out _));
+        Assert.False(ShellMenu.TryReadClickThroughItem(ShellMenu.DesktopItem(profile, on), out _, out _));
+    }
+
+    [Theory]
+    [InlineData(ShellMenu.ClickThrough)]
+    [InlineData(ShellMenu.NoWindowsShown)]
+    [InlineData("click-through:")]
+    [InlineData("click-through:maybe:a")]
+    [InlineData("click-through:on:")]
+    [InlineData("click-through:show:a")]
+    [InlineData("Click-Through:on:a")]
+    public void AnyOtherId_IsntAClickThroughItem(string id)
+    {
+        Assert.False(ShellMenu.TryReadClickThroughItem(id, out _, out _));
+    }
+
+    [Fact]
     public void TwoMenusBuiltFromTheSameState_AreEqual_ChildrenIncluded()
     {
         var state = State(new ShellProfile("a", "Desk overlay", Shown: true));
 
         Assert.Equal(ShellMenu.Build(state), ShellMenu.Build(state));
         Assert.NotEqual(ShellMenu.Build(state), ShellMenu.Build(State(new ShellProfile("a", "Desk overlay", Shown: false))));
+        Assert.NotEqual(ShellMenu.Build(state), ShellMenu.Build(State(new ShellProfile("a", "Desk overlay", Shown: true, ClickThrough: true))));
     }
 
     [Fact]

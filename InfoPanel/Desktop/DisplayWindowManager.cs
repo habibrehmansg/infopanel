@@ -248,6 +248,10 @@ public sealed class DisplayWindowManager(
 
         if (!_windows.TryGetValue(id, out var entry))
             entry = OpenWindow(id, doc, settings);
+        else if (entry.Window.Style.ClickThrough != settings.Style.ClickThrough)
+            logger.LogInformation(settings.Style.ClickThrough
+                ? "The desktop window of profile {ProfileId} lets clicks through"
+                : "The desktop window of profile {ProfileId} takes clicks again", id);
 
         entry.Window.SetStyle(settings.Style);
         if (!entry.ResizePending)
@@ -277,7 +281,10 @@ public sealed class DisplayWindowManager(
             entry.Sink = null;
         }
 
-        logger.LogInformation("Showing profile {ProfileId} as a desktop window", id);
+        if (settings.Style.ClickThrough)
+            logger.LogInformation("Showing profile {ProfileId} as a desktop window, clicks passing through it", id);
+        else
+            logger.LogInformation("Showing profile {ProfileId} as a desktop window", id);
         return entry;
     }
 
@@ -551,7 +558,7 @@ public sealed class DisplayWindowManager(
         {
             var p = doc.Current.Document.Profile;
             var w = p.Window;
-            return new Settings(w?.Enabled == true, new DesktopWindowStyle(LevelOf(w?.Level), w?.Draggable ?? true, w?.Resizable ?? true),
+            return new Settings(w?.Enabled == true, new DesktopWindowStyle(LevelOf(w?.Level), w?.Draggable ?? true, w?.Resizable ?? true, w?.ClickThrough == true),
                 Math.Max(1, p.Width), Math.Max(1, p.Height), w?.X ?? 0, w?.Y ?? 0, w?.Display, w?.Strict ?? false);
         }
 

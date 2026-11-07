@@ -348,6 +348,7 @@
   "document/invalid/scene-on-group.json": {"code": "schema", "path": "/items/0/scene"},
   "document/invalid/source-bytes.json": {"code": "limit.sourceBytes", "path": "/items/0/source", "limits": {"sourceBytes": 64}},
   "document/invalid/view-state.json": {"code": "schema", "path": "/items/0/expanded"},
+  "document/invalid/window-click-through-string.json": {"code": "schema", "path": "/profile/window/clickThrough"},
   "document/invalid/window-level-boolean.json": {"code": "schema", "path": "/profile/window/level"},
   "document/invalid/window-level.json": {"code": "schema", "path": "/profile/window/level"},
   "document/invalid/window-topmost.json": {"code": "schema", "path": "/profile/window/topmost"},

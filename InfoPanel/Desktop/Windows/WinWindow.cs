@@ -11,14 +11,19 @@ namespace InfoPanel.Desktop.Windows;
 /// <list type="bullet">
 /// <item>Style: <c>WS_POPUP</c> only (no caption, frame or system menu, so no Snap or maximize), extended
 /// <c>WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE</c> (plus <c>WS_EX_TOPMOST</c> when on top), no owner: out of the
-/// taskbar and Alt+Tab, never activated (<c>MA_NOACTIVATE</c>); a click still reaches it.</item>
+/// taskbar and Alt+Tab, never activated (<c>MA_NOACTIVATE</c>); a click still reaches it. Click-through adds
+/// <c>WS_EX_TRANSPARENT</c>, at creation or live (that bit alone, flushed with <c>SWP_FRAMECHANGED</c>, the place and
+/// z-order untouched): every click goes to the windows beneath, so there is no hit test, drag or resize while it's on. A
+/// live change whose calls fail is logged and not recorded in <see cref="Style"/>; the bit is then uncertain, so the next
+/// change or reconcile writes and flushes the bit it asks for, even one equal to <see cref="Style"/>'s, until that
+/// succeeds.</item>
 /// <item>Place and size exactly as set, off-screen parts included; 1 × 1 up to 16,384 × 16,384
 /// (<c>WM_GETMINMAXINFO</c>). <c>WM_DPICHANGED</c> is answered without applying the suggested rectangle, so the window
 /// keeps its pixel size on a display of another scaling. <c>WM_CLOSE</c> is ignored: a window closes when its profile's
 /// window is turned off.</item>
 /// <item>Frames: a per-pixel-alpha layered window updated by <c>UpdateLayeredWindow</c> from a top-down 32-bit BGRA
 /// premultiplied DIB section the window's size, which <see cref="DesktopFrameBlit"/> draws into over the floor (alpha
-/// 1/255, so every pixel takes clicks, as on macOS). A resize carries the shown pixels over, top-left, the rest at the
+/// 1/255, so every pixel takes clicks unless click-through is on, as on macOS). A resize carries the shown pixels over, top-left, the rest at the
 /// floor. A DIB that can't be allocated is logged once and the window stays as it was. A failed update (a disconnected
 /// session) is logged once and tried again with the same pixels every half second until one succeeds, since a static
 /// panel sends no new frame; a retry message still waiting once one has succeeded is ignored.</item>
@@ -41,6 +46,10 @@ internal sealed unsafe class WinWindow : IDesktopWindow
 
     /// <summary>The extended style without <c>WS_EX_TOPMOST</c>.</summary>
     internal const uint ExStyle = Win32.WS_EX_LAYERED | Win32.WS_EX_TOOLWINDOW | Win32.WS_EX_NOACTIVATE;
+
+    /// <summary><paramref name="exStyle"/> with <c>WS_EX_TRANSPARENT</c> set (<paramref name="on"/>) or cleared, every other bit kept.</summary>
+    internal static uint WithClickThrough(uint exStyle, bool on) =>
+        on ? exStyle | Win32.WS_EX_TRANSPARENT : exStyle & ~Win32.WS_EX_TRANSPARENT;
 
     /// <summary>Whether the floor keeps transparent pixels taking clicks (as on macOS); false would let them through.</summary>
     internal const bool TransparentPixelsTakeClicks = true;
@@ -78,6 +87,10 @@ internal sealed unsafe class WinWindow : IDesktopWindow
     private bool _updateFailing;
     private bool _retrying;
 
+    // From a failed click-through change (logged once) until a change is written and flushed: the native bit may be
+    // either value.
+    private bool _clickThroughUncertain;
+
     // Drag and resize: SetFrame's own changes are never the user's; the system's move or size loop runs for a press on
     // the caption or an edge; a press on the client (a window that doesn't move) waits for its release.
     private bool _settingFrame;
@@ -103,7 +116,8 @@ internal sealed unsafe class WinWindow : IDesktopWindow
         fixed (char* className = ClassName)
         fixed (char* title = "InfoPanel")
         {
-            _hwnd = Win32.CreateWindowExW(ExStyle | (style.Level == WindowLevel.Top ? Win32.WS_EX_TOPMOST : 0), className, title, WindowStyle,
+            var exStyle = WithClickThrough(ExStyle | (style.Level == WindowLevel.Top ? Win32.WS_EX_TOPMOST : 0), style.ClickThrough);
+            _hwnd = Win32.CreateWindowExW(exStyle, className, title, WindowStyle,
                 x, y, width, height, 0, 0, instance, 0);
         }
 
@@ -117,8 +131,65 @@ internal sealed unsafe class WinWindow : IDesktopWindow
             _desktopLevel.Track(this);
     }
 
+    /// <summary>
+    /// For tests on any OS: a window that was never created, at <paramref name="handle"/> with <paramref name="style"/>,
+    /// whose click-through goes through <paramref name="calls"/>. Only a click-through change may be asked of it: anything
+    /// else calls Win32.
+    /// </summary>
+    internal WinWindow(DesktopWindowStyle style, nint handle, IExStyleCalls calls)
+    {
+        _desktopLevel = new WinDesktopLevel(null);
+        _hwnd = handle;
+        Style = style;
+        ClickThroughCalls = calls;
+    }
+
     /// <summary>The window's handle (for tests).</summary>
     internal nint Handle => _hwnd;
+
+    /// <summary>
+    /// The native calls click-through makes, each with its raw result and the error it left: Win32's, or (in tests) ones
+    /// that fail.
+    /// </summary>
+    internal interface IExStyleCalls
+    {
+        /// <summary><c>GetWindowLongPtrW(GWL_EXSTYLE)</c>.</summary>
+        (nint Result, int Error) Get(nint hwnd);
+
+        /// <summary><c>SetWindowLongPtrW(GWL_EXSTYLE)</c>: the previous value.</summary>
+        (nint Result, int Error) Set(nint hwnd, nint exStyle);
+
+        /// <summary>The flush: <c>SetWindowPos</c> with <c>SWP_FRAMECHANGED</c>, nothing moved, sized or reordered.</summary>
+        (int Result, int Error) Flush(nint hwnd);
+    }
+
+    /// <summary>Win32's calls (the stubs clear the last error before each call).</summary>
+    internal sealed class Win32ExStyleCalls : IExStyleCalls
+    {
+        internal static readonly Win32ExStyleCalls Instance = new();
+
+        public (nint Result, int Error) Get(nint hwnd)
+        {
+            var result = Win32.GetWindowLongPtrW(hwnd, Win32.GWL_EXSTYLE);
+            return (result, Marshal.GetLastPInvokeError());
+        }
+
+        public (nint Result, int Error) Set(nint hwnd, nint exStyle)
+        {
+            var result = Win32.SetWindowLongPtrW(hwnd, Win32.GWL_EXSTYLE, exStyle);
+            return (result, Marshal.GetLastPInvokeError());
+        }
+
+        public (int Result, int Error) Flush(nint hwnd)
+        {
+            var result = Win32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOZORDER
+                | Win32.SWP_NOACTIVATE | Win32.SWP_NOOWNERZORDER | Win32.SWP_FRAMECHANGED);
+            return (result, Marshal.GetLastPInvokeError());
+        }
+    }
+
+    /// <summary>For tests: replaces the native calls click-through makes.</summary>
+    internal IExStyleCalls ClickThroughCalls { get; set; } = Win32ExStyleCalls.Instance;
 
     /// <summary>For tests: replaces <c>UpdateLayeredWindow</c>, returning whether the update succeeded.</summary>
     internal Func<bool>? UpdateLayered { get; set; }
@@ -190,11 +261,18 @@ internal sealed unsafe class WinWindow : IDesktopWindow
 
     public void SetStyle(DesktopWindowStyle style)
     {
-        if (_hwnd == 0 || style == Style)
+        // After a failed click-through change the native bit is uncertain (a write may have landed before the flush
+        // failed), so no request is skipped as unchanged until one is written and flushed.
+        if (_hwnd == 0 || (style == Style && !_clickThroughUncertain))
             return;
 
         var (from, to) = (Style.Level, style.Level);
-        Style = style;
+        // Click-through is recorded only once applied: after a failure the window reports the old value, so the next
+        // change or reconcile tries again.
+        var clickThrough = (style.ClickThrough == Style.ClickThrough && !_clickThroughUncertain) || ApplyClickThrough(style.ClickThrough)
+            ? style.ClickThrough
+            : Style.ClickThrough;
+        Style = style with { ClickThrough = clickThrough };
         if (from == to)
             return;
 
@@ -216,6 +294,60 @@ internal sealed unsafe class WinWindow : IDesktopWindow
         {
             _desktopLevel.Untrack(this);
         }
+    }
+
+    /// <summary>
+    /// Sets or clears <c>WS_EX_TRANSPARENT</c> alone (read, modify, write: <c>WS_EX_TOPMOST</c> is the system's to hold and
+    /// <c>WS_EX_LAYERED</c> must stay), then flushes the cached style with <c>SWP_FRAMECHANGED</c>, moving, sizing and
+    /// reordering nothing, so the desktop level's place and a top window's place are kept. False when a call failed
+    /// (logged once until one succeeds).
+    /// </summary>
+    private bool ApplyClickThrough(bool on)
+    {
+        var (read, readError) = ClickThroughCalls.Get(_hwnd);
+        var exStyle = (uint)(nuint)read;
+        // The style is never 0 (WS_EX_LAYERED is in it), so 0 is a failure.
+        if (exStyle == 0)
+            return ClickThroughFailed("read", readError);
+
+        // The previous value, never 0 either; but 0 is a failure only with an error (as the function's documentation says).
+        var (previous, writeError) = ClickThroughCalls.Set(_hwnd, (nint)WithClickThrough(exStyle, on));
+        if (previous == 0 && writeError != 0)
+            return ClickThroughFailed("written", writeError);
+
+        int flushed, flushError;
+        _settingFrame = true;
+        try
+        {
+            (flushed, flushError) = ClickThroughCalls.Flush(_hwnd);
+        }
+        finally
+        {
+            _settingFrame = false;
+        }
+
+        if (flushed == 0)
+            return ClickThroughFailed("flushed", flushError);
+
+        if (_clickThroughUncertain)
+        {
+            _clickThroughUncertain = false;
+            Logger.Information("A desktop window's click-through is applied again");
+        }
+
+        return true;
+    }
+
+    private bool ClickThroughFailed(string step, int error)
+    {
+        if (!_clickThroughUncertain)
+        {
+            _clickThroughUncertain = true;
+            Logger.Warning("A desktop window's click-through couldn't be {Step} ({Error}); it is tried again at the next change",
+                step, error);
+        }
+
+        return false;
     }
 
     /// <summary>The engine's own z-order change (the guard lets it through).</summary>

@@ -21,9 +21,11 @@ namespace InfoPanel.Shell;
 /// <item><b>Open Editor</b> (and Show on Desktop's <b>More in the Editor…</b>) opens the editor through <see cref="EditorOpener"/>;
 /// <b>Edit from Another Computer…</b> and the row of who is signed in open it at its sign-in settings, where another
 /// computer is set up to edit this one (<see cref="EditorRoutes.AccountSettings"/>).</item>
-/// <item><b>Show on Desktop</b>'s profiles turn a profile's desktop window on or off as the editor's switch does: one
-/// <c>profile</c> commit of <c>window.enabled</c> at the revision read (read again and retried on a conflict), saved at
-/// once at that revision when the profile had no unsaved changes before it, else left unsaved with them.</item>
+/// <item><b>Show on Desktop</b>'s profiles turn a profile's desktop window on or off as the editor's switch does, and
+/// <b>Click-Through</b>'s shown windows let clicks through or take them again as the editor's Click-through does: one
+/// <c>profile</c> commit of <c>window.enabled</c> or <c>window.clickThrough</c> at the revision read (read again and
+/// retried on a conflict), saved at once at that revision when the profile had no unsaved changes before it, else left
+/// unsaved with them.</item>
 /// <item><b>Show Data Folder in Finder</b> and <b>Open Logs Folder</b> open the engine's own folders through
 /// <see cref="IFolderOpener"/>, as <c>POST /api/folders/{folder}/open</c> does.</item>
 /// <item><b>Copy Engine Details</b> puts <see cref="EngineDetails"/> on the clipboard: never the token, a link or a profile.</item>
@@ -57,6 +59,9 @@ public sealed class ShellService(
 
     /// <summary>How many times Show on Desktop reads the profile again after a conflict before it gives up.</summary>
     internal const int CommitAttempts = 3;
+
+    /// <summary>Tests: called with the profile's id after a menu's window change read the profile, before it commits.</summary>
+    internal Action<string>? BeforeCommit;
 
     /// <summary>The host setting that asks the Quit prompt once the icon shows (a test's; its answer is logged, nothing else follows).</summary>
     public const string TestPromptSetting = "Engine:ShellTestPrompt";
@@ -144,7 +149,7 @@ public sealed class ShellService(
     /// <summary>
     /// The engine's state for the menu: the credential and its holder's name and email, and, when desktop windows are on, the
     /// profiles that can be opened in the library's order (one past what the menu lists, so it knows there are more),
-    /// each with its window on or off.
+    /// each with its window on or off and clicks passing through it or not.
     /// </summary>
     private ShellState State()
     {
@@ -158,7 +163,8 @@ public sealed class ShellService(
                     break;
                 if (entry.Status != "ok" || workspace.Open(entry.Id) is not { } doc)
                     continue;
-                profiles.Add(new ShellProfile(entry.Id, entry.Name ?? entry.Id, doc.Current.Document.Profile.Window?.Enabled == true));
+                var window = doc.Current.Document.Profile.Window;
+                profiles.Add(new ShellProfile(entry.Id, entry.Name ?? entry.Id, window?.Enabled == true, window?.ClickThrough == true));
             }
         }
 
@@ -241,6 +247,8 @@ public sealed class ShellService(
                     default:
                         if (ShellMenu.TryReadDesktopItem(id, out var profile, out var show))
                             SetShown(profile, show);
+                        else if (ShellMenu.TryReadClickThroughItem(id, out profile, out var on))
+                            SetClickThrough(profile, on);
                         break;
                 }
             }
@@ -258,15 +266,37 @@ public sealed class ShellService(
 
     /// <summary>
     /// Turns the profile's desktop window on (<paramref name="show"/>) or off, as the editor's Show on desktop does: when it
-    /// isn't so already, one <c>profile</c> commit of the whole <c>window</c> as read with <c>enabled</c> changed, at the
-    /// revision read (a conflict reads again, up to <see cref="CommitAttempts"/> times, so another client's window change is
-    /// kept), saved at once at that revision when the profile had no unsaved changes before it.
+    /// isn't so already, one <c>profile</c> commit of the whole <c>window</c> as read with <c>enabled</c> changed
+    /// (<see cref="ChangeWindow"/>).
     /// </summary>
-    private void SetShown(string id, bool show)
+    private void SetShown(string id, bool show) => ChangeWindow(id, "Show on Desktop",
+        window => (window?.Enabled == true) == show,
+        window => (window ?? new WindowSettings { Enabled = show }) with { Enabled = show },
+        show ? "turned the desktop window of profile {ProfileId} on" : "turned the desktop window of profile {ProfileId} off");
+
+    /// <summary>
+    /// Lets clicks pass through the profile's desktop window (<paramref name="on"/>) or has it take them again, as the
+    /// editor's Click-through does: when it isn't so already, one <c>profile</c> commit of the whole <c>window</c> as read
+    /// with <c>clickThrough</c> changed (<see cref="ChangeWindow"/>).
+    /// </summary>
+    private void SetClickThrough(string id, bool on) => ChangeWindow(id, "Click-Through",
+        window => (window?.ClickThrough == true) == on,
+        window => (window ?? new WindowSettings { Enabled = false }) with { ClickThrough = on },
+        on ? "let clicks through the desktop window of profile {ProfileId}" : "had the desktop window of profile {ProfileId} take clicks again");
+
+    /// <summary>
+    /// A menu's change of the profile's <c>window</c>: unless <paramref name="isSo"/> already, one <c>profile</c> commit of
+    /// the whole window as read, changed by <paramref name="change"/>, at the revision read (a conflict reads again, up to
+    /// <see cref="CommitAttempts"/> times, so another client's window change is kept), saved at once at that revision when
+    /// the profile had no unsaved changes before it, else left unsaved with them. <paramref name="menu"/> names the menu
+    /// line in the log, <paramref name="done"/> what it did (a message template naming <c>{ProfileId}</c>); both are the
+    /// callers' constants, so the log's templates are a fixed few.
+    /// </summary>
+    private void ChangeWindow(string id, string menu, Func<WindowSettings?, bool> isSo, Func<WindowSettings?, WindowSettings> change, string done)
     {
         if (workspace.Open(id) is not { } doc)
         {
-            logger.LogWarning("Show on Desktop: there is no profile {ProfileId} that can be opened", id);
+            logger.LogWarning(menu + ": there is no profile {ProfileId} that can be opened", id);
             return;
         }
 
@@ -276,15 +306,16 @@ public sealed class ShellService(
             {
                 var current = doc.Current;
                 var window = current.Document.Profile.Window;
-                if ((window?.Enabled == true) == show)
+                if (isSo(window))
                     return;
 
+                BeforeCommit?.Invoke(id);
                 var body = JsonSerializer.SerializeToUtf8Bytes(new CommitRequest
                 {
                     OpId = Guid.NewGuid().ToString("N"),
                     Instance = doc.Instance,
                     BaseRev = current.Rev,
-                    Ops = [new ProfileOp { BaseRev = current.Rev, Set = new ProfileFields { Window = (window ?? new WindowSettings { Enabled = show }) with { Enabled = show } } }],
+                    Ops = [new ProfileOp { BaseRev = current.Rev, Set = new ProfileFields { Window = change(window) } }],
                 }, SpecJson.Options);
                 var outcome = doc.Commit(body, out var wasClean);
                 if ((outcome.Conflict is not null || outcome.Expired is not null) && attempt < CommitAttempts)
@@ -293,19 +324,19 @@ public sealed class ShellService(
                 if (outcome.Result is not { } result)
                 {
                     var reason = outcome.Invalid?.Errors.FirstOrDefault()?.Message ?? outcome.Conflict?.Detail ?? outcome.Expired?.Detail;
-                    logger.LogWarning("Show on Desktop couldn't change profile {ProfileId} ({Status}: {Reason})", id, outcome.Status, reason);
+                    logger.LogWarning(menu + " couldn't change profile {ProfileId} ({Status}: {Reason})", id, outcome.Status, reason);
                     return;
                 }
 
                 var saved = wasClean && doc.Save(new HistoryRequest { Instance = doc.Instance, BaseRev = result.Rev }).Result is not null;
-                logger.LogInformation("Show on Desktop turned the desktop window of profile {ProfileId} {State}{Saved}", id, show ? "on" : "off",
+                logger.LogInformation(menu + " " + done + "{Saved}", id,
                     saved ? ", saved" : wasClean ? ", not saved: it changed meanwhile" : ", unsaved with its other changes");
                 return;
             }
         }
         catch (ObjectDisposedException)
         {
-            logger.LogWarning("Show on Desktop: profile {ProfileId} was deleted meanwhile", id);
+            logger.LogWarning(menu + ": profile {ProfileId} was deleted meanwhile", id);
         }
     }
 

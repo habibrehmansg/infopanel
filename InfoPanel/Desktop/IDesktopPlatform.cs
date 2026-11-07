@@ -52,8 +52,13 @@ public enum WindowLevel
     Desktop,
 }
 
-/// <summary>How a desktop window behaves: its level, movable by dragging, resizable from its edges.</summary>
-public readonly record struct DesktopWindowStyle(WindowLevel Level, bool Movable, bool Resizable);
+/// <summary>
+/// How a desktop window behaves: its level, movable by dragging, resizable from its edges, and whether clicks pass
+/// through it to whatever is beneath (the profile's <c>window.clickThrough</c>). While <paramref name="ClickThrough"/>
+/// is true the window takes no mouse events, so it can't be dragged or resized; <paramref name="Movable"/> and
+/// <paramref name="Resizable"/> keep their values and apply again once it is false.
+/// </summary>
+public readonly record struct DesktopWindowStyle(WindowLevel Level, bool Movable, bool Resizable, bool ClickThrough = false);
 
 /// <summary>
 /// One frame for a desktop window: RGBA, premultiplied (<c>SKColorType.Rgba8888</c>, <c>SKAlphaType.Premul</c>),

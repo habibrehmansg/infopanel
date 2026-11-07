@@ -83,6 +83,7 @@
         "display": { "$ref": "#/$defs/displayMatch" },
         "strict": { "description": "Hide the window when no display matches `display` exactly.", "type": "boolean", "default": false },
         "level": { "description": "Where the window sits among the computer's other windows: normal with them, top above them, desktop below every other window and above the desktop icons (docs/document.md).", "enum": ["normal", "top", "desktop"], "default": "normal" },
+        "clickThrough": { "description": "Clicks pass through the window to whatever is beneath it; while they do, the user can't drag or resize it (docs/document.md).", "type": "boolean", "default": false },
         "draggable": { "type": "boolean", "default": true },
         "resizable": { "type": "boolean", "default": true }
       }

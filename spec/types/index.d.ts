@@ -2432,6 +2432,11 @@ export interface WindowSettings {
    * @default "normal"
    */
   level?: "normal" | "top" | "desktop";
+  /**
+   * Clicks pass through the window to whatever is beneath it; while they do, the user can't drag or resize it (docs/document.md).
+   * @default false
+   */
+  clickThrough?: boolean;
   /** @default true */
   draggable?: boolean;
   /** @default true */

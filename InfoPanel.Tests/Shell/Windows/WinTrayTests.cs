@@ -49,27 +49,30 @@ public sealed class WinTrayTests
     /// <summary>Every line, the submenus' included, depth first.</summary>
     private static IEnumerable<WinMenuEntry> All(IReadOnlyList<WinMenuEntry> entries) => entries.SelectMany(e => new[] { e }.Concat(All(e.Children)));
 
-    /// <summary>The engine's state with every line the model has: signed in, desktop windows on, two profiles (one shown).</summary>
-    private static ShellState Full(int profiles = 2) => new("2.0.0")
+    /// <summary>
+    /// The engine's state with every line the model has: signed in, desktop windows on, two profiles (the second shown, and
+    /// with <paramref name="clickThrough"/> its clicks passing through).
+    /// </summary>
+    private static ShellState Full(int profiles = 2, bool clickThrough = false) => new("2.0.0")
     {
         HasCredential = true,
         SignedInAs = "Ada Lovelace",
         SignedInEmail = "ada@example.com",
         DesktopWindows = true,
-        Profiles = [.. Enumerable.Range(1, profiles).Select(i => new ShellProfile($"p{i}", i == 2 ? "Fans & pumps" : $"Profile {i}", Shown: i == 2))],
+        Profiles = [.. Enumerable.Range(1, profiles).Select(i => new ShellProfile($"p{i}", i == 2 ? "Fans & pumps" : $"Profile {i}", Shown: i == 2, ClickThrough: clickThrough && i == 2))],
     };
 
     [Fact]
     public void TheMenu_IsInWindowsWords_WithStartWhenISignIn_AboveExit()
     {
-        var entries = WinTrayMenu.Lines(ShellMenu.Build(Full()), startAtSignIn: false);
+        var entries = WinTrayMenu.Lines(ShellMenu.Build(Full(clickThrough: true)), startAtSignIn: false);
 
         Assert.Equal(
         [
             "InfoPanel · Running · 2.0.0", "",
             "Ada Lovelace (ada@example.com)", "",
             "Open editor", "Edit from another computer…", "",
-            "Show on desktop", "",
+            "Show on desktop", "Click-through", "",
             "Open data folder", "Open logs folder", "Copy engine details", "",
             "Start when I sign in", "",
             "Exit",
@@ -79,7 +82,7 @@ public sealed class WinTrayTests
             WinMenuFlags.Disabled, WinMenuFlags.Separator,
             WinMenuFlags.None, WinMenuFlags.Separator,
             WinMenuFlags.Default, WinMenuFlags.None, WinMenuFlags.Separator,
-            WinMenuFlags.Submenu, WinMenuFlags.Separator,
+            WinMenuFlags.Submenu, WinMenuFlags.Submenu, WinMenuFlags.Separator,
             WinMenuFlags.None, WinMenuFlags.None, WinMenuFlags.None, WinMenuFlags.Separator,
             WinMenuFlags.None, WinMenuFlags.Separator,
             WinMenuFlags.None,
@@ -89,7 +92,7 @@ public sealed class WinTrayTests
             ShellMenu.Status, "",
             ShellMenu.SignedIn, "",
             ShellMenu.OpenEditor, ShellMenu.EditFromAnotherComputer, "",
-            ShellMenu.ShowOnDesktop, "",
+            ShellMenu.ShowOnDesktop, ShellMenu.ClickThrough, "",
             ShellMenu.ShowDataFolder, ShellMenu.OpenLogsFolder, ShellMenu.CopyEngineDetails, "",
             WinTrayMenu.StartAtSignInId, "",
             ShellMenu.Quit,
@@ -99,7 +102,13 @@ public sealed class WinTrayTests
         Assert.Equal(["Profile 1", "Fans && pumps"], Labels(desktop));
         Assert.Equal([WinMenuFlags.None, WinMenuFlags.Checked], desktop.Select(e => e.Flags));
         Assert.Equal([ShellMenu.DesktopItem("p1", show: true), ShellMenu.DesktopItem("p2", show: false)], desktop.Select(e => e.Id));
-        Assert.All(entries.Where(e => e.Id != ShellMenu.ShowOnDesktop), e => Assert.Empty(e.Children));
+
+        // Click-Through: only the shown window, checked while its clicks pass through; choosing it lets it take clicks again.
+        var through = entries[8].Children;
+        Assert.Equal(["Fans && pumps"], Labels(through));
+        Assert.Equal([WinMenuFlags.Checked], through.Select(e => e.Flags));
+        Assert.Equal([ShellMenu.ClickThroughItem("p2", on: false)], through.Select(e => e.Id));
+        Assert.All(entries.Where(e => e.Id is not (ShellMenu.ShowOnDesktop or ShellMenu.ClickThrough)), e => Assert.Empty(e.Children));
     }
 
     [Fact]
@@ -128,6 +137,24 @@ public sealed class WinTrayTests
     }
 
     [Fact]
+    public void ClickThrough_WithNoWindowShown_SaysNoWindowsShown_Greyed()
+    {
+        var entries = WinTrayMenu.Lines(ShellMenu.Build(Full(profiles: 1)), startAtSignIn: false);
+
+        var line = Assert.Single(entries.Single(e => e.Id == ShellMenu.ClickThrough).Children);
+        Assert.Equal((ShellMenu.NoWindowsShown, "No windows shown", WinMenuFlags.Disabled), (line.Id, line.Label, line.Flags));
+    }
+
+    [Fact]
+    public void ClickThrough_AWindowTakingClicks_IsUnchecked_AndAsksForClicksToPassThrough()
+    {
+        var entries = WinTrayMenu.Lines(ShellMenu.Build(Full()), startAtSignIn: false);
+
+        var line = Assert.Single(entries.Single(e => e.Id == ShellMenu.ClickThrough).Children);
+        Assert.Equal(("Fans && pumps", WinMenuFlags.None, ShellMenu.ClickThroughItem("p2", on: true)), (line.Label, line.Flags, line.Id));
+    }
+
+    [Fact]
     public void ShowOnDesktop_Past20_ListsTheFirst20_ThenMoreInTheEditor()
     {
         var entries = WinTrayMenu.Lines(ShellMenu.Build(Full(profiles: 21)), startAtSignIn: false);
@@ -145,7 +172,7 @@ public sealed class WinTrayTests
     {
         var entries = WinTrayMenu.Lines(ShellMenu.Build(Full() with { DesktopWindows = false }), startAtSignIn: false);
 
-        Assert.DoesNotContain(All(entries), e => e.Id == ShellMenu.ShowOnDesktop || e.Flags.HasFlag(WinMenuFlags.Submenu));
+        Assert.DoesNotContain(All(entries), e => e.Id is ShellMenu.ShowOnDesktop or ShellMenu.ClickThrough || e.Flags.HasFlag(WinMenuFlags.Submenu));
         Assert.Equal(["InfoPanel · Running · 2.0.0", "", "Ada Lovelace (ada@example.com)", "", "Open editor", "Edit from another computer…", "", "Open data folder", "Open logs folder", "Copy engine details", "", "Start when I sign in", "", "Exit"], Labels(entries));
     }
 
@@ -158,10 +185,11 @@ public sealed class WinTrayTests
         var model = new[] { Full(profiles: 21), Full(profiles: 0), new ShellState("2.0.0") }
             .SelectMany(s => ShellMenu.Build(s).Items)
             .SelectMany(i => new[] { i }.Concat(i.Children))
-            .Where(i => i.Kind != ShellItemKind.Separator && i.Id != ShellMenu.SignedIn && !ShellMenu.TryReadDesktopItem(i.Id, out _, out _))
+            .Where(i => i.Kind != ShellItemKind.Separator && i.Id != ShellMenu.SignedIn && !ShellMenu.TryReadDesktopItem(i.Id, out _, out _)
+                && !ShellMenu.TryReadClickThroughItem(i.Id, out _, out _))
             .ToList();
 
-        Assert.Equal(11, model.Select(i => i.Id).Distinct().Count());
+        Assert.Equal(13, model.Select(i => i.Id).Distinct().Count());
         Assert.All(model.Where(i => !same.Contains(i.Id)), i => Assert.NotEqual(i.Label, WinShellText.Label(i)));
         Assert.All(model.Where(i => same.Contains(i.Id)), i => Assert.Equal(i.Label, WinShellText.Label(i)));
     }
@@ -182,7 +210,7 @@ public sealed class WinTrayTests
 
         var all = All(entries).ToList();
         var items = all.Where(e => !e.Flags.HasFlag(WinMenuFlags.Separator) && !e.Flags.HasFlag(WinMenuFlags.Submenu)).ToList();
-        Assert.Equal(9 + 21, items.Count);
+        Assert.Equal(9 + 21 + 1, items.Count); // the model's lines, Show on Desktop's 20 and More, Click-Through's one shown window
         Assert.All(items, e => Assert.NotEqual(0u, e.Command));
         Assert.Equal(items.Count, items.Select(e => e.Command).Distinct().Count());
         Assert.All(all.Where(e => e.Flags.HasFlag(WinMenuFlags.Separator) || e.Flags.HasFlag(WinMenuFlags.Submenu)), e => Assert.Equal(0u, e.Command));
@@ -289,7 +317,7 @@ public sealed class WinTrayTests
         var tray = Shown(state: Full(profiles: 21));
         string[] picks =
         [
-            ShellMenu.DesktopItem("p1", show: true), ShellMenu.DesktopItem("p2", show: false), ShellMenu.MoreProfiles,
+            ShellMenu.DesktopItem("p1", show: true), ShellMenu.DesktopItem("p2", show: false), ShellMenu.MoreProfiles, ShellMenu.ClickThroughItem("p2", on: true),
             ShellMenu.ShowDataFolder, ShellMenu.OpenLogsFolder, ShellMenu.CopyEngineDetails, ShellMenu.SignedIn,
         ];
 

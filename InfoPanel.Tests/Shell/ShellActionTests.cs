@@ -184,6 +184,141 @@ public sealed class ShellActionTests : IDisposable
         Assert.False(_factory.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested);
     }
 
+    private IReadOnlyList<ShellMenuItem> ClickThroughLines() => Item(ShellMenu.ClickThrough).Children;
+
+    private ShellService Service => _factory.Services.GetServices<IHostedService>().OfType<ShellService>().Single();
+
+    /// <summary>A profile named <paramref name="name"/>, its window shown, clicks passing through it or not, saved.</summary>
+    private string ShownProfile(string name, bool clickThrough, string level = "top")
+    {
+        var doc = TestDocs.Doc(name, 100, 50);
+        doc["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["level"] = level, ["clickThrough"] = clickThrough };
+        return TestDocs.Create(Workspace, doc);
+    }
+
+    private static bool? ClickThroughOf(ProfileDocument doc) => doc.Current.Document.Profile.Window?.ClickThrough;
+
+    private bool? SavedClickThrough(string id)
+    {
+        var saved = JsonNode.Parse(File.ReadAllText(Path.Combine(_base.DataDir, "profiles", id, "document.json")))!;
+        return saved["profile"]?["window"]?["clickThrough"]?.GetValue<bool>();
+    }
+
+    [Fact]
+    public async Task ClickThrough_ListsTheShownWindows_CheckedWhileClicksPassThrough()
+    {
+        await Shown();
+        var through = ShownProfile("Desk overlay", clickThrough: true);
+        var taking = ShownProfile("Neon core", clickThrough: false);
+        Profile("Wide bar", shown: false);
+
+        var listed = ClickThroughLines().Where(c => c.Label is "Desk overlay" or "Neon core" or "Wide bar").ToList();
+
+        var expected = Workspace.List().Where(e => e.Id == through || e.Id == taking).Select(e => e.Name).ToList();
+        Assert.Equal(expected, listed.Select(c => c.Label));
+        var on = Assert.Single(listed, c => c.Label == "Desk overlay");
+        Assert.Equal((ShellMenu.ClickThroughItem(through, on: false), true), (on.Id, on.Checked));
+        var off = Assert.Single(listed, c => c.Label == "Neon core");
+        Assert.Equal((ShellMenu.ClickThroughItem(taking, on: true), false), (off.Id, off.Checked));
+    }
+
+    [Fact]
+    public async Task ClickThrough_TurnedOnForACleanProfile_IsSaved_AsOneUndoableChange_KeepingTheRestOfTheWindow_AndReachesItsWindow()
+    {
+        await Shown();
+        var id = ShownProfile("Neon core", clickThrough: false, level: "desktop");
+        var before = Doc(id).Rev;
+
+        await _shell.ClickAsync(ShellMenu.ClickThroughItem(id, on: true));
+
+        var window = Doc(id).Current.Document.Profile.Window!;
+        Assert.Equal((true, true, "desktop"), (window.ClickThrough, window.Enabled, window.Level));
+        Assert.Equal(before + 1, Doc(id).Rev);
+        Assert.False(Workspace.Entry(id)!.Dirty);
+        Assert.True(SavedClickThrough(id));
+        Assert.True(Doc(id).Status.CanUndo);
+        Assert.True(Assert.Single(ClickThroughLines(), c => c.Label == "Neon core").Checked);
+
+        await _desktop.IdleAsync();
+        var shown = await _desktop.InvokeAsync(() => _desktop.Created.Where(w => !w.Disposed).Select(w => w.Style).ToList());
+        Assert.Contains(new DesktopWindowStyle(WindowLevel.Desktop, Movable: true, Resizable: true, ClickThrough: true), shown);
+    }
+
+    [Fact]
+    public async Task ClickThrough_TurnedOff_IsSaved()
+    {
+        await Shown();
+        var id = ShownProfile("Desk overlay", clickThrough: true);
+
+        await _shell.ClickAsync(ShellMenu.ClickThroughItem(id, on: false));
+
+        Assert.False(ClickThroughOf(Doc(id)));
+        Assert.False(Workspace.Entry(id)!.Dirty);
+        Assert.False(SavedClickThrough(id));
+        Assert.False(Assert.Single(ClickThroughLines(), c => c.Label == "Desk overlay").Checked);
+    }
+
+    [Fact]
+    public async Task ClickThrough_OnAProfileWithUnsavedChanges_IsLeftUnsaved_WithThem()
+    {
+        await Shown();
+        var id = ShownProfile("Neon core", clickThrough: false);
+        TestDocs.Commit(Doc(id), TestDocs.Profile(new JsonObject { ["width"] = 120 }));
+
+        await _shell.ClickAsync(ShellMenu.ClickThroughItem(id, on: true));
+
+        Assert.True(ClickThroughOf(Doc(id)));
+        Assert.True(Workspace.Entry(id)!.Dirty);
+        Assert.False(SavedClickThrough(id));
+        Assert.Equal(120, Doc(id).Current.Document.Profile.Width);
+    }
+
+    [Fact]
+    public async Task ClickThrough_AStaleLine_ChangesNothing()
+    {
+        await Shown();
+        var id = ShownProfile("Desk overlay", clickThrough: true);
+        var before = Doc(id).Rev;
+
+        // The menu said "on" (it was off when it opened); another client turned it on since.
+        await _shell.ClickAsync(ShellMenu.ClickThroughItem(id, on: true));
+
+        Assert.True(ClickThroughOf(Doc(id)));
+        Assert.Equal(before, Doc(id).Rev);
+        Assert.False(Doc(id).Status.CanUndo);
+    }
+
+    [Fact]
+    public async Task ClickThrough_AConflict_IsReadAgainAndRetried_KeepingTheOtherClientsChange()
+    {
+        await Shown();
+        var id = ShownProfile("Neon core", clickThrough: false);
+        // After the menu's change read the profile, before its commit: another client moves the window.
+        Service.BeforeCommit = profileId =>
+        {
+            Service.BeforeCommit = null;
+            var doc = Doc(profileId);
+            var moved = doc.Current.Document.Profile.Window! with { X = 40, Y = 30 };
+            TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["window"] = JsonNode.Parse(JsonSerializer.Serialize(moved, InfoPanel.Spec.SpecJson.Options)) }));
+        };
+
+        await _shell.ClickAsync(ShellMenu.ClickThroughItem(id, on: true));
+
+        var window = Doc(id).Current.Document.Profile.Window!;
+        Assert.Equal((true, 40, 30), (window.ClickThrough, window.X, window.Y));
+        Assert.Null(Service.BeforeCommit);
+    }
+
+    [Fact]
+    public async Task ClickThrough_ForAProfileThatIsntThere_DoesNothing_AndKeepsRunning()
+    {
+        await Shown();
+
+        await _shell.ClickAsync(ShellMenu.ClickThroughItem("no-such-profile", on: true));
+
+        Assert.False(_factory.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested);
+    }
+
     [Fact]
     public async Task ShowDataFolder_AndOpenLogsFolder_OpenTheEnginesOwnFolders()
     {

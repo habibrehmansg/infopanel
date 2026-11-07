@@ -62,6 +62,8 @@ public sealed record WindowSettings
     public bool? Strict { get; init; }
     /// <summary><c>normal</c> (null: the default), <c>top</c> or <c>desktop</c>: where the window sits among the computer's other windows.</summary>
     public string? Level { get; init; }
+    /// <summary>Clicks pass through the window to whatever is beneath it (null: the default, false); it wins over <see cref="Draggable"/> and <see cref="Resizable"/>, whose values are kept.</summary>
+    public bool? ClickThrough { get; init; }
     public bool? Draggable { get; init; }
     public bool? Resizable { get; init; }
 }

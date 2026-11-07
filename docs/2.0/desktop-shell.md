@@ -29,6 +29,14 @@ Click the hexagon. The menu is built afresh from the engine's state each time it
    document has it) at the revision it read, read again on a conflict, one undo step; saved at once at that revision
    when the profile had no unsaved changes, otherwise left unsaved with them. Each line asks for the state opposite the
    check mark it showed, so a choice made after another client changed the window changes nothing.
+   **Click-Through ▸**, right under it, while desktop windows are on: each profile Show on Desktop lists whose window
+   is on, in the same order and by the same name, with a check mark while clicks pass through its window to whatever
+   is beneath it (`window.clickThrough`); "No Windows Shown" (grey) when none is on. Choosing a line lets clicks
+   through or has the window take them again, as the editor's Click-through does: one `profile` commit of
+   `window.clickThrough`, otherwise as Show on Desktop (the revision read, a conflict read again, one undo step, saved
+   at once only when the profile had no unsaved changes, each line asking for the state opposite its check). A window
+   that lets clicks through can't be clicked, dragged or resized, so this menu, the editor's drawer and Show on Desktop
+   are the ways back; a window whose profile is past the first 20 is reached from the editor.
 5. — **Show Data Folder in Finder** and **Open Logs Folder**: the engine's own folders, as the editor's buttons open
    them (`POST /api/folders/{folder}/open`). **Copy Engine Details**: what a bug report needs when the editor can't
    connect, with the labels of the editor's own details, in a fenced block: the engine's version, protocol and
@@ -105,14 +113,15 @@ stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in star
      settings, as on macOS; none while the holder isn't known;
   3. — **Open editor** (bold: what a click does) · **Edit from another computer…**;
   4. — **Show on desktop ▸**, a submenu, while desktop windows are on: each profile, checked when its window is on;
-     "No profiles yet" (grey) when there are none; past 20, **More in the editor…**;
+     "No profiles yet" (grey) when there are none; past 20, **More in the editor…**; **Click-through ▸** under it:
+     each shown window, checked while clicks pass through it, or "No windows shown" (grey);
   5. — **Open data folder** · **Open logs folder** · **Copy engine details** (on the clipboard as plain text);
   6. — **Start when I sign in** ✓;
   7. — **Exit**.
 
   The lines and what each does are the model's menu (`ShellMenu.Build`, the same as macOS's) in Windows' words
   (`WinShellText`, by each line's id): Open Editor is "Open editor", Edit from Another Computer… "Edit from another
-  computer…", Show on Desktop "Show on desktop", Show Data
+  computer…", Show on Desktop "Show on desktop", Click-Through "Click-through", Show Data
   Folder in Finder "Open data folder", Quit InfoPanel "Exit", and so on; an item it doesn't know keeps the model's
   words.
 - **Start when I sign in** is the value `InfoPanel 2` under the user's Run key

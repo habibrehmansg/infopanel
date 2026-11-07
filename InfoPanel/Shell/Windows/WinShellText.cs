@@ -26,6 +26,8 @@ internal static class WinShellText
         [ShellMenu.ShowOnDesktop] = "Show on desktop",
         [ShellMenu.NoProfiles] = "No profiles yet",
         [ShellMenu.MoreProfiles] = "More in the editor…",
+        [ShellMenu.ClickThrough] = "Click-through",
+        [ShellMenu.NoWindowsShown] = "No windows shown",
         [ShellMenu.ShowDataFolder] = "Open data folder",
         [ShellMenu.OpenLogsFolder] = "Open logs folder",
         [ShellMenu.CopyEngineDetails] = "Copy engine details",

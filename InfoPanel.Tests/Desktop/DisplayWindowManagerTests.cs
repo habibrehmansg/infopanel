@@ -286,6 +286,95 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AProfileWithClickThrough_OpensItsWindowWithClicksPassingThrough()
+    {
+        await Start();
+        var created = TestDocs.Doc("Overlay", 100, 50);
+        created["profile"]!["window"] = new JsonObject { ["enabled"] = true, ["level"] = "top", ["clickThrough"] = true };
+        var id = TestDocs.Create(Workspace, created);
+        await _platform.IdleAsync();
+
+        var window = await RequireWindow(id);
+        var style = new DesktopWindowStyle(WindowLevel.Top, Movable: true, Resizable: true, ClickThrough: true);
+        Assert.Equal((style, style), (window.CreatedStyle, window.Style));
+        Assert.Contains(_log.Messages, m => m == $"Showing profile {id} as a desktop window, clicks passing through it");
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task ClickThrough_IsAppliedLive_ToTheSameWindow_ThroughUndoAndRedo_AndLogged()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        Assert.False(window.CreatedStyle.ClickThrough);
+        Assert.Contains(_log.Messages, m => m == $"Showing profile {doc.Id} as a desktop window");
+
+        await Patch(doc, new JsonObject { ["clickThrough"] = true, ["resizable"] = false });
+        Assert.Equal(new DesktopWindowStyle(WindowLevel.Normal, Movable: true, Resizable: false, ClickThrough: true), window.Style);
+        Assert.Single(_log.Messages, m => m == $"The desktop window of profile {doc.Id} lets clicks through");
+
+        await Patch(doc, new JsonObject { ["clickThrough"] = false });
+        Assert.Equal(new DesktopWindowStyle(WindowLevel.Normal, Movable: true, Resizable: false), window.Style);
+        Assert.Single(_log.Messages, m => m == $"The desktop window of profile {doc.Id} takes clicks again");
+
+        Undo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal((true, true), (window.Style.ClickThrough, W(doc).ClickThrough));
+        Undo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal((false, null), (window.Style.ClickThrough, W(doc).ClickThrough));
+        Redo(doc);
+        await _platform.IdleAsync();
+        Assert.True(window.Style.ClickThrough);
+
+        // One window throughout: nothing was recreated.
+        Assert.Same(window, await WindowOf(doc.Id));
+        Assert.Single(await _platform.InvokeAsync(() => _platform.Created.ToList()));
+        Assert.True(window.Visible);
+        AssertNoErrors();
+    }
+
+    /// <summary>Click-through combines with every level, the level and the other settings kept.</summary>
+    [Theory]
+    [InlineData("normal")]
+    [InlineData("top")]
+    [InlineData("desktop")]
+    public async Task ClickThrough_CombinesWithEachLevel(string level)
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        await Patch(doc, new JsonObject { ["level"] = level, ["draggable"] = false });
+
+        await Patch(doc, new JsonObject { ["clickThrough"] = true });
+        Assert.Equal(new DesktopWindowStyle(LevelOf(level), Movable: false, Resizable: true, ClickThrough: true), window.Style);
+
+        await Patch(doc, new JsonObject { ["clickThrough"] = false });
+        Assert.Equal(new DesktopWindowStyle(LevelOf(level), Movable: false, Resizable: true), window.Style);
+        Assert.Same(window, await WindowOf(doc.Id));
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task ADrag_WhileAnotherClientTurnsClickThroughOn_KeepsIt()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        Manager.BeforeCommit = _ =>
+        {
+            Manager.BeforeCommit = null;
+            var changed = JsonNode.Parse(JsonSerializer.Serialize(W(doc) with { ClickThrough = true }, SpecJson.Options))!;
+            TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["window"] = changed }));
+        };
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+
+        Assert.Equal((3L, 120, 64, true), (doc.Rev, W(doc).X, W(doc).Y, W(doc).ClickThrough));
+        Assert.True(window.Style.ClickThrough);
+        AssertNoErrors();
+    }
+
+    [Fact]
     public async Task WindowXAndY_AndTargetWindow_Reposition_ThroughUndoAndRedo()
     {
         var doc = await Start();

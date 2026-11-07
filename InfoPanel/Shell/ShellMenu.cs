@@ -25,7 +25,7 @@ public sealed record ShellMenuItem(string Id, string Label, ShellItemKind Kind =
 {
     public bool Enabled => Kind is ShellItemKind.Action or ShellItemKind.Submenu;
 
-    /// <summary>A check mark beside the line (Show on Desktop's profiles that are shown).</summary>
+    /// <summary>A check mark beside the line (Show on Desktop's profiles that are shown, Click-Through's windows that let clicks through).</summary>
     public bool Checked { get; init; }
 
     /// <summary>
@@ -53,8 +53,11 @@ public sealed record ShellMenuItem(string Id, string Label, ShellItemKind Kind =
     public override int GetHashCode() => HashCode.Combine(Id, Label, Kind, KeyEquivalent, Checked, Detail, Initial, Children.Count);
 }
 
-/// <summary>A profile as Show on Desktop lists it: its id, its name, and whether its desktop window is on.</summary>
-public sealed record ShellProfile(string Id, string Name, bool Shown);
+/// <summary>
+/// A profile as Show on Desktop and Click-Through list it: its id, its name, whether its desktop window is on, and whether
+/// clicks pass through that window (<c>window.clickThrough</c>).
+/// </summary>
+public sealed record ShellProfile(string Id, string Name, bool Shown, bool ClickThrough = false);
 
 /// <summary>
 /// What the menu is built from: the engine's state when the user opens it. <see cref="HasCredential"/>: the engine holds
@@ -92,6 +95,8 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
     public const string ShowOnDesktop = "show-on-desktop";
     public const string NoProfiles = "no-profiles";
     public const string MoreProfiles = "more-profiles";
+    public const string ClickThrough = "click-through";
+    public const string NoWindowsShown = "no-windows-shown";
     public const string ShowDataFolder = "show-data-folder";
     public const string OpenLogsFolder = "open-logs-folder";
     public const string CopyEngineDetails = "copy-engine-details";
@@ -101,6 +106,7 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
     public const int DesktopProfiles = 20;
 
     private const string DesktopPrefix = "desktop:";
+    private const string ClickThroughPrefix = "click-through:";
 
     /// <summary>Who is signed in, without a credential (or with one the service refused): the second line beneath "Not signed in".</summary>
     public const string SignIn = "Sign In…";
@@ -110,7 +116,7 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
     /// settings: the name with the email beneath and the name's initial while a credential is held and its holder known
     /// (the email alone without a name), "Not signed in" with "Sign In…" beneath without one or when the service refused it,
     /// none while the holder isn't known; Open Editor; Edit from Another Computer… (the editor at the same sign-in settings,
-    /// where another computer is set up to edit this one); Show on Desktop with each profile (when desktop windows are on);
+    /// where another computer is set up to edit this one); Show on Desktop with each profile, then Click-Through with each shown window (when desktop windows are on);
     /// Show Data Folder in Finder, Open Logs Folder, Copy Engine Details; Quit InfoPanel (⌘Q).
     /// </summary>
     public static ShellMenu Build(ShellState state)
@@ -133,6 +139,7 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
         if (state.DesktopWindows)
         {
             items.Add(new(ShowOnDesktop, "Show on Desktop", ShellItemKind.Submenu) { Children = DesktopLines(state.Profiles) });
+            items.Add(new(ClickThrough, "Click-Through", ShellItemKind.Submenu) { Children = ClickThroughLines(state.Profiles) });
             items.Add(Separator());
         }
 
@@ -162,6 +169,28 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
         if (colon < 0 || colon == rest.Length - 1 || rest[..colon] is not ("show" or "hide"))
             return false;
         show = rest[..colon] == "show";
+        profileId = rest[(colon + 1)..];
+        return true;
+    }
+
+    /// <summary>
+    /// The id of a shown window's line in Click-Through: what choosing it asks for, clicks passing through
+    /// (<paramref name="on"/>) or taken again, so a choice made on a menu that has gone stale never undoes itself.
+    /// </summary>
+    public static string ClickThroughItem(string profileId, bool on) => $"{ClickThroughPrefix}{(on ? "on" : "off")}:{profileId}";
+
+    /// <summary>Reads a line's id made by <see cref="ClickThroughItem"/>; false for any other id.</summary>
+    public static bool TryReadClickThroughItem(string id, out string profileId, out bool on)
+    {
+        profileId = "";
+        on = false;
+        if (!id.StartsWith(ClickThroughPrefix, StringComparison.Ordinal))
+            return false;
+        var rest = id[ClickThroughPrefix.Length..];
+        var colon = rest.IndexOf(':');
+        if (colon < 0 || colon == rest.Length - 1 || rest[..colon] is not ("on" or "off"))
+            return false;
+        on = rest[..colon] == "on";
         profileId = rest[(colon + 1)..];
         return true;
     }
@@ -204,5 +233,18 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
         }
 
         return lines;
+    }
+
+    /// <summary>
+    /// Click-Through's lines: each profile Show on Desktop lists whose window is on, in its order and by its name, checked
+    /// while clicks pass through it; "No Windows Shown" (greyed) when none is.
+    /// </summary>
+    private static List<ShellMenuItem> ClickThroughLines(IReadOnlyList<ShellProfile> profiles)
+    {
+        var lines = profiles.Take(DesktopProfiles)
+            .Where(p => p.Shown)
+            .Select(p => new ShellMenuItem(ClickThroughItem(p.Id, !p.ClickThrough), p.Name) { Checked = p.ClickThrough })
+            .ToList();
+        return lines.Count > 0 ? lines : [new(NoWindowsShown, "No Windows Shown", ShellItemKind.Status)];
     }
 }

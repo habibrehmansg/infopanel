@@ -125,14 +125,14 @@ public sealed unsafe class MacShellMenuTests
             "InfoPanel", "Running · 2.0.0", "",
             "Habib Rehman\nhabib@example.com", "",
             "Open Editor", "Edit from Another Computer…", "",
-            "Show on Desktop", "",
+            "Show on Desktop", "Click-Through", "",
             "Show Data Folder in Finder", "Open Logs Folder", "Copy Engine Details", "",
             "Quit InfoPanel",
         ], lines.Select(l => l.Separator ? "" : l.Text));
         Assert.Equal(
         [
             ShellMenu.Header, ShellMenu.Status, null, ShellMenu.SignedIn, null, ShellMenu.OpenEditor, ShellMenu.EditFromAnotherComputer, null,
-            ShellMenu.ShowOnDesktop, null, ShellMenu.ShowDataFolder, ShellMenu.OpenLogsFolder, ShellMenu.CopyEngineDetails, null, ShellMenu.Quit,
+            ShellMenu.ShowOnDesktop, ShellMenu.ClickThrough, null, ShellMenu.ShowDataFolder, ShellMenu.OpenLogsFolder, ShellMenu.CopyEngineDetails, null, ShellMenu.Quit,
         ], lines.Select(l => l.Id));
         Assert.Equal("q", lines[^1].KeyEquivalent);
     }
