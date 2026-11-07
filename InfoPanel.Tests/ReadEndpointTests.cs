@@ -69,7 +69,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal("""{"providers":["http"]}""", session.GetProperty("media").GetRawText());
         Assert.Equal(SpecLimits.Default.Nodes, support.GetProperty("infopanel.scene/1").GetProperty("limits").GetProperty("nodes").GetInt32());
         Assert.Equal(SpecLimits.Default.Items, support.GetProperty("infopanel.document/1").GetProperty("limits").GetProperty("items").GetInt32());
-        Assert.Equal("""["plugins"]""", session.GetProperty("features").GetRawText());
+        Assert.Equal("""["plugins","devices"]""", session.GetProperty("features").GetRawText());
 
         // The PC's regional format as the engine read it at start-up (every test engine's is en-US).
         Assert.Equal("""{"tag":"en-US","decimalSeparator":".","groupSeparator":","}""", session.GetProperty("locale").GetRawText());

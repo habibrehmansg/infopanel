@@ -52,6 +52,13 @@ public sealed record SavedPanel(
 }
 
 /// <summary>
+/// <c>devices.json</c> was replaced with the change, so it counts, but its folder couldn't be flushed to disk afterwards
+/// (a power loss may still undo it).
+/// </summary>
+public sealed class PanelsNotFlushedException(Exception inner)
+    : Exception("The panels file holds the change, but its folder couldn't be flushed to disk.", inner);
+
+/// <summary>
 /// <c>devices.json</c> in the data folder (docs/2.0/data-folder.md): <c>{"format": "infopanel.devices/1", "devices":
 /// [{"id", "family", "model", "serial", "port", "enabled", "profileId", "rotation", "brightness", "encoding"}]}</c>, in the order the
 /// panels were first seen. Read once at start through <see cref="EngineJson"/>, members it doesn't know (in the file and
@@ -89,8 +96,11 @@ public sealed partial class PanelStore
     /// <summary>The saved panels, in the order first seen.</summary>
     public IReadOnlyList<SavedPanel> Devices => _devices;
 
-    /// <summary>How the file is written: <see cref="AtomicFile"/> (tests give a storage fault).</summary>
-    public Action<string, byte[]> Writer { get; set; } = (path, bytes) => AtomicFile.Write(path, bytes);
+    /// <summary>
+    /// How the file is written: <see cref="AtomicFile"/>, calling its third argument once the file is replaced, before its
+    /// folder is flushed (tests give a storage fault).
+    /// </summary>
+    public Action<string, byte[], Action> Writer { get; set; } = (path, bytes, replaced) => AtomicFile.Write(path, bytes, null, replaced);
 
     [GeneratedRegex(@"\Ainfopanel\.devices/([0-9]{1,4})\z", RegexOptions.CultureInvariant)]
     private static partial Regex FormatString();
@@ -367,11 +377,13 @@ public sealed partial class PanelStore
 
     /// <summary>
     /// Replaces the saved panels with <paramref name="devices"/> and writes the file. The change counts only once written:
-    /// a write that fails throws and changes nothing.
+    /// a write that fails before the file is replaced throws and changes nothing; one that fails after it (flushing the
+    /// folder) counts and throws <see cref="PanelsNotFlushedException"/>.
     /// </summary>
     /// <exception cref="InvalidOperationException">The engine can't hold the file (<see cref="Problem"/>), or the file would be over <see cref="MaxBytes"/>.</exception>
     /// <exception cref="IOException">The write failed; nothing changed.</exception>
     /// <exception cref="UnauthorizedAccessException">The write was refused; nothing changed.</exception>
+    /// <exception cref="PanelsNotFlushedException">The file was replaced, so the change counts, but its folder couldn't be flushed.</exception>
     public void Save(IReadOnlyList<SavedPanel> devices)
     {
         if (Problem != null)
@@ -382,7 +394,17 @@ public sealed partial class PanelStore
             var bytes = Compose(next);
             if (bytes.Length > MaxBytes)
                 throw new InvalidOperationException($"The panels file would be larger than {MaxBytes} bytes.");
-            Writer(_path, bytes);
+            var replaced = false;
+            try
+            {
+                Writer(_path, bytes, () => replaced = true);
+            }
+            catch (Exception ex) when (replaced)
+            {
+                // The file holds the change; only flushing its folder failed. It is what the next start reads, so it counts.
+                _devices = next;
+                throw new PanelsNotFlushedException(ex);
+            }
         }
         _devices = next;
     }

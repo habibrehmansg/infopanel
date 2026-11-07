@@ -518,6 +518,72 @@
         }
       }
     },
+    "/api/devices": {
+      "get": {
+        "operationId": "listDevices",
+        "summary": "The USB panels the engine has saved, in the order it first saw them, with their state, settings and the list's version (the devices feature).",
+        "description": "docs/api.md#devices.",
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {
+            "description": "The saved panels; none, and `supported` false with its `reason`, where the engine drives no panels this run.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/deviceList"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"}
+        }
+      }
+    },
+    "/api/devices/{id}": {
+      "parameters": [
+        {"name": "id", "in": "path", "required": true, "description": "The device's id (deviceEntry.id).", "schema": {"type": "string"}}
+      ],
+      "patch": {
+        "operationId": "changeDevice",
+        "summary": "Changes a panel's settings: the ones given are merged into its own, saved, and applied at once (the devices feature).",
+        "description": "docs/api.md#changing-a-device.",
+        "security": [{"bearer": ["session"]}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/deviceChange"}}}},
+        "responses": {
+          "200": {
+            "description": "Saved and applied: the panel's entry.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/deviceEntry"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {
+            "description": "No such device (none at all where the engine drives no panels).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "409": {
+            "description": "The engine couldn't read its devices file when it started: it changes no device this run and leaves the file as it is. Nothing was changed.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "422": {
+            "description": "The body breaks its definition or `requestBytes` (a value out of range included), or names a setting the device's family doesn't honour (`device.setting` at /settings/{name}); nothing was changed.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          }
+        }
+      },
+      "delete": {
+        "operationId": "forgetDevice",
+        "summary": "Forgets a panel: its screen turned off, its settings removed; plugged in, it comes back as a new panel (the devices feature).",
+        "description": "docs/api.md#forgetting-a-device.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "204": {"description": "Forgotten."},
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {
+            "description": "No such device (none at all where the engine drives no panels).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "409": {
+            "description": "The engine couldn't read its devices file when it started: it forgets no device this run and leaves the file as it is.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
     "/api/profiles": {
       "get": {
         "operationId": "listProfiles",

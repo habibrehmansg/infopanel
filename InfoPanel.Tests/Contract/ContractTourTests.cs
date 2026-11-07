@@ -382,6 +382,53 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
             await Send(listingSession, "GET", "/api/displays", 500);
         }
 
+        // The USB panel devices (the devices feature), every token's to read and the session token's to change: none on
+        // this engine (no panels); an engine of its own over the fake USB backend finds one, changes it, refuses a value
+        // and an unknown device, sends the devices message and forgets it; another, on a devices.json it can't hold, 409.
+        await Send(reader, "GET", "/api/devices", 200);
+        var devicesReceived = new List<string>();
+        var panels = new InfoPanel.Core.Tests.Panels.Usb.FakeUsbBackend();
+        panels.Add(new InfoPanel.Core.Tests.Panels.Usb.FakeUsbDevice(new InfoPanel.Panels.Usb.UsbDeviceId(
+            InfoPanel.Panels.BeadaPanel.BeadaPanelProtocol.VendorId, InfoPanel.Panels.BeadaPanel.BeadaPanelProtocol.ProductId, 0, 4, "0-1"))
+        {
+            Reply = Panels.PanelReplies.Info(2, 5, 21, 1920, 480, "934072005c"),
+        });
+        using (var driving = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", Path.Combine(factory.Root, "devices")).UseSetting("Engine:NoPanels", "false")
+                   .ConfigureTestServices(s => s.AddSingleton(new InfoPanel.Panels.PanelServiceOptions { Backend = () => panels }))))
+        using (var drivingSession = driving.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            drivingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            await using var devicesSocket = await PreviewClient.ConnectAsync(driving, Ct);
+            await devicesSocket.ReceiveTextAsync("hello", Ct);
+            string? device = null;
+            for (var i = 0; i < 300 && device == null; i++)
+            {
+                var listed = (await Send(drivingSession, "GET", "/api/devices", 200)).GetProperty("devices");
+                device = listed.GetArrayLength() > 0 ? listed[0].GetProperty("id").GetString() : null;
+                if (device == null)
+                    await Task.Delay(50, Ct);
+            }
+            Assert.NotNull(device);
+            await Send(drivingSession, "PATCH", $"/api/devices/{device}", 200, Body("""{"settings":{"brightness":50}}"""));
+            await Send(drivingSession, "PATCH", $"/api/devices/{device}", 422, Body("""{"settings":{"brightness":101}}"""));
+            await Send(drivingSession, "PATCH", $"/api/devices/{AbsentProfile}", 404, Body("""{"settings":{"brightness":50}}"""));
+            await devicesSocket.ReceiveTextAsync("devices", Ct);
+            await Send(drivingSession, "DELETE", $"/api/devices/{device}", 204);
+            await Send(drivingSession, "DELETE", $"/api/devices/{AbsentProfile}", 404);
+            devicesReceived.AddRange(devicesSocket.ReceivedTypes);
+        }
+        var devicesUnheld = Path.Combine(factory.Root, "devices-unheld");
+        Directory.CreateDirectory(devicesUnheld);
+        File.WriteAllText(Path.Combine(devicesUnheld, "devices.json"), "{ not json");
+        using (var unheld = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", devicesUnheld).UseSetting("Engine:NoPanels", "false")
+                   .ConfigureTestServices(s => s.AddSingleton(new InfoPanel.Panels.PanelServiceOptions { Backend = () => new InfoPanel.Core.Tests.Panels.Usb.FakeUsbBackend() }))))
+        using (var unheldSession = unheld.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            unheldSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            await Send(unheldSession, "PATCH", $"/api/devices/{AbsentProfile}", 409, Body("""{"settings":{"brightness":50}}"""));
+            await Send(unheldSession, "DELETE", $"/api/devices/{AbsentProfile}", 409);
+        }
+
         // Profiles: create (from a document and empty), duplicate, list.
         var id = NewId();
         var document = Doc("Tour", 200, 100, Scene("a", 10, 10));
@@ -516,7 +563,7 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
 
         var (_, clientMessage, serverMessage, _) = Contract.Socket;
         var sent = socket.SentTypes.Concat(byMessage.SentTypes).ToHashSet();
-        var received = socket.ReceivedTypes.Concat(byMessage.ReceivedTypes).ToHashSet();
+        var received = socket.ReceivedTypes.Concat(byMessage.ReceivedTypes).Concat(devicesReceived).ToHashSet();
         var unsent = ApiContract.MessageTypes(clientMessage).Where(t => !sent.Contains(t)).ToList();
         var unreceived = ApiContract.MessageTypes(serverMessage).Append("frame").Where(t => !received.Contains(t)).ToList();
         Assert.True(unsent.Count == 0, $"Client messages the spec defines, never sent by the tour: {string.Join(", ", unsent)}");

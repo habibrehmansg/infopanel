@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,8 +12,13 @@ using Serilog;
 
 namespace InfoPanel.Panels;
 
-/// <summary>What the manager knows of a saved panel now (for the API later, and tests). <see cref="Jpeg"/>: whether a running panel streams JPEG.</summary>
-public sealed record PanelStatus(SavedPanel Saved, bool Connected, string State, string? Reason, BeadaPanelInfo? Info, double? Fps, double? FrameTimeMs, bool? Jpeg = null);
+/// <summary>
+/// What the manager knows of a saved panel now (the API's entry, and tests). <see cref="Jpeg"/>: whether a running panel
+/// streams JPEG. <see cref="ReasonCode"/>: the failure's code (<c>busy</c>, <c>access</c>, <c>notSupported</c>,
+/// <c>timeout</c>, <c>io</c>), or <c>settling</c> while a start waits out <see cref="PanelManager.JpegSettle"/>.
+/// </summary>
+public sealed record PanelStatus(SavedPanel Saved, bool Connected, string State, string? Reason, BeadaPanelInfo? Info, double? Fps, double? FrameTimeMs, bool? Jpeg = null,
+    string? ReasonCode = null);
 
 /// <summary>What the manager is given of the engine: profiles, the render service, the frame rate setting.</summary>
 public sealed record PanelHost(
@@ -22,6 +28,9 @@ public sealed record PanelHost(
     Action<IFrameSink> RequestChanged,
     Action<IFrameSink> Refresh,
     Func<int> FrameRate);
+
+/// <summary>A client's change to the saved panels that the panels file couldn't take: nothing changed, live or saved.</summary>
+public sealed class PanelsNotSavedException(Exception inner) : Exception("The panels file couldn't be written; nothing changed.", inner);
 
 /// <summary>
 /// The USB panels: detection every second and the sessions they want, on one thread of its own (detection passes,
@@ -55,6 +64,7 @@ public sealed class PanelManager : IAsyncDisposable
     private readonly List<SavedPanel> _devices;
     private readonly Dictionary<string, Runtime> _runtime = new(StringComparer.Ordinal);
     private readonly Dictionary<(byte Bus, byte Address), Seen> _seen = [];
+    private readonly Dictionary<UsbDeviceId, long> _forgottenJpegEnds = []; // a forgotten panel's JPEG end, kept while it stays plugged in
     private readonly TaskCompletionSource _threadEnded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Lock _liveLock = new();
     private readonly HashSet<PanelRunner> _live = []; // runners started and not yet ended, for the stop (under _liveLock)
@@ -63,6 +73,9 @@ public sealed class PanelManager : IAsyncDisposable
     private volatile bool _stopping; // set under _liveLock; read anywhere
     private int _passQueued; // 1 while a timer's pass is queued or running: further ticks are dropped
     private long _profilesGeneration; // how many times the profiles changed (the manager's thread)
+    private long _version; // how many times the list changed this run (written on the manager's thread)
+    private IReadOnlyList<PanelStatus> _published; // the list as the version last counted it (the manager's thread)
+    private long? _statsCountedAt; // when a change of the stats alone was last counted
 
     public PanelManager(IUsbBackend backend, PanelStore store, PanelHost host, TimeProvider time, ILogger logger, PanelRunnerOptions? runnerOptions = null)
     {
@@ -75,7 +88,20 @@ public sealed class PanelManager : IAsyncDisposable
         _logger = logger;
         _runnerOptions = runnerOptions ?? new PanelRunnerOptions();
         _devices = [.. store.Devices];
+        _published = [.. _devices.Select(StatusOf)];
     }
+
+    /// <summary>How many times the saved panels and their state changed this run: 0 at start (<see cref="Changed"/>).</summary>
+    public long Version => Interlocked.Read(ref _version);
+
+    /// <summary>
+    /// Raised on the manager's thread with the new <see cref="Version"/> after a change to what <see cref="ListAsync"/>
+    /// answers; a change of the running panels' stats alone counts at most once a second.
+    /// </summary>
+    public event Action<long>? Changed;
+
+    /// <summary>How often a change of the stats alone counts as a change of the list, at most.</summary>
+    public static readonly TimeSpan StatsInterval = TimeSpan.FromSeconds(1);
 
     /// <summary>Starts the manager's thread; with <paramref name="passes"/>, a pass every <see cref="PassInterval"/> (the first at once).</summary>
     public void Start(bool passes = true)
@@ -113,6 +139,7 @@ public sealed class PanelManager : IAsyncDisposable
                 try
                 {
                     action();
+                    Publish();
                 }
                 catch (Exception ex)
                 {
@@ -147,7 +174,9 @@ public sealed class PanelManager : IAsyncDisposable
         {
             try
             {
-                answer.TrySetResult(ask());
+                var result = ask();
+                Publish(); // counted before the caller has the answer, so a list it reads next has the version of its change
+                answer.TrySetResult(result);
             }
             catch (Exception ex)
             {
@@ -187,6 +216,7 @@ public sealed class PanelManager : IAsyncDisposable
     /// turning it off by stopping the session (screen off); another encoding stops the session too, and the next pass
     /// starts it in the new one. Null when there is no such panel.
     /// </summary>
+    /// <exception cref="PanelsNotSavedException">The panels file couldn't be written: nothing changed.</exception>
     public Task<SavedPanel?> UpdateAsync(string id, Func<SavedPanel, SavedPanel> change) => Ask(() =>
     {
         var index = _devices.FindIndex(d => d.Id == id);
@@ -194,8 +224,10 @@ public sealed class PanelManager : IAsyncDisposable
             return null;
         var before = _devices[index];
         var after = change(before) with { Id = before.Id, Family = before.Family, Kept = before.Kept };
+        List<SavedPanel> next = [.. _devices];
+        next[index] = after;
+        SaveChange(next);
         _devices[index] = after;
-        Save();
         var runtime = RuntimeOf(id);
         if (runtime.Runner is { } runner && !runtime.Stopping)
         {
@@ -217,6 +249,72 @@ public sealed class PanelManager : IAsyncDisposable
         return (SavedPanel?)after;
     });
 
+    /// <summary>
+    /// Forgets a saved panel: its session stopped with its screen off, its settings removed and saved. A connected panel
+    /// is identified again once its session has ended, and saved as new (off, without a profile). False when there is no
+    /// such panel.
+    /// </summary>
+    /// <exception cref="PanelsNotSavedException">The panels file couldn't be written: nothing changed.</exception>
+    public Task<bool> ForgetAsync(string id) => Ask(() =>
+    {
+        var index = _devices.FindIndex(d => d.Id == id);
+        if (index < 0)
+            return false;
+        List<SavedPanel> next = [.. _devices];
+        next.RemoveAt(index);
+        SaveChange(next);
+        _devices.RemoveAt(index);
+        var runtime = RuntimeOf(id);
+        if (runtime.Runner is { } runner)
+        {
+            runtime.Forgotten = true; // its USB device is left alone until the session ends (Ended)
+            if (!runtime.Stopping)
+            {
+                runtime.Stopping = true;
+                runner.RequestStop();
+            }
+        }
+        else
+            Release(id);
+        return true;
+    });
+
+    /// <summary>
+    /// A forgotten panel's runtime and its USB device dropped: the next pass identifies the device as new. The panel's
+    /// <see cref="JpegSettle"/> is the panel's own, not its settings': kept for the device found again.
+    /// </summary>
+    private void Release(string id)
+    {
+        if (_runtime.Remove(id, out var runtime) && runtime.Usb is { } usb && runtime.JpegEndedAt is { } ended)
+            _forgottenJpegEnds[usb] = ended;
+        foreach (var (key, seen) in _seen.ToList())
+            if (seen.DeviceId == id)
+                _seen.Remove(key);
+    }
+
+    /// <summary>
+    /// After each of the manager's actions: when the list it answers changed, <see cref="Version"/> goes up and
+    /// <see cref="Changed"/> is raised; a change of the stats alone only once <see cref="StatsInterval"/> has passed since
+    /// the last one counted (it counts later, after another action, when it is still there).
+    /// </summary>
+    private void Publish()
+    {
+        List<PanelStatus> now = [.. _devices.Select(StatusOf)];
+        if (now.SequenceEqual(_published))
+            return;
+        if (now.Select(WithoutStats).SequenceEqual(_published.Select(WithoutStats)))
+        {
+            if (_statsCountedAt is { } counted && _time.GetElapsedTime(counted) < StatsInterval)
+                return;
+            _statsCountedAt = _time.GetTimestamp();
+        }
+        _published = now;
+        var version = Interlocked.Increment(ref _version);
+        Changed?.Invoke(version);
+    }
+
+    private static PanelStatus WithoutStats(PanelStatus status) => status with { Fps = null, FrameTimeMs = null };
+
     /// <summary>The saved panels and their state now.</summary>
     public Task<IReadOnlyList<PanelStatus>> ListAsync() => Ask<IReadOnlyList<PanelStatus>>(() => [.. _devices.Select(StatusOf)]);
 
@@ -234,9 +332,10 @@ public sealed class PanelManager : IAsyncDisposable
         var reason = runner is { Running: true } ? null
             : waiting ? $"the panel takes no new stream until {JpegSettle.TotalSeconds:0} s after its JPEG stream ended"
             : runtime.Reason;
+        var code = reason == null ? null : waiting ? "settling" : runtime.ReasonCode;
         return new PanelStatus(saved, runtime.Usb != null, state, reason, runtime.Info,
             runner is { Running: true } ? runner.Fps : null, runner is { Running: true } ? runner.FrameTimeMs : null,
-            runner is { Running: true } ? runner.Jpeg : null);
+            runner is { Running: true } ? runner.Jpeg : null, code);
     }
 
     /// <summary>
@@ -281,6 +380,8 @@ public sealed class PanelManager : IAsyncDisposable
         }
 
         var panels = listed.Where(d => d.VendorId == BeadaPanelProtocol.VendorId && d.ProductId == BeadaPanelProtocol.ProductId).ToList();
+        foreach (var gone in _forgottenJpegEnds.Keys.Where(u => !panels.Contains(u)).ToList())
+            _forgottenJpegEnds.Remove(gone); // unplugged: it starts afresh
 
         // Gone: no longer listed at that bus and address (or another device is there now).
         foreach (var (key, seen) in _seen.ToList())
@@ -390,6 +491,8 @@ public sealed class PanelManager : IAsyncDisposable
         runtime.Usb = usb;
         runtime.Info = info;
         runtime.Reason = null;
+        if (_forgottenJpegEnds.Remove(usb, out var ended) && !(runtime.JpegEndedAt > ended))
+            runtime.JpegEndedAt = ended;
     }
 
     private void Save()
@@ -401,6 +504,28 @@ public sealed class PanelManager : IAsyncDisposable
         catch (Exception ex)
         {
             _logger.Error(ex, "USB panels: the panels file couldn't be written; the change holds for this run");
+        }
+    }
+
+    /// <summary>
+    /// A client's change, written before it is applied: one the file can't take changes nothing. One the file took whose
+    /// folder couldn't be flushed afterwards is applied, as the file holds it (logged), so the file and the run agree.
+    /// </summary>
+    /// <exception cref="PanelsNotSavedException">The file couldn't be written.</exception>
+    private void SaveChange(List<SavedPanel> next)
+    {
+        try
+        {
+            _store.Save(next);
+        }
+        catch (PanelsNotFlushedException ex)
+        {
+            _logger.Warning(ex, "USB panels: the panels file holds the change, but its folder couldn't be flushed; the change is made");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _logger.Error(ex, "USB panels: the panels file couldn't be written; the change wasn't made");
+            throw new PanelsNotSavedException(ex);
         }
     }
 
@@ -466,15 +591,19 @@ public sealed class PanelManager : IAsyncDisposable
 
     private void Ended(string id, PanelRunner runner, PanelRunEnd end)
     {
-        var runtime = RuntimeOf(id);
-        if (runtime.Runner != runner)
+        if (!_runtime.TryGetValue(id, out var runtime) || runtime.Runner != runner)
             return;
         runtime.Runner = null;
         runtime.Stopping = false;
-        if (runner.JpegRefused != null)
-            runtime.JpegRefused = true;
         if (runner.Jpeg)
             runtime.JpegEndedAt = _time.GetTimestamp();
+        if (runtime.Forgotten)
+        {
+            Release(id);
+            return;
+        }
+        if (runner.JpegRefused != null)
+            runtime.JpegRefused = true;
         if (end.SinkClosed is { } closed)
         {
             // Held against this profile only while the profiles are as they were when the runner started.
@@ -491,6 +620,14 @@ public sealed class PanelManager : IAsyncDisposable
         if (runtime.Reason != end.Message)
             _logger.Information("Panel {Panel}: {Message}; tried again on the next pass", Label(id), end.Message);
         runtime.Reason = end.Message;
+        runtime.ReasonCode = end.Status switch
+        {
+            UsbStatus.Busy => "busy",
+            UsbStatus.Access => "access",
+            UsbStatus.NotSupported => "notSupported",
+            UsbStatus.Timeout => "timeout",
+            _ => "io",
+        };
     }
 
     private string Label(string id)
@@ -543,6 +680,8 @@ public sealed class PanelManager : IAsyncDisposable
         public PanelRunner? Runner;
         public bool Stopping;
         public string? Reason;
+        public string? ReasonCode; // Reason's code, for the API
+        public bool Forgotten; // forgotten while its session ran: released when it ends
         public string? ClosedProfile;
         public long ClosedGeneration;
         public long StartedGeneration;

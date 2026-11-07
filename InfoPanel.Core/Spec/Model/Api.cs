@@ -1126,6 +1126,102 @@ public sealed record DisplayInfoBody
     public required bool Primary { get; init; }
 }
 
+// The USB panel devices (GET, PATCH and DELETE /api/devices…, the devices feature).
+
+/// <summary>
+/// The saved panels, in the order first seen, with the list's <see cref="Version"/>; none, and <see cref="Supported"/>
+/// false with its <see cref="Reason"/> (<c>off</c>, <c>library</c>, <c>store</c>), where the engine drives no panels.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceList")]
+public sealed record DeviceList
+{
+    public required bool Supported { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Reason { get; init; }
+    public required long Version { get; init; }
+    public required IReadOnlyList<DeviceEntryBody> Devices { get; init; }
+}
+
+/// <summary>One saved panel: what it is, its state now, its settings and what its family honours.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceEntry")]
+public sealed record DeviceEntryBody
+{
+    public required string Id { get; init; }
+    public required string Family { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required DeviceModelBody? Model { get; init; }
+    public required bool Connected { get; init; }
+    public required string State { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required DeviceReasonBody? Reason { get; init; }
+    public required DeviceSettingsBody Settings { get; init; }
+    public required IReadOnlyList<string> Supports { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required DeviceStatsBody? Stats { get; init; }
+    public required DeviceDetailsBody Details { get; init; }
+}
+
+/// <summary>A panel's model: its id within its family, and its size in pixels.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceModel")]
+public sealed record DeviceModelBody
+{
+    public required string Id { get; init; }
+    public required int Width { get; init; }
+    public required int Height { get; init; }
+}
+
+/// <summary>Why a panel isn't running as it should: an open code and a technical message.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceReason")]
+public sealed record DeviceReasonBody
+{
+    public required string Code { get; init; }
+    public required string Message { get; init; }
+}
+
+/// <summary>A panel's settings, as saved.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceSettings")]
+public sealed record DeviceSettingsBody
+{
+    public required bool Enabled { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? ProfileId { get; init; }
+    public required int Rotation { get; init; }
+    public required int Brightness { get; init; }
+}
+
+/// <summary>A running panel's frames a second and milliseconds a frame.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceStats")]
+public sealed record DeviceStatsBody
+{
+    public required double Fps { get; init; }
+    public required double FrameTimeMs { get; init; }
+}
+
+/// <summary>A panel's USB vendor and product ids, port path, serial and firmware.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceDetails")]
+public sealed record DeviceDetailsBody
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? UsbId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Port { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Serial { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required int? Firmware { get; init; }
+}
+
+/// <summary>PATCH /api/devices/{id}: the settings to change.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceChange")]
+public sealed record DeviceChangeRequest
+{
+    public required DeviceSettingsChange Settings { get; init; }
+}
+
+/// <summary>The settings a change sets; a member left out keeps its value, and <c>profileId: null</c> clears it (<see cref="IRemovesMembers"/>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceSettingsChange")]
+public sealed record DeviceSettingsChange : IRemovesMembers
+{
+    public bool? Enabled { get; init; }
+    public string? ProfileId { get; init; }
+    public int? Rotation { get; init; }
+    public int? Brightness { get; init; }
+    /// <summary>The members this change clears (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
+
 // The preview socket's text messages (the schema's clientMessage and serverMessage; docEvent is above).
 
 /// <summary>The first message on <c>/ws</c> when the token wasn't offered as a subprotocol. <see cref="Type"/> is always <c>auth</c>.</summary>
@@ -1193,6 +1289,14 @@ public sealed record ProfilesMessage
 /// <summary>The engine settings changed (<see cref="Version"/> is theirs after the change). <see cref="Type"/> is always <c>settings</c>.</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/settingsMessage")]
 public sealed record SettingsMessage
+{
+    public required string Type { get; init; }
+    public required long Version { get; init; }
+}
+
+/// <summary>The USB panel devices' list changed (<see cref="Version"/> is its version after the change). <see cref="Type"/> is always <c>devices</c>.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/devicesMessage")]
+public sealed record DevicesMessage
 {
     public required string Type { get; init; }
     public required long Version { get; init; }

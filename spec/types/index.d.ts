@@ -26,7 +26,7 @@ export interface Session {
   /** When this run of the engine started, in UTC to the second. The same for the whole run, like `instance`. */
   started: Timestamp;
   /**
-   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins. A client ignores a name it doesn't know.
+   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, and `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels. A client ignores a name it doesn't know.
    * Unique items.
    */
   features: ApiFeature[];
@@ -1684,6 +1684,146 @@ export interface DisplayInfo {
   primary: boolean;
 }
 
+/** GET /api/devices: the USB panels the engine has saved, in the order it first saw them, and their state now (docs/api.md#devices). Read tolerantly: a client ignores members it doesn't know. */
+export interface DeviceList {
+  /** Whether the engine drives USB panels this run. When false, `devices` is empty and `reason` says why. */
+  supported: boolean;
+  /** Why `supported` is false, else null: `off` (the engine was started without panels), `library` (it has no USB library) or `store` (it couldn't read its devices file when it started: it changes no device this run and leaves the file as it is). A client treats a reason it doesn't know as `library`. */
+  reason: "off" | "library" | "store" | null;
+  /**
+   * How many times the list has changed in this run of the engine (the `devices` message's): 0 when it starts, greater for a later change. A change of the running panels' `stats` alone counts at most once a second.
+   * Range: 0–9007199254740991.
+   */
+  version: number;
+  /** The saved panels. */
+  devices: DeviceEntry[];
+}
+
+/** One saved USB panel (docs/api.md#devices): what it is, its state now, its settings and those its family honours. */
+export interface DeviceEntry {
+  /**
+   * The device's id, which names it in PATCH and DELETE /api/devices/{id}: a UUID in lower case the engine made when it first saw the panel.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id: string;
+  /**
+   * The kind of panel, by the protocol the engine drives it with: `beadapanel`. A client shows a family it doesn't know by its name.
+   * Length: ≥ 1.
+   */
+  family: string;
+  /** Its model, or null before the engine has identified it. */
+  model: DeviceModel | null;
+  /** Whether it is plugged in and identified now. */
+  connected: boolean;
+  /** `notConnected` (not plugged in), `off` (plugged in, and turned off, without a profile, or its profile can't be shown), `starting` (its session is starting, or waiting until the panel takes one: `reason` says why), `running` (it shows its profile) or `failed` (its session failed: `reason` says why; it is tried again every second). A client treats a state it doesn't know as `failed`. */
+  state: "notConnected" | "off" | "starting" | "running" | "failed";
+  /** Why it is `failed` or `starting` and waiting, or null. */
+  reason: DeviceReason | null;
+  settings: DeviceSettings;
+  /**
+   * The names of the settings its family honours (a change of any other is refused); `enabled`, `profileId`, `rotation` and `brightness` for a BeadaPanel, none for a family the engine doesn't drive.
+   * Unique items.
+   */
+  supports: string[];
+  /** While it is `running`: its frames a second and the time a frame takes; else null. */
+  stats: DeviceStats | null;
+  details: DeviceDetails;
+}
+
+/** A panel's model. */
+export interface DeviceModel {
+  /**
+   * The model's id within its family, such as "8" or "5C". A client words it.
+   * Length: 1–64.
+   */
+  id: string;
+  /**
+   * The panel's width in pixels, as it is mounted at rotation 0.
+   * Range: 1–16384.
+   */
+  width: number;
+  /**
+   * The panel's height in pixels, as it is mounted at rotation 0.
+   * Range: 1–16384.
+   */
+  height: number;
+}
+
+/** Why a panel is `failed`, or `starting` and waiting (docs/api.md#devices). */
+export interface DeviceReason {
+  /**
+   * The reason for programs, an open code: `busy` (another program holds the panel), `access` (the system won't let the engine use it), `notSupported` (its driver can't do what the engine asks), `timeout` (it stopped answering), `io` (any other failure of a transfer) or `settling` (the panel takes no new session for a while after a JPEG one ended; it starts once it does). A client words the codes it knows and shows `message` for one it doesn't.
+   * Pattern: `^[a-z][A-Za-z0-9]{0,63}$`.
+   */
+  code: string;
+  /**
+   * The reason in English, technical, for people and bug reports.
+   * Length: 1–4096.
+   */
+  message: string;
+}
+
+/** A panel's settings, as the engine keeps them in its devices file. */
+export interface DeviceSettings {
+  /** Whether it shows its profile ("Show on this panel"). A new panel is saved off. */
+  enabled: boolean;
+  /** The profile it shows, or null. A profile deleted since is kept: the panel is off until a profile with that id can be shown again. A value in the devices file that isn't a document's id is answered as null (and kept in the file). */
+  profileId: DocumentId | null;
+  /** Degrees clockwise the picture is turned on the panel. A client treats a rotation it doesn't know as 0. */
+  rotation: 0 | 90 | 180 | 270;
+  /**
+   * The backlight, in percent.
+   * Range: 0–100.
+   */
+  brightness: number;
+}
+
+/** A running panel's frames, as the engine measures them. */
+export interface DeviceStats {
+  /**
+   * Frames written a second, over the last second or so.
+   * Range: ≥ 0.
+   */
+  fps: number;
+  /**
+   * Milliseconds a frame takes to write (and encode), on average.
+   * Range: ≥ 0.
+   */
+  frameTimeMs: number;
+}
+
+/** What identifies a panel, for people and bug reports; each null when the engine doesn't know it. */
+export interface DeviceDetails {
+  /**
+   * Its USB vendor and product ids, four lower-case hexadecimal digits each, as "4e58:1001".
+   * Pattern: `^[0-9a-f]{4}:[0-9a-f]{4}$`.
+   */
+  usbId: string | null;
+  /** The USB port path it was last seen at, as the system numbers it ("0-1.2"). */
+  port: string | null;
+  /** The serial number it reports. */
+  serial: string | null;
+  /**
+   * Its firmware version as it reports it, once identified this run.
+   * Range: 0–65535.
+   */
+  firmware: number | null;
+}
+
+/** PATCH /api/devices/{id}: settings to change (docs/api.md#changing-a-device). */
+export interface DeviceChange {
+  settings: DeviceSettingsChange;
+}
+
+/** The settings a change sets, each as deviceSettings has it; a setting left out keeps its value. */
+export interface DeviceSettingsChange {
+  enabled?: boolean;
+  profileId?: DocumentId | null;
+  rotation?: 0 | 90 | 180 | 270;
+  /** Range: 0–100. */
+  brightness?: number;
+}
+
 /** A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket). */
 export type ClientMessage = AuthMessage | SubscribeMessage | ViewMessage | KeyframeMessage | UnsubscribeMessage;
 
@@ -1734,7 +1874,7 @@ export type FrameRequestScale = number;
 export type FrameRequestFps = number;
 
 /** A text message the engine sends on /ws (docs/api.md#the-preview-socket): a JSON object with a `type`. Frames are binary messages (frameHeader). Read tolerantly (docs/versioning.md#unknown-members-and-values): a client ignores a type and members it doesn't know. */
-export type ServerMessage = HelloMessage | DocEvent | ProfilesMessage | SettingsMessage | ErrorMessage;
+export type ServerMessage = HelloMessage | DocEvent | ProfilesMessage | SettingsMessage | DevicesMessage | ErrorMessage;
 
 /** The engine's first message on /ws, once the connection is authenticated. */
 export interface HelloMessage {
@@ -1763,6 +1903,16 @@ export interface SettingsMessage {
   type: "settings";
   /**
    * The settings' `version` after the change (engineSettings): greater for a later change, within the run hello names.
+   * Range: 1–9007199254740991.
+   */
+  version: number;
+}
+
+/** The USB panel devices' list changed (GET /api/devices): a panel found, plugged in or out, its state or settings changed, or forgotten, by any client; a change of the running panels' stats alone at most once a second. Sent to every socket, and after `hello` when the list has changed in this run. The client reads GET /api/devices. The engine keeps only the newest to send. */
+export interface DevicesMessage {
+  type: "devices";
+  /**
+   * The list's `version` after the change (deviceList): greater for a later change, within the run hello names.
    * Range: 1–9007199254740991.
    */
   version: number;
@@ -4664,6 +4814,74 @@ export interface ApiOperations {
       401: Problem;
       /** The engine couldn't list the displays: the system didn't answer within 5 seconds, or failed. The error is in the engine's log. */
       500: Problem;
+    };
+  };
+  /**
+   * listDevices: The USB panels the engine has saved, in the order it first saw them, with their state, settings and the list's version (the devices feature).
+   *
+   * docs/api.md#devices.
+   */
+  "GET /api/devices": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The saved panels; none, and `supported` false with its `reason`, where the engine drives no panels this run. */
+      200: DeviceList;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+    };
+  };
+  /**
+   * changeDevice: Changes a panel's settings: the ones given are merged into its own, saved, and applied at once (the devices feature).
+   *
+   * docs/api.md#changing-a-device.
+   */
+  "PATCH /api/devices/{id}": {
+    params: {
+      /** The device's id (deviceEntry.id). */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: DeviceChange;
+    responses: {
+      /** Saved and applied: the panel's entry. */
+      200: DeviceEntry;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such device (none at all where the engine drives no panels). */
+      404: Problem;
+      /** The engine couldn't read its devices file when it started: it changes no device this run and leaves the file as it is. Nothing was changed. */
+      409: Problem;
+      /** The body breaks its definition or `requestBytes` (a value out of range included), or names a setting the device's family doesn't honour (`device.setting` at /settings/{name}); nothing was changed. */
+      422: InvalidProblem;
+    };
+  };
+  /**
+   * forgetDevice: Forgets a panel: its screen turned off, its settings removed; plugged in, it comes back as a new panel (the devices feature).
+   *
+   * docs/api.md#forgetting-a-device.
+   */
+  "DELETE /api/devices/{id}": {
+    params: {
+      /** The device's id (deviceEntry.id). */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** Forgotten. */
+      204: null;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such device (none at all where the engine drives no panels). */
+      404: Problem;
+      /** The engine couldn't read its devices file when it started: it forgets no device this run and leaves the file as it is. */
+      409: Problem;
     };
   };
   /**

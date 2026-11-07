@@ -139,7 +139,7 @@ public sealed class PanelStoreTests : IDisposable
     public void A_failed_write_changes_nothing()
     {
         var store = PanelStore.Read(FilePath, Logged().Logger);
-        store.Writer = (_, _) => throw new IOException("disk full");
+        store.Writer = (_, _, _) => throw new IOException("disk full");
         Assert.Throws<IOException>(() => store.Save([new SavedPanel(Id1, "beadapanel", "8", null, "0-1")]));
         Assert.Empty(store.Devices);
         Assert.False(File.Exists(FilePath));

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:infopanel:api:1",
-  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, integration tokens, sensors and their readings, the engine settings, the engine's recent log entries, the displays, and the preview socket's messages, frame headers (with item bounds) and change events. spec/openapi.json says which request carries which. See docs/api.md, docs/commit.md and docs/geometry.md.",
+  "description": "Engine API bodies that carry the document format: the session and what the engine supports, the profile list and creating and duplicating profiles, documents, blobs, commits, undo, redo and revert and their results, problems, integration tokens, sensors and their readings, the engine settings, the engine's recent log entries, the displays, the USB panel devices, and the preview socket's messages, frame headers (with item bounds) and change events. spec/openapi.json says which request carries which. See docs/api.md, docs/commit.md and docs/geometry.md.",
   "$defs": {
     "session": {
       "description": "GET /api/session: the engine, this run of it and what it supports.",
@@ -23,7 +23,7 @@
         "instance": { "$ref": "#/$defs/instanceId", "description": "This run of the engine: new every time the engine starts, so a client that sees another knows the engine restarted (and that every document tag it read before is stale). Not a document's tag: a commit names its document's (documentResponse)." },
         "started": { "$ref": "#/$defs/timestamp", "description": "When this run of the engine started, in UTC to the second. The same for the whole run, like `instance`." },
         "features": {
-          "description": "The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins. A client ignores a name it doesn't know.",
+          "description": "The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, and `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels. A client ignores a name it doesn't know.",
           "type": "array",
           "items": { "$ref": "#/$defs/apiFeature" },
           "uniqueItems": true
@@ -1813,6 +1813,127 @@
       }
     },
 
+    "deviceList": {
+      "description": "GET /api/devices: the USB panels the engine has saved, in the order it first saw them, and their state now (docs/api.md#devices). Read tolerantly: a client ignores members it doesn't know.",
+      "type": "object",
+      "required": ["supported", "reason", "version", "devices"],
+      "additionalProperties": false,
+      "properties": {
+        "supported": { "description": "Whether the engine drives USB panels this run. When false, `devices` is empty and `reason` says why.", "type": "boolean" },
+        "reason": {
+          "description": "Why `supported` is false, else null: `off` (the engine was started without panels), `library` (it has no USB library) or `store` (it couldn't read its devices file when it started: it changes no device this run and leaves the file as it is). A client treats a reason it doesn't know as `library`.",
+          "oneOf": [{ "description": "A client treats a reason it doesn't know as `library`.", "enum": ["off", "library", "store"] }, { "type": "null" }]
+        },
+        "version": { "description": "How many times the list has changed in this run of the engine (the `devices` message's): 0 when it starts, greater for a later change. A change of the running panels' `stats` alone counts at most once a second.", "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "devices": { "description": "The saved panels.", "type": "array", "items": { "$ref": "#/$defs/deviceEntry" } }
+      }
+    },
+    "deviceEntry": {
+      "description": "One saved USB panel (docs/api.md#devices): what it is, its state now, its settings and those its family honours.",
+      "type": "object",
+      "required": ["id", "family", "model", "connected", "state", "reason", "settings", "supports", "stats", "details"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "description": "The device's id, which names it in PATCH and DELETE /api/devices/{id}: a UUID in lower case the engine made when it first saw the panel.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+        "family": { "description": "The kind of panel, by the protocol the engine drives it with: `beadapanel`. A client shows a family it doesn't know by its name.", "type": "string", "minLength": 1 },
+        "model": { "description": "Its model, or null before the engine has identified it.", "oneOf": [{ "$ref": "#/$defs/deviceModel" }, { "type": "null" }] },
+        "connected": { "description": "Whether it is plugged in and identified now.", "type": "boolean" },
+        "state": {
+          "description": "`notConnected` (not plugged in), `off` (plugged in, and turned off, without a profile, or its profile can't be shown), `starting` (its session is starting, or waiting until the panel takes one: `reason` says why), `running` (it shows its profile) or `failed` (its session failed: `reason` says why; it is tried again every second). A client treats a state it doesn't know as `failed`.",
+          "enum": ["notConnected", "off", "starting", "running", "failed"]
+        },
+        "reason": { "description": "Why it is `failed` or `starting` and waiting, or null.", "oneOf": [{ "$ref": "#/$defs/deviceReason" }, { "type": "null" }] },
+        "settings": { "$ref": "#/$defs/deviceSettings" },
+        "supports": {
+          "description": "The names of the settings its family honours (a change of any other is refused); `enabled`, `profileId`, `rotation` and `brightness` for a BeadaPanel, none for a family the engine doesn't drive.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "uniqueItems": true
+        },
+        "stats": { "description": "While it is `running`: its frames a second and the time a frame takes; else null.", "oneOf": [{ "$ref": "#/$defs/deviceStats" }, { "type": "null" }] },
+        "details": { "$ref": "#/$defs/deviceDetails" }
+      }
+    },
+    "deviceModel": {
+      "description": "A panel's model.",
+      "type": "object",
+      "required": ["id", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "description": "The model's id within its family, such as \"8\" or \"5C\". A client words it.", "type": "string", "minLength": 1, "maxLength": 64 },
+        "width": { "description": "The panel's width in pixels, as it is mounted at rotation 0.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "height": { "description": "The panel's height in pixels, as it is mounted at rotation 0.", "type": "integer", "minimum": 1, "maximum": 16384 }
+      }
+    },
+    "deviceReason": {
+      "description": "Why a panel is `failed`, or `starting` and waiting (docs/api.md#devices).",
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "The reason for programs, an open code: `busy` (another program holds the panel), `access` (the system won't let the engine use it), `notSupported` (its driver can't do what the engine asks), `timeout` (it stopped answering), `io` (any other failure of a transfer) or `settling` (the panel takes no new session for a while after a JPEG one ended; it starts once it does). A client words the codes it knows and shows `message` for one it doesn't.",
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]{0,63}$"
+        },
+        "message": { "description": "The reason in English, technical, for people and bug reports.", "type": "string", "minLength": 1, "maxLength": 4096 }
+      }
+    },
+    "deviceSettings": {
+      "description": "A panel's settings, as the engine keeps them in its devices file.",
+      "type": "object",
+      "required": ["enabled", "profileId", "rotation", "brightness"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "description": "Whether it shows its profile (\"Show on this panel\"). A new panel is saved off.", "type": "boolean" },
+        "profileId": { "description": "The profile it shows, or null. A profile deleted since is kept: the panel is off until a profile with that id can be shown again. A value in the devices file that isn't a document's id is answered as null (and kept in the file).", "oneOf": [{ "$ref": "urn:infopanel:common:1#/$defs/documentId" }, { "type": "null" }] },
+        "rotation": { "description": "Degrees clockwise the picture is turned on the panel. A client treats a rotation it doesn't know as 0.", "enum": [0, 90, 180, 270] },
+        "brightness": { "description": "The backlight, in percent.", "type": "integer", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "deviceStats": {
+      "description": "A running panel's frames, as the engine measures them.",
+      "type": "object",
+      "required": ["fps", "frameTimeMs"],
+      "additionalProperties": false,
+      "properties": {
+        "fps": { "description": "Frames written a second, over the last second or so.", "type": "number", "minimum": 0 },
+        "frameTimeMs": { "description": "Milliseconds a frame takes to write (and encode), on average.", "type": "number", "minimum": 0 }
+      }
+    },
+    "deviceDetails": {
+      "description": "What identifies a panel, for people and bug reports; each null when the engine doesn't know it.",
+      "type": "object",
+      "required": ["usbId", "port", "serial", "firmware"],
+      "additionalProperties": false,
+      "properties": {
+        "usbId": { "description": "Its USB vendor and product ids, four lower-case hexadecimal digits each, as \"4e58:1001\".", "type": ["string", "null"], "pattern": "^[0-9a-f]{4}:[0-9a-f]{4}$" },
+        "port": { "description": "The USB port path it was last seen at, as the system numbers it (\"0-1.2\").", "type": ["string", "null"] },
+        "serial": { "description": "The serial number it reports.", "type": ["string", "null"] },
+        "firmware": { "description": "Its firmware version as it reports it, once identified this run.", "type": ["integer", "null"], "minimum": 0, "maximum": 65535 }
+      }
+    },
+    "deviceChange": {
+      "description": "PATCH /api/devices/{id}: settings to change (docs/api.md#changing-a-device).",
+      "type": "object",
+      "required": ["settings"],
+      "additionalProperties": false,
+      "properties": {
+        "settings": { "$ref": "#/$defs/deviceSettingsChange" }
+      }
+    },
+    "deviceSettingsChange": {
+      "description": "The settings a change sets, each as deviceSettings has it; a setting left out keeps its value.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "profileId": { "oneOf": [{ "$ref": "urn:infopanel:common:1#/$defs/documentId" }, { "type": "null" }] },
+        "rotation": { "enum": [0, 90, 180, 270] },
+        "brightness": { "type": "integer", "minimum": 0, "maximum": 100 }
+      }
+    },
+
     "clientMessage": {
       "description": "A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket).",
       "oneOf": [
@@ -1894,6 +2015,7 @@
         { "$ref": "#/$defs/docEvent" },
         { "$ref": "#/$defs/profilesMessage" },
         { "$ref": "#/$defs/settingsMessage" },
+        { "$ref": "#/$defs/devicesMessage" },
         { "$ref": "#/$defs/errorMessage" }
       ]
     },
@@ -1926,6 +2048,16 @@
       "properties": {
         "type": { "const": "settings" },
         "version": { "description": "The settings' `version` after the change (engineSettings): greater for a later change, within the run hello names.", "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "devicesMessage": {
+      "description": "The USB panel devices' list changed (GET /api/devices): a panel found, plugged in or out, its state or settings changed, or forgotten, by any client; a change of the running panels' stats alone at most once a second. Sent to every socket, and after `hello` when the list has changed in this run. The client reads GET /api/devices. The engine keeps only the newest to send.",
+      "type": "object",
+      "required": ["type", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "devices" },
+        "version": { "description": "The list's `version` after the change (deviceList): greater for a later change, within the run hello names.", "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
       }
     },
     "errorMessage": {

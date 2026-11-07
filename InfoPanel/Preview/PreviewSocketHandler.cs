@@ -48,7 +48,9 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// on subscribe and after every change of the subscribed document's revision or state, whichever client made it;
 /// <c>profiles</c> on every <see cref="Workspace.ProfilesChanged"/>; <c>settings</c> after every change to the stored
 /// engine settings (<see cref="SettingsStore.Changed"/>), on a connection authenticated with the session token only,
-/// since only it reads them; <c>error</c> for a bad message, an unknown profile,
+/// since only it reads them; <c>devices</c> after every change to the USB panel devices' list
+/// (<see cref="InfoPanel.Panels.PanelManager.Changed"/>), on every connection, and after <c>hello</c> when the list has
+/// changed this run; <c>error</c> for a bad message, an unknown profile,
 /// one that can't be opened or a deleted one, each with its code and its path into the message it answers
 /// (spec/docs/api.md#errors-on-the-socket); binary frames (<see cref="FrameCodec"/>).</item>
 /// </list>
@@ -74,7 +76,7 @@ public static class PreviewSocketHandler
 
     private static async Task HandleAsync(HttpContext context, Workspace workspace, RenderService render,
         IHostApplicationLifetime lifetime, ILoggerFactory loggers, EngineRuntime runtime, TokenStore tokens, PreviewSocketOptions options,
-        SettingsStore settings, H264Backends backends, TimeProvider time)
+        SettingsStore settings, H264Backends backends, TimeProvider time, InfoPanel.Panels.PanelService panels)
     {
         if (!context.WebSockets.IsWebSocketRequest)
         {
@@ -101,7 +103,7 @@ public static class PreviewSocketHandler
         }
 
         // The settings' changes go to the session token's connections alone: an integration token can't read the settings.
-        var session = new PreviewSession(socket, workspace, render, logger, caller?.Allows(ApiScope.Session) == true ? settings : null, backends, time);
+        var session = new PreviewSession(socket, workspace, render, logger, caller?.Allows(ApiScope.Session) == true ? settings : null, backends, time, panels.Manager);
         var tokenId = caller?.TokenId;
         void OnRevoked(string id)
         {
@@ -351,6 +353,9 @@ internal readonly record struct PreviewError(string Code, string Path, string Me
 /// <item><c>settings</c> (a session token's connection only): a slot holding the newest settings version seen; sent when it
 /// is newer than the last one sent, and ahead of <c>profiles</c>.</item>
 /// <item><c>profiles</c>: a slot holding the newest workspace version seen; sent when it is newer than the last one sent.</item>
+/// <item><c>devices</c>: a slot holding the newest version of the USB panel devices' list seen, seeded with the list's
+/// version once the connection listens for changes; sent when it is newer than the last one sent (so after
+/// <c>hello</c> when the list has changed this run).</item>
 /// <item>Frames of the current subscription (each subscription has its own sink): at most <see cref="FramesPerTurn"/> a
 /// turn, in order, with a wake left pending when more wait, so neither a video stream nor an error flood starves the
 /// other or the close.</item>
@@ -369,6 +374,9 @@ internal sealed class PreviewSession
 
     /// <summary>The settings whose changes this connection is told of: the session token's connections only, else null.</summary>
     private readonly SettingsStore? _settings;
+
+    /// <summary>The USB panels whose list's changes this connection is told of; null where the engine drives none.</summary>
+    private readonly InfoPanel.Panels.PanelManager? _panels;
     /// <summary>How many <c>error</c> messages wait at most; the oldest is dropped beyond that.</summary>
     internal const int MaxQueuedErrors = 64;
 
@@ -387,6 +395,7 @@ internal sealed class PreviewSession
     private int _docSubscribed;
     private long _profilesVersion;
     private long _settingsVersion;
+    private long _devicesVersion;
     private volatile bool _closing;
     private WebSocketCloseStatus _closeStatus = WebSocketCloseStatus.NormalClosure;
     private string _closeDescription = "";
@@ -402,8 +411,9 @@ internal sealed class PreviewSession
     private readonly TimeProvider _time;
 
     public PreviewSession(WebSocket socket, Workspace workspace, RenderService render, ILogger logger, SettingsStore? settings = null,
-        H264Backends? backends = null, TimeProvider? time = null)
+        H264Backends? backends = null, TimeProvider? time = null, InfoPanel.Panels.PanelManager? panels = null)
     {
+        _panels = panels;
         _socket = socket;
         _workspace = workspace;
         _render = render;
@@ -438,6 +448,12 @@ internal sealed class PreviewSession
         _workspace.ProfilesChanged += OnProfilesChanged;
         if (_settings != null)
             _settings.Changed += OnSettingsChanged;
+        if (_panels != null)
+        {
+            _panels.Changed += OnDevicesChanged;
+            // Seeded once subscribed: a change made before (since the upgrade) is sent, not missed.
+            OnDevicesChanged(_panels.Version);
+        }
         using var onStopping = stopping.Register(() => BeginClose(WebSocketCloseStatus.EndpointUnavailable, "The engine is stopping."));
 
         var sending = SendLoopAsync(abort.Token);
@@ -458,6 +474,8 @@ internal sealed class PreviewSession
             _workspace.ProfilesChanged -= OnProfilesChanged;
             if (_settings != null)
                 _settings.Changed -= OnSettingsChanged;
+            if (_panels != null)
+                _panels.Changed -= OnDevicesChanged;
             Unsubscribe();
             BeginClose(_closeStatus, _closeDescription);
 
@@ -811,6 +829,21 @@ internal sealed class PreviewSession
         Wake();
     }
 
+    /// <summary>Raised on the panels' thread: only keeps the newest version and wakes the send loop.</summary>
+    private void OnDevicesChanged(long version)
+    {
+        var seen = Volatile.Read(ref _devicesVersion);
+        while (version > seen)
+        {
+            var previous = Interlocked.CompareExchange(ref _devicesVersion, version, seen);
+            if (previous == seen)
+                break;
+            seen = previous;
+        }
+
+        Wake();
+    }
+
     private void OnSinkClosed(WebPreviewSink sink, FrameSinkClosedReason reason)
     {
         long ends;
@@ -934,6 +967,7 @@ internal sealed class PreviewSession
         string? lastDoc = null;
         long settingsSent = 0;
         long profilesSent = 0;
+        long devicesSent = 0;
         await SendTextAsync(JsonSerializer.Serialize(new HelloMessage { Type = "hello", Protocol = Api.ReadEndpoints.Protocol, Instance = _workspace.Instance }, SpecJson.Options), ct);
 
         while (true)
@@ -988,6 +1022,15 @@ internal sealed class PreviewSession
                     return;
                 await SendTextAsync(JsonSerializer.Serialize(new ProfilesMessage { Type = "profiles", Version = profiles }, SpecJson.Options), ct);
                 profilesSent = profiles;
+            }
+
+            var devices = Volatile.Read(ref _devicesVersion);
+            if (devices > devicesSent)
+            {
+                if (!CanSend)
+                    return;
+                await SendTextAsync(JsonSerializer.Serialize(new DevicesMessage { Type = "devices", Version = devices }, SpecJson.Options), ct);
+                devicesSent = devices;
             }
 
             WebPreviewSink? sink;

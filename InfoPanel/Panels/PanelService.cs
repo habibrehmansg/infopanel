@@ -20,6 +20,9 @@ public sealed record PanelServiceOptions
     public Func<IUsbBackend>? Backend { get; init; }
 
     public PanelRunnerOptions Runner { get; init; } = new();
+
+    /// <summary>How <c>devices.json</c> is written (tests give a storage fault); null: <see cref="PanelStore.Writer"/>'s own.</summary>
+    internal Action<string, byte[], Action>? StoreWriter { get; init; }
 }
 
 /// <summary>
@@ -45,6 +48,12 @@ public sealed class PanelService(
     /// <summary>The running manager, or null when panels are off or unsupported this run.</summary>
     public PanelManager? Manager => _manager;
 
+    /// <summary>
+    /// Why there is no manager this run (the API's <c>reason</c>): <c>off</c> (<c>--no-panels</c>), <c>store</c>
+    /// (<c>devices.json</c> can't be held) or <c>library</c> (no libusb); null once the manager runs.
+    /// </summary>
+    public string? Unsupported { get; private set; } = "off";
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         if (options.NoPanels)
@@ -52,7 +61,13 @@ public sealed class PanelService(
 
         var store = PanelStore.Read(paths.DevicesFile, logger);
         if (store.Problem != null)
+        {
+            Unsupported = "store";
             return Task.CompletedTask;
+        }
+        if (_options.StoreWriter is { } writer)
+            store.Writer = writer;
+        Unsupported = "library";
 
         if (_options.Backend is { } make)
             _backend = make();
@@ -89,6 +104,7 @@ public sealed class PanelService(
         workspace.ProfilesChanged += OnProfilesChanged;
         settings.Changed += OnSettingsChanged;
         _manager.Start();
+        Unsupported = null;
         return Task.CompletedTask;
     }
 
