@@ -79,6 +79,26 @@ public sealed class SensorHub : ISensorStatusReader
         return TrySimulate(key, out reading);
     }
 
+    /// <summary><see cref="TryRead"/> through the source's <see cref="ISensorReader.TryPeek"/>: nothing put in use.</summary>
+    public bool TryPeek(SensorKey key, out SensorReading reading)
+    {
+        reading = default;
+        if (!IsWellFormed(key))
+            return false;
+
+        if (FindSource(key) is { } source)
+            return source.TryPeek(key, out reading);
+
+        return TrySimulate(key, out reading);
+    }
+
+    /// <summary>The source's <see cref="ISensorReader.NoteUse"/> for a key it handles.</summary>
+    public void NoteUse(SensorKey key)
+    {
+        if (IsWellFormed(key) && FindSource(key) is { } source)
+            source.NoteUse(key);
+    }
+
     /// <summary>
     /// The simulated value of a key no source handled, made or read under the hub's lock. Callers have already looked
     /// the key up once; this never routes it again, so a source that has since started handling the key cannot have

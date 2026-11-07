@@ -208,6 +208,7 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         var clock = Timed();
         var source = Source(clock);
 
+        source.Fetcher.NoteUse();
         await source.StartAsync(Ct);
         await Idle(source.Fetcher, 1);
         clock.Advance(TimeSpan.FromHours(3));
@@ -640,15 +641,16 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         var clock = Timed();
         var fetcher = Fetcher(clock);
 
+        fetcher.NoteUse();
         fetcher.Start();
         await Idle(fetcher, 1);
         AssertState(fetcher.State, SourceStateKind.Unavailable, reason);
-        clock.Advance(TimeSpan.FromHours(1));
+        Pass(clock, TimeSpan.FromHours(1), fetcher.NoteUse);
         await Idle(fetcher, 1);
-        clock.Advance(TimeSpan.FromHours(23) - TimeSpan.FromSeconds(1));
+        Pass(clock, TimeSpan.FromHours(23) - TimeSpan.FromSeconds(1), fetcher.NoteUse);
         await Idle(fetcher, 1);
         Assert.Single(_service.Requests);
-        clock.Advance(TimeSpan.FromSeconds(1));
+        Pass(clock, TimeSpan.FromSeconds(1), fetcher.NoteUse);
         await Idle(fetcher, 2);
         Assert.Equal(2, _service.Requests.Count);
         await fetcher.StopAsync(Ct);
@@ -661,6 +663,7 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         var clock = Timed();
         var fetcher = Fetcher(clock);
 
+        fetcher.NoteUse();
         fetcher.Start();
         await Idle(fetcher, 1);
         Assert.Single(_service.Requests);
@@ -668,12 +671,12 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         // Polling every minute would have asked by now.
         foreach (var _ in Enumerable.Range(0, 29))
         {
-            clock.Advance(TimeSpan.FromMinutes(1));
+            Pass(clock, TimeSpan.FromMinutes(1), fetcher.NoteUse);
             await Idle(fetcher, 1);
         }
 
         Assert.Single(_service.Requests);
-        clock.Advance(TimeSpan.FromSeconds(61));
+        Pass(clock, TimeSpan.FromSeconds(61), fetcher.NoteUse);
         await Idle(fetcher, 2);
         Assert.Equal(2, _service.Requests.Count);
         await fetcher.StopAsync(Ct);
@@ -687,11 +690,12 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         var clock = Timed();
         var fetcher = Fetcher(clock, jitter: 1);
 
+        fetcher.NoteUse();
         fetcher.Start();
         await Idle(fetcher, 1);
-        clock.Advance(TimeSpan.FromMinutes(59));
+        Pass(clock, TimeSpan.FromMinutes(59), fetcher.NoteUse);
         await Idle(fetcher, 1);
-        clock.Advance(TimeSpan.FromMinutes(1));
+        Pass(clock, TimeSpan.FromMinutes(1), fetcher.NoteUse);
         await Idle(fetcher, 2);
 
         Assert.Equal(2, _service.Requests.Count);
@@ -706,6 +710,7 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         var clock = Timed();
         var fetcher = Fetcher(clock);
 
+        fetcher.NoteUse();
         fetcher.Start();
         await Idle(fetcher, 1);
         AssertState(fetcher.State, SourceStateKind.Unavailable, "serviceUnavailable");
@@ -713,10 +718,10 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         var attempts = 1;
         foreach (var minutes in new[] { 1, 2, 4, 8, 16, 30, 30 })
         {
-            clock.Advance(TimeSpan.FromMinutes(minutes) - TimeSpan.FromSeconds(1));
+            Pass(clock, TimeSpan.FromMinutes(minutes) - TimeSpan.FromSeconds(1), fetcher.NoteUse);
             await Idle(fetcher, attempts);
             Assert.Equal(attempts, _service.Requests.Count);
-            clock.Advance(TimeSpan.FromSeconds(1));
+            Pass(clock, TimeSpan.FromSeconds(1), fetcher.NoteUse);
             await Idle(fetcher, ++attempts);
             Assert.Equal(attempts, _service.Requests.Count);
         }
@@ -732,13 +737,14 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         var clock = Timed();
         var fetcher = Fetcher(clock);
 
+        fetcher.NoteUse();
         fetcher.Start();
         // The rejection is a change of the credential: the task looks again, and is refused before sending anything.
         await Idle(fetcher, 2);
         AssertState(fetcher.State, SourceStateKind.Unavailable, "credentialRejected");
         Assert.Equal(ServiceCredentialState.Rejected, _credentials.Status.Credential);
 
-        clock.Advance(TimeSpan.FromHours(3));
+        Pass(clock, TimeSpan.FromHours(3), fetcher.NoteUse);
         await Idle(fetcher, 2);
         Assert.Single(_service.Requests);
 
@@ -759,13 +765,14 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         var clock = Timed();
         var fetcher = Fetcher(clock);
 
+        fetcher.NoteUse();
         fetcher.Start();
         await Idle(fetcher, 1);
         AssertState(fetcher.State, SourceStateKind.Unavailable, "rateLimited");
-        clock.Advance(TimeSpan.FromMinutes(20) - TimeSpan.FromSeconds(1));
+        Pass(clock, TimeSpan.FromMinutes(20) - TimeSpan.FromSeconds(1), fetcher.NoteUse);
         await Idle(fetcher, 1);
         Assert.Single(_service.Requests);
-        clock.Advance(TimeSpan.FromSeconds(1));
+        Pass(clock, TimeSpan.FromSeconds(1), fetcher.NoteUse);
         await Idle(fetcher, 2);
         Assert.Equal(2, _service.Requests.Count);
         await fetcher.StopAsync(Ct);
@@ -778,6 +785,7 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         var clock = Timed();
         var source = Source(clock);
         source.Polled.Open();
+        source.Fetcher.NoteUse();
         source.Fetcher.Start();
         await Idle(source.Fetcher, 1);
         Assert.NotNull(source.Fetcher.Latest);
@@ -807,6 +815,7 @@ public sealed class WeatherSourceTests : IAsyncDisposable
                 fetcher.Configure(true, "Elsewhere");
         };
 
+        fetcher.NoteUse();
         fetcher.Start();
         await Until(() => fetcher.IsWaiting, "the task to wait");
 
@@ -823,12 +832,13 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         var clock = Timed();
         var source = Source(clock);
         source.Polled.Open();
+        source.Fetcher.NoteUse();
         source.Fetcher.Start();
         await Idle(source.Fetcher, 1);
 
         source.Apply(WeatherSettings.Default with { Enabled = false });
         source.Polled.Poll();
-        clock.Advance(TimeSpan.FromHours(2));
+        Pass(clock, TimeSpan.FromHours(2), source.Fetcher.NoteUse);
         await Until(() => source.Fetcher.IsWaiting, "the task to wait");
 
         Assert.Single(_service.Requests);
@@ -865,6 +875,388 @@ public sealed class WeatherSourceTests : IAsyncDisposable
 
         Assert.Null(source.Fetcher.Latest);
         AssertState(source.State, SourceStateKind.Off, "disabled");
+    }
+
+    // ---- Asked only while something reads ----
+
+    private static SensorKey Temperature => WeatherSource.KeyOf("temperature");
+
+    /// <summary>A reading of a weather value, as a shown profile's tick or a client's value read makes one.</summary>
+    private static Action Reader(WeatherSource source) => () => source.TryRead(Temperature, out _);
+
+    /// <summary>
+    /// Time passes: with a <paramref name="reader"/>, it reads every minute (so there is one the whole while); without,
+    /// nothing reads.
+    /// </summary>
+    private static void Pass(TimerTimeProvider clock, TimeSpan span, Action? reader)
+    {
+        if (reader == null)
+        {
+            clock.Advance(span);
+            return;
+        }
+
+        var step = TimeSpan.FromMinutes(1);
+        while (span > TimeSpan.Zero)
+        {
+            var next = span < step ? span : step;
+            reader();
+            clock.Advance(next);
+            span -= next;
+        }
+    }
+
+    [Fact]
+    public async Task NoReader_AsksNothing_AtStart_NorAnyTimeAfter_AndTheListingAndStatusesAreNoRead()
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var source = Source(clock);
+        var hub = new SensorHub([source]);
+
+        await source.StartAsync(Ct);
+        await Until(() => source.Fetcher.IsWaiting, "the task to wait");
+        Pass(clock, TimeSpan.FromMinutes(70), null);
+        // A listing, a status and a peek: not reads.
+        foreach (var sensor in hub.GetSensors())
+        {
+            hub.GetStatus(sensor.Key);
+            hub.PeekState(sensor.Key);
+        }
+
+        await Task.Delay(100, Ct);
+
+        Assert.Empty(_service.Requests);
+        Assert.Equal(0, source.Fetcher.Attempts);
+        Assert.Null(source.Fetcher.Latest);
+        Assert.Equal(SourceStateKind.Starting, source.State.Kind);
+        await source.StopAsync(Ct);
+    }
+
+    [Fact]
+    public async Task AProfileBindingAWeatherKey_AsksAtOnce_AndTheScheduleFollowsWhileItStays()
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var source = Source(clock);
+        var read = Reader(source);
+        source.Polled.Open();
+        source.Fetcher.Start();
+        await Until(() => source.Fetcher.IsWaiting, "the task to wait");
+        Assert.Empty(_service.Requests);
+
+        read();
+        await Idle(source.Fetcher, 1);
+        Assert.Single(_service.Requests);
+        Assert.Equal(SourceState.Running, source.State);
+
+        Pass(clock, TimeSpan.FromMinutes(29), read);
+        await Idle(source.Fetcher, 1);
+        Assert.Single(_service.Requests);
+        Pass(clock, TimeSpan.FromSeconds(61), read);
+        await Idle(source.Fetcher, 2);
+        Assert.Equal(2, _service.Requests.Count);
+        await source.Fetcher.StopAsync(Ct);
+    }
+
+    [Fact]
+    public async Task TheReaderGoesAway_NothingMoreIsAsked_AndTheAnswerAgesToStale_ThenUnavailable()
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var source = Source(clock);
+        var read = Reader(source);
+        source.Polled.Open();
+        source.Fetcher.Start();
+        read();
+        await Idle(source.Fetcher, 1);
+        source.Polled.Poll();
+        Assert.Equal(SensorStatus.Live, source.GetStatus(Temperature));
+
+        Pass(clock, TimeSpan.FromMinutes(91), null);
+        source.Polled.Poll();
+        Assert.Equal(SensorStatus.Stale, source.GetStatus(Temperature));
+        Pass(clock, TimeSpan.FromHours(5), null);
+        source.Polled.Poll();
+        Assert.Equal(SensorStatus.Unavailable, source.GetStatus(Temperature));
+
+        await Idle(source.Fetcher, 1);
+        Assert.Single(_service.Requests);
+        await source.Fetcher.StopAsync(Ct);
+    }
+
+    [Fact]
+    public async Task AReaderBack_WithAnAnswerHeldNotExpired_AsksNothingUntilItExpires()
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var source = Source(clock);
+        var read = Reader(source);
+        source.Polled.Open();
+        source.Fetcher.Start();
+        read();
+        await Idle(source.Fetcher, 1);
+
+        // 20 minutes with no reader; one comes back: the answer expires in 10 more.
+        Pass(clock, TimeSpan.FromMinutes(20), null);
+        // The task looks at its schedule again as the reader comes (it waits anew), before time goes on.
+        var waits = source.Fetcher.Waits;
+        read();
+        await Until(() => source.Fetcher.Waits > waits && source.Fetcher.IsWaiting, "the task to look again and wait");
+        Assert.Single(_service.Requests);
+        Pass(clock, TimeSpan.FromMinutes(9), read);
+        await Idle(source.Fetcher, 1);
+        Assert.Single(_service.Requests);
+        Pass(clock, TimeSpan.FromSeconds(61), read);
+        await Idle(source.Fetcher, 2);
+        Assert.Equal(2, _service.Requests.Count);
+        await source.Fetcher.StopAsync(Ct);
+    }
+
+    [Fact]
+    public async Task AReaderBack_AfterTheAnswerExpired_AsksAtOnce()
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var source = Source(clock);
+        var read = Reader(source);
+        source.Polled.Open();
+        source.Fetcher.Start();
+        read();
+        await Idle(source.Fetcher, 1);
+
+        Pass(clock, TimeSpan.FromHours(2), null);
+        await Idle(source.Fetcher, 1);
+        Assert.Single(_service.Requests);
+
+        read();
+        await Idle(source.Fetcher, 2);
+        Assert.Equal(2, _service.Requests.Count);
+        await source.Fetcher.StopAsync(Ct);
+    }
+
+    public enum ReadKind { TryRead, ReadState }
+
+    [Theory]
+    [InlineData(ReadKind.TryRead)]
+    [InlineData(ReadKind.ReadState)]
+    public async Task ThroughTheHub_AShownProfilesTick_AndAClientsSensorsReadings_AreReaders_ThoseOfAnotherKeyAreNot(ReadKind kind)
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var source = Source(clock);
+        var hub = new SensorHub([source]);
+        source.Polled.Open();
+        source.Fetcher.Start();
+        await Until(() => source.Fetcher.IsWaiting, "the task to wait");
+
+        // Not a reading of one of the weather source's values: a key it lists no reading by.
+        var unlisted = WeatherSource.KeyOf("snow");
+        _ = hub.TryRead(unlisted, out _);
+        _ = hub.ReadState(unlisted);
+        await Task.Delay(100, Ct);
+        Assert.Empty(_service.Requests);
+
+        if (kind == ReadKind.TryRead)
+            _ = hub.TryRead(WeatherSource.KeyOf("condition"), out _);
+        else
+            _ = hub.ReadState(WeatherSource.KeyOf("condition"));
+        await Idle(source.Fetcher, 1);
+        Assert.Single(_service.Requests);
+        await source.Fetcher.StopAsync(Ct);
+    }
+
+    [Fact]
+    public async Task APlaceCredentialOrAddressChange_AsksAtOnce_OnlyWithAReader_ThenWhenOneComes()
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var source = Source(clock);
+        var read = Reader(source);
+        source.Polled.Open();
+        source.Fetcher.Start();
+        await Until(() => source.Fetcher.IsWaiting, "the task to wait");
+
+        // The address changes (which removes the credential kept for the other), and a client provides one again.
+        source.Apply(WeatherSettings.Default with { Place = "Oslo" });
+        _address = $"http://localhost:{_service.Port}";
+        _credentials.AddressChanged();
+        _credentials.Put("another-credential");
+        await Task.Delay(100, Ct);
+        Assert.Empty(_service.Requests);
+        Assert.Equal(0, source.Fetcher.Attempts);
+
+        // One reader: one request, for the place now set.
+        read();
+        await Idle(source.Fetcher, 1);
+        Assert.Equal(["/svc/v1/weather?place=Oslo"], _service.Requests.Select(r => r.Path));
+        Assert.Equal("Bearer another-credential", _service.Requests[0].Header("authorization"));
+
+        // With the reader still reading, each of the three asks at once.
+        source.Apply(WeatherSettings.Default with { Place = "Bergen" });
+        await Idle(source.Fetcher, 2);
+        _credentials.Put("a-third-credential");
+        await Idle(source.Fetcher, 3);
+        _address = $"http://127.0.0.1:{_service.Port}";
+        _credentials.AddressChanged();
+        await Idle(source.Fetcher, 4);
+        AssertState(source.State, SourceStateKind.Off, "noCredential");
+        _credentials.Put("a-fourth-credential");
+        await Idle(source.Fetcher, 5);
+        Assert.Equal(["Oslo", "Bergen", "Bergen", "Bergen"], _service.Requests.Select(r => r.Path[(r.Path.LastIndexOf('=') + 1)..]));
+        Assert.Equal("Bearer a-fourth-credential", _service.Requests[3].Header("authorization"));
+        await source.Fetcher.StopAsync(Ct);
+    }
+
+    [Fact]
+    public async Task TurnedOff_WithAReader_Cancels_AndOnAgainAsksAtOnce_OnlyWhileThereIsOne()
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var source = Source(clock);
+        var read = Reader(source);
+        source.Polled.Open();
+        source.Fetcher.Start();
+        read();
+        await Idle(source.Fetcher, 1);
+
+        source.Apply(WeatherSettings.Default with { Enabled = false });
+        Pass(clock, TimeSpan.FromHours(2), read);
+        await Until(() => source.Fetcher.IsWaiting, "the task to wait");
+        Assert.Single(_service.Requests);
+        AssertState(source.State, SourceStateKind.Off, "disabled");
+
+        // On again, after the reader's window: nothing, until something reads.
+        Pass(clock, TimeSpan.FromMinutes(5), null);
+        source.Apply(WeatherSettings.Default);
+        await Task.Delay(100, Ct);
+        Assert.Single(_service.Requests);
+        read();
+        await Idle(source.Fetcher, 2);
+        Assert.Equal(2, _service.Requests.Count);
+        await source.Fetcher.StopAsync(Ct);
+    }
+
+    /// <summary>
+    /// A read that takes the time just inside the 2 minutes, then pauses before it records the read, while the task looks
+    /// just after them, finds no reader and waits for one: the read, once recorded, wakes it, and the request due is made.
+    /// </summary>
+    [Fact]
+    public async Task AReadTakenAtTheWindowsEdge_WhileTheTaskFindsNoReader_StillWakesIt()
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var fetcher = Fetcher(clock);
+        fetcher.NoteUse();
+        fetcher.Start();
+        await Idle(fetcher, 1);
+
+        // The answer expires 30 minutes after the first request; the last read before is 2 minutes and 1 ms before that.
+        clock.Advance(TimeSpan.FromMinutes(28) - TimeSpan.FromMilliseconds(1));
+        fetcher.NoteUse();
+        clock.Advance(TimeSpan.FromMinutes(2));
+
+        // A read takes the time (2 minutes after the last: still in use), then pauses.
+        using var captured = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var paused = 0;
+        fetcher.AfterUseCaptured = () =>
+        {
+            if (Interlocked.Exchange(ref paused, 1) != 0)
+                return;
+            captured.Set();
+            release.Wait(Ct);
+        };
+        var reading = Task.Run(fetcher.NoteUse, Ct);
+        await Until(() => captured.IsSet, "the read to take the time");
+
+        // The answer falls due 1 ms later: the task looks, finds no read within 2 minutes, and waits for a reader.
+        var waits = fetcher.Waits;
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        await Until(() => fetcher.Waits > waits && fetcher.IsWaiting, "the task to look and wait");
+        Assert.Single(_service.Requests);
+
+        release.Set();
+        await reading;
+        await Idle(fetcher, 2);
+        Assert.Equal(2, _service.Requests.Count);
+
+        // Reads go on every minute: the schedule follows.
+        Pass(clock, TimeSpan.FromMinutes(29), fetcher.NoteUse);
+        await Idle(fetcher, 2);
+        Assert.Equal(2, _service.Requests.Count);
+        await fetcher.StopAsync(Ct);
+    }
+
+    /// <summary>
+    /// A graph of a weather value asks the history for its samples on every draw: a series already tracked included, that
+    /// is a read of the weather (the history's own sampling isn't, below), so the weather stays in use while it is shown.
+    /// </summary>
+    [Fact]
+    public async Task AGraphOfAWeatherValue_KeepsTheWeatherInUse_ItsSeriesTracked()
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var source = Source(clock);
+        var history = new SensorHistory(new SensorHub([source]), clock);
+        source.Polled.Open();
+        source.Fetcher.Start();
+        await Until(() => source.Fetcher.IsWaiting, "the task to wait");
+
+        history.GetSamples(Temperature);
+        await Idle(source.Fetcher, 1);
+        source.Polled.Poll();
+        history.GetSamples(Temperature);
+        Assert.Contains(Temperature, history.TrackedKeys);
+
+        // A draw every minute, of the series now tracked.
+        Pass(clock, TimeSpan.FromMinutes(29), () => history.GetSamples(Temperature));
+        await Idle(source.Fetcher, 1);
+        Assert.Single(_service.Requests);
+        Pass(clock, TimeSpan.FromSeconds(61), () => history.GetSamples(Temperature));
+        await Idle(source.Fetcher, 2);
+        Assert.Equal(2, _service.Requests.Count);
+        await source.Fetcher.StopAsync(Ct);
+    }
+
+    /// <summary>
+    /// The graph goes 5 minutes before the answer falls due: the history samples its series on until it drops it, 10 minutes
+    /// after the graph's last draw, and that sampling isn't a read: nothing is asked. The graph back asks at once.
+    /// </summary>
+    [Fact]
+    public async Task AfterTheGraphGoes_TheHistorysOwnSampling_IsNoReader()
+    {
+        _credentials.Put(Credential);
+        var clock = Timed();
+        var source = Source(clock);
+        var history = new SensorHistory(new SensorHub([source]), clock);
+        source.Polled.Open();
+        source.Fetcher.Start();
+        await Until(() => source.Fetcher.IsWaiting, "the task to wait");
+
+        history.GetSamples(Temperature);
+        await Idle(source.Fetcher, 1);
+        source.Polled.Poll();
+        Pass(clock, TimeSpan.FromMinutes(25), () =>
+        {
+            history.GetSamples(Temperature);
+            history.SampleNow();
+        });
+        var shown = history.GetSamples(Temperature).Count;
+
+        // The graph gone, the history samples on (every minute here) while it keeps the series.
+        Pass(clock, TimeSpan.FromMinutes(9), history.SampleNow);
+        Assert.Contains(Temperature, history.TrackedKeys);
+        Pass(clock, TimeSpan.FromMinutes(6), history.SampleNow);
+        Assert.DoesNotContain(Temperature, history.TrackedKeys);
+        await Idle(source.Fetcher, 1);
+        Assert.Single(_service.Requests);
+
+        Assert.True(shown >= 25, $"the series was sampled while shown ({shown} samples)");
+        history.GetSamples(Temperature);
+        await Idle(source.Fetcher, 2);
+        Assert.Equal(2, _service.Requests.Count);
+        await source.Fetcher.StopAsync(Ct);
     }
 
     // ---- What reaches the service ----

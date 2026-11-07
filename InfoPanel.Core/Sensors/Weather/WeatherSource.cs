@@ -6,6 +6,7 @@ using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -40,6 +41,11 @@ public sealed class WeatherSourceOptions
 /// Numbers are metric or imperial as <c>sources.weather.units</c> says (<c>auto</c>: the PC's region's); a change of
 /// units applies to the answer held at once (no request): the readings whose unit changes start afresh, their old
 /// statistics dropped. Off (<c>sources.weather.enabled</c>), the source asks nothing and its readings are unavailable.
+/// The service is asked only while one of the readings is read (<see cref="TryRead"/> or <see cref="ReadState"/>, as a
+/// shown profile's and a client's value reads are, or <see cref="NoteUse"/>, a graph's draw of samples the history keeps;
+/// a listing, a status alone and a peek, <see cref="PeekState"/> and <see cref="TryPeek"/> (the history's own sampling),
+/// aren't reads), as the Network source's public address is: with no reader nothing is asked and the answer held ages as
+/// it does.
 /// The engine never answers the 1.x Weather plugin's keys; a 1.x import binds them to these (<see cref="RetiredPlugins"/>).
 /// </para>
 /// </summary>
@@ -95,6 +101,8 @@ public sealed class WeatherSource : ISensorSource, ISensorStatusSource, ISensorS
     ];
 
     private static readonly SensorKeySpace Space = SensorKeySpace.Plugin(SourceId);
+
+    private static readonly HashSet<SensorKey> Keys = [.. Entries.Select(e => Space.KeyOf(e.Id))];
 
     /// <summary>The key of the reading <paramref name="id"/>: <c>plugin:/infopanel.weather/{id}</c>.</summary>
     public static SensorKey KeyOf(string id) => Space.KeyOf(id);
@@ -206,11 +214,36 @@ public sealed class WeatherSource : ISensorSource, ISensorStatusSource, ISensorS
 
     public IReadOnlyList<SensorInfo> GetSensors() => _polled.GetSensors();
 
-    public bool TryRead(SensorKey key, out SensorReading reading) => _polled.TryRead(key, out reading);
+    public bool TryRead(SensorKey key, out SensorReading reading)
+    {
+        NoteUse(key);
+        return _polled.TryRead(key, out reading);
+    }
 
-    public SensorState ReadState(SensorKey key) => _polled.ReadState(key);
+    public SensorState ReadState(SensorKey key)
+    {
+        NoteUse(key);
+        return _polled.ReadState(key);
+    }
 
+    /// <summary>A peek isn't a read: <see cref="TryRead"/> without putting the weather in use (the history's own sampling).</summary>
+    public bool TryPeek(SensorKey key, out SensorReading reading) => _polled.TryRead(key, out reading);
+
+    /// <summary>A peek isn't a read: <see cref="ReadState"/> without putting the weather in use (listing the sensors).</summary>
+    public SensorState PeekState(SensorKey key) => _polled.ReadState(key);
+
+    /// <summary>A status isn't a read: listing the sensors (<c>/api/sensors</c>) or importing puts the weather in use no more than a peek does.</summary>
     public SensorStatus GetStatus(SensorKey key) => _polled.GetStatus(key);
+
+    /// <summary>
+    /// A read of one of the readings' values, or a consumer's use of its samples (a graph's draw), puts the weather in use,
+    /// the only time the service is asked.
+    /// </summary>
+    public void NoteUse(SensorKey key)
+    {
+        if (Keys.Contains(key))
+            _fetcher.NoteUse();
+    }
 
     /// <summary>Lists the readings and starts polling them, then starts the fetch task.</summary>
     public async Task StartAsync(CancellationToken ct)

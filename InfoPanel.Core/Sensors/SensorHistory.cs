@@ -18,7 +18,9 @@ namespace InfoPanel.Sensors;
 /// Only numbers have a history: a key whose reading is a text or a table is never tracked, and a tracked key whose
 /// reading turns one is dropped at that sample. So the history's own sampling never reads a text sensor in the
 /// background: a read of one can mean someone looks at it (the public address is looked up only while its reading is
-/// read), and only a consumer's request (<see cref="GetSamples"/>, asked by a shown profile or a client) reads it.
+/// read), and only a consumer's request (<see cref="GetSamples"/>, asked by a shown profile or a client) reads it. For
+/// numbers too, the sampling only peeks (<see cref="ISensorReader.TryPeek"/>), and a consumer's request for a key already
+/// tracked notes its use (<see cref="ISensorReader.NoteUse"/>): the weather is asked for only while a consumer asks.
 /// </para>
 /// </summary>
 public sealed class SensorHistory : ISensorHistory
@@ -156,13 +158,21 @@ public sealed class SensorHistory : ISensorHistory
 
     public IReadOnlyList<double> GetSamples(SensorKey key)
     {
+        IReadOnlyList<double>? tracked = null;
         lock (_lock)
         {
             if (_series.TryGetValue(key, out var series))
             {
                 series.LastAccess = _time.GetTimestamp();
-                return series.Snapshot();
+                tracked = series.Snapshot();
             }
+        }
+
+        if (tracked != null)
+        {
+            // A consumer's request: the key is in use, as a read would put it (outside the lock: the reader takes its own).
+            _reader.NoteUse(key);
+            return tracked;
         }
 
         // A key with no reading (unknown to every source, or past the hub's simulation cap), or a text or table one, isn't
@@ -211,12 +221,13 @@ public sealed class SensorHistory : ISensorHistory
             tracked = _series.ToArray();
         }
 
-        // Read outside the lock: the reader takes its own locks.
+        // Read outside the lock: the reader takes its own locks. A peek: no consumer asked for these samples now, so the
+        // sampling puts no sensor in use (the weather is asked for only while read).
         var values = new List<(Series Series, double Value)>(tracked.Length);
         List<(SensorKey Key, Series Series)>? turned = null;
         foreach (var (key, series) in tracked)
         {
-            if (!_reader.TryRead(key, out var reading))
+            if (!_reader.TryPeek(key, out var reading))
                 continue;
             if (!IsNumber(reading))
                 (turned ??= []).Add((key, series));

@@ -23,7 +23,10 @@ public sealed record WeatherHeld(WeatherAnswer Answer, long FetchedAt, string? P
 /// <c>--offline</c> asking only a service on this computer), when <see cref="WeatherSchedule"/> says, and keeps the
 /// last answer (<see cref="Latest"/>), so the source's poll only reads it and never waits on the network. One request at
 /// a time; each bounded at <see cref="RequestTimeout"/>, its answer read to at most <see cref="WeatherAnswer.MaxBytes"/>.
-/// A change of the place, of the credential or of the service address asks at once; so does turning it on. Turned off,
+/// A change of the place, of the credential or of the service address asks at once; so does turning it on. It asks only
+/// while a weather value is in use, read within <see cref="UseWindow"/> (<see cref="NoteUse"/>): with no reader nothing is
+/// asked, the answer held ages as it does, and a request that falls due (or that a change made due) waits for the next
+/// reader, then is made at once; one not yet due waits for its time. Turned off,
 /// it cancels a request under way, forgets the answer and asks nothing. The credential is never read here, nor logged;
 /// the place is never logged.
 /// </summary>
@@ -34,6 +37,11 @@ public sealed class WeatherFetcher : IDisposable
 
     /// <summary>Each request's bound, reading the answer included.</summary>
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
+
+    /// <summary>A weather value read within this long is in use (the same 2 minutes as the Network source's public address): the service is asked only then.</summary>
+    public static readonly TimeSpan UseWindow = TimeSpan.FromMinutes(2);
+
+    private const long NeverUsed = long.MinValue;
 
     private static readonly SourceReason Disabled = new("disabled", "Turned off in the engine's settings (sources.weather.enabled)");
     private static readonly SourceReason NoService = new("noService", "The engine has no service address to ask for the weather");
@@ -65,6 +73,10 @@ public sealed class WeatherFetcher : IDisposable
     private CancellationTokenSource _changeCts = new();
     private ServiceStatus? _seen;
 
+    // When a weather value was last read (the time provider's timestamp), or NeverUsed.
+    private long _lastUse = NeverUsed;
+    // 1 while the task waits for want of a reader (set before it reads _lastUse), so the next read wakes it.
+    private int _noReader;
     private volatile WeatherHeld? _held;
     private TaskCompletionSource _wake = NewWake();
     private CancellationTokenSource? _cts;
@@ -124,6 +136,9 @@ public sealed class WeatherFetcher : IDisposable
     /// <summary>Called on the task once it has taken a request that is due, before it makes it. For tests.</summary>
     internal Action? AfterTakeDue { get; set; }
 
+    /// <summary>Called in <see cref="NoteUse"/> once it has read the time, before it records the read. For tests.</summary>
+    internal Action? AfterUseCaptured { get; set; }
+
     /// <summary>
     /// The settings: on or off, and the place to ask for (null: from the network address). Turning it off cancels a
     /// request under way and forgets the answer; turning it on, or a new place (which forgets the answer, for another
@@ -156,6 +171,32 @@ public sealed class WeatherFetcher : IDisposable
         // Not disposed: a request may still link to its token (it holds no timer).
         before.Cancel();
         Wake();
+    }
+
+    /// <summary>
+    /// A weather value was read (a shown profile's tick, a graph's draw, a client's value read; <see cref="WeatherSource"/>
+    /// calls this as <c>NetworkSource</c> does <c>PublicIpLookup.NoteUse</c>). When that brings the weather into use (not
+    /// read within <see cref="UseWindow"/> before), or the task waits for want of a reader (whatever time this read took,
+    /// one just inside the window included), the task looks at its schedule at once: a request due, or pending since the
+    /// last change, is made then. Takes no lock and allocates nothing.
+    /// </summary>
+    public void NoteUse()
+    {
+        var now = _time.GetTimestamp();
+        AfterUseCaptured?.Invoke();
+        // The read is recorded before the task's flag is read, and the task sets its flag before it reads the last read
+        // (both full fences): either the task sees this read, or this read sees the flag and wakes it.
+        var last = Interlocked.Exchange(ref _lastUse, now);
+        var waitsForAReader = Volatile.Read(ref _noReader) != 0 && Interlocked.Exchange(ref _noReader, 0) != 0;
+        if (waitsForAReader || last == NeverUsed || _time.GetElapsedTime(last, now) > UseWindow)
+            Wake();
+    }
+
+    /// <summary>Whether a weather value was read within <see cref="UseWindow"/> of <paramref name="now"/>.</summary>
+    private bool InUse(long now)
+    {
+        var last = Interlocked.Read(ref _lastUse);
+        return last != NeverUsed && _time.GetElapsedTime(last, now) <= UseWindow;
     }
 
     /// <summary>Starts the task (a no-op when it runs).</summary>
@@ -252,6 +293,12 @@ public sealed class WeatherFetcher : IDisposable
             if (!_enabled)
                 return (null, null);
             var now = _time.GetTimestamp();
+            // Nothing is asked while nothing reads a weather value: the due request, and what a change made due, wait
+            // for a reader. The flag is set first, so a read recorded after the check below wakes the task (NoteUse).
+            Interlocked.Exchange(ref _noReader, 1);
+            if (!InUse(now))
+                return (null, null);
+            Volatile.Write(ref _noReader, 0);
             if (_pending || (_dueAt is { } at && now >= at))
                 return (TakeLocked(), null);
 
