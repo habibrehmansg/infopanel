@@ -143,36 +143,39 @@ public sealed class RelayDropLogTests
     public async Task AFrameOver9MiB_WhoseCloseFails_StillLogsOneLine_WithTooBig()
     {
         var (lines, sink) = Capture();
-        RelayRig? rig = null;
-        // The close is the next thing after the warning: the socket is cut off there, so it throws.
-        rig = await StartAsync(log: e =>
+        // The client logs the line, then closes with 1009. The client's test seam names the point between the two ("tooBig"):
+        // the step throws there, as a close on a dead socket does, so the close is attempted and fails, every time.
+        var reached = 0;
+        await using var rig = await StartAsync(log: sink, options: new RelayOptions
         {
-            sink(e);
-            if (e.Level == LogEventLevel.Warning && e.MessageTemplate.Text.Contains("frame over", StringComparison.Ordinal))
-                AbortTheClientsSocket(rig!.Client);
+            EngineVersion = "2.0.0-test",
+            LoopbackOnly = true,
+            Step = step =>
+            {
+                if (step == "tooBig")
+                {
+                    Interlocked.Increment(ref reached);
+                    throw new WebSocketException(WebSocketError.ConnectionClosedPrematurely);
+                }
+            },
         });
-        await using var _ = rig;
         var peer = await rig.ConnectAsync();
 
-        var big = "{\"type\":\"note\",\"text\":\"" + new string('x', RelayFrames.MaxFrameBytes) + "\"}";
+        // One byte over the limit: the client stops reading there.
         try
         {
-            await peer.SendTextAsync(big);
+            await peer.SendTextAsync(new string('x', RelayFrames.MaxFrameBytes + 1));
         }
         catch (Exception ex) when (ex is WebSocketException or IOException or ObjectDisposedException)
         {
-            // The client cut the connection off while the rest was still being sent.
+            // The client dropped the connection while the rest was still being sent.
         }
 
+        // The failed close ends the connection: the client retries on its timer, and the relay saw no 1009.
         await rig.Clocks.TimerArmedAsync(TimeSpan.FromSeconds(1)).WaitAsync(Limit, Ct);
+        Assert.NotEqual(WebSocketCloseStatus.MessageTooBig, await peer.Closed.WaitAsync(Limit, Ct));
+        Assert.Equal(1, reached);
         Assert.Equal("too big", Text(Assert.Single(lines), "Reason"));
-    }
-
-    private static void AbortTheClientsSocket(RelayClient client)
-    {
-        const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
-        var session = typeof(RelayClient).GetField("_session", Private)!.GetValue(client)!;
-        ((ClientWebSocket)session.GetType().GetField("_socket", Private)!.GetValue(session)!).Abort();
     }
 
     [Fact]

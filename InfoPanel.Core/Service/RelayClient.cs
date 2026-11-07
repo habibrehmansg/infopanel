@@ -785,6 +785,7 @@ public sealed class RelayClient : IAsyncDisposable
                     // Over 9 MiB as it arrives: the rest isn't read.
                     _client._logger.Warning("AI apps elsewhere: the relay sent a frame over {Limit} bytes; closing", RelayFrames.MaxFrameBytes);
                     LogEnded("too big");
+                    _client._options.Step?.Invoke("tooBig");
                     await _socket.CloseOutputAsync(WebSocketCloseStatus.MessageTooBig, null, CancellationToken.None).ConfigureAwait(false);
                     return Outcome.Failed("tooBig");
                 }
