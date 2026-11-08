@@ -326,6 +326,10 @@ try
     });
     builder.Services.AddSingleton(sp => new ServiceClient(sp.GetRequiredService<ServiceCredentials>(), loopbackOnly: options.Offline,
         sp.GetRequiredService<TimeProvider>()));
+    // A credential replaced by another for the same address: the service is asked once, in the background, to forget it;
+    // dropped when the engine stops, whose disposal of its services waits for it briefly (before the client's).
+    builder.Services.AddSingleton(sp => new ServiceRelease(sp.GetRequiredService<ServiceClient>(),
+        sp.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping, engineLogger.ForContext<ServiceRelease>()));
     // Pairing through the configured service: a pass it signed, checked against its public keys (fetched from its address
     // without a credential, under ServiceClient's rules) and the credential's id, while service.pairing is on.
     builder.Services.AddSingleton(sp => new PairingKeys(() => sp.GetRequiredService<ServiceCredentials>().Address, loopbackOnly: options.Offline,

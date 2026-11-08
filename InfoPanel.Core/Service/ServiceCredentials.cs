@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -21,6 +22,55 @@ public enum ServiceCredentialState
 
 /// <summary>The configured service's address in effect, the credential's state, where it is kept and a fingerprint of the stored credential.</summary>
 public sealed record ServiceStatus(string? Address, ServiceCredentialState Credential, string? Store, string? Fingerprint);
+
+/// <summary>
+/// The credential <see cref="ServiceCredentials.Put"/> replaced: it was <c>present</c>, kept for <paramref name="Address"/>
+/// (the address in effect then), and other text than the one provided in its place. Until the request asking the service
+/// to forget it ends, it is pending; it is dropped, and that request with it, the moment it may no longer be sent: the
+/// credential is provided again, the address changes, or the engine stops.
+/// </summary>
+public sealed record ReplacedServiceCredential(string Address, string Credential)
+{
+    private readonly CancellationTokenSource _dropped = new();
+    private string? _reason;
+
+    /// <summary>Cancelled once it is dropped.</summary>
+    internal CancellationToken Dropped => _dropped.Token;
+
+    /// <summary>Why it was dropped, or null while it may still be sent.</summary>
+    internal string? Reason => Volatile.Read(ref _reason);
+
+    /// <summary>
+    /// Drops it for <paramref name="reason"/>, once: its request, if it is still being made, is cancelled (the callbacks
+    /// run elsewhere, so a caller holding a lock doesn't run them).
+    /// </summary>
+    internal void Drop(string reason)
+    {
+        if (Interlocked.CompareExchange(ref _reason, reason, null) is null)
+            _ = _dropped.CancelAsync();
+    }
+
+    /// <summary>The address and the credential: two are equal when both are.</summary>
+    public bool Equals(ReplacedServiceCredential? other) => other is not null && Address == other.Address && Credential == other.Credential;
+
+    public override int GetHashCode() => HashCode.Combine(Address, Credential);
+
+    /// <summary>The address only: never the credential.</summary>
+    public override string ToString() => $"{nameof(ReplacedServiceCredential)} {{ Address = {Address} }}";
+}
+
+/// <summary>What <see cref="ServiceCredentials.MaySend"/> says of a replaced credential, at the last moment before sending.</summary>
+internal enum ReleaseCheck
+{
+    /// <summary>It may be sent.</summary>
+    Send,
+
+    /// <summary>The address it was kept for is no longer in effect: dropped.</summary>
+    OtherAddress,
+
+    /// <summary>Dropped: <see cref="ReplacedServiceCredential.Reason"/> says why.</summary>
+    Dropped,
+}
 
 /// <summary>A credential was provided while the engine has no service address: it keeps none (the API's 409 <c>noService</c>).</summary>
 public sealed class NoServiceException() : InvalidOperationException("The engine has no service address, so it keeps no credential.");
@@ -62,6 +112,19 @@ public sealed class ServiceCredentials
     /// refused when that fails, and replaced by the next credential provided.
     /// </summary>
     private bool _stale;
+
+    /// <summary>
+    /// Under <see cref="_lock"/>: the replaced credentials whose request to be forgotten hasn't ended, so a credential
+    /// provided again, or a change of address, drops them (<see cref="ReplacedServiceCredential.Drop"/>). Tracked by
+    /// instance, not by value: one ending removes only itself, never a later one of the same address and text.
+    /// </summary>
+    private readonly HashSet<ReplacedServiceCredential> _releases = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Why a replaced credential was dropped: a client provided it again.</summary>
+    internal const string InUseAgain = "the credential is in use again";
+
+    /// <summary>Why a replaced credential was dropped: the address it was kept for is no longer in effect.</summary>
+    internal const string AddressMoved = "the address changed";
 
     /// <param name="store">Where the credential is kept.</param>
     /// <param name="address">The service address in effect, normalised (<see cref="ServiceAddress"/>), or null without one.</param>
@@ -207,7 +270,10 @@ public sealed class ServiceCredentials
 
     /// <summary>
     /// Keeps <paramref name="credential"/> for the address in effect, in place of any other, with the id the service gave it
-    /// (<paramref name="id"/>, or none); its state is then present.
+    /// (<paramref name="id"/>, or none); its state is then present. Answers the credential it replaced, when that one was
+    /// <c>present</c> for the same address and other text (read under the same lock as the write, so two calls racing each
+    /// get their own), else null; it is pending until <see cref="Released"/>. A credential provided that a pending one
+    /// holds drops that one (<see cref="InUseAgain"/>).
     /// </summary>
     /// <exception cref="ArgumentException">It, or the id, isn't well formed (<see cref="IsWellFormed"/>, <see cref="IsWellFormedId"/>).</exception>
     /// <exception cref="NoServiceException">There is no service address: nothing changed.</exception>
@@ -215,17 +281,21 @@ public sealed class ServiceCredentials
     /// The store refused: the credential kept before stays; or it holds the new one but couldn't make that durable
     /// (<see cref="ServiceStoreException.Applied"/>): the new one is in effect, as a restart would find it.
     /// </exception>
-    public void Put(string credential, string? id = null)
+    public ReplacedServiceCredential? Put(string credential, string? id = null)
     {
         if (!IsWellFormed(credential))
             throw new ArgumentException("The credential isn't an RFC 6750 token of at most 4,096 characters.", nameof(credential));
         if (id is not null && !IsWellFormedId(id))
             throw new ArgumentException("The credential's id isn't 1 to 64 letters, digits, '_' and '-'.", nameof(id));
         using var raise = new RaiseIfChanged(this);
+        ReplacedServiceCredential? replaced;
         lock (_lock)
         {
             var address = _address() ?? throw new NoServiceException();
             var record = new StoredServiceCredential(address, credential, Rejected: false, id);
+            replaced = _held is { Rejected: false } held && held.Address == address && held.Credential != credential
+                ? new ReplacedServiceCredential(address, held.Credential)
+                : null;
             try
             {
                 _store.Write(record);
@@ -233,13 +303,19 @@ public sealed class ServiceCredentials
             catch (ServiceStoreException ex) when (ex.Applied)
             {
                 Keep(record);
+                DropReleases(r => r.Address == address && r.Credential == credential, InUseAgain);
                 throw;
             }
 
             Keep(record);
+            // A replaced credential provided again is in use: its pending request to be forgotten is dropped.
+            DropReleases(r => r.Address == address && r.Credential == credential, InUseAgain);
+            if (replaced is not null)
+                _releases.Add(replaced);
         }
 
         _logger.Information("A client provided a credential for the configured service");
+        return replaced;
     }
 
     /// <summary>Removes the credential, if any.</summary>
@@ -274,6 +350,8 @@ public sealed class ServiceCredentials
         var before = _generation;
         try
         {
+            if (next != _address())
+                DropReleases(r => r.Address != next, AddressMoved);
             if (next != _address() && (_held is not null || _stale))
             {
                 Remove();
@@ -300,9 +378,60 @@ public sealed class ServiceCredentials
     public void AddressChanged()
     {
         lock (_lock)
-            DropIfAnotherAddress(_address());
+        {
+            var address = _address();
+            DropReleases(r => r.Address != address, AddressMoved);
+            DropIfAnotherAddress(address);
+        }
+
         Changed?.Invoke();
     }
+
+    /// <summary>
+    /// Whether <paramref name="replaced"/> may be sent now, read under the store's lock at the last moment before sending:
+    /// only while the address it was kept for is in effect, it isn't the credential kept, and it wasn't dropped. One that
+    /// may not is dropped. A request already sent can't be recalled; one still being made is cancelled by the drop.
+    /// </summary>
+    internal ReleaseCheck MaySend(ReplacedServiceCredential replaced)
+    {
+        lock (_lock)
+        {
+            if (_address() != replaced.Address)
+            {
+                replaced.Drop(AddressMoved);
+                _releases.Remove(replaced);
+                return ReleaseCheck.OtherAddress;
+            }
+
+            if (_held is { } held && held.Address == replaced.Address && held.Credential == replaced.Credential)
+            {
+                replaced.Drop(InUseAgain);
+                _releases.Remove(replaced);
+            }
+
+            return replaced.Reason is null ? ReleaseCheck.Send : ReleaseCheck.Dropped;
+        }
+    }
+
+    /// <summary>
+    /// The request asking the service to forget <paramref name="replaced"/> has ended: that instance is no longer pending
+    /// (another of the same address and text, replaced later, still is).
+    /// </summary>
+    internal void Released(ReplacedServiceCredential replaced)
+    {
+        lock (_lock)
+            _releases.Remove(replaced);
+    }
+
+    /// <summary>Under <see cref="_lock"/>: drops, for <paramref name="reason"/>, every pending replaced credential <paramref name="match"/> takes.</summary>
+    private void DropReleases(Predicate<ReplacedServiceCredential> match, string reason) =>
+        _releases.RemoveWhere(r =>
+        {
+            if (!match(r))
+                return false;
+            r.Drop(reason);
+            return true;
+        });
 
     /// <summary>
     /// The address in effect and the credential to send to it, when a request may be made: false, with no credential,

@@ -434,6 +434,81 @@ public sealed class ServiceCredentialsTests : IDisposable
         Assert.Equal(ServiceCredentialState.Present, service.Status.Credential);
     }
 
+    // ---- the credential a new one replaces --------------------------------------------------------------------------
+
+    [Fact]
+    public void Put_AnswersTheCredentialItReplaced_OnlyWhenItWasPresent_ForTheSameAddress_AndOtherText()
+    {
+        var service = Open();
+
+        // The first credential replaces none; the same text again replaces none.
+        Assert.Null(service.Put(Credential));
+        Assert.Null(service.Put(Credential));
+
+        // Another one replaces it: the replaced one with the address it was kept for.
+        Assert.Equal(new ReplacedServiceCredential(Address, Credential), service.Put("second-credential"));
+
+        // A rejected one is no longer used: replacing it answers none.
+        Assert.True(service.TryTake(out _, out _, out _, out var sent));
+        service.Reject(sent);
+        Assert.Null(service.Put("third-credential"));
+
+        // Removed first: none.
+        service.Delete();
+        Assert.Null(service.Put("fourth-credential"));
+
+        // A change of address removes it: the next one replaces none.
+        _address = "http://127.0.0.1:8787";
+        service.AddressChanged();
+        Assert.Null(service.Put("fifth-credential"));
+
+        // The address changed and the change not yet handled: the one kept is for another address, so none.
+        _address = Address;
+        Assert.Null(service.Put("sixth-credential"));
+        Assert.Equal(new ReplacedServiceCredential(Address, "sixth-credential"), service.Put("seventh-credential"));
+    }
+
+    [Fact]
+    public void Put_ThatTheStoreRefuses_ReplacesNothing_AndThrows()
+    {
+        var store = new RefusingStore(Store());
+        var service = Open(store);
+        service.Put(Credential);
+
+        store.Refuse = true;
+        Assert.Throws<ServiceStoreException>(() => service.Put("another-credential"));
+
+        // The kept one is still the one replaced next.
+        store.Refuse = false;
+        Assert.Equal(new ReplacedServiceCredential(Address, Credential), service.Put("another-credential"));
+    }
+
+    [Fact]
+    public async Task TwoPutsRacing_EachAnswerTheirOwnPredecessor()
+    {
+        var service = Open();
+        service.Put(Credential);
+        using var start = new Barrier(2);
+
+        var second = Task.Run(() =>
+        {
+            start.SignalAndWait(TestContext.Current.CancellationToken);
+            return service.Put("second-credential");
+        }, TestContext.Current.CancellationToken);
+        var third = Task.Run(() =>
+        {
+            start.SignalAndWait(TestContext.Current.CancellationToken);
+            return service.Put("third-credential");
+        }, TestContext.Current.CancellationToken);
+        var answers = await Task.WhenAll(second, third);
+
+        // Whichever came first replaced the first credential, and the other replaced it: each predecessor once.
+        Assert.True(service.TryTake(out _, out var kept, out _));
+        var replaced = answers.Select(a => Assert.IsType<ReplacedServiceCredential>(a).Credential).Order().ToArray();
+        var expected = new[] { Credential, kept == "second-credential" ? "third-credential" : "second-credential" }.Order().ToArray();
+        Assert.Equal(expected, replaced);
+    }
+
     // ---- the protected store (Windows) ------------------------------------------------------------------------------
 
     [Fact]

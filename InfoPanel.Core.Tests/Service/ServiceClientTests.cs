@@ -288,6 +288,46 @@ public sealed class ServiceClientTests : IDisposable
         Assert.Equal($"Bearer {Credential}", Assert.Single(service.Requests).Header("authorization"));
     }
 
+    [Fact]
+    public async Task ACredentialNoLongerKept_IsSentToTheAddressItWasKeptFor_AndA401RejectsNothing()
+    {
+        await using var service = new LocalHttpServer(Answering(401));
+        _address = $"http://127.0.0.1:{service.Port}";
+        var credentials = Credentials();
+        credentials.Put(Credential);
+        using var client = new ServiceClient(credentials, loopbackOnly: true);
+
+        using var answer = await client.SendWithAsync(new ReplacedServiceCredential(_address, "replaced-credential"), HttpMethod.Delete, "/v1/data", Ct);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, answer.Response!.StatusCode);
+        var request = Assert.Single(service.Requests);
+        Assert.Equal(("DELETE", "/v1/data", "Bearer replaced-credential"), (request.Method, request.Path, request.Header("authorization")));
+        // The kept credential isn't the one the service refused.
+        Assert.Equal(ServiceCredentialState.Present, credentials.Status.Credential);
+        Assert.Equal(ServiceCredentialState.Present, Credentials().Status.Credential);
+    }
+
+    [Fact]
+    public async Task ACredentialNoLongerKept_IsSentOnlyWhileItsAddressIsInEffect_AndOfflineOnlyToALoopbackOne()
+    {
+        await using var old = new LocalHttpServer(Answering(204));
+        await using var service = new LocalHttpServer(Answering(204));
+        var kept = $"http://127.0.0.1:{old.Port}";
+        _address = $"http://127.0.0.1:{service.Port}";
+        var handler = new CountingHandler();
+        using (var client = new ServiceClient(Credentials(), loopbackOnly: false))
+        using (var answer = await client.SendWithAsync(new ReplacedServiceCredential(kept, "replaced-credential"), HttpMethod.Delete, "/v1/data", Ct))
+            Assert.Equal(ServiceRefusal.OtherOrigin, answer.Refused);
+        Assert.Empty(old.Requests);
+        Assert.Empty(service.Requests);
+
+        _address = "https://service.example";
+        using (var offline = new ServiceClient(Credentials(), loopbackOnly: true, time: null, handler))
+        using (var answer = await offline.SendWithAsync(new ReplacedServiceCredential(_address, "replaced-credential"), HttpMethod.Delete, "/v1/data", Ct))
+            Assert.Equal(ServiceRefusal.Offline, answer.Refused);
+        Assert.Equal(0, handler.Count);
+    }
+
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>

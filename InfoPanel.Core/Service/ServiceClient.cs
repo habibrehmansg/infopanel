@@ -113,9 +113,36 @@ public sealed class ServiceClient : IDisposable
                 : ServiceRefusal.NoCredential);
         }
 
+        return await SendToAsync(address!, credential!, generation, method, pathAndQuery, content, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends <paramref name="method"/> <paramref name="pathAndQuery"/> with <paramref name="replaced"/>, a credential the
+    /// engine no longer keeps, to the address it was kept for, under every rule <see cref="SendAsync"/> follows; checked
+    /// under the store's lock at the last moment before sending (<see cref="ServiceCredentials.MaySend"/>): when that
+    /// address is no longer in effect it is refused as <see cref="ServiceRefusal.OtherOrigin"/>, and when it was dropped
+    /// otherwise, or <paramref name="ct"/> was cancelled by then, this throws <see cref="OperationCanceledException"/>;
+    /// nothing is sent either way. <paramref name="ct"/> must include <see cref="ReplacedServiceCredential.Dropped"/>, so a
+    /// drop cancels a request still being made; one handed to the connection just before a drop can't be recalled. A 401
+    /// rejects nothing: that credential isn't kept.
+    /// </summary>
+    internal Task<ServiceAnswer> SendWithAsync(ReplacedServiceCredential replaced, HttpMethod method, string pathAndQuery, CancellationToken ct = default) =>
+        SendToAsync(replaced.Address, replaced.Credential, generation: null, method, pathAndQuery, content: null, ct, replaced);
+
+    /// <summary>The request asking the service to forget <paramref name="replaced"/> has ended (<see cref="ServiceCredentials.Released"/>).</summary>
+    internal void Released(ReplacedServiceCredential replaced) => _credentials.Released(replaced);
+
+    /// <summary>
+    /// Sends the request to <paramref name="address"/> with <paramref name="credential"/> under the rules, or refuses; a 401
+    /// rejects the kept credential of <paramref name="generation"/>, and none when it is null. With <paramref name="replaced"/>,
+    /// only while <see cref="ServiceCredentials.MaySend"/> says so, right before the request is handed to the connection.
+    /// </summary>
+    private async Task<ServiceAnswer> SendToAsync(string address, string credential, long? generation, HttpMethod method, string pathAndQuery,
+        HttpContent? content, CancellationToken ct, ReplacedServiceCredential? replaced = null)
+    {
         if (!ServiceAddress.IsNormal(address))
             return new ServiceAnswer(ServiceRefusal.Insecure);
-        var origin = new Uri(address!);
+        var origin = new Uri(address);
         if (_loopbackOnly && !ServiceAddress.IsLoopbackHost(origin))
             return new ServiceAnswer(ServiceRefusal.Offline);
         if (Target(origin, pathAndQuery) is not { } target)
@@ -123,12 +150,27 @@ public sealed class ServiceClient : IDisposable
 
         using var request = new HttpRequestMessage(method, target) { Content = content };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        if (replaced is not null)
+        {
+            switch (_credentials.MaySend(replaced))
+            {
+                case ReleaseCheck.OtherAddress:
+                    return new ServiceAnswer(ServiceRefusal.OtherOrigin);
+                case ReleaseCheck.Dropped:
+                    throw new OperationCanceledException(replaced.Dropped);
+            }
+
+            // The check may have waited for the store's lock: a request cancelled meanwhile (the engine stopping) isn't sent.
+            ct.ThrowIfCancellationRequested();
+        }
+
         var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
 
         switch (response.StatusCode)
         {
             case HttpStatusCode.Unauthorized:
-                _credentials.Reject(generation);
+                if (generation is { } sent)
+                    _credentials.Reject(sent);
                 return new ServiceAnswer(response, null);
             case HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable:
                 return new ServiceAnswer(response, RetryAfterOf(response.Headers.RetryAfter));

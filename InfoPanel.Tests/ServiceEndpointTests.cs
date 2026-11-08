@@ -33,6 +33,11 @@ public sealed class ServiceEndpointTests
     /// </summary>
     private const string Marker = "test-credential.Zq8";
 
+    /// <summary>Another credential, and the part of it the scans look for, as <see cref="Marker"/> is for <see cref="Credential"/>.</summary>
+    private const string Replacement = "replacement-credential.Rp4~+/==";
+
+    private const string ReplacementMarker = "replacement-credential.Rp4";
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static StringContent Body(string json) => new(json, Encoding.UTF8, "application/json");
@@ -262,7 +267,17 @@ public sealed class ServiceEndpointTests
         var (refused, refusedText) = await Put(api, Credential + " x");
         Assert.Equal(HttpStatusCode.UnprocessableEntity, refused);
         Assert.DoesNotContain(Marker, refusedText);
+        // Replaced by another: the engine asks the service to forget the first (offline here, so it is refused, and
+        // logged); neither credential is anywhere but the store, which holds the second.
+        Assert.Equal(HttpStatusCode.NoContent, (await Put(api, Replacement)).Item1);
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!factory.Services.GetRequiredService<RecentLog>().After(0).Any(e => e.Message.Contains("credential this engine replaced")))
+        {
+            Assert.True(DateTime.UtcNow < deadline, "timed out waiting for the line about the replaced credential");
+            await Task.Delay(10, Ct);
+        }
 
+        string[] markers = [Marker, ReplacementMarker];
         var answers = new List<string>
         {
             (await Send(api, HttpMethod.Get, "/api/service")).Text,
@@ -271,27 +286,34 @@ public sealed class ServiceEndpointTests
             (await Send(api, HttpMethod.Get, "/api/logs")).Text,
         };
         foreach (var answer in answers)
-            Assert.DoesNotContain(Marker, answer);
+            foreach (var marker in markers)
+                Assert.DoesNotContain(marker, answer);
 
         var settingsFile = Path.Combine(factory.DataDir, DataPaths.SettingsFileName);
         Assert.True(File.Exists(settingsFile));
-        Assert.DoesNotContain(Marker, File.ReadAllText(settingsFile));
+        foreach (var marker in markers)
+            Assert.DoesNotContain(marker, File.ReadAllText(settingsFile));
 
         var recent = factory.Services.GetRequiredService<RecentLog>().After(0);
         Assert.Contains(recent, e => e.Message.Contains("A client provided a credential"));
-        Assert.DoesNotContain(recent, e => (e.Message + e.Exception).Contains(Marker));
+        foreach (var marker in markers)
+            Assert.DoesNotContain(recent, e => (e.Message + e.Exception).Contains(marker));
 
         var logs = Directory.GetFiles(Path.Combine(factory.DataDir, "logs"), "*.log");
         Assert.NotEmpty(logs);
         foreach (var log in logs)
-            Assert.DoesNotContain(Marker, ReadShared(log));
+        {
+            foreach (var marker in markers)
+                Assert.DoesNotContain(marker, ReadShared(log));
+        }
 
         // Only the store's own file holds it, among every file in the data folder.
         foreach (var file in Directory.GetFiles(factory.DataDir, "*", SearchOption.AllDirectories))
         {
             if (file == StoreFile(factory) || file.EndsWith("engine.lock", StringComparison.Ordinal))
                 continue;
-            Assert.DoesNotContain(Marker, ReadShared(file));
+            foreach (var marker in markers)
+                Assert.DoesNotContain(marker, ReadShared(file));
         }
     }
 

@@ -11,7 +11,9 @@ namespace InfoPanel.Api;
 /// /api/service</c> answers its address, the state of the credential a client provides for it and that of the connection
 /// AI apps elsewhere use (<c>serviceState</c>), never the credential; <c>PUT /api/service/credential</c> keeps one (204; 409 <c>noService</c> without an address; 422
 /// for a body that breaks <c>serviceCredential</c> or <c>requestBytes</c>, never echoing the credential; 503
-/// <c>storeUnavailable</c> when the store refuses); <c>DELETE /api/service/credential</c> removes it (204; 503).
+/// <c>storeUnavailable</c> when the store refuses), then asks the service in the background to forget a <c>present</c>
+/// credential it replaced for the same address (<see cref="ServiceRelease"/>); <c>DELETE /api/service/credential</c>
+/// removes it (204; 503).
 /// </summary>
 public static class ServiceEndpoints
 {
@@ -27,7 +29,7 @@ public static class ServiceEndpoints
 
         var credential = app.MapGroup("/api/service/credential");
 
-        credential.MapPut("", async (HttpRequest request, ServiceCredentials service, Workspace workspace, CancellationToken ct) =>
+        credential.MapPut("", async (HttpRequest request, ServiceCredentials service, ServiceRelease release, Workspace workspace, CancellationToken ct) =>
         {
             // The body's size as received, then the formats' JSON rules and the schema, as every body. No error carries
             // the value: the schema's messages name the rule, never the string.
@@ -48,9 +50,10 @@ public static class ServiceEndpoints
             if (given.Id is { } id && !ServiceCredentials.IsWellFormedId(id))
                 return Invalid("/id", "schema", "An id is 1 to 64 letters, digits, '_' and '-'.");
 
+            ReplacedServiceCredential? replaced;
             try
             {
-                service.Put(given.Credential, given.Id);
+                replaced = service.Put(given.Credential, given.Id);
             }
             catch (NoServiceException)
             {
@@ -61,6 +64,9 @@ public static class ServiceEndpoints
                 return Problem(StoreUnavailable(refused), StatusCodes.Status503ServiceUnavailable);
             }
 
+            // Once the new one is kept, the service is asked to forget the one it replaced, in the background: the answer
+            // doesn't wait for it, and whatever comes of it changes nothing here.
+            _ = release.Start(replaced);
             return Results.NoContent();
         }).WithOwnBodyLimit().RequireScope(ApiScope.Session);
 
