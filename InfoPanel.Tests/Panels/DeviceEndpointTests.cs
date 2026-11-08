@@ -503,6 +503,127 @@ public sealed class DeviceEndpointTests
         Assert.Equal(2, saved.RootElement.GetProperty("devices").GetArrayLength());
     }
 
+    private const string V1Id = @"USB\\VID_4E58&PID_1001\\6&2A9B1C3&0&3";
+
+    [Fact]
+    public async Task A_save_naming_a_saved_1x_device_id_in_any_case_is_409_exists_with_the_saved_panels_id()
+    {
+        await using var engine = new EngineFactory();
+        await using var factory = WithPanels(engine, new FakeUsbBackend());
+        using var api = Client(factory);
+
+        var (status, first) = await Send(api, HttpMethod.Post, "/api/devices",
+            $$$"""{"family":"beadapanel","model":"5C","v1":{"deviceId":"{{{V1Id}}}","deviceLocation":"Port_#0003.Hub_#0002"},"settings":{"brightness":70}}""");
+        Assert.Equal(HttpStatusCode.Created, status);
+        var id = first.GetProperty("id").GetString()!;
+        Assert.Equal(@"USB\VID_4E58&PID_1001\6&2A9B1C3&0&3", first.GetProperty("v1").GetProperty("deviceId").GetString());
+        Assert.Equal("Port_#0003.Hub_#0002", first.GetProperty("v1").GetProperty("deviceLocation").GetString());
+
+        // The same 1.x device again, its id in another case, at another location, with a serial and another model: the
+        // first's id, nothing saved.
+        var (again, problem) = await Send(api, HttpMethod.Post, "/api/devices",
+            $$$"""{"family":"beadapanel","model":"8","serial":"NEW1","v1":{"deviceId":"{{{V1Id.ToLowerInvariant()}}}","deviceLocation":""},"settings":{"enabled":true}}""");
+        Assert.Equal(HttpStatusCode.Conflict, again);
+        Assert.Equal("exists", problem.GetProperty("code").GetString());
+        Assert.Equal(id, problem.GetProperty("id").GetString());
+
+        // Another 1.x device is saved.
+        (status, var second) = await Send(api, HttpMethod.Post, "/api/devices",
+            $$$"""{"family":"beadapanel","model":"5C","v1":{"deviceId":"{{{V1Id}}}4","deviceLocation":""},"settings":{}}""");
+        Assert.Equal(HttpStatusCode.Created, status);
+        Assert.NotEqual(id, second.GetProperty("id").GetString());
+
+        var devices = (await List(api)).GetProperty("devices");
+        Assert.Equal(2, devices.GetArrayLength());
+        Assert.Equal(70, devices[0].GetProperty("settings").GetProperty("brightness").GetInt32());
+        Assert.Equal(first.GetProperty("v1").ToString(), devices[0].GetProperty("v1").ToString());
+        Assert.Equal("", devices[1].GetProperty("v1").GetProperty("deviceLocation").GetString());
+    }
+
+    [Fact]
+    public async Task A_serial_clash_answers_the_saved_panels_id_and_a_1x_device_id_clash_names_its_own_panel_first()
+    {
+        await using var engine = new EngineFactory();
+        var backend = new FakeUsbBackend();
+        Panel(backend);
+        await using var factory = WithPanels(engine, backend);
+        using var api = Client(factory);
+        var found = (await Until(api, d => d.GetProperty("state").GetString() == "off")).GetProperty("id").GetString();
+
+        // The serial of a panel found plugged in.
+        var (status, problem) = await Send(api, HttpMethod.Post, "/api/devices", $$$"""{"family":"beadapanel","model":"8","serial":"{{{Serial}}}","settings":{}}""");
+        Assert.Equal(HttpStatusCode.Conflict, status);
+        Assert.Equal(found, problem.GetProperty("id").GetString());
+
+        // A 1.x device saved with a serial of its own; then a save with the found panel's serial and that 1.x device's
+        // id names the 1.x device's panel.
+        var (created, saved) = await Send(api, HttpMethod.Post, "/api/devices",
+            $$$"""{"family":"beadapanel","model":"6C","serial":"ABC123","v1":{"deviceId":"{{{V1Id}}}","deviceLocation":""},"settings":{}}""");
+        Assert.Equal(HttpStatusCode.Created, created);
+        (status, problem) = await Send(api, HttpMethod.Post, "/api/devices",
+            $$$"""{"family":"beadapanel","model":"8","serial":"{{{Serial}}}","v1":{"deviceId":"{{{V1Id}}}","deviceLocation":""},"settings":{}}""");
+        Assert.Equal(HttpStatusCode.Conflict, status);
+        Assert.Equal(saved.GetProperty("id").GetString(), problem.GetProperty("id").GetString());
+
+        // A 1.x device not saved yet whose serial is: the serial's panel.
+        (status, problem) = await Send(api, HttpMethod.Post, "/api/devices",
+            $$$"""{"family":"beadapanel","model":"6C","serial":"ABC123","v1":{"deviceId":"{{{V1Id}}}5","deviceLocation":""},"settings":{}}""");
+        Assert.Equal(HttpStatusCode.Conflict, status);
+        Assert.Equal(saved.GetProperty("id").GetString(), problem.GetProperty("id").GetString());
+        Assert.Equal(2, (await List(api)).GetProperty("devices").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_1x_identity_is_written_to_devices_json_and_still_clashes_after_a_restart_and_a_panel_without_one_has_none()
+    {
+        await using var engine = new EngineFactory();
+        string withV1, without;
+        await using (var factory = WithPanels(engine, new FakeUsbBackend()))
+        {
+            using var api = Client(factory);
+            var (status, entry) = await Send(api, HttpMethod.Post, "/api/devices",
+                $$$"""{"family":"beadapanel","model":"5C","v1":{"deviceId":"{{{V1Id}}}","deviceLocation":"Port_#0003.Hub_#0002"},"settings":{}}""");
+            Assert.Equal(HttpStatusCode.Created, status);
+            withV1 = entry.GetProperty("id").GetString()!;
+            (status, entry) = await Send(api, HttpMethod.Post, "/api/devices", """{"family":"beadapanel","model":"8","serial":"ABC123","settings":{}}""");
+            Assert.Equal(HttpStatusCode.Created, status);
+            without = entry.GetProperty("id").GetString()!;
+            Assert.False(entry.TryGetProperty("v1", out _));
+        }
+
+        // The file as the engine left it, which the next engine starts from: another data folder, so the next start
+        // needn't wait for this host to let go of its own as it finishes stopping on its own thread.
+        var written = File.ReadAllBytes(Path.Combine(engine.DataDir, "devices.json"));
+        await using var next = new EngineFactory();
+        Directory.CreateDirectory(next.DataDir);
+        File.WriteAllBytes(Path.Combine(next.DataDir, "devices.json"), written);
+
+        using (var file = JsonDocument.Parse(written))
+        {
+            var devices = file.RootElement.GetProperty("devices");
+            var v1 = devices[0].GetProperty("v1");
+            Assert.Equal(["deviceId", "deviceLocation"], v1.EnumerateObject().Select(m => m.Name));
+            Assert.Equal(@"USB\VID_4E58&PID_1001\6&2A9B1C3&0&3", v1.GetProperty("deviceId").GetString());
+            Assert.Equal("Port_#0003.Hub_#0002", v1.GetProperty("deviceLocation").GetString());
+            Assert.False(devices[1].TryGetProperty("v1", out _));
+        }
+
+        await using (var factory = WithPanels(next, new FakeUsbBackend()))
+        {
+            using var api = Client(factory);
+            var devices = (await List(api)).GetProperty("devices");
+            Assert.Equal([withV1, without], devices.EnumerateArray().Select(d => d.GetProperty("id").GetString()));
+            Assert.Equal(@"USB\VID_4E58&PID_1001\6&2A9B1C3&0&3", devices[0].GetProperty("v1").GetProperty("deviceId").GetString());
+            Assert.Equal("Port_#0003.Hub_#0002", devices[0].GetProperty("v1").GetProperty("deviceLocation").GetString());
+            Assert.False(devices[1].TryGetProperty("v1", out _));
+
+            var (status, problem) = await Send(api, HttpMethod.Post, "/api/devices",
+                $$$"""{"family":"beadapanel","model":"5C","v1":{"deviceId":"{{{V1Id.ToUpperInvariant()}}}","deviceLocation":"Port_#0003.Hub_#0002"},"settings":{}}""");
+            Assert.Equal(HttpStatusCode.Conflict, status);
+            Assert.Equal(withV1, problem.GetProperty("id").GetString());
+        }
+    }
+
     [Fact]
     public async Task A_save_with_a_bad_body_family_or_model_is_422_and_saves_nothing()
     {
@@ -1035,6 +1156,33 @@ public sealed class DeviceEndpointTests
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.True(SpecSchemas.Strict.Validate(entry, SpecSchemas.Api + "#/$defs/deviceEntry").IsValid);
         Assert.Contains("\"profileId\":\"bad\"", File.ReadAllText(file).Replace(" ", ""));
+    }
+
+    [Fact]
+    public async Task A_stored_1x_identity_the_answer_cant_carry_is_left_out_of_it_and_kept()
+    {
+        await using var engine = new EngineFactory();
+        var file = Path.Combine(engine.DataDir, "devices.json");
+        SavedBefore(engine,
+            """{"id": "00000000-0000-4000-8000-0000000000b1", "family": "beadapanel", "model": "8", "serial": null, "port": null, "v1": {"deviceId": "", "deviceLocation": ""}}""",
+            $$$"""{"id": "00000000-0000-4000-8000-0000000000b2", "family": "beadapanel", "model": "8", "serial": null, "port": null, "v1": {"deviceId": "ID-2", "deviceLocation": "{{{new string('x', 1025)}}}"}}""",
+            $$$"""{"id": "00000000-0000-4000-8000-0000000000b3", "family": "beadapanel", "model": "8", "serial": null, "port": null, "v1": {"deviceId": "{{{new string('x', 1024)}}}", "deviceLocation": "{{{new string('y', 1024)}}}"}}""");
+        await using var factory = WithPanels(engine, new FakeUsbBackend());
+        using var api = Client(factory);
+
+        var list = await List(api);
+        var check = SpecSchemas.Strict.Validate(list, SpecSchemas.Api + "#/$defs/deviceList");
+        Assert.True(check.IsValid, string.Join("; ", check.Errors));
+        var devices = list.GetProperty("devices");
+        Assert.False(devices[0].TryGetProperty("v1", out _));
+        Assert.False(devices[1].TryGetProperty("v1", out _));
+        Assert.Equal(1024, devices[2].GetProperty("v1").GetProperty("deviceLocation").GetString()!.Length);
+
+        // Another setting changed: the stored identities are kept as they were.
+        Assert.Equal(HttpStatusCode.OK, (await Send(api, HttpMethod.Patch, "/api/devices/00000000-0000-4000-8000-0000000000b1", """{"settings":{"brightness":50}}""")).Status);
+        var text = File.ReadAllText(file);
+        Assert.Contains("\"v1\":{\"deviceId\":\"\",\"deviceLocation\":\"\"}", text);
+        Assert.Contains("\"v1\":{\"deviceId\":\"ID-2\",\"deviceLocation\":\"" + new string('x', 1025) + "\"}", text);
     }
 
     [Fact]

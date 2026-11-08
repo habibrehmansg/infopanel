@@ -122,6 +122,65 @@ public sealed class PanelStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_1x_identity_is_written_only_for_a_panel_that_has_one_and_read_back_with_the_members_it_doesnt_know()
+    {
+        var store = PanelStore.Read(FilePath, Logged().Logger);
+        store.Save([
+            new SavedPanel(Id1, "beadapanel", "5C", null, null) { V1 = new PanelV1Identity(@"USB\VID_4E58&PID_1001\6&2A9B1C3&0&3", "") },
+            new SavedPanel(Id2, "beadapanel", "8", "S1", "0-1"),
+        ]);
+        var written = File.ReadAllText(FilePath);
+        Assert.Contains("\"encoding\":\"auto\",\"v1\":{\"deviceId\":\"USB\\\\VID_4E58\\u0026PID_1001\\\\6\\u00262A9B1C3\\u00260\\u00263\",\"deviceLocation\":\"\"}}", written);
+        Assert.Equal(2, written.Split("\"v1\"").Length); // the second panel has none
+
+        var again = PanelStore.Read(FilePath, Logged().Logger);
+        Assert.Null(again.Problem);
+        Assert.Equal((@"USB\VID_4E58&PID_1001\6&2A9B1C3&0&3", ""), (again.Devices[0].V1!.DeviceId, again.Devices[0].V1!.DeviceLocation));
+        Assert.Null(again.Devices[1].V1);
+
+        // A later engine's members in it are kept, and a change of a setting keeps it.
+        File.WriteAllText(FilePath, $$$"""
+            {"format": "infopanel.devices/1", "devices": [
+              {"id": "{{{Id1}}}", "family": "beadapanel", "model": "5C", "serial": null, "port": null,
+               "v1": {"deviceLocation": "Port_#0003", "later": [1], "deviceId": "ID-1"}}
+            ]}
+            """);
+        var later = PanelStore.Read(FilePath, Logged().Logger);
+        Assert.Equal(("ID-1", "Port_#0003"), (later.Devices[0].V1!.DeviceId, later.Devices[0].V1!.DeviceLocation));
+        later.Save([later.Devices[0] with { Brightness = 30 }]);
+        Assert.Contains("\"brightness\":30,\"encoding\":\"auto\",\"v1\":{\"deviceId\":\"ID-1\",\"deviceLocation\":\"Port_#0003\",\"later\":[1]}}", File.ReadAllText(FilePath));
+        Assert.True(PanelStore.Read(FilePath, Logged().Logger).Devices[0].V1!.SameDevice("id-1"));
+    }
+
+    public static TheoryData<string, string> UnheldV1 => new()
+    {
+        { "v1 not an object", $$$"""{"format":"infopanel.devices/1","devices":[{"id":"{{{Id1}}}","family":"beadapanel","v1":"ID-1"}]}""" },
+        { "v1 null", $$$"""{"format":"infopanel.devices/1","devices":[{"id":"{{{Id1}}}","family":"beadapanel","v1":null}]}""" },
+        { "v1 without deviceId", $$$"""{"format":"infopanel.devices/1","devices":[{"id":"{{{Id1}}}","family":"beadapanel","v1":{"deviceLocation":""}}]}""" },
+        { "v1 without deviceLocation", $$$"""{"format":"infopanel.devices/1","devices":[{"id":"{{{Id1}}}","family":"beadapanel","v1":{"deviceId":"ID-1"}}]}""" },
+        { "a deviceId that isn't text", $$$"""{"format":"infopanel.devices/1","devices":[{"id":"{{{Id1}}}","family":"beadapanel","v1":{"deviceId":1,"deviceLocation":""}}]}""" },
+        { "a deviceLocation that is a lone surrogate", $$$"""{"format":"infopanel.devices/1","devices":[{"id":"{{{Id1}}}","family":"beadapanel","v1":{"deviceId":"ID-1","deviceLocation":"\uD800"}}]}""" },
+        { "deviceId twice", $$$"""{"format":"infopanel.devices/1","devices":[{"id":"{{{Id1}}}","family":"beadapanel","v1":{"deviceId":"A","deviceId":"B","deviceLocation":""}}]}""" },
+    };
+
+    [Theory]
+    [MemberData(nameof(UnheldV1))]
+    public void A_1x_identity_it_cant_read_is_never_rewritten_and_turns_panels_off(string what, string text)
+    {
+        File.WriteAllText(FilePath, text);
+        var before = File.ReadAllBytes(FilePath);
+        var (logger, events) = Logged();
+
+        var store = PanelStore.Read(FilePath, logger);
+
+        Assert.True(store.Problem != null, what);
+        Assert.Empty(store.Devices);
+        Assert.Contains("USB panels are off this run", Assert.Single(events).RenderMessage());
+        Assert.Throws<InvalidOperationException>(() => store.Save([]));
+        Assert.Equal(before, File.ReadAllBytes(FilePath));
+    }
+
+    [Fact]
     public void A_file_over_its_cap_or_a_link_isnt_read()
     {
         File.WriteAllBytes(FilePath, Encoding.ASCII.GetBytes("{\"format\":\"infopanel.devices/1\",\"pad\":\"" + new string('x', PanelStore.MaxBytes) + "\"}"));

@@ -262,7 +262,7 @@
       }
     },
     "existsProblem": {
-      "description": "409 application/problem+json: a profile with the requested id already exists (a create or duplicate whose first attempt succeeded, retried, gets this), or a device with the family and serial a save names (POST /api/devices). Nothing was created.",
+      "description": "409 application/problem+json: a profile with the requested id already exists (a create or duplicate whose first attempt succeeded, retried, gets this), or a saved device has the 1.x device id, or the family and serial, a save names (POST /api/devices). Nothing was created.",
       "type": "object",
       "required": ["status", "code"],
       "additionalProperties": false,
@@ -271,7 +271,8 @@
         "title": { "type": "string" },
         "detail": { "type": "string" },
         "status": { "const": 409 },
-        "code": { "const": "exists" }
+        "code": { "const": "exists" },
+        "id": { "description": "For a device (POST /api/devices): the saved device's id (deviceEntry.id), always present. Absent for a profile, whose id the request names.", "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
       }
     },
 
@@ -1851,7 +1852,8 @@
           "uniqueItems": true
         },
         "stats": { "description": "While it is `running`: its frames a second and the time a frame takes; else null.", "oneOf": [{ "$ref": "#/$defs/deviceStats" }, { "type": "null" }] },
-        "details": { "$ref": "#/$defs/deviceDetails" }
+        "details": { "$ref": "#/$defs/deviceDetails" },
+        "v1": { "$ref": "#/$defs/v1DeviceIdentity", "description": "The 1.x device it was saved from, as the save gave it (createDeviceRequest.v1); absent when it has none." }
       }
     },
     "deviceModel": {
@@ -1934,7 +1936,7 @@
       }
     },
     "createDeviceRequest": {
-      "description": "POST /api/devices: a panel to save that need not be plugged in, such as one a client brings over from another program (docs/api.md#saving-a-device). A panel with the same family and serial saved already: 409 existsProblem. Answered 201 with its deviceEntry.",
+      "description": "POST /api/devices: a panel to save that need not be plugged in, such as one a client brings over from another program (docs/api.md#saving-a-device). A saved panel with the same 1.x device id, or the same family and serial: 409 existsProblem with its id. Answered 201 with its deviceEntry.",
       "type": "object",
       "required": ["family", "model", "settings"],
       "additionalProperties": false,
@@ -1942,7 +1944,18 @@
         "family": { "description": "The kind of panel, as deviceEntry.family names it: `beadapanel`. A family the engine doesn't drive is refused (`device.family`).", "type": "string", "minLength": 1, "maxLength": 64 },
         "model": { "description": "Its model's id within the family, as deviceModel.id names it (\"6C\"). A model the family doesn't have is refused (`device.model`).", "type": "string", "minLength": 1, "maxLength": 64 },
         "serial": { "description": "The serial number the panel reports, letters and digits; absent when it isn't known. A panel without one is matched to the first unknown panel of its model plugged in only when that can't be mistaken (docs/api.md#saving-a-device).", "type": "string", "pattern": "^[A-Za-z0-9]{1,128}$" },
+        "v1": { "$ref": "#/$defs/v1DeviceIdentity", "description": "The 1.x device it is brought over from, when it is one: stored with it and answered in its deviceEntry. A saved panel with the same `deviceId` (ignoring case) is 409 existsProblem." },
         "settings": { "$ref": "#/$defs/deviceSettingsChange", "description": "Its settings, as a change gives them; a setting left out takes a new panel's: off, no profile, rotation 0, brightness 100." }
+      }
+    },
+    "v1DeviceIdentity": {
+      "description": "A 1.x panel device, as 1.x stored it and v1DeviceOutcome names it: the same strings. The engine stores them as given and reads nothing into them.",
+      "type": "object",
+      "required": ["deviceId", "deviceLocation"],
+      "additionalProperties": false,
+      "properties": {
+        "deviceId": { "description": "Its `DeviceId` as 1.x stored it. Two are the same device when they are equal ignoring case (ordinal, as Windows compares device instance ids).", "type": "string", "minLength": 1, "maxLength": 1024 },
+        "deviceLocation": { "description": "Its `DeviceLocation` as 1.x stored it (empty when it had none). Not compared.", "type": "string", "maxLength": 1024 }
       }
     },
 

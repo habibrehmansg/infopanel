@@ -1,0 +1,1 @@
+{"title": "The device already exists", "status": 409, "code": "exists", "detail": "A saved device has the 1.x device id 'USB\\VID_4E58&PID_1001\\934072005C'; nothing was saved.", "id": "a1c3e5f7-0b2d-4f6a-8c1e-3d5f7a9b1c2e"}

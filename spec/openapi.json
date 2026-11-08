@@ -534,7 +534,7 @@
       },
       "post": {
         "operationId": "createDevice",
-        "summary": "Saves a panel that need not be plugged in, with its model, serial when known, and settings (the devices feature).",
+        "summary": "Saves a panel that need not be plugged in, with its model, serial when known, the 1.x device it is brought over from, and settings (the devices feature).",
         "description": "docs/api.md#saving-a-device.",
         "security": [{"bearer": ["session"]}],
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/createDeviceRequest"}}}},
@@ -546,7 +546,7 @@
           "401": {"$ref": "#/components/responses/unauthorized"},
           "403": {"$ref": "#/components/responses/forbidden"},
           "409": {
-            "description": "A panel of the family with the serial is saved already (existsProblem); or the engine drives no panels this run, couldn't read its devices file when it started, or couldn't write it (problem). Nothing was saved.",
+            "description": "A saved panel has the 1.x device id (ignoring case), or the family and serial, the save names (existsProblem, with the saved panel's id); or the engine drives no panels this run, couldn't read its devices file when it started, or couldn't write it (problem). Nothing was saved.",
             "content": {"application/problem+json": {"schema": {"oneOf": [
               {"$ref": "urn:infopanel:api:1#/$defs/existsProblem"},
               {"$ref": "urn:infopanel:api:1#/$defs/problem"}

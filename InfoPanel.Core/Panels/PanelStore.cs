@@ -33,6 +33,9 @@ public sealed record SavedPanel(
 
     public IReadOnlyList<JsonMemberText> Kept { get; init; } = [];
 
+    /// <summary>The 1.x device a client saved it from (spec/docs/api.md "Saving a device"), or null.</summary>
+    public PanelV1Identity? V1 { get; init; }
+
     /// <summary>The encoding in effect; setting it (<c>with { Encoding = … }</c>) replaces an <see cref="UnknownEncoding"/>.</summary>
     public PanelEncoding Encoding
     {
@@ -52,6 +55,20 @@ public sealed record SavedPanel(
 }
 
 /// <summary>
+/// The 1.x device a saved panel was brought over from, as the client gave it: its <see cref="DeviceId"/> and
+/// <see cref="DeviceLocation"/> as 1.x stored them. The engine reads nothing into them; two panels are the same 1.x device
+/// when their <see cref="DeviceId"/>s are equal ignoring case (<see cref="SameDevice"/>). <see cref="Kept"/> holds the
+/// members this engine doesn't know, written back as read.
+/// </summary>
+public sealed record PanelV1Identity(string DeviceId, string DeviceLocation)
+{
+    public IReadOnlyList<JsonMemberText> Kept { get; init; } = [];
+
+    /// <summary>Whether <paramref name="deviceId"/> names this 1.x device: ordinal, ignoring case, as Windows treats device instance ids.</summary>
+    public bool SameDevice(string deviceId) => string.Equals(DeviceId, deviceId, StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>
 /// <c>devices.json</c> was replaced with the change, so it counts, but its folder couldn't be flushed to disk afterwards
 /// (a power loss may still undo it).
 /// </summary>
@@ -60,8 +77,8 @@ public sealed class PanelsNotFlushedException(Exception inner)
 
 /// <summary>
 /// <c>devices.json</c> in the data folder (docs/2.0/data-folder.md): <c>{"format": "infopanel.devices/1", "devices":
-/// [{"id", "family", "model", "serial", "port", "enabled", "profileId", "rotation", "brightness", "encoding"}]}</c>, in the order the
-/// panels were first seen. Read once at start through <see cref="EngineJson"/>, members it doesn't know (in the file and
+/// [{"id", "family", "model", "serial", "port", "enabled", "profileId", "rotation", "brightness", "encoding", "v1"?}]}</c>, in the
+/// order the panels were first seen (<c>v1</c>, <c>{"deviceId", "deviceLocation"}</c>, only for a panel that has one). Read once at start through <see cref="EngineJson"/>, members it doesn't know (in the file and
 /// in each device) kept as written; written through <see cref="AtomicFile"/>. A file it can't hold whole (over
 /// <see cref="MaxBytes"/>, nested deeper than it reads, a link, not a regular file, not JSON, another format or major
 /// version, or a member it knows that is missing or of the wrong kind) is never rewritten, and panels are off for the run
@@ -256,11 +273,12 @@ public sealed partial class PanelStore
         var brightness = 100;
         var encoding = PanelEncoding.Auto;
         byte[]? unknownEncoding = null;
+        PanelV1Identity? v1 = null;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var kept = new List<JsonMemberText>();
         foreach (var member in members)
         {
-            if (member.Name is not ("id" or "family" or "model" or "serial" or "port" or "enabled" or "profileId" or "rotation" or "brightness" or "encoding"))
+            if (member.Name is not ("id" or "family" or "model" or "serial" or "port" or "enabled" or "profileId" or "rotation" or "brightness" or "encoding" or "v1"))
             {
                 kept.Add(member);
                 continue;
@@ -284,6 +302,7 @@ public sealed partial class PanelStore
                 "rotation" => Rotation(value, out rotation),
                 "brightness" => Brightness(value, out brightness),
                 "encoding" => Encoding(value, member.Value, out encoding, out unknownEncoding),
+                "v1" => (v1 = ReadV1(member.Value)) != null,
                 _ => false,
             };
             if (!ok)
@@ -305,7 +324,45 @@ public sealed partial class PanelStore
         }
 
         why = null;
-        return new SavedPanel(id, family, model, serial, port, enabled, profileId, rotation, brightness, encoding) { Kept = kept, UnknownEncoding = unknownEncoding };
+        return new SavedPanel(id, family, model, serial, port, enabled, profileId, rotation, brightness, encoding) { Kept = kept, UnknownEncoding = unknownEncoding, V1 = v1 };
+    }
+
+    /// <summary>
+    /// A device's <c>v1</c>: an object with <c>deviceId</c> and <c>deviceLocation</c>, each a string, its other members kept
+    /// as written; null when it isn't one.
+    /// </summary>
+    private static PanelV1Identity? ReadV1(byte[] json)
+    {
+        List<JsonMemberText> members;
+        try
+        {
+            members = EngineJson.Members(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        string? deviceId = null, deviceLocation = null;
+        var kept = new List<JsonMemberText>();
+        foreach (var member in members)
+        {
+            if (member.Name is not ("deviceId" or "deviceLocation"))
+            {
+                kept.Add(member);
+                continue;
+            }
+            if ((member.Name == "deviceId" ? deviceId : deviceLocation) != null)
+                return null; // twice
+            if (!Text(Parse(member.Value), nullable: false, out var text))
+                return null;
+            if (member.Name == "deviceId")
+                deviceId = text;
+            else
+                deviceLocation = text;
+        }
+
+        return deviceId != null && deviceLocation != null ? new PanelV1Identity(deviceId, deviceLocation) { Kept = kept } : null;
     }
 
     /// <summary>A JSON string (or null, when <paramref name="nullable"/>); a string that isn't valid text (a lone surrogate) isn't one.</summary>
@@ -449,10 +506,29 @@ public sealed partial class PanelStore
             }
             else
                 writer.WriteString("encoding", EncodingText(device.Encoding));
+            if (device.V1 is { } v1)
+            {
+                writer.WritePropertyName("v1");
+                writer.WriteRawValue(V1Json(v1), skipInputValidation: true);
+            }
             writer.WriteEndObject();
         }
 
         return EngineJson.Append(buffer.ToArray(), device.Kept);
+    }
+
+    private static byte[] V1Json(PanelV1Identity v1)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("deviceId", v1.DeviceId);
+            writer.WriteString("deviceLocation", v1.DeviceLocation);
+            writer.WriteEndObject();
+        }
+
+        return EngineJson.Append(buffer.ToArray(), v1.Kept);
     }
 
     private static void WriteOrNull(Utf8JsonWriter writer, string name, string? value)

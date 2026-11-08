@@ -20,6 +20,12 @@ namespace InfoPanel.Panels;
 public sealed record PanelStatus(SavedPanel Saved, bool Connected, string State, string? Reason, BeadaPanelInfo? Info, double? Fps, double? FrameTimeMs, bool? Jpeg = null,
     string? ReasonCode = null);
 
+/// <summary>
+/// What <see cref="PanelManager.SaveAsync"/> did: the panel's state as saved, or, when nothing was saved, the
+/// <see cref="Existing"/> saved panel's id (the same 1.x device, or the same family and serial).
+/// </summary>
+public sealed record PanelSave(PanelStatus? Saved, string? Existing);
+
 /// <summary>What the manager is given of the engine: profiles, the render service, the frame rate setting.</summary>
 public sealed record PanelHost(
     Func<string, bool> ProfileReady,
@@ -297,21 +303,33 @@ public sealed class PanelManager : IAsyncDisposable
     });
 
     /// <summary>
+    /// Saves a panel that need not be plugged in (a client's), as <see cref="SaveAsync"/> does; null when a saved panel
+    /// is the same 1.x device or has its family and serial.
+    /// </summary>
+    /// <exception cref="PanelsNotSavedException">The panels file couldn't be written: nothing changed.</exception>
+    public async Task<PanelStatus?> AddAsync(SavedPanel panel) => (await SaveAsync(panel)).Saved;
+
+    /// <summary>
     /// Saves a panel that need not be plugged in (a client's), after the saved ones, written before it is listed, and
     /// answers its state as saved (in the same turn of the manager's thread, so a change queued meanwhile can't come
     /// between); it is matched to a panel plugged in as every saved panel is, and, without a serial, as
-    /// <see cref="Adopt"/> says. Null when a saved panel of its family has its serial.
+    /// <see cref="Adopt"/> says. Nothing is saved when a saved panel is the same 1.x device (<see
+    /// cref="PanelV1Identity.SameDevice"/>) or has its family and serial: the answer names that panel, the first with the
+    /// 1.x device, else the one with the serial.
     /// </summary>
     /// <exception cref="PanelsNotSavedException">The panels file couldn't be written: nothing changed.</exception>
-    public Task<PanelStatus?> AddAsync(SavedPanel panel) => Ask(() =>
+    public Task<PanelSave> SaveAsync(SavedPanel panel) => Ask(() =>
     {
-        if (panel.Serial != null && _devices.Any(d => d.Family == panel.Family && d.Serial == panel.Serial))
-            return null;
+        var existing = (panel.V1 is { } v1 ? _devices.FirstOrDefault(d => d.V1?.SameDevice(v1.DeviceId) == true) : null)
+            ?? (panel.Serial != null ? _devices.FirstOrDefault(d => d.Family == panel.Family && d.Serial == panel.Serial) : null);
+        if (existing != null)
+            return new PanelSave(null, existing.Id);
         List<SavedPanel> next = [.. _devices, panel];
         SaveChange(next);
         _devices.Add(panel);
-        _logger.Information("Panel {Panel}: saved by a client, serial {Serial}", Label(panel.Id), panel.Serial ?? "none");
-        return (PanelStatus?)StatusOf(panel);
+        _logger.Information("Panel {Panel}: saved by a client, serial {Serial}{FromV1}", Label(panel.Id), panel.Serial ?? "none",
+            panel.V1 != null ? ", from a 1.x device" : "");
+        return new PanelSave(StatusOf(panel), null);
     });
 
     /// <summary>

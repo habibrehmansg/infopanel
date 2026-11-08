@@ -248,13 +248,18 @@ export interface DuplicateProfileRequest {
   id: DocumentId;
 }
 
-/** 409 application/problem+json: a profile with the requested id already exists (a create or duplicate whose first attempt succeeded, retried, gets this), or a device with the family and serial a save names (POST /api/devices). Nothing was created. */
+/** 409 application/problem+json: a profile with the requested id already exists (a create or duplicate whose first attempt succeeded, retried, gets this), or a saved device has the 1.x device id, or the family and serial, a save names (POST /api/devices). Nothing was created. */
 export interface ExistsProblem {
   type?: string;
   title?: string;
   detail?: string;
   status: 409;
   code: "exists";
+  /**
+   * For a device (POST /api/devices): the saved device's id (deviceEntry.id), always present. Absent for a profile, whose id the request names.
+   * Pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`.
+   */
+  id?: string;
 }
 
 /** GET /api/profiles/{id}: the profile's current document, with its revision members (the `rev` of the document, the profile and every item), and its state. */
@@ -1728,6 +1733,8 @@ export interface DeviceEntry {
   /** While it is `running`: its frames a second and the time a frame takes; else null. */
   stats: DeviceStats | null;
   details: DeviceDetails;
+  /** The 1.x device it was saved from, as the save gave it (createDeviceRequest.v1); absent when it has none. */
+  v1?: V1DeviceIdentity;
 }
 
 /** A panel's model. */
@@ -1824,7 +1831,7 @@ export interface DeviceSettingsChange {
   brightness?: number;
 }
 
-/** POST /api/devices: a panel to save that need not be plugged in, such as one a client brings over from another program (docs/api.md#saving-a-device). A panel with the same family and serial saved already: 409 existsProblem. Answered 201 with its deviceEntry. */
+/** POST /api/devices: a panel to save that need not be plugged in, such as one a client brings over from another program (docs/api.md#saving-a-device). A saved panel with the same 1.x device id, or the same family and serial: 409 existsProblem with its id. Answered 201 with its deviceEntry. */
 export interface CreateDeviceRequest {
   /**
    * The kind of panel, as deviceEntry.family names it: `beadapanel`. A family the engine doesn't drive is refused (`device.family`).
@@ -1841,8 +1848,24 @@ export interface CreateDeviceRequest {
    * Pattern: `^[A-Za-z0-9]{1,128}$`.
    */
   serial?: string;
+  /** The 1.x device it is brought over from, when it is one: stored with it and answered in its deviceEntry. A saved panel with the same `deviceId` (ignoring case) is 409 existsProblem. */
+  v1?: V1DeviceIdentity;
   /** Its settings, as a change gives them; a setting left out takes a new panel's: off, no profile, rotation 0, brightness 100. */
   settings: DeviceSettingsChange;
+}
+
+/** A 1.x panel device, as 1.x stored it and v1DeviceOutcome names it: the same strings. The engine stores them as given and reads nothing into them. */
+export interface V1DeviceIdentity {
+  /**
+   * Its `DeviceId` as 1.x stored it. Two are the same device when they are equal ignoring case (ordinal, as Windows compares device instance ids).
+   * Length: 1–1024.
+   */
+  deviceId: string;
+  /**
+   * Its `DeviceLocation` as 1.x stored it (empty when it had none). Not compared.
+   * Length: ≤ 1024.
+   */
+  deviceLocation: string;
 }
 
 /** A text message a client sends on /ws (docs/api.md#the-preview-socket): a JSON object of at most 4,096 bytes in UTF-8, with a `type`. `auth` is only the first message, when the token wasn't offered as a subprotocol. Closed, as request bodies are (docs/versioning.md#unknown-members-and-values): the engine refuses a message with a member its definition doesn't have, as any other message it can't act on, with an error message (an `auth` message: by closing the socket). */
@@ -4894,7 +4917,7 @@ export interface ApiOperations {
     };
   };
   /**
-   * createDevice: Saves a panel that need not be plugged in, with its model, serial when known, and settings (the devices feature).
+   * createDevice: Saves a panel that need not be plugged in, with its model, serial when known, the 1.x device it is brought over from, and settings (the devices feature).
    *
    * docs/api.md#saving-a-device.
    */
@@ -4909,7 +4932,7 @@ export interface ApiOperations {
       401: Problem;
       /** The token lacks the scope the request needs. */
       403: ScopeProblem;
-      /** A panel of the family with the serial is saved already (existsProblem); or the engine drives no panels this run, couldn't read its devices file when it started, or couldn't write it (problem). Nothing was saved. */
+      /** A saved panel has the 1.x device id (ignoring case), or the family and serial, the save names (existsProblem, with the saved panel's id); or the engine drives no panels this run, couldn't read its devices file when it started, or couldn't write it (problem). Nothing was saved. */
       409: ExistsProblem | Problem;
       /** The body breaks its definition or `requestBytes`, or names a family the engine doesn't drive (`device.family` at /family), a model the family doesn't have (`device.model` at /model) or a setting the family doesn't honour (`device.setting` at /settings/{name}); nothing was saved. */
       422: InvalidProblem;

@@ -111,7 +111,10 @@ public sealed record DuplicateProfileRequest
     public required string Id { get; init; }
 }
 
-/// <summary>409: a profile with the requested id already exists, or a device with the family and serial a save names.</summary>
+/// <summary>
+/// 409: a profile with the requested id already exists, or a saved device has the 1.x device id, or the family and
+/// serial, a save names.
+/// </summary>
 [SpecDef("urn:infopanel:api:1#/$defs/existsProblem")]
 public sealed record ExistsProblem
 {
@@ -121,6 +124,8 @@ public sealed record ExistsProblem
     public required int Status { get; init; }
     /// <summary>Always <c>exists</c>.</summary>
     public required string Code { get; init; }
+    /// <summary>For a device: the saved device's id. Absent for a profile.</summary>
+    public string? Id { get; init; }
 }
 
 /// <summary>The current document, as a <see cref="InfoPanel.Spec.Document"/> with every revision member set and scenes as stored.</summary>
@@ -1155,6 +1160,8 @@ public sealed record DeviceEntryBody
     public required IReadOnlyList<string> Supports { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required DeviceStatsBody? Stats { get; init; }
     public required DeviceDetailsBody Details { get; init; }
+    /// <summary>The 1.x device it was saved from, as the save gave it; absent when it has none.</summary>
+    public V1DeviceIdentity? V1 { get; init; }
 }
 
 /// <summary>A panel's model: its id within its family, and its size in pixels.</summary>
@@ -1232,7 +1239,17 @@ public sealed record CreateDeviceRequest
     public required string Family { get; init; }
     public required string Model { get; init; }
     public string? Serial { get; init; }
+    /// <summary>The 1.x device it is brought over from, or null.</summary>
+    public V1DeviceIdentity? V1 { get; init; }
     public required DeviceSettingsChange Settings { get; init; }
+}
+
+/// <summary>A 1.x panel device, its <c>DeviceId</c> and <c>DeviceLocation</c> as 1.x stored them; stored as given.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/v1DeviceIdentity")]
+public sealed record V1DeviceIdentity
+{
+    public required string DeviceId { get; init; }
+    public required string DeviceLocation { get; init; }
 }
 
 // The preview socket's text messages (the schema's clientMessage and serverMessage; docEvent is above).

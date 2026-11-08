@@ -29,7 +29,7 @@ The saved panels are in [`devices.json`](data-folder.md#the-panels) in the data 
 ]}
 ```
 
-Clients read and change it through the engine's devices API ([api.md](../../spec/docs/api.md#devices)): `GET /api/devices` lists the saved panels with their state and settings, `PATCH /api/devices/{id}` changes a panel's `enabled`, `profileId`, `rotation` and `brightness` (saved and applied at once), and `DELETE /api/devices/{id}` forgets a panel (its screen goes off; still plugged in, it comes back as a new panel, off). `encoding` is set only in the file.
+Clients read and change it through the engine's devices API ([api.md](../../spec/docs/api.md#devices)): `GET /api/devices` lists the saved panels with their state and settings, `PATCH /api/devices/{id}` changes a panel's `enabled`, `profileId`, `rotation` and `brightness` (saved and applied at once), and `DELETE /api/devices/{id}` forgets a panel (its screen goes off; still plugged in, it comes back as a new panel, off). `POST /api/devices` saves a panel that need not be plugged in; one a client brings over from 1.x carries `v1`, the 1.x device's `deviceId` and `deviceLocation`, kept in the file, so the same 1.x device is never saved twice. `encoding` is set only in the file.
 
 ## Turning a panel on
 

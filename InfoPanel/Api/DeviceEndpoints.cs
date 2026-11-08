@@ -11,7 +11,7 @@ namespace InfoPanel.Api;
 /// <summary>
 /// The USB panel devices (spec/docs/api.md "Devices", the <c>devices</c> feature): <c>GET /api/devices</c> (every
 /// token's) lists the saved panels and their state from <see cref="PanelManager"/>; the session token's <c>POST
-/// /api/devices</c> saves a panel that need not be plugged in (as given: its family, model, serial and settings), <c>PATCH
+/// /api/devices</c> saves a panel that need not be plugged in (as given: its family, model, serial, 1.x device and settings), <c>PATCH
 /// /api/devices/{id}</c> merges settings into a panel's (applied at once, saved to <c>devices.json</c>) and <c>DELETE</c>
 /// forgets it. Where the engine drives no panels the list is empty and <c>supported</c> false with why; while
 /// <c>devices.json</c> can't be held, every change is 409 and the file is left as it is; a change the file can't take
@@ -76,23 +76,27 @@ public static class DeviceEndpoints
             if (refused.Count > 0)
                 return InvalidBody(refused);
 
-            var fresh = new SavedPanel(Guid.NewGuid().ToString("D"), body.Family, body.Model, body.Serial, Port: null);
-            PanelStatus? saved;
+            var fresh = new SavedPanel(Guid.NewGuid().ToString("D"), body.Family, body.Model, body.Serial, Port: null)
+            {
+                V1 = body.V1 is { } v1 ? new PanelV1Identity(v1.DeviceId, v1.DeviceLocation) : null,
+            };
+            PanelSave save;
             try
             {
-                saved = await manager.AddAsync(Merge(fresh, body.Settings));
+                save = await manager.SaveAsync(Merge(fresh, body.Settings));
             }
             catch (PanelsNotSavedException)
             {
                 return StoreUnwritten();
             }
-            if (saved == null)
+            if (save.Saved is not { } saved)
                 return Problem(new ExistsProblem
                 {
                     Title = "The device already exists",
                     Status = StatusCodes.Status409Conflict,
                     Code = "exists",
-                    Detail = $"A {body.Family} device with serial '{body.Serial}' is saved already; nothing was saved.",
+                    Detail = $"Device {save.Existing} is saved already, as the same 1.x device or with the same family and serial; nothing was saved.",
+                    Id = save.Existing,
                 }, StatusCodes.Status409Conflict);
             // The device as saved, from the save itself: a change since (another client's DELETE) doesn't change the answer.
             return Json(EntryOf(saved), StatusCodes.Status201Created);
@@ -208,7 +212,20 @@ public static class DeviceEndpoints
                 Serial = saved.Serial,
                 Firmware = status.Info?.Firmware,
             },
+            // A stored identity the answer can't carry (edited by hand) is left out of it, and kept.
+            V1 = saved.V1 is { } v1 && Fits(v1.DeviceId, 1) && Fits(v1.DeviceLocation, 0)
+                ? new V1DeviceIdentity { DeviceId = v1.DeviceId, DeviceLocation = v1.DeviceLocation }
+                : null,
         };
+    }
+
+    /// <summary>The most characters (code points) each of a 1.x identity's strings has: <c>v1DeviceIdentity</c>'s <c>maxLength</c>.</summary>
+    private const int V1TextLength = 1024;
+
+    private static bool Fits(string text, int least)
+    {
+        var length = text.EnumerateRunes().Count();
+        return length >= least && length <= V1TextLength;
     }
 
     private static IResult NoDevice(string id) => Problems.NotFound($"No device '{id}'.");
