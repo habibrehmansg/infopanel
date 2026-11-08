@@ -9,7 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NAudio.Wasapi" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="System.Diagnostics.PerformanceCounter" />
   </ItemGroup>

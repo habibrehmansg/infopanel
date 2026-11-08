@@ -223,6 +223,31 @@ public class PluginSensorSourceTests
         Assert.False(source.Handles(SensorKey.Plugin($"/{id}/weather/temp")));
     }
 
+    [Theory]
+    [InlineData("volume-plugin")]
+    [InlineData("Volume-Plugin")]
+    public void The_retired_Volume_Info_id_is_refused_naming_the_Volume_source_and_the_packages_other_plugins_load(string id)
+    {
+        // An old copy of the bundled Extras under another folder name: the engine reads the volume itself now.
+        const string old = "InfoPanel.ExtrasOld";
+        var source = new PluginSensorSource();
+
+        var refused = source.Load(old,
+            [new PluginMetadataDto { Id = id, Name = "Volume Info" }, new PluginMetadataDto { Id = "sample-plugin", Name = "Sample" }],
+            new Dictionary<string, List<ContainerDto>>
+            {
+                [id] = [Container("default", "Default", eph: false, Sensor("volume", "Volume", 67, "%"))],
+                ["sample-plugin"] = [Container("cpu", "CPU", eph: false, Sensor("usage", "Usage", 21, "%"))],
+            });
+        source.SetState(old, PluginHostState.Running);
+
+        var refusal = Assert.Single(refused);
+        Assert.Equal((id, "its sensors are built into the engine now (the Volume source)"), (refusal.PluginId, refusal.Reason));
+        Assert.Equal(["plugin:/sample-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
+        Assert.Equal(SensorStatus.Live, source.GetStatus(SensorKey.Plugin("/sample-plugin/cpu/usage")));
+        Assert.False(source.Handles(SensorKey.Plugin($"/{id}/default/volume")));
+    }
+
     [Fact]
     public void A_plugin_id_over_64_characters_is_refused()
     {

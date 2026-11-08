@@ -432,7 +432,7 @@ public sealed class SystemInfoSourceTests : IDisposable
         $"""<DisplayItem xsi:type="{type}"><Name>{name}</Name><SensorName>{name}</SensorName><SensorType>Plugin</SensorType><PluginSensorId>{key}</PluginSensorId><Id>0</Id><Instance>0</Instance><EntryId>0</EntryId></DisplayItem>""";
 
     [Fact]
-    public void A1xProfileBoundToSystemInfo_KeepsItsKeysAsStored_AsVolumesDo_UntilTheWindowsSourceRetiresThePlugin()
+    public void A1xProfileBoundToSystemInfo_KeepsItsKeysAsStored_UntilTheWindowsSourceRetiresThePlugin_WhileVolumesAreTranslated()
     {
         using var kit = new Import.ImportKit();
         var source = Open();
@@ -444,17 +444,18 @@ public sealed class SystemInfoSourceTests : IDisposable
             new InfoPanel.Import.V1ReadContext(kit.Workspace, hub, null, Import.ImportKit.Fonts.Contains));
 
         var items = new[] { envelope.Items[0], envelope.Items[1].Children![0], envelope.Items[2] };
-        Assert.Equal(["/system-info-plugin/uptime/formatted", "/system-info-plugin/processes/top-cpu-usage", "/volume-plugin/default/volume"],
+        Assert.Equal(["/system-info-plugin/uptime/formatted", "/system-info-plugin/processes/top-cpu-usage", "/infopanel.volume/default/volume"],
             items.Select(n => (string)n.Props["pluginSensorId"]!));
-        Assert.Equal(["plugin:/system-info-plugin/uptime/formatted", "plugin:/system-info-plugin/processes/top-cpu-usage", "plugin:/volume-plugin/default/volume"],
+        Assert.Equal(["plugin:/system-info-plugin/uptime/formatted", "plugin:/system-info-plugin/processes/top-cpu-usage", "plugin:/infopanel.volume/default/volume"],
             items.Select(n => n.Meta.Sensor!.Key));
+        // This hub has no volume source: the volume's new key reads unavailable too.
         Assert.All(items, n => Assert.Equal(SensorStatus.Unavailable, n.Meta.Sensor!.Status));
         Assert.Equal(3, Import.ImportKit.With(envelope, "import.sensor").Count);
-        Assert.Empty(Import.ImportKit.With(envelope, "import.sensor.translated"));
-        // Neither plugin is retired yet (its rule comes with its Windows source); when it is, each key is the same path
-        // under the source's id, which the source lists.
+        Assert.Equal(["/items/2"], Import.ImportKit.With(envelope, "import.sensor.translated").Select(d => d.Path));
+        // System Info isn't retired yet (its rule comes with its Windows source); when it is, each key is the same path
+        // under the source's id, which the source lists. The Volume Info plugin is (its Windows source reads).
         Assert.Null(RetiredPlugins.SourceOf("system-info-plugin"));
-        Assert.Null(RetiredPlugins.SourceOf("volume-plugin"));
+        Assert.Equal("Volume", RetiredPlugins.SourceOf("volume-plugin"));
         Assert.All(new[] { "uptime/formatted", "processes/top-cpu-usage" }, path =>
             Assert.Contains(source.GetSensors(), s => s.Key.ToString() == "plugin:/infopanel.system-info/" + path));
     }

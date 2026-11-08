@@ -81,9 +81,11 @@ public static class VolumeSource
     public static PolledSensorSource Create(IAudioLister lister, TimeProvider? time = null, PolledSensorSourceOptions? options = null, ILogger? log = null) =>
         new(SourceId, () => new VolumeSampler(lister, log), options ?? new PolledSensorSourceOptions { Interval = Interval }, time, log: log);
 
-    /// <summary>The source over this Mac's output devices (Core Audio, <see cref="MacAudioLister"/>).</summary>
+    /// <summary>The source over this computer's output devices: Core Audio's, through <see cref="MacAudioLister"/> on macOS and <see cref="WinAudioLister"/> on Windows.</summary>
     [SupportedOSPlatform("macos")]
-    public static PolledSensorSource CreateSystem(TimeProvider? time = null) => Create(new MacAudioLister(), time);
+    [SupportedOSPlatform("windows")]
+    public static PolledSensorSource CreateSystem(TimeProvider? time = null) =>
+        Create(OperatingSystem.IsWindows() ? new WinAudioLister() : new MacAudioLister(), time);
 }
 
 /// <summary>
@@ -142,7 +144,7 @@ public sealed class VolumeSampler : ISensorSampler
     private HashSet<string> _clashing = [];
     private HashSet<string> _refused = [];
 
-    /// <param name="lister">The devices: <see cref="MacAudioLister"/>, or a test's.</param>
+    /// <param name="lister">The devices: <see cref="MacAudioLister"/>, <see cref="WinAudioLister"/>, or a test's.</param>
     /// <param name="log">Where it logs; Serilog's global logger but in tests.</param>
     public VolumeSampler(IAudioLister lister, ILogger? log = null)
     {

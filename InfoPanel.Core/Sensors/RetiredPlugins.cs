@@ -4,13 +4,14 @@ using InfoPanel.Enums;
 using InfoPanel.Sensors.Clock;
 using InfoPanel.Sensors.Drives;
 using InfoPanel.Sensors.Network;
+using InfoPanel.Sensors.Volume;
 using InfoPanel.Sensors.Weather;
 
 namespace InfoPanel.Sensors;
 
 /// <summary>
-/// The 1.x plugins whose sensors the engine's own sources read now, under keys of their own (the Clock, Drive Info and
-/// Network Info plugins'), or whose place a source of the engine's takes (the Weather plugin's): the plugins source
+/// The 1.x plugins whose sensors the engine's own sources read now, under keys of their own (the Clock, Drive Info,
+/// Network Info and Volume Info plugins'), or whose place a source of the engine's takes (the Weather plugin's): the plugins source
 /// refuses a package's plugin with such an id (an old copy of a bundled package), so their keys don't come back half
 /// live, and a 1.x import binds each of their keys that a source has an entry for to that entry's key, once
 /// (<see cref="Translate"/>). The engine never answers their keys: a binding to one that wasn't imported reads
@@ -28,6 +29,7 @@ public static class RetiredPlugins
         ["drive-info-plugin"] = DriveSource.Name,
         ["network-info-plugin"] = NetworkSource.Name,
         ["weather-plugin"] = WeatherSource.Name,
+        ["volume-plugin"] = VolumeSource.Name,
     };
 
     /// <summary>
@@ -46,11 +48,13 @@ public static class RetiredPlugins
     ];
 
     // A retired plugin's key id (1.x's PluginSensorId) → what it is bound to on import, for the plugins whose keys are
-    // fixed (the clock's, the weather's); a drive's and the network's keys follow a rule (DriveKey, NetworkKey).
+    // fixed (the clock's, the weather's); a drive's, the network's and the volume's keys follow a rule (DriveKey,
+    // NetworkKey, VolumeKey).
     private static readonly Dictionary<string, Translation> Keys = Build();
 
     private const string DriveInfoPrefix = "/drive-info-plugin/";
     private const string NetworkInfoPrefix = "/network-info-plugin/";
+    private const string VolumePrefix = "/volume-plugin/";
 
     private static Dictionary<string, Translation> Build()
     {
@@ -69,7 +73,8 @@ public static class RetiredPlugins
 
     /// <summary>
     /// Every fixed key a 1.x import binds (the Clock plugin's and the Weather plugin's), and what it binds it to. The
-    /// Drive Info plugin's keys, one set per drive, and the Network Info plugin's follow a rule instead (<see cref="Translate"/>).
+    /// Drive Info plugin's keys, one set per drive, the Network Info plugin's and the Volume Info plugin's follow a rule
+    /// instead (<see cref="Translate"/>).
     /// </summary>
     public static IEnumerable<KeyValuePair<SensorKey, Translation>> All
     {
@@ -92,13 +97,39 @@ public static class RetiredPlugins
     /// an interface's <c>/network-info-plugin/{interface}/{entry}</c>, for each of its entries
     /// (<see cref="NetworkSource.EntryName"/>), to <c>plugin:/infopanel.network/{id}/{entry}</c>, where the id is the
     /// SDK's id of the stored one (<see cref="NetworkSource.ContainerOf"/>), whether or not this computer has the
-    /// interface; an interface whose id makes none, or makes the public addresses', isn't bound.
+    /// interface; an interface whose id makes none, or makes the public addresses', isn't bound. The Volume Info
+    /// plugin's default output device, <c>/volume-plugin/default/{entry}</c>, and a device's
+    /// <c>/volume-plugin/{device}/{entry}</c>, for each of its entries (<see cref="VolumeSource.EntryName"/>), go to the
+    /// volume source's <c>plugin:/infopanel.volume/default/{entry}</c> and <c>plugin:/infopanel.volume/{id}/{entry}</c>,
+    /// where the id is the SDK's id of the stored one (the endpoint id, <see cref="VolumeSource.ContainerOf"/>), whether
+    /// or not this computer has the device; a device whose id makes none, or makes the default device's, isn't bound.
     /// </summary>
     public static Translation? Translate(SensorKey key)
     {
         if (key.Type != SensorType.Plugin)
             return null;
-        return Keys.TryGetValue(key.Id, out var translation) ? translation : DriveKey(key.Id) ?? NetworkKey(key.Id);
+        return Keys.TryGetValue(key.Id, out var translation) ? translation : DriveKey(key.Id) ?? NetworkKey(key.Id) ?? VolumeKey(key.Id);
+    }
+
+    private static Translation? VolumeKey(string id)
+    {
+        if (!id.StartsWith(VolumePrefix, StringComparison.Ordinal))
+            return null;
+        var rest = id[VolumePrefix.Length..];
+        var slash = rest.IndexOf('/');
+        if (slash <= 0)
+            return null;
+        var stored = rest[..slash];
+        var entry = rest[(slash + 1)..];
+        if (VolumeSource.EntryName(entry) is not { } name)
+            return null;
+        // The default output device: the container "Default" (default).
+        if (stored == VolumeSource.DefaultContainer)
+            return new Translation(VolumeSource.KeyOf(VolumeSource.DefaultContainer, entry), "Volume Info", VolumeSource.Name, $"{name} of {VolumeSource.DefaultGroup}");
+        var container = VolumeSource.ContainerOf(stored);
+        if (container.Length == 0 || container == VolumeSource.DefaultContainer)
+            return null;
+        return new Translation(VolumeSource.KeyOf(container, entry), "Volume Info", VolumeSource.Name, $"{name} of {stored}");
     }
 
     private static Translation? NetworkKey(string id)

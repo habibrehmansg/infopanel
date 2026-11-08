@@ -222,16 +222,6 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 
 Beside the engine in every build (`InfoPanel/InfoPanel.csproj` copies it there on build and on publish); its plugins list sensors on Windows only ([plugins](docs/2.0/plugins.md)). The `InfoPanel.Extras` graph, Windows runtimes.
 
-### NAudio.Core 2.3.0
-- **Licence**: MIT
-- **Copyright**: © Mark Heath 2026
-- **Project**: https://github.com/naudio/NAudio
-
-### NAudio.Wasapi 2.3.0
-- **Licence**: MIT
-- **Copyright**: © Mark Heath 2026
-- **Project**: https://github.com/naudio/NAudio
-
 ### Serilog 4.3.1
 - **Licence**: Apache-2.0
 - **Copyright**: Copyright © Serilog Contributors
