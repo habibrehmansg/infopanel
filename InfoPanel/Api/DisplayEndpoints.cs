@@ -52,6 +52,7 @@ public static class DisplayEndpoints
         var label = display.DisplayLabel;
         return new DisplayInfoBody
         {
+            Id = match.Id,
             Name = match.Name,
             Width = match.Width,
             Height = match.Height,

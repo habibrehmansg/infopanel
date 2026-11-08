@@ -9,10 +9,10 @@ namespace InfoPanel.Desktop;
 public static class DisplayMatcher
 {
     /// <summary>
-    /// The window's display (spec/docs/document.md, <c>window.display</c>; 1.x's matching): the display with the
-    /// target's name and pixel size (among several, the one at the target's <c>x</c>/<c>y</c>); unless
-    /// <paramref name="strict"/>, then the first with its name, then the first with its size, then the first display.
-    /// Strict with no exact match: null, and the window is hidden. No target: the main (first) display. A display's name
+    /// A target's display (spec/docs/document.md, <c>window.display</c>; 1.x's matching): the display that is the target's
+    /// monitor (<see cref="Is"/>: its id, else its name and pixel size; among several, the one at the target's
+    /// <c>x</c>/<c>y</c>); unless <paramref name="strict"/>, then the first with its name, then the first with its size,
+    /// then the first display. Strict with no exact match: null. No target: the main (first) display. A display's name
     /// is compared as <see cref="TargetOf"/> writes it (<see cref="MatchName"/>), so a target written or listed from a
     /// display with a long name matches it.
     /// </summary>
@@ -21,8 +21,7 @@ public static class DisplayMatcher
         if (target == null)
             return displays.FirstOrDefault();
 
-        var exact = displays.Where(d => MatchName(d) == target.Name && d.PixelWidth == target.Width && d.PixelHeight == target.Height).ToList();
-        var match = exact.FirstOrDefault(d => (int)Math.Round(d.Frame.X) == target.X && (int)Math.Round(d.Frame.Y) == target.Y) ?? exact.FirstOrDefault();
+        var match = Exact(displays, target);
         if (!strict)
         {
             match ??= displays.FirstOrDefault(d => MatchName(d) == target.Name);
@@ -31,6 +30,131 @@ public static class DisplayMatcher
         }
 
         return match;
+    }
+
+    /// <summary>The display that is <paramref name="target"/>'s monitor (<see cref="Is"/>): of several, the one at its top-left, else the first.</summary>
+    private static DisplayInfo? Exact(IReadOnlyList<DisplayInfo> displays, DisplayMatch target)
+    {
+        var exact = displays.Where(d => Is(d, target)).ToList();
+        return exact.FirstOrDefault(d => (int)Math.Round(d.Frame.X) == target.X && (int)Math.Round(d.Frame.Y) == target.Y) ?? exact.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Whether <paramref name="display"/> is <paramref name="target"/>'s monitor: the same id when both have one (whatever
+    /// its name and resolution now), else the same name and pixel size.
+    /// </summary>
+    private static bool Is(DisplayInfo display, DisplayMatch target) =>
+        display.Id != null && target.Id != null
+            ? display.Id == target.Id
+            : MatchName(display) == target.Name && display.PixelWidth == target.Width && display.PixelHeight == target.Height;
+
+    /// <summary>The most places a window remembers on other displays (<c>window.spots</c>).</summary>
+    public const int MaxSpots = 8;
+
+    /// <summary>Where the window goes: <paramref name="Display"/>, its top-left <paramref name="X"/>, <paramref name="Y"/> pixels from that display's.</summary>
+    public readonly record struct WindowPlace(DisplayInfo Display, int X, int Y);
+
+    /// <summary>
+    /// Where the window goes (spec/docs/document.md, "The desktop window"): the first of its places whose display is
+    /// connected, at that place's x, y: <c>display</c> (a missing one is the main display), then each of <c>spots</c>, the
+    /// most recent first; a monitor now at another size than the place recorded pulls the window in (<see cref="OnMonitor"/>).
+    /// With none connected: null (hidden) when <c>strict</c>, the default; else <see cref="Match"/>'s
+    /// looser search on <c>display</c>, the window's x, y pulled in so that its <paramref name="width"/> ×
+    /// <paramref name="height"/> pixels lie wholly on that display where they fit (never written: the document keeps its
+    /// places). No displays: null.
+    /// </summary>
+    public static WindowPlace? Place(IReadOnlyList<DisplayInfo> displays, WindowSettings? window, int width, int height)
+    {
+        if (displays.Count == 0)
+            return null;
+
+        int x = window?.X ?? 0, y = window?.Y ?? 0;
+        if (window?.Display is not { } target)
+            return new WindowPlace(displays[0], x, y);
+        if (Exact(displays, target) is { } display)
+            return OnMonitor(display, target, x, y, width, height);
+        foreach (var spot in window.Spots ?? [])
+        {
+            if (Exact(displays, spot.Display) is { } at)
+                return OnMonitor(at, spot.Display, spot.X ?? 0, spot.Y ?? 0, width, height);
+        }
+
+        if (window.Strict ?? true)
+            return null;
+
+        return PulledIn(Match(displays, target, strict: false)!, x, y, width, height);
+    }
+
+    /// <summary>
+    /// A place on its own monitor: as saved while the monitor is at the pixel size <paramref name="recorded"/> holds, an
+    /// overhang included; at another size, <see cref="PulledIn"/> (never written), so a window saved at the right of a
+    /// larger resolution isn't left off-screen.
+    /// </summary>
+    private static WindowPlace OnMonitor(DisplayInfo display, DisplayMatch recorded, int x, int y, int width, int height) =>
+        display.PixelWidth == recorded.Width && display.PixelHeight == recorded.Height
+            ? new WindowPlace(display, x, y)
+            : PulledIn(display, x, y, width, height);
+
+    /// <summary>The window at <paramref name="x"/>, <paramref name="y"/> on <paramref name="display"/>, moved only as far as it takes to lie wholly on it (<see cref="PullIn"/>).</summary>
+    private static WindowPlace PulledIn(DisplayInfo display, int x, int y, int width, int height) =>
+        new(display, PullIn(x, width, display.PixelWidth), PullIn(y, height, display.PixelHeight));
+
+    /// <summary>A coordinate moved only as far as it takes for <paramref name="size"/> to lie within <paramref name="room"/>, never below 0.</summary>
+    private static int PullIn(int at, int size, int room) => Math.Max(0, Math.Min(at, room - size));
+
+    /// <summary>
+    /// The window put on <paramref name="display"/> at <paramref name="x"/>, <paramref name="y"/> (a drag or resize that
+    /// ends there): that becomes its <c>display</c>, the previous <c>display</c> with its x, y goes first in <c>spots</c>
+    /// (none: nothing is remembered), a spot for the same monitor as <paramref name="display"/> (<see cref="SameMonitor"/>)
+    /// is dropped and only the <see cref="MaxSpots"/> most recent are kept; no spots: <c>spots</c> is left out. Every other
+    /// member is kept.
+    /// </summary>
+    public static WindowSettings Promote(WindowSettings window, DisplayMatch display, int x, int y)
+    {
+        var spots = new List<WindowSpot>(MaxSpots + 1);
+        if (window.Display is { } previous)
+            spots.Add(new WindowSpot { Display = previous, X = window.X, Y = window.Y });
+        spots.AddRange(window.Spots ?? []);
+        spots.RemoveAll(spot => SameMonitor(spot.Display, display));
+        if (spots.Count > MaxSpots)
+            spots.RemoveRange(MaxSpots, spots.Count - MaxSpots);
+
+        return window with { Display = display, X = x, Y = y, Spots = spots.Count == 0 ? null : spots };
+    }
+
+    /// <summary>
+    /// Two places on the same monitor: the same id when both have one, else the same name and size, and the same top-left
+    /// when both know theirs (a place written without <c>x</c>/<c>y</c> is at an unknown one, not at 0, 0).
+    /// </summary>
+    private static bool SameMonitor(DisplayMatch a, DisplayMatch b) =>
+        a.Id != null && b.Id != null
+            ? a.Id == b.Id
+            : a.Name == b.Name && a.Width == b.Width && a.Height == b.Height
+              && (a.X == null || a.Y == null || b.X == null || b.Y == null || (a.X == b.X && a.Y == b.Y));
+
+    /// <summary>
+    /// A monitor's <c>id</c> (<c>DEL40F4</c>): its EDID's maker, the PNP id packed into bytes 8 and 9 read as a
+    /// big-endian number (as macOS' <c>CGDisplayVendorNumber</c> gives it: three 5-bit letters, A = 1, the top bit 0), and
+    /// its 16-bit product code as four hex digits. Null when <paramref name="maker"/> is no PNP id (0, a letter outside
+    /// A–Z, macOS' <c>unkn</c> for a display without an EDID) or <paramref name="product"/> is over 16 bits. No serial
+    /// number: monitors of one model share an id.
+    /// </summary>
+    public static string? IdOf(uint maker, uint product)
+    {
+        if (maker > 0x7FFF || product > 0xFFFF)
+            return null;
+
+        Span<char> id = stackalloc char[7];
+        for (var i = 0; i < 3; i++)
+        {
+            var letter = (maker >> (10 - 5 * i)) & 31;
+            if (letter is < 1 or > 26)
+                return null;
+            id[i] = (char)('A' + letter - 1);
+        }
+
+        product.TryFormat(id[3..], out _, "X4");
+        return new string(id);
     }
 
     /// <summary>The display containing the point, else the nearest one; null when there are none.</summary>
@@ -56,11 +180,13 @@ public static class DisplayMatcher
          (int)Math.Round((frame.Y - display.Frame.Y) * display.Scale));
 
     /// <summary>
-    /// The <c>window.display</c> written after a drag (1.x's <c>TargetWindow</c>): the display's name, its size in
-    /// backing pixels and its top-left in desktop points (which only tells equal displays apart).
+    /// The <c>window.display</c> written after a drag (1.x's <c>TargetWindow</c>): the monitor's id when it reports one,
+    /// the display's name, its size in backing pixels and its top-left in desktop points (which only tells equal displays
+    /// apart).
     /// </summary>
     public static DisplayMatch TargetOf(DisplayInfo display) => new()
     {
+        Id = display.Id,
         Name = MatchName(display),
         Width = display.PixelWidth,
         Height = display.PixelHeight,

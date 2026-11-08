@@ -371,13 +371,15 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         // The displays, every token's: none where the engine shows no desktop windows (this one); listed by an engine of
         // its own on a fake desktop, then 500 once that desktop fails to list them. No test needs a real display.
         Assert.False((await Send(reader, "GET", "/api/displays", 200)).GetProperty("supported").GetBoolean());
-        using (var desktop = new FakeDesktopPlatform(new DisplayInfo("Built-in", new PointRect(0, 0, 1512, 982), 2)))
+        using (var desktop = new FakeDesktopPlatform(new DisplayInfo("Built-in", new PointRect(0, 0, 1512, 982), 2, Id: "APPA050")))
         using (var listing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", Path.Combine(factory.Root, "displays"))
                    .ConfigureTestServices(s => s.AddSingleton<IDesktopPlatform>(desktop))))
         using (var listingSession = listing.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
         {
             listingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
-            Assert.Equal(1, (await Send(listingSession, "GET", "/api/displays", 200)).GetProperty("displays").GetArrayLength());
+            var listed = (await Send(listingSession, "GET", "/api/displays", 200)).GetProperty("displays");
+            Assert.Equal(1, listed.GetArrayLength());
+            Assert.Equal("APPA050", listed[0].GetProperty("id").GetString()); // the monitor's id, checked against the schema with the rest
             desktop.DisplaysFailure = new InvalidOperationException("no displays");
             await Send(listingSession, "GET", "/api/displays", 500);
         }

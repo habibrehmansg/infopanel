@@ -24,10 +24,12 @@ public readonly record struct PointRect(double X, double Y, double Width, double
 /// A display: its <paramref name="Name"/>, which a profile's <c>window.display</c> matches (macOS:
 /// <c>NSScreen.localizedName</c>; Windows: the GDI device name, <c>\\.\DISPLAY2</c>), its <paramref name="Frame"/> in
 /// desktop points, its <paramref name="Scale"/> (backing pixels per point: 1 on Windows, whose desktop points are
-/// pixels), and its <paramref name="Label"/>, the name the system shows people, where that isn't <paramref name="Name"/>
-/// (null: the same; on Windows the monitor's friendly name).
+/// pixels), its <paramref name="Label"/>, the name the system shows people, where that isn't <paramref name="Name"/>
+/// (null: the same; on Windows the monitor's friendly name), and its <paramref name="Id"/>, the monitor's EDID maker and
+/// product code (<c>DEL40F4</c>, <see cref="DisplayMatcher.IdOf"/>), matched before the name and size (null: it reports
+/// none).
 /// </summary>
-public sealed record DisplayInfo(string Name, PointRect Frame, double Scale, string? Label = null)
+public sealed record DisplayInfo(string Name, PointRect Frame, double Scale, string? Label = null, string? Id = null)
 {
     /// <summary>The display's name for people: <see cref="Label"/>, else <see cref="Name"/>.</summary>
     public string DisplayLabel => Label ?? Name;

@@ -1,0 +1,24 @@
+{
+  "format": "infopanel.document/1",
+  "id": "3dd19c0e-675a-4591-b096-83417853861f",
+  "profile": {
+    "name": "Nine spots",
+    "width": 800,
+    "height": 480,
+    "window": {
+      "enabled": true,
+      "spots": [
+        {"display": {"name": "Display 1", "width": 1920, "height": 1080}},
+        {"display": {"name": "Display 2", "width": 1920, "height": 1080}},
+        {"display": {"name": "Display 3", "width": 1920, "height": 1080}},
+        {"display": {"name": "Display 4", "width": 1920, "height": 1080}},
+        {"display": {"name": "Display 5", "width": 1920, "height": 1080}},
+        {"display": {"name": "Display 6", "width": 1920, "height": 1080}},
+        {"display": {"name": "Display 7", "width": 1920, "height": 1080}},
+        {"display": {"name": "Display 8", "width": 1920, "height": 1080}},
+        {"display": {"name": "Display 9", "width": 1920, "height": 1080}}
+      ]
+    }
+  },
+  "items": []
+}

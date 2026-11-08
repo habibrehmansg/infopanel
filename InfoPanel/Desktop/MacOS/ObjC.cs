@@ -169,6 +169,17 @@ internal static unsafe class ObjC
     [DllImport(CoreGraphicsPath, EntryPoint = "CGWindowLevelForKey")]
     public static extern int CGWindowLevelForKey(int key);
 
+    /// <summary>
+    /// The EDID maker (PNP id) of a <c>CGDirectDisplayID</c>'s monitor (CoreGraphics' <c>CGDisplayConfiguration.h</c>;
+    /// both are <c>uint32_t</c>).
+    /// </summary>
+    [DllImport(CoreGraphicsPath, EntryPoint = "CGDisplayVendorNumber")]
+    public static extern uint CGDisplayVendorNumber(uint display);
+
+    /// <summary>The EDID product code of a <c>CGDirectDisplayID</c>'s monitor (<c>CGDisplayConfiguration.h</c>; both are <c>uint32_t</c>).</summary>
+    [DllImport(CoreGraphicsPath, EntryPoint = "CGDisplayModelNumber")]
+    public static extern uint CGDisplayModelNumber(uint display);
+
     /// <summary><c>kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big</c>: bytes R, G, B, A, premultiplied (<c>SKColorType.Rgba8888</c>).</summary>
     public const uint RgbaPremultiplied = 1 | (4 << 12);
 

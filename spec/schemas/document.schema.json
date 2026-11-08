@@ -81,19 +81,41 @@
         "x": { "description": "Pixels from the left of the matched display.", "type": "integer", "minimum": -1000000, "maximum": 1000000, "default": 0 },
         "y": { "description": "Pixels from the top of the matched display.", "type": "integer", "minimum": -1000000, "maximum": 1000000, "default": 0 },
         "display": { "$ref": "#/$defs/displayMatch" },
-        "strict": { "description": "Hide the window when no display matches `display` exactly.", "type": "boolean", "default": false },
+        "spots": {
+          "description": "The window's places on other displays it was on, the most recent first (docs/document.md).",
+          "type": "array",
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/windowSpot" }
+        },
+        "strict": { "description": "Hide the window when neither `display` nor any of `spots` is connected; false: show it on the main display.", "type": "boolean", "default": true },
         "level": { "description": "Where the window sits among the computer's other windows: normal with them, top above them, desktop below every other window and above the desktop icons (docs/document.md).", "enum": ["normal", "top", "desktop"], "default": "normal" },
         "clickThrough": { "description": "Clicks pass through the window to whatever is beneath it; while they do, the user can't drag or resize it (docs/document.md).", "type": "boolean", "default": false },
         "draggable": { "type": "boolean", "default": true },
         "resizable": { "type": "boolean", "default": true }
       }
     },
+    "windowSpot": {
+      "description": "A place the window had on another display: `x`, `y` in pixels from that display's top-left (docs/document.md).",
+      "type": "object",
+      "required": ["display"],
+      "additionalProperties": false,
+      "properties": {
+        "display": { "$ref": "#/$defs/displayMatch" },
+        "x": { "description": "Pixels from the left of the display.", "type": "integer", "minimum": -1000000, "maximum": 1000000, "default": 0 },
+        "y": { "description": "Pixels from the top of the display.", "type": "integer", "minimum": -1000000, "maximum": 1000000, "default": 0 }
+      }
+    },
     "displayMatch": {
-      "description": "The display the window belongs on, matched by name and size in the display's pixels; x and y, in the desktop's own coordinates, tell displays of the same name and size apart. No exact match: hidden when strict, else the first display with the name, else the first with the size, else the main one. Absent: the main display (docs/document.md).",
+      "description": "A display the window was on, matched by its `id` when the display reports one, else by name and size in the display's pixels; x and y, in the desktop's own coordinates, tell equal displays apart. Absent: the main display (docs/document.md).",
       "type": "object",
       "required": ["name", "width", "height"],
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "description": "The monitor's own identity from its EDID: its three-letter PNP maker and four-hex-digit product code (`DEL40F4`). Matched before `name` and size when the display reports one (docs/document.md).",
+          "type": "string",
+          "pattern": "^[A-Z]{3}[0-9A-F]{4}$"
+        },
         "name": { "type": "string", "maxLength": 256 },
         "width": { "description": "The display's width in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },
         "height": { "description": "The display's height in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },

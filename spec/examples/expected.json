@@ -59,6 +59,7 @@
   "api/pairingProofRequest/invalid/hex-proof.json": {"code": "schema", "path": "/proof"},
   "api/pairingProofRequest/invalid/without-proof.json": {"code": "schema", "path": ""},
   "api/pairingSession/invalid/without-proof.json": {"code": "schema", "path": ""},
+  "api/displayInfo/invalid/id-not-a-pnp-code.json": {"code": "schema", "path": "/id"},
   "api/displayInfo/invalid/name-over-256.json": {"code": "schema", "path": "/name"},
   "api/displayInfo/invalid/scale-zero.json": {"code": "schema", "path": "/scale"},
   "api/displayInfo/invalid/width-not-whole.json": {"code": "schema", "path": "/width"},
@@ -340,6 +341,7 @@
   "commit/warning/paste-unsupported.json": {"warnings": [{"op": 0, "code": "unsupported"}]},
   "document/invalid/binding-name.json": {"code": "schema", "path": "/items/0/bindings/CPU Temp"},
   "document/invalid/bindings.json": {"code": "limit.bindings", "path": "/items/0/bindings", "limits": {"bindings": 1}},
+  "document/invalid/display-id.json": {"code": "schema", "path": "/profile/window/display/id"},
   "document/invalid/document-bytes.json": {"code": "limit.documentBytes", "path": "", "limits": {"documentBytes": 200}},
   "document/invalid/duplicate-id.json": {"code": "id.duplicate", "path": "/items/1/children/0/id"},
   "document/invalid/editor-bytes.json": {"code": "limit.editorBytes", "path": "/profile/editor", "limits": {"editorBytes": 16}},
@@ -363,6 +365,7 @@
   "document/invalid/window-click-through-string.json": {"code": "schema", "path": "/profile/window/clickThrough"},
   "document/invalid/window-level-boolean.json": {"code": "schema", "path": "/profile/window/level"},
   "document/invalid/window-level.json": {"code": "schema", "path": "/profile/window/level"},
+  "document/invalid/window-spots-max.json": {"code": "schema", "path": "/profile/window/spots"},
   "document/invalid/window-topmost.json": {"code": "schema", "path": "/profile/window/topmost"},
   "document/invalid/without-format.json": {"code": "schema", "path": ""},
   "document/placeholder/budget-effects.json": {

@@ -102,6 +102,25 @@ public sealed class DisplayEndpointTests
     }
 
     /// <summary>
+    /// A display that reports its monitor's id (its EDID's maker and product code) lists it; one that reports none lists
+    /// no <c>id</c> (every display on Windows for now), and the answer still conforms.
+    /// </summary>
+    [Fact]
+    public async Task ADisplaysMonitorId_IsListed_WhenItReportsOne_AndNoneOtherwise()
+    {
+        using var engine = new EngineFactory();
+        var work = new DisplayInfo("DELL U2720Q", new PointRect(-408, -1440, 2560, 1440), 1, Id: "DEL40F4");
+        using var platform = new FakeDesktopPlatform(BuiltIn, work, Side);
+        using var factory = WithPlatform(engine, platform);
+        using var api = Client(factory);
+
+        var displays = (await ListOk(api)).GetProperty("displays").EnumerateArray().ToList();
+
+        Assert.Equal([null, "DEL40F4", null], displays.Select(d => d.TryGetProperty("id", out var id) ? id.GetString() : null));
+        Assert.Equal(("DELL U2720Q", 2560, 1440, -408, -1440), MatchOf(displays[1]));
+    }
+
+    /// <summary>
     /// Windows' displays as the Windows desktop gives them: the GDI device name as <c>name</c>, the monitor's friendly name
     /// as <c>label</c>, scale 1 and physical pixels for <c>x</c>/<c>y</c> (a monitor at 150 % shows nothing of it), so the
     /// entry is 1.4.x's target monitor field for field, and it places a window on that display, in its pixels.

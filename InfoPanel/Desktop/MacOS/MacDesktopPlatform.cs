@@ -96,10 +96,27 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             var frame = ObjC.SendRect(screen, Sel.Frame);
             var scale = ObjC.SendDouble(screen, Sel.BackingScaleFactor);
             var name = ObjC.ToManagedString(ObjC.Send(screen, Sel.LocalizedName)) ?? $"Display {i + 1}";
-            displays.Add(new DisplayInfo(name, ToTopLeft(frame, primaryHeight), scale > 0 ? scale : 1));
+            displays.Add(new DisplayInfo(name, ToTopLeft(frame, primaryHeight), scale > 0 ? scale : 1, Id: MonitorId(screen)));
         }
 
         return displays;
+    }
+
+    /// <summary><c>NSScreenNumber</c>, the key of a screen's display id in its <c>deviceDescription</c> (retained once).</summary>
+    private static readonly Lazy<IntPtr> ScreenNumberKey = new(() => ObjC.Send(ObjC.NSString("NSScreenNumber"), Sel.Retain));
+
+    /// <summary>
+    /// The screen's monitor id (<see cref="DisplayMatcher.IdOf"/>): its <c>NSScreenNumber</c> is the <c>CGDirectDisplayID</c>
+    /// whose CoreGraphics vendor and model numbers are the EDID's maker and product code. Null when it reports none.
+    /// </summary>
+    private static string? MonitorId(IntPtr screen)
+    {
+        var number = ObjC.SendId(ObjC.Send(screen, Sel.DeviceDescription), Sel.ObjectForKey, ScreenNumberKey.Value);
+        if (number == IntPtr.Zero)
+            return null;
+
+        var display = (uint)ObjC.SendUIntRet(number, Sel.UnsignedIntegerValue);
+        return DisplayMatcher.IdOf(ObjC.CGDisplayVendorNumber(display), ObjC.CGDisplayModelNumber(display));
     }
 
     public IDesktopWindow CreateWindow(DesktopWindowStyle style, PointRect frame)
@@ -231,6 +248,9 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
         public static readonly IntPtr Frame = ObjC.Sel("frame");
         public static readonly IntPtr BackingScaleFactor = ObjC.Sel("backingScaleFactor");
         public static readonly IntPtr LocalizedName = ObjC.Sel("localizedName");
+        public static readonly IntPtr DeviceDescription = ObjC.Sel("deviceDescription");
+        public static readonly IntPtr ObjectForKey = ObjC.Sel("objectForKey:");
+        public static readonly IntPtr UnsignedIntegerValue = ObjC.Sel("unsignedIntegerValue");
         public static readonly IntPtr Object = ObjC.Sel("object");
         public static readonly IntPtr SetFrameDisplay = ObjC.Sel("setFrame:display:");
         public static readonly IntPtr InLiveResize = ObjC.Sel("inLiveResize");

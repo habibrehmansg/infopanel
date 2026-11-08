@@ -1,0 +1,21 @@
+{
+  "format": "infopanel.document/1",
+  "id": "3dd19c0e-675a-4591-b096-83417853861f",
+  "profile": {
+    "name": "A spot on each display",
+    "width": 800,
+    "height": 480,
+    "window": {
+      "enabled": true,
+      "x": 1760,
+      "y": 40,
+      "display": {"id": "DEL40F4", "name": "DELL U2720Q", "width": 2560, "height": 1440, "x": -408, "y": -1440},
+      "spots": [
+        {"display": {"id": "GSM5B7F", "name": "LG HDR 4K", "width": 3840, "height": 2160, "x": 1512, "y": 0}, "x": 3040, "y": 60},
+        {"display": {"name": "Built-in Retina Display", "width": 3024, "height": 1964, "x": 0, "y": 0}}
+      ],
+      "strict": true
+    }
+  },
+  "items": []
+}

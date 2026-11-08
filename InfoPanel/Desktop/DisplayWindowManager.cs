@@ -15,13 +15,15 @@ namespace InfoPanel.Desktop;
 /// opened is opened so its changes are seen; the settings are read from its <see cref="ProfileDocument.Current"/>
 /// generation.</item>
 /// <item>Applies the profile's <c>width</c> and <c>height</c> and its <c>window</c> (<c>enabled</c>, <c>level</c>,
-/// <c>draggable</c>, <c>resizable</c>, <c>x</c>, <c>y</c>, <c>display</c>, <c>strict</c>) as they change, and re-matches
-/// displays when they change (<see cref="DisplayMatcher"/>). Its own moves never produce commits.</item>
+/// <c>draggable</c>, <c>resizable</c>, <c>x</c>, <c>y</c>, <c>display</c>, <c>spots</c>, <c>strict</c>) as they change, and
+/// re-matches displays when they change (<see cref="DisplayMatcher.Place"/>: the most recent place whose display is
+/// connected). Its own moves never produce commits.</item>
 /// <item>The window's own changes are <c>profile</c> commits with a <c>gesture:</c> coalescing key of their own and the
-/// revision they read as <c>baseRev</c> (undoable, dirty, saved by Save; read again and retried on a conflict): one per
-/// finished drag (<c>window</c> with the <c>x</c>, <c>y</c> and
-/// <c>display</c> of the display holding the window's top-left), one per resize after <see cref="ResizeQuiet"/>
-/// without changes (<c>width</c>, <c>height</c>, and <c>window.x</c>/<c>y</c> relative to the window's display).</item>
+/// revision they read as <c>baseRev</c> (undoable, dirty, saved by Save; read again and retried on a conflict), each
+/// putting the window on the display it ended on (<see cref="DisplayMatcher.Promote"/>: that display becomes
+/// <c>display</c>, the previous one goes first in <c>spots</c>): one per finished drag (the display holding the window's
+/// top-left), one per resize after <see cref="ResizeQuiet"/> without changes (<c>width</c>, <c>height</c>, and the
+/// display holding the window's top-left at the resize's last change, with <c>window.x</c>/<c>y</c> relative to it).</item>
 /// <item>Every window is drawn at the engine's frame rate setting (<see cref="SettingsStore"/>); a change re-times every
 /// window's render loop at once, without reattaching it.</item>
 /// <item>All its state lives on the platform's UI thread: every event is posted there (<see cref="IDesktopPlatform.Post"/>).</item>
@@ -164,7 +166,29 @@ public sealed class DisplayWindowManager(
 
     private void OnProfilesChanged(object? sender, ProfilesChangedEventArgs e) => platform.Post(SyncProfiles);
 
-    private void OnDisplaysChanged() => platform.Post(RematchDisplays);
+    /// <summary>
+    /// Raised on the UI thread. A pending resize whose display went away or changed is dropped here, at once: a resize
+    /// commit already posted would otherwise run before the posted <see cref="RematchDisplays"/> and make that display
+    /// the window's place.
+    /// </summary>
+    private void OnDisplaysChanged()
+    {
+        if (!_stopped && _windows.Values.Any(e => e.ResizePending))
+            DropResizesOff(platform.GetDisplays());
+        platform.Post(RematchDisplays);
+    }
+
+    /// <summary>UI thread: ends, with no edit, each pending resize whose display isn't among <paramref name="displays"/> as it was.</summary>
+    private void DropResizesOff(IReadOnlyList<DisplayInfo> displays)
+    {
+        foreach (var entry in _windows.Values.Where(e => e.ResizePending && e.ResizeDisplay is { } d && !displays.Contains(d)))
+        {
+            entry.ResizeTimer?.Dispose();
+            entry.ResizeTimer = null;
+            entry.ResizePending = false;
+            entry.ResizeGeneration++;
+        }
+    }
 
     private void OnDocumentChanged(object? sender, DocumentChangedEventArgs e)
     {
@@ -212,7 +236,9 @@ public sealed class DisplayWindowManager(
 
     /// <summary>
     /// UI thread: re-matches every window. With a display gone or changed the system may have moved a window the user
-    /// is holding a press on, out of its way: that press's release is then no move (<see cref="OnUserMoved"/>).
+    /// is holding a press on, out of its way: that press's release is then no move (<see cref="OnUserMoved"/>). A
+    /// pending resize whose display went away or changed is dropped the same way (already in
+    /// <see cref="OnDisplaysChanged"/>), its posted commit included: it never makes that display the window's place.
     /// </summary>
     private void RematchDisplays()
     {
@@ -223,6 +249,7 @@ public sealed class DisplayWindowManager(
                 entry.DisplaysChanged = true;
         }
 
+        DropResizesOff(displays);
         _displays = displays;
         ReconcileAll();
     }
@@ -306,17 +333,17 @@ public sealed class DisplayWindowManager(
     }
 
     /// <summary>
-    /// Puts the window on its matched display, or hides it when there is none (strict matching). During a drag it
-    /// stays where the user has it: placing it then (a scale or display change, any other profile's sync) would move
-    /// it from under the mouse, back to where the profile has it. The release (<see cref="OnUserMoved"/>) places it.
+    /// Puts the window at its place (<see cref="DisplayMatcher.Place"/>), or hides it when none of its displays is
+    /// connected (strict). During a drag it stays where the user has it: placing it then (a scale or display change, any
+    /// other profile's sync) would move it from under the mouse, back to where the profile has it. The release
+    /// (<see cref="OnUserMoved"/>) places it.
     /// </summary>
     private void Place(WindowEntry entry, Settings settings)
     {
         var window = entry.Window;
         var displays = platform.GetDisplays();
-        var display = DisplayMatcher.Match(displays, settings.Target, settings.Strict);
-        entry.Display = display;
-        if (display == null)
+        var place = DisplayMatcher.Place(displays, settings.Window, settings.Width, settings.Height);
+        if (place is not { } at)
         {
             window.SetVisible(false);
             return;
@@ -325,13 +352,14 @@ public sealed class DisplayWindowManager(
         if (window.UserMoving)
             return;
 
+        var (display, x, y) = at;
         // Sized at the scale of the display that will hold the window's top-left; if the window lands on a display
         // of another scale (it is mostly on that one), sized again at the window's own scale.
-        var origin = DisplayMatcher.Frame(display, settings.WindowX, settings.WindowY, 1, 1, 1);
+        var origin = DisplayMatcher.Frame(display, x, y, 1, 1, 1);
         var sizeScale = DisplayMatcher.At(displays, origin.X, origin.Y)?.Scale ?? display.Scale;
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var frame = DisplayMatcher.Frame(display, settings.WindowX, settings.WindowY, settings.Width, settings.Height, sizeScale);
+            var frame = DisplayMatcher.Frame(display, x, y, settings.Width, settings.Height, sizeScale);
             if (!DisplayMatcher.SameFrame(window.Frame, frame))
                 window.SetFrame(frame);
             if (window.BackingScale == sizeScale)
@@ -371,7 +399,7 @@ public sealed class DisplayWindowManager(
         if (!displaysChanged && !entry.ResizePending && entry.Settled != frame && DisplayMatcher.At(platform.GetDisplays(), frame.X, frame.Y) is { } display)
         {
             var (x, y) = DisplayMatcher.Position(display, frame);
-            Edit(entry, x, y, DisplayMatcher.TargetOf(display), null, display);
+            Edit(entry, x, y, null, display);
         }
 
         // Whether or not anything changed, the window goes to exactly the profile's place, sized for its scale there.
@@ -386,6 +414,7 @@ public sealed class DisplayWindowManager(
         entry.ResizePending = true;
         entry.ResizeFrame = entry.Window.Frame;
         entry.ResizeScale = entry.Window.BackingScale;
+        entry.ResizeDisplay = DisplayMatcher.At(platform.GetDisplays(), entry.ResizeFrame.X, entry.ResizeFrame.Y);
         var generation = ++entry.ResizeGeneration;
         entry.ResizeTimer?.Dispose();
         entry.ResizeTimer = time.CreateTimer(_ => platform.Post(() => CommitResize(entry, generation)), null, ResizeQuiet, Timeout.InfiniteTimeSpan);
@@ -393,7 +422,8 @@ public sealed class DisplayWindowManager(
 
     /// <summary>
     /// The size quiet for <see cref="ResizeQuiet"/>: <c>width</c>/<c>height</c> from the window's size in backing
-    /// pixels, and <c>window.x</c>/<c>y</c> relative to the window's display. A timer that fired before a later
+    /// pixels, and <c>window.x</c>/<c>y</c> relative to the display that held its top-left then, which becomes its
+    /// <c>display</c> (as a drag's does). A timer that fired before a later
     /// change of the same resize (its commit already posted) is stale: <paramref name="generation"/> no longer matches.
     /// </summary>
     private void CommitResize(WindowEntry entry, int generation)
@@ -410,7 +440,7 @@ public sealed class DisplayWindowManager(
         Reconcile(entry.ProfileId);
     }
 
-    /// <summary>Ends the pending resize with its commit, from the window's frame and scale at the resize's last change.</summary>
+    /// <summary>Ends the pending resize with its commit, from the window's frame, scale and display at the resize's last change.</summary>
     private void EditResize(WindowEntry entry)
     {
         entry.ResizeTimer?.Dispose();
@@ -420,25 +450,25 @@ public sealed class DisplayWindowManager(
         var scale = entry.ResizeScale;
         var width = Math.Clamp((int)Math.Round(frame.Width * scale), 1, Workspace.MaxDimension);
         var height = Math.Clamp((int)Math.Round(frame.Height * scale), 1, Workspace.MaxDimension);
-        var display = entry.Display ?? DisplayMatcher.At(platform.GetDisplays(), frame.X, frame.Y);
-        if (display != null)
+        if (entry.ResizeDisplay is { } display)
         {
             var (x, y) = DisplayMatcher.Position(display, frame);
-            Edit(entry, x, y, null, (width, height), display);
+            Edit(entry, x, y, (width, height), display);
         }
 
         entry.Settled = frame;
     }
 
     /// <summary>
-    /// Commits the window's place (<paramref name="x"/>, <paramref name="y"/> relative to <paramref name="display"/>), its
-    /// display when it was dragged to one, and its size when it was resized, as one <c>profile</c> op with a
-    /// <c>gesture:</c> key of its own. The op sets the whole <c>window</c> as read, so it carries that read's revision
-    /// as its <c>baseRev</c>: when another change to the profile came first (409), the latest window is read and the
-    /// place applied to it again, up to <see cref="CommitAttempts"/> times, so another client's <c>level</c>,
-    /// <c>resizable</c> or <c>enabled</c> is never undone. A commit that changes nothing makes no revision.
+    /// Commits the window's place, <paramref name="x"/>, <paramref name="y"/> on <paramref name="display"/>, as its
+    /// <c>display</c>, the previous one remembered in <c>spots</c> (<see cref="DisplayMatcher.Promote"/>), and its size
+    /// when it was resized, as one <c>profile</c> op with a <c>gesture:</c> key of its own. The op sets the whole
+    /// <c>window</c> as read, so it carries that read's revision as its <c>baseRev</c>: when another change to the
+    /// profile came first (409), the latest window is read and the place applied to it again, up to
+    /// <see cref="CommitAttempts"/> times, so another client's <c>level</c>, <c>resizable</c>, <c>enabled</c> or
+    /// <c>spots</c> is never undone. A commit that changes nothing makes no revision.
     /// </summary>
-    private void Edit(WindowEntry entry, int x, int y, DisplayMatch? target, (int Width, int Height)? size, DisplayInfo display)
+    private void Edit(WindowEntry entry, int x, int y, (int Width, int Height)? size, DisplayInfo display)
     {
         var doc = entry.Document;
         var key = $"gesture:{_gestureClient}:{++_gestures}";
@@ -448,9 +478,7 @@ public sealed class DisplayWindowManager(
         {
             current = doc.Current;
             var profile = current.Document.Profile;
-            var window = (profile.Window ?? new WindowSettings { Enabled = true }) with { X = x, Y = y };
-            if (target != null)
-                window = window with { Display = target };
+            var window = DisplayMatcher.Promote(profile.Window ?? new WindowSettings { Enabled = true }, DisplayMatcher.TargetOf(display), x, y);
 
             BeforeCommit?.Invoke(entry.ProfileId);
             try
@@ -527,17 +555,17 @@ public sealed class DisplayWindowManager(
 
         public DesktopWindowSink? Sink { get; set; }
 
-        public DisplayInfo? Display { get; set; }
-
         /// <summary>Where the window was last placed or its resize committed: a release there is no move.</summary>
         public PointRect? Settled { get; set; }
 
         public bool ResizePending { get; set; }
 
-        /// <summary>The window's frame and backing scale at the pending resize's last change.</summary>
+        /// <summary>The window's frame and backing scale at the pending resize's last change, and the display then holding its top-left.</summary>
         public PointRect ResizeFrame { get; set; }
 
         public double ResizeScale { get; set; }
+
+        public DisplayInfo? ResizeDisplay { get; set; }
 
         public ITimer? ResizeTimer { get; set; }
 
@@ -551,15 +579,14 @@ public sealed class DisplayWindowManager(
     }
 
     /// <summary>The profile's window settings, from its current generation (no lock).</summary>
-    private sealed record Settings(bool Active, DesktopWindowStyle Style, int Width, int Height, int WindowX, int WindowY,
-        DisplayMatch? Target, bool Strict)
+    private sealed record Settings(bool Active, DesktopWindowStyle Style, int Width, int Height, WindowSettings? Window)
     {
         public static Settings Read(ProfileDocument doc)
         {
             var p = doc.Current.Document.Profile;
             var w = p.Window;
             return new Settings(w?.Enabled == true, new DesktopWindowStyle(LevelOf(w?.Level), w?.Draggable ?? true, w?.Resizable ?? true, w?.ClickThrough == true),
-                Math.Max(1, p.Width), Math.Max(1, p.Height), w?.X ?? 0, w?.Y ?? 0, w?.Display, w?.Strict ?? false);
+                Math.Max(1, p.Width), Math.Max(1, p.Height), w);
         }
 
         /// <summary><c>window.level</c>: <c>top</c>, <c>desktop</c>, else (absent, <c>normal</c>) normal.</summary>

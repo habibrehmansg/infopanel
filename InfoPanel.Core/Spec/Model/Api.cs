@@ -1114,13 +1114,15 @@ public sealed record DisplayList
 }
 
 /// <summary>
-/// One display: <see cref="Name"/>, <see cref="Width"/>, <see cref="Height"/>, <see cref="X"/> and <see cref="Y"/> are
-/// exactly the <see cref="DisplayMatch"/> a profile's <c>window.display</c> takes; <see cref="Label"/> is its name for
-/// people, <see cref="Scale"/> its pixels per desktop unit.
+/// One display: <see cref="Id"/>, <see cref="Name"/>, <see cref="Width"/>, <see cref="Height"/>, <see cref="X"/> and
+/// <see cref="Y"/> are exactly the <see cref="DisplayMatch"/> a profile's <c>window.display</c> takes; <see cref="Label"/>
+/// is its name for people, <see cref="Scale"/> its pixels per desktop unit.
 /// </summary>
 [SpecDef("urn:infopanel:api:1#/$defs/displayInfo")]
 public sealed record DisplayInfoBody
 {
+    /// <summary>The monitor's EDID maker and product code (<c>DEL40F4</c>); null when the display reports none.</summary>
+    public string? Id { get; init; }
     public required string Name { get; init; }
     public required int Width { get; init; }
     public required int Height { get; init; }

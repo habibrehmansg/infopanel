@@ -1,0 +1,11 @@
+{
+  "format": "infopanel.document/1",
+  "id": "3dd19c0e-675a-4591-b096-83417853861f",
+  "profile": {
+    "name": "Example",
+    "width": 800,
+    "height": 480,
+    "window": {"enabled": true, "display": {"id": "dell", "name": "DELL U2720Q", "width": 2560, "height": 1440}}
+  },
+  "items": []
+}

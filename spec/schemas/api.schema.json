@@ -1798,11 +1798,16 @@
       }
     },
     "displayInfo": {
-      "description": "One display (docs/api.md#displays). `name`, `width`, `height`, `x` and `y` are exactly the `displayMatch` a profile's `window.display` takes to put its window on this display (urn:infopanel:document:1#/$defs/displayMatch).",
+      "description": "One display (docs/api.md#displays). `id`, `name`, `width`, `height`, `x` and `y` are exactly the `displayMatch` a profile's `window.display` takes to put its window on this display (urn:infopanel:document:1#/$defs/displayMatch).",
       "type": "object",
       "required": ["name", "width", "height", "x", "y", "label", "scale", "primary"],
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "description": "The monitor's identity from its EDID, its PNP maker and product code (`DEL40F4`); absent when the display reports none (a virtual or remote display, an adapter that hides the EDID, an engine that doesn't read it).",
+          "type": "string",
+          "pattern": "^[A-Z]{3}[0-9A-F]{4}$"
+        },
         "name": { "description": "The name the engine matches the display by, at most 256 characters (a longer one is cut).", "type": "string", "maxLength": 256 },
         "width": { "description": "The display's width in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },
         "height": { "description": "The display's height in its own pixels.", "type": "integer", "minimum": 0, "maximum": 1000000 },

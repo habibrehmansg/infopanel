@@ -1648,8 +1648,13 @@ export interface DisplayList {
   displays: DisplayInfo[];
 }
 
-/** One display (docs/api.md#displays). `name`, `width`, `height`, `x` and `y` are exactly the `displayMatch` a profile's `window.display` takes to put its window on this display (urn:infopanel:document:1#/$defs/displayMatch). */
+/** One display (docs/api.md#displays). `id`, `name`, `width`, `height`, `x` and `y` are exactly the `displayMatch` a profile's `window.display` takes to put its window on this display (urn:infopanel:document:1#/$defs/displayMatch). */
 export interface DisplayInfo {
+  /**
+   * The monitor's identity from its EDID, its PNP maker and product code (`DEL40F4`); absent when the display reports none (a virtual or remote display, an adapter that hides the EDID, an engine that doesn't read it).
+   * Pattern: `^[A-Z]{3}[0-9A-F]{4}$`.
+   */
+  id?: string;
   /**
    * The name the engine matches the display by, at most 256 characters (a longer one is cut).
    * Length: ≤ 256.
@@ -2502,8 +2507,13 @@ export interface WindowSettings {
   y?: number;
   display?: DisplayMatch;
   /**
-   * Hide the window when no display matches `display` exactly.
-   * @default false
+   * The window's places on other displays it was on, the most recent first (docs/document.md).
+   * Items: ≤ 8.
+   */
+  spots?: WindowSpot[];
+  /**
+   * Hide the window when neither `display` nor any of `spots` is connected; false: show it on the main display.
+   * @default true
    */
   strict?: boolean;
   /**
@@ -2522,8 +2532,30 @@ export interface WindowSettings {
   resizable?: boolean;
 }
 
-/** The display the window belongs on, matched by name and size in the display's pixels; x and y, in the desktop's own coordinates, tell displays of the same name and size apart. No exact match: hidden when strict, else the first display with the name, else the first with the size, else the main one. Absent: the main display (docs/document.md). */
+/** A place the window had on another display: `x`, `y` in pixels from that display's top-left (docs/document.md). */
+export interface WindowSpot {
+  display: DisplayMatch;
+  /**
+   * Pixels from the left of the display.
+   * Range: -1000000–1000000.
+   * @default 0
+   */
+  x?: number;
+  /**
+   * Pixels from the top of the display.
+   * Range: -1000000–1000000.
+   * @default 0
+   */
+  y?: number;
+}
+
+/** A display the window was on, matched by its `id` when the display reports one, else by name and size in the display's pixels; x and y, in the desktop's own coordinates, tell equal displays apart. Absent: the main display (docs/document.md). */
 export interface DisplayMatch {
+  /**
+   * The monitor's own identity from its EDID: its three-letter PNP maker and four-hex-digit product code (`DEL40F4`). Matched before `name` and size when the display reports one (docs/document.md).
+   * Pattern: `^[A-Z]{3}[0-9A-F]{4}$`.
+   */
+  id?: string;
   /** Length: ≤ 256. */
   name: string;
   /**

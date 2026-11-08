@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -59,6 +61,9 @@ public sealed record WindowSettings
     public int? X { get; init; }
     public int? Y { get; init; }
     public DisplayMatch? Display { get; init; }
+    /// <summary>The window's places on other displays it was on, the most recent first (at most 8); null: none.</summary>
+    public IReadOnlyList<WindowSpot>? Spots { get; init; }
+    /// <summary>Hide the window when none of its displays is connected (null: the default, true); false: the main display.</summary>
     public bool? Strict { get; init; }
     /// <summary><c>normal</c> (null: the default), <c>top</c> or <c>desktop</c>: where the window sits among the computer's other windows.</summary>
     public string? Level { get; init; }
@@ -66,11 +71,48 @@ public sealed record WindowSettings
     public bool? ClickThrough { get; init; }
     public bool? Draggable { get; init; }
     public bool? Resizable { get; init; }
+
+    /// <summary>
+    /// Equal members, <see cref="Spots"/> spot by spot (a record compares a list by reference): a window committed again
+    /// with the same places is no change.
+    /// </summary>
+    public bool Equals(WindowSettings? other) =>
+        other is not null && Enabled == other.Enabled && X == other.X && Y == other.Y && Equals(Display, other.Display)
+        && (ReferenceEquals(Spots, other.Spots) || (Spots is not null && other.Spots is not null && Spots.SequenceEqual(other.Spots)))
+        && Strict == other.Strict && Level == other.Level && ClickThrough == other.ClickThrough
+        && Draggable == other.Draggable && Resizable == other.Resizable;
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Enabled);
+        hash.Add(X);
+        hash.Add(Y);
+        hash.Add(Display);
+        hash.Add(Spots?.Count);
+        hash.Add(Strict);
+        hash.Add(Level);
+        hash.Add(ClickThrough);
+        hash.Add(Draggable);
+        hash.Add(Resizable);
+        return hash.ToHashCode();
+    }
+}
+
+/// <summary>A place the window had on another display: <see cref="X"/>, <see cref="Y"/> pixels from its top-left (null: 0).</summary>
+[SpecDef("urn:infopanel:document:1#/$defs/windowSpot")]
+public sealed record WindowSpot
+{
+    public required DisplayMatch Display { get; init; }
+    public int? X { get; init; }
+    public int? Y { get; init; }
 }
 
 [SpecDef("urn:infopanel:document:1#/$defs/displayMatch")]
 public sealed record DisplayMatch
 {
+    /// <summary>The monitor's EDID maker and product code (<c>DEL40F4</c>), matched before the name and size; null: none.</summary>
+    public string? Id { get; init; }
     public required string Name { get; init; }
     public required int Width { get; init; }
     public required int Height { get; init; }

@@ -206,4 +206,106 @@ public sealed class MacDesktopWindowTests
 
     [DllImport("libc", SetLastError = true)]
     private static extern int kill(int pid, int signal);
+
+    [Fact]
+    public async Task TheBuiltInDisplay_IsListedWithItsMonitorId()
+    {
+        Assert.SkipUnless(Enabled, "Reads the real displays: set INFOPANEL_WINDOW_TESTS=1 on macOS to run it.");
+        if (OperatingSystem.IsMacOS())
+            await ListTheBuiltInDisplay();
+    }
+
+    /// <summary>
+    /// A real engine with no window enabled, so nothing appears on the screen, lists the built-in display (found by its
+    /// top-left in CoreGraphics' desktop points, <c>CGDisplayIsBuiltin</c> and <c>CGDisplayBounds</c>) with its monitor id,
+    /// its EDID's maker and product code; the listing goes to the test's output.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+    private static async Task ListTheBuiltInDisplay()
+    {
+        var builtIn = BuiltInDisplayOrigin();
+        Assert.SkipWhen(builtIn == null, "No built-in display is active (a desktop Mac, or the lid closed).");
+
+        var root = Path.Combine(Path.GetTempPath(), "infopanel-display-id-" + Guid.NewGuid().ToString("N"));
+        var port = EngineRuntime.FindFreePort();
+        var start = new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "InfoPanel"))
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var arg in new[] { "--port", port.ToString(), "--data-dir", Path.Combine(root, "data"), "--v1-dir", Path.Combine(root, "v1"), "--token", "wt", "--no-browser", "--no-tray", "--no-panels", "--mock-seed", "42" })
+            start.ArgumentList.Add(arg);
+
+        using var process = Process.Start(start)!;
+        process.OutputDataReceived += (_, _) => { };
+        process.ErrorDataReceived += (_, _) => { };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        using var api = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "wt");
+        try
+        {
+            await Until(async () => (await Try(() => api.GetStringAsync("/healthz", Ct))) == "ok", "the engine to listen");
+            var list = await api.GetFromJsonAsync<JsonElement>("/api/displays", Ct);
+            TestContext.Current.TestOutputHelper?.WriteLine($"GET /api/displays: {list}");
+
+            var (x, y) = builtIn!.Value;
+            var entry = list.GetProperty("displays").EnumerateArray()
+                .Single(d => d.GetProperty("x").GetInt32() == (int)Math.Round(x) && d.GetProperty("y").GetInt32() == (int)Math.Round(y));
+            var id = entry.TryGetProperty("id", out var value) ? value.GetString() : null;
+            TestContext.Current.TestOutputHelper?.WriteLine($"The built-in display, {entry.GetProperty("label").GetString()}: id {id ?? "(none)"}");
+            Assert.Matches("^[A-Z]{3}[0-9A-F]{4}$", id);
+
+            Assert.Equal(0, kill(process.Id, 15));
+            using var exit = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+            exit.CancelAfter(TimeSpan.FromSeconds(20));
+            await process.WaitForExitAsync(exit.Token);
+            Assert.Equal(0, process.ExitCode);
+        }
+        finally
+        {
+            if (!process.HasExited)
+                process.Kill();
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>The built-in display's top-left in desktop points (CoreGraphics' global space: the main display's top-left at 0, 0, y down), or null.</summary>
+    private static (double X, double Y)? BuiltInDisplayOrigin()
+    {
+        var displays = new uint[16];
+        if (CGGetActiveDisplayList((uint)displays.Length, displays, out var count) != 0)
+            return null;
+        foreach (var display in displays.AsSpan(0, (int)count))
+        {
+            if (CGDisplayIsBuiltin(display) != 0)
+            {
+                var bounds = CGDisplayBounds(display);
+                return (bounds.X, bounds.Y);
+            }
+        }
+
+        return null;
+    }
+
+    private const string CoreGraphics = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics";
+
+    [DllImport(CoreGraphics)]
+    private static extern int CGGetActiveDisplayList(uint maxDisplays, [Out] uint[] activeDisplays, out uint displayCount);
+
+    [DllImport(CoreGraphics)]
+    private static extern int CGDisplayIsBuiltin(uint display);
+
+    [DllImport(CoreGraphics)]
+    private static extern CGRect CGDisplayBounds(uint display);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CGRect
+    {
+        public double X;
+        public double Y;
+        public double Width;
+        public double Height;
+    }
 }

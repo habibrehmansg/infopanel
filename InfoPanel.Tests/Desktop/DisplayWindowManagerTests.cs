@@ -144,6 +144,447 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
 
     private void AssertNoErrors() => Assert.Empty(_platform.Errors);
 
+    // Monitors that report their EDID's id, for a window's places on several displays (window.spots).
+    private static readonly DisplayInfo Laptop = BuiltIn with { Id = "APPA050" };                                              // 3024×1964 px at 2×
+    private static readonly DisplayInfo Work = new("DELL U2720Q", new PointRect(-408, -1440, 2560, 1440), 1, Id: "DEL40F4");  // 2560×1440 px at 1×
+    private static readonly DisplayInfo Home = new("LG HDR 4K", new PointRect(1512, 0, 1920, 1080), 2, Id: "GSM5B7F");        // 3840×2160 px at 2×
+
+    /// <summary>Starts the host on a desktop of <paramref name="displays"/> instead; returns "Wide bar".</summary>
+    private async Task<ProfileDocument> StartOn(params DisplayInfo[] displays)
+    {
+        await _factory.DisposeAsync();
+        _platform.Dispose();
+        _platform = new FakeDesktopPlatform(displays);
+        _factory = Create(_platform);
+        return await Start();
+    }
+
+    private static WindowSpot Spot(DisplayInfo display, int x, int y) => new() { Display = DisplayMatcher.TargetOf(display), X = x, Y = y };
+
+    /// <summary>A client's commit of the window on <paramref name="display"/> at <paramref name="x"/>, <paramref name="y"/>, remembering <paramref name="spots"/>.</summary>
+    private async Task SetPlaces(ProfileDocument doc, DisplayInfo display, int x, int y, bool? strict, params WindowSpot[] spots)
+    {
+        var window = (P(doc).Window ?? new WindowSettings { Enabled = true }) with
+        {
+            X = x,
+            Y = y,
+            Display = DisplayMatcher.TargetOf(display),
+            Spots = spots.Length == 0 ? null : spots,
+            Strict = strict,
+        };
+        TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["window"] = JsonNode.Parse(JsonSerializer.Serialize(window, SpecJson.Options)) }));
+        await _platform.IdleAsync();
+    }
+
+    [Fact]
+    public async Task UnpluggedAndPluggedBackIn_TheWindowGoesToItsMostRecentConnectedPlace_WithoutAnEdit()
+    {
+        var doc = await StartOn(Laptop, Work);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Work, 100, 50, null, Spot(Laptop, 20, 10));
+        Assert.Equal(Rect(-308, -1390, 1920, 480), window.Frame);
+        var revision = doc.Rev;
+
+        await _platform.ChangeDisplaysAsync(Laptop); // unplugged: its spot on the laptop
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(10, 5, 960, 240), window.Frame);
+
+        await _platform.ChangeDisplaysAsync(Laptop, Work); // plugged back in
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(-308, -1390, 1920, 480), window.Frame);
+        Assert.Equal(revision, doc.Rev); // display changes never edit the profile
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task TwoOfItsDisplaysConnected_TheMostRecentWins_AndWithoutIt_TheOther()
+    {
+        var doc = await StartOn(Laptop, Work, Home);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Home, 200, 100, null, Spot(Work, 100, 50));
+        Assert.Equal(Rect(1612, 50, 960, 240), window.Frame);
+
+        await _platform.ChangeDisplaysAsync(Laptop, Work);
+        Assert.Equal(Rect(-308, -1390, 1920, 480), window.Frame);
+
+        await _platform.ChangeDisplaysAsync(Laptop, Work, Home);
+        Assert.Equal(Rect(1612, 50, 960, 240), window.Frame);
+        Assert.True(window.Visible);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task NoneOfItsDisplaysConnected_HidesTheWindow_ByDefault_UntilOneIs()
+    {
+        var doc = await StartOn(Laptop, Work, Home);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Work, 100, 50, null, Spot(Home, 300, 60));
+        Assert.Null(W(doc).Strict);
+
+        await _platform.ChangeDisplaysAsync(Laptop);
+        Assert.False(window.Visible);
+        Assert.Same(window, await WindowOf(doc.Id)); // still open
+
+        await _platform.ChangeDisplaysAsync(Laptop, Home);
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(1662, 30, 960, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task NoneOfItsDisplaysConnected_NotStrict_ShowsItOnTheMainDisplay_PulledIn_WithoutAnEdit()
+    {
+        var doc = await StartOn(Laptop, Work, Home);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Work, 2000, 1200, false, Spot(Home, 300, 60));
+        var revision = doc.Rev;
+
+        // On the laptop's 3024×1964 pixels the 1920×480-pixel window at 2000, 1200 would stick out: it moves to 1104, 1200.
+        await _platform.ChangeDisplaysAsync(Laptop);
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(552, 600, 960, 240), window.Frame);
+        Assert.Equal((revision, 2000, 1200), (doc.Rev, W(doc).X, W(doc).Y));
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task ADragOntoAnotherDisplay_RemembersThePlaceItLeft_AndADragBack_TheOther()
+    {
+        var doc = await StartOn(Laptop, Work);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Laptop, 40, 20, null);
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+        Assert.Equal((120, 64, DisplayMatcher.TargetOf(Work)), (W(doc).X, W(doc).Y, W(doc).Display));
+        Assert.Equal([Spot(Laptop, 40, 20)], W(doc).Spots);
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(100, 50, 1920, 480)));
+        await _platform.IdleAsync();
+        Assert.Equal((200, 100, DisplayMatcher.TargetOf(Laptop)), (W(doc).X, W(doc).Y, W(doc).Display));
+        Assert.Equal([Spot(Work, 120, 64)], W(doc).Spots);
+        Assert.Equal(Rect(100, 50, 960, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AResize_OnTheMainDisplayByTheFallback_MakesItTheWindowsPlace_AndRemembersItsOwn()
+    {
+        var doc = await StartOn(Laptop, Work);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Work, 2000, 1200, false);
+        await _platform.ChangeDisplaysAsync(Laptop);
+        Assert.Equal(Rect(552, 600, 960, 240), window.Frame);
+
+        await _platform.InvokeAsync(() => window.UserResize(Rect(552, 600, 900, 230)));
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+
+        Assert.Equal((1800, 460), (P(doc).Width, P(doc).Height));
+        Assert.Equal((1104, 1200, DisplayMatcher.TargetOf(Laptop)), (W(doc).X, W(doc).Y, W(doc).Display));
+        Assert.Equal([Spot(Work, 2000, 1200)], W(doc).Spots);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AResizeWhileAtASpot_MakesThatDisplayThePlace_AndKeepsTheOtherDisplaysOwn()
+    {
+        var doc = await StartOn(Laptop, Work);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Work, 100, 50, null, Spot(Laptop, 20, 10));
+        await _platform.ChangeDisplaysAsync(Laptop);
+        Assert.Equal(Rect(10, 5, 960, 240), window.Frame);
+
+        // From the top-left edge: the window's place on the laptop moves too, the work monitor's stays its own.
+        await _platform.InvokeAsync(() => window.UserResize(Rect(15, 8, 900, 230)));
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+
+        Assert.Equal((1800, 460), (P(doc).Width, P(doc).Height));
+        Assert.Equal((30, 16, DisplayMatcher.TargetOf(Laptop)), (W(doc).X, W(doc).Y, W(doc).Display));
+        Assert.Equal([Spot(Work, 100, 50)], W(doc).Spots);
+        Assert.Equal(Rect(15, 8, 900, 230), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task UndoOfADrag_BringsBackTheDisplayAndThePlacesItHad()
+    {
+        var doc = await StartOn(Laptop, Work, Home);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Home, 200, 100, null, Spot(Laptop, 40, 20));
+        var before = W(doc);
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+        var after = W(doc);
+        Assert.Equal(DisplayMatcher.TargetOf(Work), after.Display);
+        Assert.Equal([Spot(Home, 200, 100), Spot(Laptop, 40, 20)], after.Spots);
+
+        Undo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal(before, W(doc));
+        Assert.Equal(Rect(1612, 50, 960, 240), window.Frame);
+
+        Redo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal(after, W(doc));
+        Assert.Equal(Rect(-288, -1376, 1920, 480), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task ADragAcrossADisplayChange_IsNoMove_AndTheWindowGoesToItsNextConnectedPlace()
+    {
+        var doc = await StartOn(Laptop, Work);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Work, 100, 50, null, Spot(Laptop, 20, 10));
+        var (revision, places) = (doc.Rev, W(doc));
+
+        // The button goes down on the window, its monitor is unplugged, the window is dragged on the laptop and let go.
+        await _platform.InvokeAsync(window.BeginUserMove);
+        await _platform.ChangeDisplaysAsync(Laptop);
+        await _platform.InvokeAsync(() => window.DragTo(Rect(300, 200, 1920, 480)));
+        await _platform.InvokeAsync(window.EndUserMove);
+        await _platform.IdleAsync();
+
+        Assert.Equal((revision, places), (doc.Rev, W(doc)));
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(10, 5, 960, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task ADrag_WhileAnotherClientChangesTheWindowsPlaces_KeepsThem()
+    {
+        var doc = await StartOn(Laptop, Work, Home);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Laptop, 40, 20, null);
+        // After the drop read the profile, before its commit: another client gives the window a place on the home monitor.
+        Manager.BeforeCommit = _ =>
+        {
+            Manager.BeforeCommit = null;
+            var changed = JsonNode.Parse(JsonSerializer.Serialize(W(doc) with { Spots = [Spot(Home, 300, 60)] }, SpecJson.Options))!;
+            TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["window"] = changed }));
+        };
+        var revision = doc.Rev;
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+
+        Assert.Equal(revision + 2, doc.Rev);
+        Assert.Equal((120, 64, DisplayMatcher.TargetOf(Work)), (W(doc).X, W(doc).Y, W(doc).Display));
+        Assert.Equal([Spot(Laptop, 40, 20), Spot(Home, 300, 60)], W(doc).Spots);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task ADragOntoTheSamePlace_WithPlacesOnOtherDisplays_IsNoEdit()
+    {
+        var doc = await StartOn(Laptop, Work);
+        var window = await RequireWindow(doc.Id);
+        await SetPlaces(doc, Laptop, 0, 0, null, Spot(Work, 100, 50));
+        var revision = doc.Rev;
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(0.2, 0.2, 960, 240))); // less than half a pixel away
+        await _platform.IdleAsync();
+
+        Assert.Equal(revision, doc.Rev);
+        Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AKnownMonitorBackAtASmallerSize_PullsTheWindowOnToIt_WithoutAnEdit_AndAtItsSize_ItsSavedPlace()
+    {
+        // The home monitor at 3840×2160 pixels at 1×, then the same monitor (its id) at 1920×1080.
+        var wide = new DisplayInfo("LG HDR 4K", new PointRect(1512, 0, 3840, 2160), 1, Id: "GSM5B7F");
+        var narrow = wide with { Frame = new PointRect(1512, 0, 1920, 1080) };
+        var doc = await StartOn(Laptop, wide);
+        var window = await RequireWindow(doc.Id);
+        await Patch(doc, new JsonObject { ["width"] = 800, ["height"] = 480 });
+        await SetPlaces(doc, wide, 3040, 100, null);
+        Assert.Equal(Rect(1512 + 3040, 100, 800, 480), window.Frame);
+        var (revision, places) = (doc.Rev, W(doc));
+
+        await _platform.ChangeDisplaysAsync(Laptop, narrow);
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(1512 + 1120, 100, 800, 480), window.Frame);
+
+        await _platform.ChangeDisplaysAsync(Laptop, wide);
+        Assert.Equal(Rect(1512 + 3040, 100, 800, 480), window.Frame);
+        Assert.Equal((revision, places), (doc.Rev, W(doc))); // the pull-in is never written
+
+        // As a spot, and at its recorded size a saved place half off the monitor stays exactly where it was saved.
+        await SetPlaces(doc, Work, 100, 50, null, Spot(wide, 3040, 1900));
+        await _platform.ChangeDisplaysAsync(Laptop, narrow);
+        Assert.Equal(Rect(1512 + 1120, 600, 800, 480), window.Frame);
+        await SetPlaces(doc, wide, 3400, 1900, null);
+        await _platform.ChangeDisplaysAsync(Laptop, wide);
+        Assert.Equal(Rect(1512 + 3400, 1900, 800, 480), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AResizeFromTheLeftEdge_OntoTheDisplayBeside_MakesThatDisplayThePlace_AndRemembersTheOneItLeft()
+    {
+        // Two monitors side by side at 1×: A at x 0…1919, B at 1920…3839.
+        var a = new DisplayInfo("DELL U2720Q", new PointRect(0, 0, 1920, 1080), 1, Id: "DEL40F4");
+        var b = new DisplayInfo("LG HDR 4K", new PointRect(1920, 0, 1920, 1080), 1, Id: "GSM5B7F");
+        var doc = await StartOn(a, b);
+        var window = await RequireWindow(doc.Id);
+        await Patch(doc, new JsonObject { ["width"] = 800, ["height"] = 480 });
+        await SetPlaces(doc, b, 10, 100, null);
+        Assert.Equal(Rect(1930, 100, 800, 480), window.Frame);
+
+        // The left edge dragged from 1930 to 1925 (still on B), then on to 1900, on A: the last one counts.
+        await _platform.InvokeAsync(() => window.UserResize(Rect(1925, 100, 805, 480)));
+        await _platform.InvokeAsync(() => window.UserResize(Rect(1900, 100, 830, 480)));
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+
+        Assert.Equal((830, 480), (P(doc).Width, P(doc).Height));
+        Assert.Equal((1900, 100, DisplayMatcher.TargetOf(a)), (W(doc).X, W(doc).Y, W(doc).Display));
+        Assert.Equal([Spot(b, 10, 100)], W(doc).Spots);
+
+        await _platform.ChangeDisplaysAsync(a); // B unplugged: the window stays on A
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(1900, 100, 830, 480), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AResizeWhoseDisplayIsUnpluggedBeforeItIsQuiet_IsNoEdit_AndNeverMakesThatDisplayThePlace()
+    {
+        // Two monitors side by side at 1×: A (the main one) at x 0…1919, B at 1920…3839. The window has no display
+        // of its own (the main one, A), at 1800, 100.
+        var a = new DisplayInfo("DELL U2720Q", new PointRect(0, 0, 1920, 1080), 1, Id: "DEL40F4");
+        var b = new DisplayInfo("LG HDR 4K", new PointRect(1920, 0, 1920, 1080), 1, Id: "GSM5B7F");
+        var doc = await StartOn(a, b);
+        var window = await RequireWindow(doc.Id);
+        await Patch(doc, new JsonObject { ["width"] = 800, ["height"] = 480, ["x"] = 1800, ["y"] = 100 });
+        Assert.Equal(Rect(1800, 100, 800, 480), window.Frame);
+        var revision = doc.Rev;
+
+        // The left edge dragged to 2000, on B, the button still down; B is unplugged before the size is quiet.
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.UserResize(Rect(2000, 100, 600, 480));
+        });
+        await _platform.ChangeDisplaysAsync(a);
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        await _platform.InvokeAsync(window.EndUserMove);
+        await _platform.IdleAsync();
+
+        // Nothing is written, B least of all, and the window is shown on A at its place.
+        Assert.Equal(revision, doc.Rev);
+        Assert.Null(W(doc).Display);
+        Assert.Null(W(doc).Spots);
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(1800, 100, 800, 480), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AResizeWhoseCommitIsAlreadyQueuedWhenItsDisplayIsUnplugged_IsNoEdit()
+    {
+        // As above, but the resize's quiet timer fires while the display change waits on the UI thread, so its commit
+        // is queued ahead of anything the display change posts.
+        var a = new DisplayInfo("DELL U2720Q", new PointRect(0, 0, 1920, 1080), 1, Id: "DEL40F4");
+        var b = new DisplayInfo("LG HDR 4K", new PointRect(1920, 0, 1920, 1080), 1, Id: "GSM5B7F");
+        var doc = await StartOn(a, b);
+        var window = await RequireWindow(doc.Id);
+        await Patch(doc, new JsonObject { ["width"] = 800, ["height"] = 480, ["x"] = 1800, ["y"] = 100 });
+        Assert.Equal(Rect(1800, 100, 800, 480), window.Frame);
+        var revision = doc.Rev;
+
+        await _platform.InvokeAsync(() => window.UserResize(Rect(2000, 100, 600, 480)));
+        using var gate = new ManualResetEventSlim();
+        _platform.Post(() => gate.Wait(TimeSpan.FromSeconds(10)));
+        var change = _platform.ChangeDisplaysAsync(a);
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        gate.Set();
+        await change;
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+
+        Assert.Equal(revision, doc.Rev);
+        Assert.Null(W(doc).Display);
+        Assert.Null(W(doc).Spots);
+        Assert.Equal((800, 480), (P(doc).Width, P(doc).Height));
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(1800, 100, 800, 480), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task AResizeWhoseCommitIsAlreadyQueuedWhenItsDisplayChangesResolution_IsNoEdit()
+    {
+        var a = new DisplayInfo("DELL U2720Q", new PointRect(0, 0, 1920, 1080), 1, Id: "DEL40F4");
+        var b = new DisplayInfo("LG HDR 4K", new PointRect(1920, 0, 1920, 1080), 1, Id: "GSM5B7F");
+        var doc = await StartOn(a, b);
+        var window = await RequireWindow(doc.Id);
+        await Patch(doc, new JsonObject { ["width"] = 800, ["height"] = 480, ["x"] = 1800, ["y"] = 100 });
+        var revision = doc.Rev;
+
+        await _platform.InvokeAsync(() => window.UserResize(Rect(2000, 100, 600, 480)));
+        using var gate = new ManualResetEventSlim();
+        _platform.Post(() => gate.Wait(TimeSpan.FromSeconds(10)));
+        var change = _platform.ChangeDisplaysAsync(a, b with { Frame = new PointRect(1920, 0, 2560, 1440) });
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        gate.Set();
+        await change;
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+
+        Assert.Equal(revision, doc.Rev);
+        Assert.Null(W(doc).Display);
+        Assert.Equal((800, 480), (P(doc).Width, P(doc).Height));
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// A window as stored before spots and ids (one place, by name, size and top-left; strict not set) loads and is placed
+    /// as before while its display is connected, with nothing written; strict's default is now true, so unplugged it hides;
+    /// the first drag records the new display's id and starts its spots with the old place.
+    /// </summary>
+    [Fact]
+    public async Task TodaysSinglePlacement_LoadsAndPlacesAsBefore_HidesWithoutItsDisplay_AndADragStartsItsSpots()
+    {
+        var stored = TestDocs.Doc("Wide bar", 1920, 480, TestDocs.Scene("bar", 10, 10, TestDocs.Rect("#ff0000", 400, 40)));
+        stored["id"] = WideBarId;
+        stored["profile"]!["window"] = JsonNode.Parse("""
+            {"enabled": true, "x": 100, "y": 50, "display": {"name": "DELL U2720Q", "width": 2560, "height": 1440, "x": -408, "y": -1440}}
+            """);
+        Seed(WideBarId, stored.ToJsonString());
+        var doc = await StartOn(Laptop, Work);
+        var window = await RequireWindow(doc.Id);
+        var old = W(doc).Display!;
+        Assert.Null(old.Id);
+
+        Assert.True(window.Visible);
+        Assert.Equal(Rect(-308, -1390, 1920, 480), window.Frame);
+        Assert.Equal((1L, false), (doc.Rev, doc.Dirty));
+
+        await _platform.ChangeDisplaysAsync(Laptop);
+        Assert.False(window.Visible);
+
+        await _platform.ChangeDisplaysAsync(Laptop, Work);
+        Assert.Equal(Rect(-308, -1390, 1920, 480), window.Frame);
+        await _platform.InvokeAsync(() => window.UserMove(Rect(20, 10, 1920, 480)));
+        await _platform.IdleAsync();
+        Assert.Equal((40, 20, DisplayMatcher.TargetOf(Laptop)), (W(doc).X, W(doc).Y, W(doc).Display));
+        Assert.Equal("APPA050", W(doc).Display!.Id);
+        Assert.Equal([new WindowSpot { Display = old, X = 100, Y = 50 }], W(doc).Spots);
+        AssertNoErrors();
+    }
+
     [Fact]
     public async Task AtStart_AnActiveProfile_GetsAVisibleWindow_AtItsPixelSize_OnTheFirstDisplay()
     {
@@ -733,7 +1174,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
         PlaceOn(doc, 10, 20, External);
-        await _platform.IdleAsync();
+        await Patch(doc, new JsonObject { ["strict"] = false }); // strict is true by default
         Assert.Equal(Rect(-398, -1420, 1920, 480), window.Frame);
         var revision = doc.Rev;
 
