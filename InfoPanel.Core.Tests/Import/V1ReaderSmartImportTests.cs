@@ -108,6 +108,36 @@ public sealed class V1ReaderSmartImportTests : IDisposable
     }
 
     [Fact]
+    public void NotMatched_AnItemWhoseSensorTypeIsUnknown_StaysUnbound()
+    {
+        // Another build's sensor type: the item is imported unbound, so the user picks its sensor; its sensor name,
+        // though HWiNFO lists a reading of that name, doesn't bind it. A HWiNFO binding beside it is still matched.
+        var envelope = ReadHere(
+            $"""<DisplayItem xsi:type="SensorDisplayItem"><Name>Other build</Name><SensorName>CPU Package</SensorName><SensorType>Hwmon</SensorType><HwInfoRemoteIndex>-1</HwInfoRemoteIndex><Id>{Cpu}</Id><Instance>0</Instance><EntryId>{Package}</EntryId></DisplayItem>""",
+            Sensor("CPU Temp", "CPU Package", Cpu, 0, Package));
+
+        Assert.Equal((0u, 0u, 0u, -1), Binding(envelope.Items[0]));
+        Assert.Equal(SensorStatus.Missing, envelope.Items[0].Meta.Sensor!.Status);
+        Assert.Equal(["/items/1"], With(envelope, "import.sensor.matched").Select(d => d.Path));
+        Assert.Equal(["/items/0"], With(envelope, "import.element").Select(d => d.Path));
+    }
+
+    [Fact]
+    public void Matched_AnItemWithAnElementOfTheMarkersName_IsStillMatched()
+    {
+        // An input element that happens to have the name an unknown sensor type's element is given is just an unknown
+        // element: the item is matched by name as any other is, and nothing says its sensor type is unknown.
+        var envelope = ReadHere(Bound("SensorDisplayItem", "Literal", "CPU Package", 0, 0, 0,
+            inner: "<SensorType.Unknown>extension data</SensorType.Unknown>"));
+
+        Assert.Equal((Cpu, 1u, Package, -1), Binding(Assert.Single(envelope.Items)));
+        Assert.Equal(["/items/0"], With(envelope, "import.sensor.matched").Select(d => d.Path));
+        var unknown = Single(envelope, "import.element");
+        Assert.Contains("'SensorType.Unknown'", unknown.Message);
+        Assert.DoesNotContain("sensor type", unknown.Message);
+    }
+
+    [Fact]
     public void Matched_EveryKindBoundToHwinfo_AtAnyDepth_IsRebound()
     {
         var envelope = ReadHere(

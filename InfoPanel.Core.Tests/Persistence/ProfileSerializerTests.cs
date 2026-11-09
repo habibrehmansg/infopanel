@@ -1,8 +1,11 @@
 using System.Text;
 using System.Xml.Linq;
 using System.Xml.Serialization;
+using InfoPanel.Enums;
+using InfoPanel.Import;
 using InfoPanel.Models;
 using InfoPanel.Persistence;
+using InfoPanel.Sensors;
 using Xunit;
 
 namespace InfoPanel.Core.Tests.Persistence;
@@ -344,6 +347,110 @@ public class ProfileSerializerTests
             """;
 
         Assert.Throws<InvalidDataException>(() => ProfileSerializer.ReadItems(new StringReader(xml)));
+    }
+
+    /// <summary>One sensor item as a build with another sensor source writes it: its HWiNFO ids and a Libre id beside it.</summary>
+    private static string ForkSensorItem(string sensorType) => $"""
+        <?xml version="1.0" encoding="utf-8"?>
+        <ArrayOfDisplayItem xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+          <DisplayItem xsi:type="SensorDisplayItem">
+            <Name>Chip temp</Name>
+            <X>12</X>
+            <Y>34</Y>
+            <SensorName>temp1</SensorName>
+            <SensorType>{sensorType}</SensorType>
+            <HwInfoRemoteIndex>-1</HwInfoRemoteIndex>
+            <Id>4026532608</Id>
+            <Instance>1</Instance>
+            <EntryId>16777216</EntryId>
+            <LibreSensorId>chip0/temp1</LibreSensorId>
+            <PluginSensorId />
+            <Unit>°C</Unit>
+            <Font>Consolas</Font>
+            <FontSize>21</FontSize>
+          </DisplayItem>
+        </ArrayOfDisplayItem>
+        """;
+
+    [Fact]
+    public void ReadItems_AnUnknownSensorType_ReadsTheItemUnbound_WithItsLook()
+    {
+        // A value outside the enum (another build's source) failed the whole list; now only that item's binding goes.
+        var items = ProfileSerializer.ReadItems(new StringReader(ForkSensorItem("Hwmon")));
+
+        var item = Assert.IsType<SensorDisplayItem>(Assert.Single(items));
+        // Unbound as a new 1.x item is: HWiNFO with no sensor id.
+        Assert.Equal((SensorType.HwInfo, 0u, 0u, 0u), (item.SensorType, item.Id, item.Instance, item.EntryId));
+        Assert.False(SensorHub.IsWellFormed(SensorKeys.Of(item)!.Value));
+        // Everything else as stored.
+        Assert.Equal(("Chip temp", 12, 34, "temp1", -1, "chip0/temp1"), (item.Name, item.X, item.Y, item.SensorName, item.HwInfoRemoteIndex, item.LibreSensorId));
+        Assert.Equal(("°C", "Consolas", 21), (item.Unit, item.Font, item.FontSize));
+    }
+
+    private const string GroupedMultiLineSensorType = """
+        <ArrayOfDisplayItem xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <DisplayItem xsi:type="GroupDisplayItem">
+            <Name>Box</Name>
+            <DisplayItems>
+              <DisplayItem xsi:type="SensorDisplayItem"><Name>Chip temp</Name><SensorType>
+                Hwmon
+              </SensorType><Id>7</Id></DisplayItem>
+            </DisplayItems>
+          </DisplayItem>
+        </ArrayOfDisplayItem>
+        """;
+
+    [Fact]
+    public void ReadItems_WithoutTheUnknownSensorTypeList_ReportsTheValueAsAnIgnoredSensorTypeElement()
+    {
+        // A caller outside the 1.x import (no list given) still learns of the ignored value, as an unknown element.
+        var report = new XmlReadReport();
+        var items = ProfileSerializer.ReadItems(SafeXml.Load(ForkSensorItem("Hwmon")), report);
+
+        var item = Assert.Single(items);
+        var node = Assert.Single(report.Unknown);
+        Assert.Equal(("SensorType", false, "Hwmon", 8), (node.Name, node.IsAttribute, node.Text, node.Line));
+        Assert.Same(item, node.Owner);
+
+        // Given the list, the import reports it itself: nothing doubled in the report.
+        var listed = new List<UnknownSensorType>();
+        var otherReport = new XmlReadReport();
+        ProfileSerializer.ReadItems(SafeXml.Load(ForkSensorItem("Hwmon")), otherReport, listed);
+        Assert.Empty(otherReport.Unknown);
+        Assert.Equal(["Hwmon"], Assert.Single(listed).Values);
+    }
+
+    [Fact]
+    public void ReadItems_AMultiLineUnknownSensorTypeInAGroup_IsReportedAtTheLineItStarts()
+    {
+        // The serializer finishes the element on line 7; the report says where it is in the file: line 5.
+        var listed = new List<UnknownSensorType>();
+        ProfileSerializer.ReadItems(SafeXml.Load(GroupedMultiLineSensorType), new XmlReadReport(), listed);
+        Assert.Equal(5, Assert.Single(listed).Line);
+
+        var report = new XmlReadReport();
+        ProfileSerializer.ReadItems(SafeXml.Load(GroupedMultiLineSensorType), report);
+        Assert.Equal(5, Assert.Single(report.Unknown).Line);
+    }
+
+    [Fact]
+    public void ReadItems_KnownSensorTypes_ReadAsTheSerializerAloneReadsThem_ByteForByte()
+    {
+        // Every known value on every kind that has a sensor type, inside a group too: the pre-pass changes nothing.
+        var kinds = new[] { "SensorDisplayItem", "GaugeDisplayItem", "GraphDisplayItem", "BarDisplayItem", "DonutDisplayItem",
+            "SensorImageDisplayItem", "HttpImageDisplayItem", "TableSensorDisplayItem" };
+        var next = 0;
+        string Elements() => string.Concat(kinds.SelectMany(kind => new[] { "HwInfo", "Libre", "Plugin" }.Select(type =>
+            $"""<DisplayItem xsi:type="{kind}"><Name>{kind} {type}</Name><Guid>{new Guid(++next, 0, 0, new byte[8])}</Guid><SensorType>{type}</SensorType><Id>4026532608</Id><Instance>1</Instance><EntryId>16777216</EntryId><LibreSensorId>/cpu/0/load/0</LibreSensorId><PluginSensorId>/p/fps</PluginSensorId></DisplayItem>""")));
+        var xml = $"""<ArrayOfDisplayItem xmlns:xsi="{Xsi}">{Elements()}<DisplayItem xsi:type="GroupDisplayItem"><Name>Box</Name><Guid>{new Guid(++next, 0, 0, new byte[8])}</Guid><DisplayItems>{Elements()}</DisplayItems></DisplayItem></ArrayOfDisplayItem>""";
+
+        var document = XDocument.Parse(xml);
+        var untouched = new XDocument(document);
+        var read = ProfileSerializer.ReadItems(document, report: null);
+        var alone = (List<DisplayItem>)new XmlSerializer(typeof(List<DisplayItem>), [.. ProfileSerializer.ItemTypes]).Deserialize(XDocument.Parse(xml).CreateReader())!;
+
+        Assert.True(XNode.DeepEquals(untouched, document));
+        Assert.Equal(Write(s => ProfileSerializer.WriteItems(s, alone)), Write(s => ProfileSerializer.WriteItems(s, read)));
     }
 
     [Fact]

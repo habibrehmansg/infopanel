@@ -5,6 +5,7 @@ using InfoPanel.Editing;
 using InfoPanel.Import;
 using InfoPanel.Models;
 using InfoPanel.Persistence;
+using InfoPanel.Sensors;
 using InfoPanel.Spec;
 using Xunit;
 using static InfoPanel.Core.Tests.Import.ImportKit;
@@ -252,6 +253,123 @@ public sealed class V1ReaderTests : IDisposable
         Assert.Equal("info", sensor.Severity);
         Assert.Equal("/amdcpu/0/temperature/0", (string)envelope.Items[0].Props["libreSensorId"]!);
         Assert.NotNull(envelope.Items[0].Meta.Sensor);
+    }
+
+    /// <summary>
+    /// An item of <paramref name="type"/> with the sensor type <paramref name="sensorType"/>, as a build with another
+    /// sensor source writes it: HWiNFO ids and a Libre id beside the value. <paramref name="inner"/> goes after the name.
+    /// </summary>
+    private static string Fork(string type, string name, string sensorType = "Hwmon", string inner = "") =>
+        $"""<DisplayItem xsi:type="{type}"><Name>{name}</Name>{inner}<SensorName>temp1</SensorName><SensorType>{sensorType}</SensorType><HwInfoRemoteIndex>-1</HwInfoRemoteIndex><Id>4026532608</Id><Instance>1</Instance><EntryId>16777216</EntryId><LibreSensorId>chip0/temp1</LibreSensorId><PluginSensorId /></DisplayItem>""";
+
+    private static void AssertUnbound(ItemNode node)
+    {
+        Assert.Equal(("HwInfo", "0", "0", "0"), ((string)node.Props["sensorType"]!, node.Props["id"]!.ToJsonString(), node.Props["instance"]!.ToJsonString(), node.Props["entryId"]!.ToJsonString()));
+        Assert.Equal(("chip0/temp1", "temp1", "-1"), ((string)node.Props["libreSensorId"]!, (string)node.Props["sensorName"]!, node.Props["hwInfoRemoteIndex"]!.ToJsonString()));
+        Assert.Equal(SensorStatus.Missing, node.Meta.Sensor!.Status);
+    }
+
+    [Fact]
+    public void SensorType_AnUnknownValue_ImportsTheItemUnbound_WithItsLook_AndADiagnostic()
+    {
+        // A value outside 1.x's enum (another build's sensor source) no longer fails the whole item list.
+        var envelope = _kit.ReadArchive(V1Archive(Items(Fork("SensorDisplayItem", "Chip temp",
+            inner: "<X>12</X><Y>34</Y><Font>Consolas</Font><FontSize>21</FontSize><Color>#FFFFA500</Color>"))));
+
+        var item = Assert.Single(envelope.Items);
+        Assert.Equal("sensor", item.Kind);
+        AssertUnbound(item);
+        Assert.Equal((12, 34, "Consolas", 21, "#FFFFA500"),
+            ((int)item.Props["x"]!, (int)item.Props["y"]!, (string)item.Props["font"]!, (int)item.Props["fontSize"]!, (string)item.Props["color"]!));
+
+        var unknown = Single(envelope, "import.element");
+        Assert.Equal(("warning", "/items/0", "DisplayItems.xml"), (unknown.Severity, unknown.Path, unknown.File));
+        Assert.Contains("'Chip temp'", unknown.Message);
+        Assert.Contains("'Hwmon'", unknown.Message);
+        Assert.Contains("unbound", unknown.Message);
+        Assert.Equal(3, unknown.Line);
+        // Unbound, not a binding the engine lacks; and the list was read.
+        Assert.Empty(With(envelope, "import.sensor"));
+        Assert.Empty(With(envelope, "import.items"));
+    }
+
+    [Fact]
+    public void SensorType_AnUnknownValue_LeavesTheOtherItems_AsTheyWere()
+    {
+        var label = Text("Label");
+        var plugin = """<DisplayItem xsi:type="SensorDisplayItem"><Name>FPS</Name><SensorName>fps</SensorName><SensorType>Plugin</SensorType><PluginSensorId>/some-plugin/game/fps</PluginSensorId></DisplayItem>""";
+
+        var mixed = _kit.ReadArchive(V1Archive(Items(label, Fork("SensorDisplayItem", "Chip temp"), plugin)));
+        var without = _kit.ReadArchive(V1Archive(Items(label, plugin)));
+
+        Assert.Equal(3, mixed.Items.Count);
+        Assert.Equal(WithoutIds(without.Items).ToJsonString(), WithoutIds(new[] { mixed.Items[0], mixed.Items[2] }).ToJsonString());
+        Assert.Equal("plugin:/some-plugin/game/fps", mixed.Items[2].Meta.Sensor!.Key);
+        // The plugin binding the engine has no sensor for is reported as before, at its own path.
+        Assert.Equal(["/items/2"], With(mixed, "import.sensor").Select(d => d.Path));
+        Assert.Equal(["/items/1"], With(without, "import.sensor").Select(d => d.Path));
+    }
+
+    [Fact]
+    public void SensorType_AnUnknownValue_BesideAKnownOne_ImportsTheItemUnbound()
+    {
+        // A known value beside the unknown one, before or after it, doesn't bind the item to its plugin or Libre sensor.
+        var envelope = _kit.ReadArchive(V1Archive(Items(
+            """<DisplayItem xsi:type="SensorDisplayItem"><Name>FPS</Name><SensorName>fps</SensorName><SensorType>Hwmon</SensorType><SensorType>Plugin</SensorType><HwInfoRemoteIndex>-1</HwInfoRemoteIndex><Id>4026532608</Id><Instance>1</Instance><EntryId>16777216</EntryId><PluginSensorId>/some-plugin/game/fps</PluginSensorId></DisplayItem>""",
+            """<DisplayItem xsi:type="SensorDisplayItem"><Name>Load</Name><SensorName>load</SensorName><SensorType>Libre</SensorType><SensorType>Hwmon</SensorType><HwInfoRemoteIndex>-1</HwInfoRemoteIndex><Id>4026532608</Id><Instance>1</Instance><EntryId>16777216</EntryId><LibreSensorId>/cpu/0/load/0</LibreSensorId></DisplayItem>""")));
+
+        Assert.Equal(2, envelope.Items.Count);
+        foreach (var node in envelope.Items)
+        {
+            Assert.Equal(("HwInfo", "0", "0", "0"), ((string)node.Props["sensorType"]!, node.Props["id"]!.ToJsonString(), node.Props["instance"]!.ToJsonString(), node.Props["entryId"]!.ToJsonString()));
+            Assert.Equal(SensorStatus.Missing, node.Meta.Sensor!.Status);
+        }
+        Assert.Equal(["/items/0", "/items/1"], With(envelope, "import.element").Select(d => d.Path));
+        Assert.All(With(envelope, "import.element"), d => Assert.Contains("unbound", d.Message));
+        Assert.Empty(With(envelope, "import.sensor"));
+    }
+
+    [Fact]
+    public void SensorType_TwoUnknownValues_OnOneItem_AreOneDiagnostic()
+    {
+        var envelope = _kit.ReadArchive(V1Archive(Items(
+            """<DisplayItem xsi:type="SensorDisplayItem"><Name>Chip temp</Name><SensorType>Hwmon</SensorType><SensorType>Other</SensorType><SensorType>Hwmon</SensorType></DisplayItem>""")));
+
+        Assert.Single(envelope.Items);
+        var unknown = Single(envelope, "import.element");
+        Assert.Equal(("/items/0", 3), (unknown.Path, unknown.Line));
+        Assert.Contains("'Hwmon'", unknown.Message);
+        Assert.Contains("'Other'", unknown.Message);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(unknown.Message, "'Hwmon'"));
+    }
+
+    [Fact]
+    public void SensorType_AnUnknownValue_OnEveryKindThatHasOne_AndInAGroup()
+    {
+        var envelope = _kit.ReadArchive(V1Archive(Items(
+            Fork("GaugeDisplayItem", "Dial", inner: "<Images>" + Frame("f0", "f0.png") + "</Images>"),
+            Fork("GraphDisplayItem", "Graph"),
+            Fork("BarDisplayItem", "Bar"),
+            Fork("DonutDisplayItem", "Donut"),
+            Fork("SensorImageDisplayItem", "Picture"),
+            Fork("HttpImageDisplayItem", "Web"),
+            Group("Box", Fork("SensorDisplayItem", "Inside", sensorType: "3")),
+            """<DisplayItem xsi:type="TableSensorDisplayItem"><Name>Table</Name><SensorType>Hwmon</SensorType><PluginSensorId>/some-plugin/table</PluginSensorId></DisplayItem>""")));
+
+        Assert.Equal(["gauge", "graph", "bar", "donut", "sensorImage", "httpImage", "group", "table"], envelope.Items.Select(i => i.Kind));
+        foreach (var node in envelope.Items.Take(6).Append(envelope.Items[6].Children![0]))
+            AssertUnbound(node);
+        Assert.Single(envelope.Items[0].Images!);
+
+        // A table reads its plugin sensor whatever its sensor type says: it stays bound.
+        var table = envelope.Items[7];
+        Assert.Equal(("Plugin", "plugin:/some-plugin/table"), ((string)table.Props["sensorType"]!, table.Meta.Sensor!.Key));
+
+        var unknown = With(envelope, "import.element");
+        Assert.Equal(["/items/0", "/items/1", "/items/2", "/items/3", "/items/4", "/items/5", "/items/6/children/0", "/items/7"], unknown.Select(d => d.Path));
+        Assert.Contains("'3'", unknown[6].Message);
+        Assert.Contains("stays bound", unknown[7].Message);
+        Assert.Equal(["/items/7"], With(envelope, "import.sensor").Select(d => d.Path));
     }
 
     [Fact]

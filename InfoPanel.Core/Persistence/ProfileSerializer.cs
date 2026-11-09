@@ -13,6 +13,13 @@ using Serilog;
 namespace InfoPanel.Persistence;
 
 /// <summary>
+/// An item <see cref="ProfileSerializer.ReadItems(XDocument, XmlReadReport, List{UnknownSensorType})"/> read unbound
+/// because its sensor type was outside the enum (another build's sensor source): its distinct unknown
+/// <see cref="Values"/>, and the line of the first.
+/// </summary>
+public sealed record UnknownSensorType(DisplayItem Item, IReadOnlyList<string> Values, int? Line);
+
+/// <summary>
 /// Reads and writes the 1.x XML formats: a profile's items (<c>ArrayOfDisplayItem</c>), the profile list
 /// (<c>ArrayOfProfile</c>) and a single profile (<c>Profile</c>, the archive's <c>Profile.xml</c>).
 /// The serializers are built once: 1.x rebuilt them on every call, which leaks a dynamic assembly each time.
@@ -35,6 +42,12 @@ public static class ProfileSerializer
     ];
 
     private static readonly HashSet<string> KnownItemTypeNames = [.. ItemTypes.Select(t => t.Name)];
+
+    /// <summary>The kinds with a <c>SensorType</c>, and the values XmlSerializer reads for it (the enum's names).</summary>
+    private static readonly HashSet<string> SensorTypeKinds = [.. ItemTypes.Where(t => t.GetProperty(nameof(SensorDisplayItem.SensorType)) is not null).Select(t => t.Name)];
+    private static readonly HashSet<string> SensorTypeNames = [.. Enum.GetNames<Enums.SensorType>()];
+
+    private static readonly string[] HwInfoIds = [nameof(SensorDisplayItem.Id), nameof(SensorDisplayItem.Instance), nameof(SensorDisplayItem.EntryId)];
 
     private static readonly XmlSerializer ItemsSerializer = new(typeof(List<DisplayItem>), [.. ItemTypes]);
     /// <summary>
@@ -84,17 +97,55 @@ public static class ProfileSerializer
     /// given, what was dropped or ignored is also recorded there, with its position and line, instead of only logged.
     /// </summary>
     /// <exception cref="InvalidDataException">The XML is not an item list.</exception>
-    public static List<DisplayItem> ReadItems(XDocument document, XmlReadReport? report)
+    public static List<DisplayItem> ReadItems(XDocument document, XmlReadReport? report) => ReadItems(document, report, unknownSensorTypes: null);
+
+    /// <inheritdoc cref="ReadItems(XDocument, XmlReadReport)"/>
+    /// <param name="unknownSensorTypes">
+    /// Given, each item read unbound because its sensor type was outside the enum is added to it, once, in document order.
+    /// </param>
+    public static List<DisplayItem> ReadItems(XDocument document, XmlReadReport? report, List<UnknownSensorType>? unknownSensorTypes)
     {
         DropUnknownItemTypes(document, report);
+        var unbound = UnbindUnknownSensorTypes(document);
 
         List<DisplayItem>? items;
         try
         {
             using var reader = document.CreateReader();
-            items = (report is null
-                ? ItemsSerializer.Deserialize(reader)
-                : ItemsSerializer.Deserialize(reader, report.Events())) as List<DisplayItem>;
+            if (report is null && unbound is null)
+                items = ItemsSerializer.Deserialize(reader) as List<DisplayItem>;
+            else
+            {
+                var events = report?.Events() ?? default;
+                if (unbound is { } marked)
+                {
+                    // The elements renamed to a marker are the items' own, not the report's unknown elements: per item,
+                    // its distinct unknown values (a known value renamed beside them isn't one) and the first one's line,
+                    // taken from the original element (the serializer's own line is where it finished reading it).
+                    // Without a list to fill, the unknown value is reported as the ignored SensorType element it was.
+                    var values = new Dictionary<DisplayItem, List<string>>(ReferenceEqualityComparer.Instance);
+                    var others = events.OnUnknownElement;
+                    events.OnUnknownElement = (sender, e) =>
+                    {
+                        if (!marked.TryGetLine(e.Element.LocalName, out var line))
+                            others?.Invoke(sender, e);
+                        else if (e.ObjectBeingDeserialized is DisplayItem item && e.Element.InnerText is var value && !SensorTypeNames.Contains(value))
+                        {
+                            line ??= e.LineNumber > 0 ? e.LineNumber : null;
+                            if (unknownSensorTypes is null)
+                                report?.Unknown.Add(new UnknownXmlNode(nameof(SensorDisplayItem.SensorType), false, line, item, value));
+                            if (!values.TryGetValue(item, out var seen))
+                            {
+                                values[item] = seen = [];
+                                unknownSensorTypes?.Add(new UnknownSensorType(item, seen, line));
+                            }
+                            if (!seen.Contains(value))
+                                seen.Add(value);
+                        }
+                    };
+                }
+                items = ItemsSerializer.Deserialize(reader, events) as List<DisplayItem>;
+            }
         }
         catch (InvalidOperationException ex)
         {
@@ -154,6 +205,90 @@ public static class ProfileSerializer
     }
 
     private static string LocalName(string qualifiedName) => qualifiedName[(qualifiedName.IndexOf(':') + 1)..];
+
+    /// <summary>
+    /// Unbinds each item whose <c>SensorType</c> is outside the enum (another build's sensor source), which
+    /// XmlSerializer would refuse, failing the whole list: its <c>SensorType</c> elements, a known value beside the
+    /// unknown one included, are renamed to a marker, and its HWiNFO <c>Id</c>, <c>Instance</c> and <c>EntryId</c> set
+    /// to 0, so it reads as a 1.x item never bound does (HWiNFO, no sensor id). Everything else it has stays as stored;
+    /// a table, which reads its plugin sensor whatever its sensor type, keeps its known value and stays bound. The
+    /// marker names are numbered from a prefix no element of this document starts with, and each keeps the line of the
+    /// element it replaced; returned (null when no item has an unknown value). Only item positions are looked at, as in
+    /// <see cref="DropUnknownItemTypes(XDocument, XmlReadReport?)"/>.
+    /// </summary>
+    private static SensorTypeMarkers? UnbindUnknownSensorTypes(XDocument document)
+    {
+        if (document.Root is not { } root)
+            return null;
+
+        var unbind = new List<(XElement Item, List<XElement> SensorTypes)>();
+        foreach (var element in ItemElements(root.Elements()))
+        {
+            if (element.Attribute(Xsi + "type")?.Value is not { } type || !SensorTypeKinds.Contains(LocalName(type)))
+                continue;
+            var sensorTypes = element.Elements(nameof(SensorDisplayItem.SensorType)).ToList();
+            if (sensorTypes.All(e => SensorTypeNames.Contains(e.Value)))
+                continue;
+            unbind.Add((element, LocalName(type) == nameof(TableSensorDisplayItem)
+                ? sensorTypes.Where(e => !SensorTypeNames.Contains(e.Value)).ToList()
+                : sensorTypes));
+        }
+        if (unbind.Count == 0)
+            return null;
+
+        var names = root.DescendantsAndSelf().Select(e => e.Name.LocalName).ToList();
+        var prefix = "SensorType.Unknown";
+        while (names.Any(name => name.StartsWith(prefix, StringComparison.Ordinal)))
+            prefix += "_";
+        var markers = new SensorTypeMarkers(prefix);
+        foreach (var (item, sensorTypes) in unbind)
+        {
+            foreach (var sensorType in sensorTypes)
+                sensorType.Name = markers.Add(SafeXml.LineOf(sensorType));
+            foreach (var id in HwInfoIds.SelectMany(name => item.Elements(name)))
+                id.Value = "0";
+        }
+        Logger.Warning("Read {Count} display items of unknown sensor types unbound", unbind.Count);
+        return markers;
+
+        static IEnumerable<XElement> ItemElements(IEnumerable<XElement> elements)
+        {
+            foreach (var element in elements)
+            {
+                yield return element;
+                var children = LocalName(element.Attribute(Xsi + "type")?.Value ?? "") switch
+                {
+                    nameof(GroupDisplayItem) => element.Elements(nameof(GroupDisplayItem.DisplayItems)).Elements(),
+                    nameof(GaugeDisplayItem) => element.Elements(nameof(GaugeDisplayItem.Images)).Elements(),
+                    _ => [],
+                };
+                foreach (var child in ItemElements(children))
+                    yield return child;
+            }
+        }
+    }
+
+    /// <summary>The names an unknown <c>SensorType</c> element is renamed to, each numbered, with the line it was on.</summary>
+    private sealed class SensorTypeMarkers(string prefix)
+    {
+        private readonly List<int?> _lines = [];
+
+        public string Add(int? line)
+        {
+            _lines.Add(line);
+            return prefix + (_lines.Count - 1);
+        }
+
+        /// <summary>Whether <paramref name="name"/> is one of the marker names, and the line of the element it replaced.</summary>
+        public bool TryGetLine(string name, out int? line)
+        {
+            line = null;
+            if (!name.StartsWith(prefix, StringComparison.Ordinal) || !int.TryParse(name.AsSpan(prefix.Length), out var index) || index < 0 || index >= _lines.Count)
+                return false;
+            line = _lines[index];
+            return true;
+        }
+    }
 
     /// <summary>
     /// Removes null entries (<c>xsi:nil="true"</c> item elements) from the list, group children and gauge frames,

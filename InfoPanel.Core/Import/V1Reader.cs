@@ -170,7 +170,8 @@ public static class V1Reader
         UseFont(profile.Font, "/profile/font");
 
         // The items.
-        var (items, report) = ReadItems(itemsInput, context.Limits, diagnostics);
+        // An item whose sensor type is outside 1.x's enum (another build's source) is read unbound, its values set aside.
+        var (items, report, unknownSensorTypes) = ReadItems(itemsInput, context.Limits, diagnostics);
         var guides = new List<V1Guide>();
         // An image item's RefreshInterval (later 1.4.x builds; the kept model lacks it) goes into its meta, from the XML.
         var refreshIntervals = new Dictionary<DisplayItem, int>(ReferenceEqualityComparer.Instance);
@@ -215,6 +216,20 @@ public static class V1Reader
         string PathOf(DisplayItem item) => report?.PathOf(item) is { } p ? "/items" + p : "/items";
         int? LineOf(DisplayItem item) => report?.LineOf(item);
 
+        // Unbound, the user binds such an item to a sensor on this PC; a table reads its plugin sensor whatever its type.
+        var unbound = new HashSet<DisplayItem>(ReferenceEqualityComparer.Instance);
+        foreach (var (item, values, line) in unknownSensorTypes)
+        {
+            var bound = SensorKeys.Of(item) is { } key && SensorHub.IsWellFormed(key) ? key : (SensorKey?)null;
+            if (bound is null)
+                unbound.Add(item);
+            var named = string.Join(", ", values.Select(v => $"'{v}'"));
+            diagnostics.Add(ImportDiagnostics.Warning, "import.element", PathOf(item),
+                $"'{item.Name}' has the sensor type{(values.Count > 1 ? "s" : "")} {named}, which 1.x's reader doesn't know; {(values.Count > 1 ? "they are" : "it is")} ignored, and the item "
+                + (bound is { } stays ? $"stays bound to {stays}." : "is imported unbound, to be bound to a sensor on this computer."),
+                itemsInput.File, line ?? LineOf(item));
+        }
+
         // Bindings to a plugin whose sensors the engine reads itself now go to the engine's source, from a file and from
         // the folder alike, before the items become their JSON.
         TranslateRetired(items, diagnostics, PathOf, LineOf, itemsInput.File);
@@ -222,14 +237,14 @@ public static class V1Reader
         // A file is often made on another PC: its HWiNFO bindings this PC lacks are bound by name before the items
         // become their JSON. A folder's profiles were made on this PC and are read as stored.
         if (source == ArchiveSource)
-            MatchByName(items, HwInfoNames.Of(context.Sensors.GetSensors()), diagnostics, PathOf, LineOf, itemsInput.File);
+            MatchByName(items, unbound, HwInfoNames.Of(context.Sensors.GetSensors()), diagnostics, PathOf, LineOf, itemsInput.File);
 
         var nodes = items.Select(item => ItemJson.ToNode(item, context.Sensors, refreshIntervals)).ToList();
         foreach (var item in ItemTree.Walk(items))
         {
             if (item is TextDisplayItem text)
                 UseFont(text.Font, PathOf(item) + "/props/font");
-            if (SensorKeys.Of(item) is { } key && context.Sensors.GetStatus(key) is var status && status is SensorStatus.Unavailable or SensorStatus.Missing)
+            if (!unbound.Contains(item) && SensorKeys.Of(item) is { } key && context.Sensors.GetStatus(key) is var status && status is SensorStatus.Unavailable or SensorStatus.Missing)
                 diagnostics.Add(ImportDiagnostics.Info, "import.sensor", PathOf(item),
                     $"'{item.Name}' is bound to {key}, which this engine has {(status == SensorStatus.Missing ? "no sensor for" : "no reading of")} now; it stays bound.",
                     itemsInput.File, LineOf(item));
@@ -285,14 +300,15 @@ public static class V1Reader
     /// list, inside groups too, is bound to the reading <see cref="HwInfoNames.Match"/> finds by its sensor name (on its
     /// remote; a sensor with its sensor id first), in the model, so its props and <c>meta.sensor</c> carry the new
     /// binding; each is reported (<c>import.sensor.matched</c>). Libre, plugin and table bindings are left alone, as 1.x
-    /// left them. The readings HWiNFO's source lists now, stale ones included, are matched; once it lists none, nothing is.
+    /// left them, and so is an item read unbound (<paramref name="unbound"/>: its sensor type was unknown). The readings
+    /// HWiNFO's source lists now, stale ones included, are matched; once it lists none, nothing is.
     /// </summary>
-    private static void MatchByName(IEnumerable<DisplayItem> items, HwInfoNames hwInfo, ImportDiagnostics diagnostics,
+    private static void MatchByName(IEnumerable<DisplayItem> items, IReadOnlySet<DisplayItem> unbound, HwInfoNames hwInfo, ImportDiagnostics diagnostics,
         Func<DisplayItem, string> pathOf, Func<DisplayItem, int?> lineOf, string file)
     {
         foreach (var item in ItemTree.Walk(items))
         {
-            if (item is not ISensorItem sensorItem)
+            if (item is not ISensorItem sensorItem || unbound.Contains(item))
                 continue;
             IHwInfoSensorItem binding = sensorItem;
             if (binding.SensorType != Enums.SensorType.HwInfo)
@@ -312,22 +328,22 @@ public static class V1Reader
     }
 
     /// <summary>Reads the items, reporting why there are none when they can't be read.</summary>
-    private static (List<DisplayItem> Items, XmlReadReport? Report) ReadItems(ItemsInput input, ImportLimits limits, ImportDiagnostics diagnostics)
+    private static (List<DisplayItem> Items, XmlReadReport? Report, List<UnknownSensorType> UnknownSensorTypes) ReadItems(ItemsInput input, ImportLimits limits, ImportDiagnostics diagnostics)
     {
         if (input.Missing)
         {
             diagnostics.Add(ImportDiagnostics.Info, "import.items", "/items", "The profile has no items file: it has no items, as 1.x loads it.", input.File);
-            return ([], null);
+            return ([], null, []);
         }
         if (input.Problem is { } problem)
         {
             diagnostics.Add(ImportDiagnostics.Error, "import.items", "/items", $"The items file can't be read: {problem} No items are read.", input.File);
-            return ([], null);
+            return ([], null, []);
         }
         if (input.OverLimit || input.Bytes is null)
         {
             diagnostics.Add(ImportDiagnostics.Error, "import.items", "/items", $"The items file is larger than {limits.ItemsXmlBytes} bytes: no items are read.", input.File);
-            return ([], null);
+            return ([], null, []);
         }
 
         XDocument document;
@@ -338,18 +354,19 @@ public static class V1Reader
         catch (XmlRefusedException ex)
         {
             diagnostics.Add(ImportDiagnostics.Error, "import.xml", "/items", $"The items file can't be read: {ex.Message} No items are read.", input.File, ex.Line);
-            return ([], null);
+            return ([], null, []);
         }
 
         var report = new XmlReadReport();
+        var unknownSensorTypes = new List<UnknownSensorType>();
         try
         {
-            return (ProfileSerializer.ReadItems(document, report), report);
+            return (ProfileSerializer.ReadItems(document, report, unknownSensorTypes), report, unknownSensorTypes);
         }
         catch (InvalidDataException ex)
         {
             diagnostics.Add(ImportDiagnostics.Error, "import.items", "/items", $"The items file isn't a 1.x item list: {ex.Message} No items are read.", input.File);
-            return ([], null);
+            return ([], null, []);
         }
     }
 
