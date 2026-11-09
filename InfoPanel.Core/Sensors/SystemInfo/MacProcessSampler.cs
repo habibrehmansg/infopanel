@@ -11,7 +11,8 @@ namespace InfoPanel.Sensors.SystemInfo;
 /// (sleep included, as Windows counts it); the processes from <c>proc_listallpids</c> (every user's); the CPUs' busy
 /// share from the host's CPU ticks (<c>host_processor_info</c>, as the macOS source's CPU Load); app memory (internal less
 /// purgeable pages) and the compressor's pages from <c>host_statistics64</c>, as Activity Monitor's App Memory and
-/// Compressed; and each process's name (<c>proc_name</c>), CPU time (user and system, converted with
+/// Compressed; and each process's name (its executable's whole file name from <c>proc_pidpath</c>, else
+/// <c>proc_name</c>'s, which the kernel cuts at 31 bytes), CPU time (user and system, converted with
 /// <c>mach_timebase_info</c>) and physical footprint (Activity Monitor's Memory) from <c>proc_pid_rusage</c>. An
 /// unprivileged process reads only its own user's processes so (the others', root's included, are refused): the
 /// tables list this user's processes, and Thread Count, which would be a partial sum, isn't read. macOS has no handles
@@ -24,6 +25,8 @@ public sealed unsafe class MacProcessSampler : IProcessSampler
     private const int RusageInfoV0 = 0;
     // proc_name's buffer: the kernel's 2 × MAXCOMLEN name and its terminator, with room.
     private const int NameBytes = 64;
+    // proc_pidpath's buffer: PROC_PIDPATHINFO_MAXSIZE (4 × MAXPATHLEN).
+    private const int PathBytes = 4096;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Timeval
@@ -60,6 +63,7 @@ public sealed unsafe class MacProcessSampler : IProcessSampler
     // Its errno is read where it fails (libproc's wrapper returns 0 then).
     [DllImport(Lib, SetLastError = true)] private static extern int proc_listallpids(int* buffer, int bufferSize);
     [DllImport(Lib)] private static extern int proc_name(int pid, byte* buffer, uint bufferSize);
+    [DllImport(Lib)] private static extern int proc_pidpath(int pid, byte* buffer, uint bufferSize);
     [DllImport(Lib)] private static extern int proc_pid_rusage(int pid, int flavor, RusageV0* buffer);
     [DllImport(Lib)] private static extern int mach_timebase_info(MachTimebase* info);
 
@@ -81,6 +85,9 @@ public sealed unsafe class MacProcessSampler : IProcessSampler
     }
 
     public int ProcessorCount => Environment.ProcessorCount;
+
+    /// <summary>Activity Monitor's: a busy thread reads 100 %.</summary>
+    public bool ProcessCpuPerCpu => true;
 
     public TimeSpan Uptime()
     {
@@ -149,6 +156,7 @@ public sealed unsafe class MacProcessSampler : IProcessSampler
         var pids = ListPids();
         var list = new List<ProcessReading>(pids.Length);
         var name = stackalloc byte[NameBytes];
+        var path = stackalloc byte[PathBytes];
         foreach (var pid in pids)
         {
             if (pid <= 0)
@@ -157,11 +165,14 @@ public sealed unsafe class MacProcessSampler : IProcessSampler
             // Refused (another user's process) or gone since it was listed: left out.
             if (proc_pid_rusage(pid, RusageInfoV0, &usage) != 0)
                 continue;
+            // The executable's whole name from its path; the kernel's short name only where the path can't be read.
+            var pathLength = proc_pidpath(pid, path, PathBytes);
             var length = proc_name(pid, name, NameBytes);
-            if (length <= 0)
+            var processName = MacProcesses.Name(new ReadOnlySpan<byte>(path, Math.Clamp(pathLength, 0, PathBytes)), new ReadOnlySpan<byte>(name, Math.Clamp(length, 0, NameBytes)));
+            if (processName.Length == 0)
                 continue;
             var cpu = MacProcesses.CpuTime(usage.UserTime + usage.SystemTime, _numer, _denom);
-            list.Add(new ProcessReading(pid, System.Text.Encoding.UTF8.GetString(name, Math.Min(length, NameBytes)), cpu, (long)usage.PhysFootprint, usage.ProcStartAbstime));
+            list.Add(new ProcessReading(pid, processName, cpu, (long)usage.PhysFootprint, usage.ProcStartAbstime));
         }
 
         return list;
@@ -229,6 +240,17 @@ internal static class MacProcesses
     }
 
     private static InvalidOperationException Failed(int errno) => new($"proc_listallpids failed (errno {errno})");
+
+    /// <summary>
+    /// A process's name: its executable's file name, the last component of its <paramref name="path"/>
+    /// (<c>proc_pidpath</c>'s, whole), else, where the path can't be read or names no file, the kernel's
+    /// <paramref name="shortName"/> (<c>proc_name</c>'s, cut at 31 bytes).
+    /// </summary>
+    internal static string Name(ReadOnlySpan<byte> path, ReadOnlySpan<byte> shortName)
+    {
+        var file = path[(path.LastIndexOf((byte)'/') + 1)..];
+        return System.Text.Encoding.UTF8.GetString(file.IsEmpty ? shortName : file);
+    }
 
     /// <summary>
     /// The CPU time <paramref name="ticks"/> Mach absolute time units hold, at <paramref name="numer"/>/<paramref name="denom"/>

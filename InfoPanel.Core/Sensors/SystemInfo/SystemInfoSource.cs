@@ -32,6 +32,12 @@ public static class SystemInfoSource
     public const string PercentUnit = "%";
     public const string MemoryUnit = " MB";
 
+    /// <summary>A table's Memory cell of 1,024 MB or more reads in gigabytes, in this unit.</summary>
+    public const string GigabyteUnit = " GB";
+
+    /// <summary>The tables' CPU figures are the average of this many rounds (the last 3 s at the source's interval).</summary>
+    public const int CpuRounds = 3;
+
     /// <summary>The tables' default format (the 1.x plugin's): the name 200 wide, then Usage, Utility and Memory.</summary>
     public const string TableFormat = "0:200|1:60|2:70|3:100";
 
@@ -97,9 +103,11 @@ public static class SystemInfoSource
 /// Reads <see cref="SystemInfoSource"/>'s entries each round from an <see cref="IProcessSampler"/>. A reading the system
 /// doesn't have is unavailable (macOS: Thread Count and Handle Count); where it has no CPU utility, CPU Utility reads CPU
 /// Usage, in the tables too. A process's CPU usage is the share of every CPU's time it used since the last round
-/// (as 1.x's), so it is read from the second round on, for the processes listed in both rounds; its utility the
-/// system's utility in proportion (1.x's), or its usage. Each call to the system that throws fails its own readings that
-/// round, logged once while it fails.
+/// (as 1.x's), or, where the system counts per CPU (<see cref="IProcessSampler.ProcessCpuPerCpu"/>, macOS), that share
+/// times the CPUs' count, so it is read from the second round on, for the processes listed in both rounds; its utility
+/// the system's utility in proportion (1.x's), or its usage. The tables show each name's figures averaged over its appearances
+/// in the last <see cref="SystemInfoSource.CpuRounds"/> rounds, and its memory in megabytes, or gigabytes from 1,024 MB. Each call
+/// to the system that throws fails its own readings that round, logged once while it fails.
 /// </summary>
 public sealed class SystemInfoSampler : ISensorSampler
 {
@@ -120,6 +128,8 @@ public sealed class SystemInfoSampler : ISensorSampler
     private readonly string[] _uptime = ["", "", "", "", ""];
     // The processes' CPU time at the last round, by pid, with their start.
     private Dictionary<int, (ulong Started, TimeSpan Cpu)> _last = [];
+    // The tables' last rounds (at most CpuRounds), oldest first: each name's CPU figures (usage, utility) in it.
+    private readonly Queue<Dictionary<string, (double Usage, double Utility)>> _recent = new();
     private bool _listed;
 
     public SystemInfoSampler(IProcessSampler system, ILogger? log = null)
@@ -186,6 +196,7 @@ public sealed class SystemInfoSampler : ISensorSampler
         {
             // The next round that reads them starts afresh: its interval would be longer than its elapsed time.
             _last = [];
+            _recent.Clear();
             _listed = false;
             Fail(samples[12..15]);
         }
@@ -194,7 +205,9 @@ public sealed class SystemInfoSampler : ISensorSampler
     /// <summary>The three tables, from the second round on: each process's share since the last, summed per name.</summary>
     private void Tables(Span<SensorSample> tables, IReadOnlyList<ProcessReading> processes, TimeSpan elapsed, double? systemUsage, double? systemUtility)
     {
-        var capacity = elapsed.TotalSeconds * Math.Max(1, _system.ProcessorCount);
+        var processors = Math.Max(1, _system.ProcessorCount);
+        var perCpu = _system.ProcessCpuPerCpu;
+        var capacity = elapsed.TotalSeconds * processors;
         var rows = new Dictionary<string, Row>(StringComparer.Ordinal);
         var next = new Dictionary<int, (ulong Started, TimeSpan Cpu)>(processes.Count);
         foreach (var p in processes)
@@ -207,11 +220,13 @@ public sealed class SystemInfoSampler : ISensorSampler
                 continue;
 
             var share = capacity > 0 ? (p.CpuTime - last.Cpu).TotalSeconds / capacity * 100 : 0;
+            // Shown per CPU where the system counts so (macOS): the share of every CPU times their count.
+            var shown = perCpu ? share * processors : share;
             if (!rows.TryGetValue(name, out var row))
                 rows.Add(name, row = new Row(name));
-            row.Usage += share;
+            row.Usage += shown;
             // 1.x's: the system's utility in the share this process has of its usage; without one, the usage.
-            row.Utility += systemUtility is not { } utility ? share
+            row.Utility += systemUtility is not { } utility ? shown
                 : systemUsage is > 0 && share <= systemUsage ? share / systemUsage.Value * utility : 0;
             row.Memory += p.MemoryBytes;
         }
@@ -222,6 +237,17 @@ public sealed class SystemInfoSampler : ISensorSampler
             // The first round has no interval: no table yet.
             _listed = true;
             return;
+        }
+
+        // Each name's CPU figures, the average of its appearances in the last CpuRounds rounds, so the order steadies.
+        _recent.Enqueue(rows.Values.ToDictionary(r => r.Name, r => (r.Usage, r.Utility), StringComparer.Ordinal));
+        if (_recent.Count > SystemInfoSource.CpuRounds)
+            _recent.Dequeue();
+        foreach (var row in rows.Values)
+        {
+            var figures = _recent.Where(round => round.ContainsKey(row.Name)).Select(round => round[row.Name]).ToList();
+            row.Usage = figures.Average(f => f.Usage);
+            row.Utility = figures.Average(f => f.Utility);
         }
 
         var all = rows.Values.Where(r => !_excluded.Contains(r.Name)).ToList();
@@ -244,10 +270,20 @@ public sealed class SystemInfoSampler : ISensorSampler
                 new PluginText("Process Name", row.Name),
                 new PluginSensor("Usage", (float)row.Usage, SystemInfoSource.PercentUnit),
                 new PluginSensor("Utility", (float)row.Utility, SystemInfoSource.PercentUnit),
-                new PluginSensor("Memory", (float)Megabytes(row.Memory), SystemInfoSource.MemoryUnit));
+                MemoryCell(row.Memory));
         }
 
         return table;
+    }
+
+    /// <summary>A Memory cell: megabytes, or gigabytes from 1,024 MB (as the megabytes cell would read, to one decimal) on.</summary>
+    private static PluginSensor MemoryCell(long bytes)
+    {
+        var megabytes = Megabytes(bytes);
+        // The cell's own value and rounding (PluginSensor.ToString), so a cell never reads 1024.0 MB.
+        return Math.Round((float)megabytes, 1) >= 1024
+            ? new PluginSensor("Memory", (float)(megabytes / 1024), SystemInfoSource.GigabyteUnit)
+            : new PluginSensor("Memory", (float)megabytes, SystemInfoSource.MemoryUnit);
     }
 
     private static double Megabytes(long bytes) => bytes / 1024d / 1024d;

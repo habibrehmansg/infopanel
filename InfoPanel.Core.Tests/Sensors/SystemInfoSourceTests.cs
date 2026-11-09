@@ -42,8 +42,10 @@ public sealed class SystemInfoSourceTests : IDisposable
         public long Compressed = 512 * MB;
         public List<ProcessReading> List = [];
         public bool ProcessesThrow;
+        public bool PerCpu;
 
         public int ProcessorCount => Processors;
+        public bool ProcessCpuPerCpu => PerCpu;
         public TimeSpan Uptime() => Up;
         public int ProcessCount() => Count;
         public int? ThreadCount() => Threads;
@@ -424,6 +426,165 @@ public sealed class SystemInfoSourceTests : IDisposable
         Assert.Equal(0f, Cell(Table("processes/top-cpu-usage"), "yes", 1).Value);
     }
 
+    [Fact]
+    public void Tables_ListAProcessNameInFull()
+    {
+        _system.Usage = new([null, 50]);
+        const string name = "a-process-whose-name-is-forty-characters";
+        Assert.Equal(40, name.Length);
+        AddProcess(10, name);
+        Open();
+        _system.Run(10, 0.5);
+        Round();
+
+        Assert.All(Ids[12..], id => Assert.Equal([name], Names(Table(id))));
+    }
+
+    [Fact]
+    public void Tables_WhereTheSystemCountsPerCpu_ABusyThreadReads100_SeveralMore_AndCpuUsageStaysTheShareOfEveryCpu()
+    {
+        // macOS's, as Activity Monitor: one busy thread on 14 CPUs reads 100 %, not a fourteenth of it.
+        _system.Processors = 14;
+        _system.PerCpu = true;
+        _system.Usage = new([null, 30]);
+        AddProcess(10, "yes");
+        AddProcess(11, "make");
+        Open();
+        _system.Run(10, 1);
+        _system.Run(11, 3);
+        Round();
+
+        foreach (var id in Ids[12..])
+        {
+            var table = Table(id);
+            Assert.Equal(100, Cell(table, "yes", 1).Value, 3);
+            Assert.Equal(300, Cell(table, "make", 1).Value, 3);
+            // No utility counter: Utility reads Usage.
+            Assert.Equal(Cell(table, "yes", 1).Value, Cell(table, "yes", 2).Value);
+        }
+
+        Assert.Equal("100%", Cell(Table("processes/top-cpu-usage"), "yes", 1).ToString());
+        Assert.Equal(30, Number("processes/cpu-usage"));
+        Assert.Equal(30, Number("processes/cpu-utility"));
+    }
+
+    [Fact]
+    public void Tables_ShowEachProcesssCpu_AveragedOverTheLastThreeRounds_RefreshedEachRound()
+    {
+        _system.Processors = 1;
+        _system.Usage = new([null, 50]);
+        AddProcess(10, "burst");
+        AddProcess(11, "steady");
+        Open();
+
+        // A burst of 0.9 s in the first second, then none; a steady 0.4 s each second.
+        (double Burst, double Steady)[] expected = [(90, 40), (45, 40), (30, 40), (0, 40)];
+        string[][] order = [["burst", "steady"], ["burst", "steady"], ["steady", "burst"], ["steady", "burst"]];
+        DataTable? last = null;
+        for (var round = 0; round < expected.Length; round++)
+        {
+            if (round == 0)
+                _system.Run(10, 0.9);
+            _system.Run(11, 0.4);
+            Round();
+
+            var table = Table("processes/top-cpu-usage");
+            Assert.NotSame(last, table);
+            last = table;
+            Assert.Equal(expected[round].Burst, Cell(table, "burst", 1).Value, 3);
+            Assert.Equal(expected[round].Steady, Cell(table, "steady", 1).Value, 3);
+            Assert.Equal(order[round], Names(table));
+            Assert.Equal(order[round], Names(Table("processes/top-cpu-utility")));
+            Assert.Equal(50, Number("processes/cpu-usage"));
+        }
+
+        Assert.Equal(3, SystemInfoSource.CpuRounds);
+    }
+
+    [Fact]
+    public void Tables_AverageEachNameOverItsAppearancesInTheLastThreeRounds_ARoundWithoutItForgetsNothing()
+    {
+        _system.Processors = 1;
+        _system.Usage = new([null, 50]);
+        AddProcess(10, "worker");
+        Open();
+
+        // One process, named worker, then helper, then worker again: 90 %, then 0 %, then 0 %.
+        _system.Run(10, 0.9);
+        Round();
+        Assert.Equal(90, Cell(Table("processes/top-cpu-usage"), "worker", 1).Value, 3);
+
+        _system.List[0] = _system.List[0] with { Name = "helper" };
+        Round();
+        Assert.Equal(["helper"], Names(Table("processes/top-cpu-usage")));
+        Assert.Equal(0, Cell(Table("processes/top-cpu-usage"), "helper", 1).Value, 3);
+
+        // Its two appearances in the last three rounds: (90 + 0) / 2.
+        _system.List[0] = _system.List[0] with { Name = "worker" };
+        Round();
+        Assert.Equal(45, Cell(Table("processes/top-cpu-usage"), "worker", 1).Value, 3);
+        Assert.Equal(45, Cell(Table("processes/top-cpu-utility"), "worker", 2).Value, 3);
+
+        // The 90 % round is now four rounds back: out of the window.
+        Round();
+        Assert.Equal(0, Cell(Table("processes/top-cpu-usage"), "worker", 1).Value, 3);
+    }
+
+    [Fact]
+    public void Tables_MemoryOf1024MBOrMore_ReadsInGB_RowsSortedByBytes_AndMemoryUsageStaysInMB()
+    {
+        _system.Usage = new([null, 50]);
+        AddProcess(10, "big", memory: 2048 * MB);
+        AddProcess(11, "small", memory: 900 * MB);
+        AddProcess(12, "edge", memory: 1024 * MB);
+        AddProcess(13, "under", memory: 1023 * MB);
+        Open();
+        Round();
+
+        var table = Table("processes/top-memory-usage");
+        Assert.Equal(["big", "edge", "under", "small"], Names(table));
+        Assert.Equal((2f, " GB"), (Cell(table, "big", 3).Value, Cell(table, "big", 3).Unit));
+        Assert.Equal((1f, " GB"), (Cell(table, "edge", 3).Value, Cell(table, "edge", 3).Unit));
+        Assert.Equal((1023f, " MB"), (Cell(table, "under", 3).Value, Cell(table, "under", 3).Unit));
+        Assert.Equal((900f, " MB"), (Cell(table, "small", 3).Value, Cell(table, "small", 3).Unit));
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            Assert.Equal(["2.0 GB", "1.0 GB", "1023.0 MB", "900.0 MB"], table.Rows.Cast<DataRow>().Select(r => r[3].ToString()));
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = culture;
+        }
+
+        // The Memory Usage reading stays a number of megabytes (a 1.x profile binds it with its own decimals).
+        Assert.Equal((3072, " MB"), (Number("processes/memory-usage"), State("processes/memory-usage").Reading.Unit));
+    }
+
+    [Fact]
+    public void Tables_AMemoryCellThatWouldRead1024MB_ReadsInGB()
+    {
+        _system.Usage = new([null, 50]);
+        // 1,023.949999… MB, whose cell value (a float) reads 1024.0 MB to one decimal.
+        AddProcess(10, "edge", memory: 1_073_689_395);
+        Open();
+        Round();
+
+        var cell = Cell(Table("processes/top-memory-usage"), "edge", 3);
+        Assert.Equal(" GB", cell.Unit);
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            Assert.Equal("1.0 GB", cell.ToString());
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = culture;
+        }
+    }
+
     private static (SensorStatus, SensorKind, bool) Of(SensorState state) => (state.Status, state.Type, state.HasReading);
 
     // ---- The 1.x import ----
@@ -541,6 +702,22 @@ public sealed class SystemInfoSourceTests : IDisposable
     [InlineData(1_500UL, 0U, 0U, 15L)]
     public void MacCpuTime_ConvertsMachUnits_Exactly(ulong units, uint numer, uint denom, long ticks) =>
         Assert.Equal(TimeSpan.FromTicks(ticks), MacProcesses.CpuTime(units, numer, denom));
+
+    [Fact]
+    public void MacName_IsTheExecutablesWholeName_FromItsPath_ElseTheKernelsShortName()
+    {
+        // proc_name's is cut at 31 bytes; the path's last component is whole.
+        const string name = "a-process-whose-name-is-forty-characters";
+        Assert.Equal(name, MacProcesses.Name(System.Text.Encoding.UTF8.GetBytes("/private/tmp/scratch/" + name), "a-process-whose-name-is-forty-c"u8));
+        Assert.Equal("Google Chrome Helper (Renderer)", MacProcesses.Name(
+            "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/1/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer)"u8,
+            "Google Chrome Helper (Rendere"u8));
+        Assert.Equal("Café", MacProcesses.Name("/Applications/Café"u8, "Caf"u8));
+
+        // The path can't be read (none), or names no file: the kernel's short name.
+        Assert.Equal("kernel_task", MacProcesses.Name(default, "kernel_task"u8));
+        Assert.Equal("yes", MacProcesses.Name("/"u8, "yes"u8));
+    }
 
     // ---- This Mac ----
 

@@ -222,6 +222,13 @@ public sealed class WinProcessSamplerTests
         Assert.Equal(self.ProcessName, ((PluginText)top.Rows[0][0]).Value);
         Assert.True(((PluginSensor)top.Rows[0][1]).Value > 10);
         Assert.Equal("%", ((PluginSensor)top.Rows[0][1]).Unit);
-        Assert.Equal(" MB", ((PluginSensor)top.Rows[0][3]).Unit);
+        // Megabytes under 1,024.0 MB, else gigabytes (the threshold's own test is SystemInfoSourceTests').
+        var memory = (PluginSensor)top.Rows[0][3];
+        Assert.True(memory.Unit switch
+        {
+            " MB" => memory.Value > 0 && Math.Round(memory.Value, 1) < 1024,
+            " GB" => Math.Round(memory.Value, 1) >= 1,
+            _ => false,
+        }, $"{memory.Value}{memory.Unit}");
     }
 }

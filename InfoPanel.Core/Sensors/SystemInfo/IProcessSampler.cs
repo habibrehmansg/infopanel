@@ -29,6 +29,13 @@ public interface IProcessSampler
     /// <summary>The logical CPUs: the CPU time a second of wall time holds, in seconds.</summary>
     int ProcessorCount { get; }
 
+    /// <summary>
+    /// Whether the tables show a process's CPU per CPU, as macOS's Activity Monitor does (a busy thread 100 %, more on
+    /// several CPUs), rather than as its share of every CPU, as Windows' Task Manager does (the default). The CPU Usage
+    /// reading is the share of every CPU either way.
+    /// </summary>
+    bool ProcessCpuPerCpu => false;
+
     /// <summary>The time since the computer started, its sleep included.</summary>
     TimeSpan Uptime();
 
