@@ -69,6 +69,9 @@ public sealed class Win32LayoutTests
         Assert.Equal(8, Offset<DISPLAYCONFIG_PATH_TARGET_INFO>(nameof(DISPLAYCONFIG_PATH_TARGET_INFO.Id)));
 
         Assert.Equal(20, Offset<DISPLAYCONFIG_SOURCE_DEVICE_NAME>(nameof(DISPLAYCONFIG_SOURCE_DEVICE_NAME.ViewGdiDeviceName)));
+        Assert.Equal(20, Offset<DISPLAYCONFIG_TARGET_DEVICE_NAME>(nameof(DISPLAYCONFIG_TARGET_DEVICE_NAME.Flags)));
+        Assert.Equal(28, Offset<DISPLAYCONFIG_TARGET_DEVICE_NAME>(nameof(DISPLAYCONFIG_TARGET_DEVICE_NAME.EdidManufactureId)));
+        Assert.Equal(30, Offset<DISPLAYCONFIG_TARGET_DEVICE_NAME>(nameof(DISPLAYCONFIG_TARGET_DEVICE_NAME.EdidProductCodeId)));
         Assert.Equal(36, Offset<DISPLAYCONFIG_TARGET_DEVICE_NAME>(nameof(DISPLAYCONFIG_TARGET_DEVICE_NAME.MonitorFriendlyDeviceName)));
         Assert.Equal(164, Offset<DISPLAYCONFIG_TARGET_DEVICE_NAME>(nameof(DISPLAYCONFIG_TARGET_DEVICE_NAME.MonitorDevicePath)));
     }
