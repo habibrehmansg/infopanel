@@ -9,12 +9,12 @@ namespace InfoPanel.Sensors.Volume;
 
 /// <summary>
 /// Windows: the output devices through Core Audio (the multimedia device API, <c>mmdeviceapi.h</c>, and
-/// <c>IAudioEndpointVolume</c>, <c>endpointvolume.h</c>; no permission prompt), as the 1.x Volume Info plugin read them
-/// through NAudio: the active render endpoints (<c>EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)</c>) and the default
+/// <c>IAudioEndpointVolume</c>, <c>endpointvolume.h</c>; no permission prompt), as the 1.x Volume Info plugin read them:
+/// the active render endpoints (<c>EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)</c>) and the default
 /// one for multimedia (<c>GetDefaultAudioEndpoint(eRender, eMultimedia)</c>; none, null). Each device's id is its
 /// endpoint id (<c>{0.0.0.00000000}.{guid}</c>); its Name <c>PKEY_Device_FriendlyName</c> (<c>Speakers (Realtek(R)
 /// Audio)</c>) and its Device Name <c>PKEY_DeviceInterface_FriendlyName</c> (<c>Realtek(R) Audio</c>), <c>Unknown</c>
-/// when the endpoint has none (as NAudio reads them), read at each round so a renamed device follows; its volume the
+/// when the endpoint has none (as the 1.x plugin read them), read at each round so a renamed device follows; its volume the
 /// endpoint's master volume scalar and its mute the endpoint's mute (an endpoint without a volume control has
 /// neither). Each endpoint's objects are kept while it is listed and its reads succeed, so a round asks for its names,
 /// volume and mute only; one whose read failed is replaced at the next listing. Nothing native is asked for until the
@@ -380,7 +380,7 @@ internal sealed unsafe class WinAudioDevice : IWinAudioEndpoint
         return _volume;
     }
 
-    /// <summary>A text property of the endpoint, <c>Unknown</c> when it has none (as NAudio reads it).</summary>
+    /// <summary>A text property of the endpoint, <c>Unknown</c> when it has none (as the 1.x plugin read it).</summary>
     private string Text(PropertyKey key)
     {
         Check(_endpoint.OpenPropertyStore(0 /* STGM_READ */, out var ps), "IMMDevice.OpenPropertyStore");

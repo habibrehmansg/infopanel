@@ -4,7 +4,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
-  <!-- Plugin SDK projects and InfoPanel.Extras -->
+  <!-- Plugin SDK projects -->
   <ItemGroup>
     <PackageVersion Include="AsyncKeyedLock" Version="8.0.2" />
     <PackageVersion Include="ini-parser-netstandard" Version="2.5.3" />

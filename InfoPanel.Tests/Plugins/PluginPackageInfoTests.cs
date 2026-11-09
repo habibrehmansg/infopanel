@@ -130,17 +130,6 @@ public sealed class PluginPackageInfoTests : IDisposable
     }
 
     [Fact]
-    public void The_bundled_Extras_say_they_run_on_Windows_only()
-    {
-        var extras = PluginFixtures.BuiltFolder("InfoPanel.Extras");
-
-        var info = PluginPackageInfo.Read(extras, "InfoPanel.Extras", PluginLimits.Default, NullLogger.Instance);
-
-        Assert.Equal(["windows"], info.Platforms);
-        Assert.Equal("InfoPanel.Extras Superpack", info.Name);
-    }
-
-    [Fact]
     public void Find_reads_each_packages_info()
     {
         Read(Utf8("[PluginInfo]\nName=Sample\nPlatforms=linux\n"));

@@ -20,8 +20,8 @@ public sealed class PluginPackagesTests : IDisposable
     {
         var bundled = Path.Combine(_root, "bundled");
         var installed = Path.Combine(_root, "installed");
-        Package(bundled, "InfoPanel.Extras");
-        Package(installed, "InfoPanel.extras");               // the bundled one's name, another case: skipped
+        Package(bundled, "InfoPanel.Sample");
+        Package(installed, "InfoPanel.sample");               // the bundled one's name, another case: skipped
         Package(installed, "InfoPanel.Spotify");
         Package(installed, "InfoPanel.My_Plugin-2");
         Package(installed, "NotAPlugin");                     // not InfoPanel.{Name}
@@ -31,7 +31,7 @@ public sealed class PluginPackagesTests : IDisposable
 
         var packages = PluginPackages.Find(bundled, installed, NullLogger.Instance);
 
-        Assert.Equal(["InfoPanel.Extras", "InfoPanel.My_Plugin-2", "InfoPanel.Spotify"], packages.Select(p => p.Folder).ToArray());
+        Assert.Equal(["InfoPanel.Sample", "InfoPanel.My_Plugin-2", "InfoPanel.Spotify"], packages.Select(p => p.Folder).ToArray());
         Assert.Equal([true, false, false], packages.Select(p => p.Bundled).ToArray());
         Assert.Equal(Path.Combine(installed, "InfoPanel.Spotify", "InfoPanel.Spotify.dll"), packages[2].DllPath);
     }
@@ -55,7 +55,7 @@ public sealed class PluginPackagesTests : IDisposable
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix permissions.");
         var bundled = Path.Combine(_root, "bundled");
         var installed = Path.Combine(_root, "installed");
-        Package(bundled, "InfoPanel.Extras");
+        Package(bundled, "InfoPanel.Sample");
         Package(installed, "InfoPanel.Alpha");
         Package(installed, "InfoPanel.Locked");
         Package(installed, "InfoPanel.Zulu");
@@ -65,7 +65,7 @@ public sealed class PluginPackagesTests : IDisposable
         {
             var packages = PluginPackages.Find(bundled, installed, NullLogger.Instance);
 
-            Assert.Equal(["InfoPanel.Extras", "InfoPanel.Alpha", "InfoPanel.Zulu"], packages.Select(p => p.Folder).ToArray());
+            Assert.Equal(["InfoPanel.Sample", "InfoPanel.Alpha", "InfoPanel.Zulu"], packages.Select(p => p.Folder).ToArray());
         }
         finally
         {
@@ -79,7 +79,7 @@ public sealed class PluginPackagesTests : IDisposable
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix permissions.");
         var bundled = Path.Combine(_root, "bundled");
         var installed = Path.Combine(_root, "installed");
-        Package(bundled, "InfoPanel.Extras");
+        Package(bundled, "InfoPanel.Sample");
         Package(installed, "InfoPanel.Alpha");
         File.SetUnixFileMode(bundled, UnixFileMode.None);
         try

@@ -110,7 +110,7 @@ $pawnIo = Get-Pinned 'PawnIO_setup.exe' "https://github.com/namazso/PawnIO.Setup
 $runtimeName = Split-Path -Leaf $Runtime.Url
 $runtimeInstaller = Get-Pinned $runtimeName $Runtime.Url $DotnetRuntime 'SHA512' $Runtime.Sha512
 
-# The engine, self-contained for win-x64, with the sensor helper and the bundled plugin, the web client's origin built in.
+# The engine, self-contained for win-x64, with the sensor helper, the web client's origin built in.
 & dotnet publish (Join-Path $repo 'InfoPanel\InfoPanel.csproj') -c Release -r win-x64 --self-contained true `
   "-p:Version=$Version" "-p:InfoPanelAllowOrigin=$AllowOrigin" -o $publish --nologo
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish exited $LASTEXITCODE." }

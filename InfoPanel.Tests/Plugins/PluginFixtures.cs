@@ -2,7 +2,7 @@ namespace InfoPanel.Tests.Plugins;
 
 /// <summary>
 /// The plugins the build copies next to the tests (<c>plugin-fixtures/</c>, InfoPanel.Tests.csproj): the test plugin,
-/// whose behaviour a <c>fixture-mode.txt</c> picks, and the bundled Extras. A test copies a fixture before writing a mode,
+/// whose behaviour a <c>fixture-mode.txt</c> picks. A test copies a fixture before writing a mode,
 /// so the built copy stays as built.
 /// </summary>
 internal static class PluginFixtures

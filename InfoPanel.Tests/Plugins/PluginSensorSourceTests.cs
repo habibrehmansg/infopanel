@@ -131,8 +131,8 @@ public class PluginSensorSourceTests
     [InlineData("Clock-Plugin")]
     public void A_retired_plugin_id_is_refused_naming_the_engines_source_and_the_packages_other_plugins_load(string id)
     {
-        // An old copy of the bundled Extras under another folder name: the engine reads the clock itself now.
-        const string old = "InfoPanel.ExtrasOld";
+        // An old copy of the old bundled package under another folder name: the engine reads the clock itself now.
+        const string old = "InfoPanel.OldPack";
         var source = new PluginSensorSource();
 
         var refused = source.Load(old,
@@ -156,8 +156,8 @@ public class PluginSensorSourceTests
     [InlineData("DRIVE-INFO-PLUGIN")]
     public void The_retired_Drive_Info_id_is_refused_naming_the_Drives_source_and_the_packages_other_plugins_load(string id)
     {
-        // An old copy of the bundled Extras under another folder name: the engine reads the drives itself now.
-        const string old = "InfoPanel.ExtrasOld";
+        // An old copy of the old bundled package under another folder name: the engine reads the drives itself now.
+        const string old = "InfoPanel.OldPack";
         var source = new PluginSensorSource();
 
         var refused = source.Load(old,
@@ -180,8 +180,8 @@ public class PluginSensorSourceTests
     [InlineData("Network-Info-Plugin")]
     public void The_retired_Network_Info_id_is_refused_naming_the_Network_source_and_the_packages_other_plugins_load(string id)
     {
-        // An old copy of the bundled Extras under another folder name: the engine reads the network itself now.
-        const string old = "InfoPanel.ExtrasOld";
+        // An old copy of the old bundled package under another folder name: the engine reads the network itself now.
+        const string old = "InfoPanel.OldPack";
         var source = new PluginSensorSource();
 
         var refused = source.Load(old,
@@ -204,8 +204,8 @@ public class PluginSensorSourceTests
     [InlineData("Weather-Plugin")]
     public void The_retired_Weather_id_is_refused_naming_the_Weather_source_and_the_packages_other_plugins_load(string id)
     {
-        // An old copy of the bundled Extras under another folder name: the engine's weather source reads the weather now.
-        const string old = "InfoPanel.ExtrasOld";
+        // An old copy of the old bundled package under another folder name: the engine's weather source reads the weather now.
+        const string old = "InfoPanel.OldPack";
         var source = new PluginSensorSource();
 
         var refused = source.Load(old,
@@ -228,8 +228,8 @@ public class PluginSensorSourceTests
     [InlineData("Volume-Plugin")]
     public void The_retired_Volume_Info_id_is_refused_naming_the_Volume_source_and_the_packages_other_plugins_load(string id)
     {
-        // An old copy of the bundled Extras under another folder name: the engine reads the volume itself now.
-        const string old = "InfoPanel.ExtrasOld";
+        // An old copy of the old bundled package under another folder name: the engine reads the volume itself now.
+        const string old = "InfoPanel.OldPack";
         var source = new PluginSensorSource();
 
         var refused = source.Load(old,
@@ -253,8 +253,8 @@ public class PluginSensorSourceTests
     [InlineData("System-Info-Plugin")]
     public void The_retired_System_Info_id_is_refused_naming_the_System_Info_source_and_the_packages_other_plugins_load(string id)
     {
-        // An old copy of the bundled Extras under another folder name: the engine reads the system information itself now.
-        const string old = "InfoPanel.ExtrasOld";
+        // An old copy of the old bundled package under another folder name: the engine reads the system information itself now.
+        const string old = "InfoPanel.OldPack";
         var source = new PluginSensorSource();
 
         var refused = source.Load(old,

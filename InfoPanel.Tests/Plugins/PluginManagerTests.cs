@@ -109,21 +109,6 @@ public sealed class PluginManagerTests : IDisposable
         Assert.False(File.Exists(StateFile));
     }
 
-    [Fact]
-    public async Task The_bundled_Extras_are_unsupported_off_Windows()
-    {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "Extras run on Windows.");
-        PluginFixtures.Copy("InfoPanel.Extras", Bundled);
-        var launcher = Launcher();
-        await using var manager = Manager(launcher, platform: PluginPlatforms.Current);
-
-        _ = manager.StartAllAsync();
-
-        var extras = Assert.Single(manager.Runners);
-        Assert.False(manager.IsSupported(extras));
-        await Eventually.Stays(() => launcher.Started.Count == 0, TimeSpan.FromMilliseconds(200), "no host starts for Extras");
-    }
-
     // ---- one plugin id, one package ----
 
     [Fact]

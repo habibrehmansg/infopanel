@@ -11,22 +11,21 @@ namespace InfoPanel.Tests;
 /// The engine as <c>dotnet publish</c> lays it out, in this test run's configuration, into a new folder: everything the
 /// engine's <c>InfoPanel.deps.json</c> lists is in the publish root (or at its own path under it), at the versions it
 /// names, so the published engine starts (and its plugin host mode, which loads plugins with the engine's own assemblies);
-/// the bundled plugin is under <c>plugins/</c> and nowhere else, with what its own deps file lists and its whole assembly
-/// closure resolvable as its host loads it. Builds and tests run from <c>bin/</c>, which never shows what a publish
-/// leaves out.
+/// no bundled plugin is published (there is no <c>plugins/</c> folder). Builds and tests run from <c>bin/</c>, which never
+/// shows what a publish leaves out.
 /// </summary>
 public class EnginePublishTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
-    public async Task APublish_HasTheEnginesOwnDependenciesInItsRoot_AndTheBundledPluginsOnlyUnderPlugins()
+    public async Task APublish_HasTheEnginesOwnDependenciesInItsRoot_AndNoBundledPlugins()
     {
         var dir = Directory.CreateTempSubdirectory("infopanel-publish-");
         try
         {
-            // Every restore and build artifact goes under this test's folder, the bundled plugin's too; the real projects'
-            // restore files are left as they were (a later build or publish of theirs relies on them).
+            // Every restore and build artifact goes under this test's folder; the real projects' restore files are left as
+            // they were (a later build or publish of theirs relies on them).
             var artifacts = Path.Combine(dir.FullName, "artifacts");
             var restoreFiles = RealRestoreFiles();
             var root = Path.Combine(dir.FullName, "out");
@@ -34,7 +33,7 @@ public class EnginePublishTests
 
             var problems = new List<string>();
             CheckIsolated(problems, artifacts, restoreFiles);
-            var listed = await CheckDeps(problems, "engine", root, "InfoPanel.deps.json");
+            await CheckDeps(problems, "engine", root, "InfoPanel.deps.json");
             // The sensor helper is published for Windows runtimes only (LibreHardwareMonitor's assemblies are Windows ones).
             if (Directory.Exists(Path.Combine(root, "sensor-helper")))
                 problems.Add("sensor-helper/: the sensor helper's folder, in a publish for no runtime");
@@ -44,36 +43,15 @@ public class EnginePublishTests
                     problems.Add($"{helperFile}: the sensor helper's, in a publish for no runtime");
             }
 
-            // The bundled plugin is published under plugins/, and none of its own files land in the root; its own deps
-            // file holds in its folder, and its whole closure resolves as its host loads it.
-            var extras = Path.Combine(root, "plugins", "InfoPanel.Extras");
-            var extrasDll = Path.Combine(extras, "InfoPanel.Extras.dll");
-            if (!File.Exists(extrasDll))
-                problems.Add("plugins/InfoPanel.Extras/InfoPanel.Extras.dll is missing");
-            else
-            {
-                foreach (var file in Directory.EnumerateFiles(extras))
-                {
-                    var name = Path.GetFileName(file);
-                    if (!listed.Contains(name) && File.Exists(Path.Combine(root, name)))
-                        problems.Add($"{name}: the bundled plugin's file, not the engine's, is in the publish root");
-                }
-                await CheckDeps(problems, "InfoPanel.Extras", extras, "InfoPanel.Extras.deps.json");
-                CheckPluginClosure(problems, root, listed, extrasDll);
-            }
-
-            // A publish that leaves the restore out restores nothing, the bundled plugin included (an offline publish
-            // mustn't reach a package source): NuGet's record of the plugin's restore, which every restore that runs
-            // writes, is removed and stays absent.
-            var extrasRestore = Path.Combine(artifacts, "obj", "InfoPanel.Extras", "project.nuget.cache");
-            if (!File.Exists(extrasRestore))
-                problems.Add($"InfoPanel.Extras: no restore record at {extrasRestore} after the publish");
+            // No package is bundled: the publish has no plugins folder, whatever the options.
+            if (Directory.Exists(Path.Combine(root, "plugins")))
+                problems.Add("plugins/: a bundled plugins folder, in a publish that bundles none");
             foreach (var option in new[] { "--no-restore", "--no-build" })
             {
-                File.Delete(extrasRestore);
-                await Publish(Path.Combine(dir.FullName, "out" + option), artifacts, option);
-                if (File.Exists(extrasRestore))
-                    problems.Add($"InfoPanel.Extras: restored by a publish with {option}");
+                var optionRoot = Path.Combine(dir.FullName, "out" + option);
+                await Publish(optionRoot, artifacts, option);
+                if (Directory.Exists(Path.Combine(optionRoot, "plugins")))
+                    problems.Add($"plugins/: a bundled plugins folder, in a publish with {option}");
             }
 
             Assert.True(problems.Count == 0,
@@ -235,12 +213,12 @@ public class EnginePublishTests
     }
 
     /// <summary>
-    /// The engine and the bundled plugin were restored and built under <paramref name="artifacts"/>, and the real
-    /// projects' restore files are as <paramref name="before"/> found them.
+    /// The engine was restored and built under <paramref name="artifacts"/>, and the real projects' restore files are as
+    /// <paramref name="before"/> found them.
     /// </summary>
     private static void CheckIsolated(List<string> problems, string artifacts, Dictionary<string, string> before)
     {
-        foreach (var project in new[] { "InfoPanel", "InfoPanel.Extras" })
+        foreach (var project in new[] { "InfoPanel" })
         {
             if (!File.Exists(Path.Combine(artifacts, "obj", project, "project.assets.json")))
                 problems.Add($"{project}: not restored under the test's folder {artifacts}");
@@ -328,62 +306,6 @@ public class EnginePublishTests
             }
         }
         return listed;
-    }
-
-    /// <summary>
-    /// The plugin's whole closure resolves as the host loads it (<c>PluginLoadContext</c>): every assembly
-    /// <paramref name="pluginDll"/> references, and every assembly those reference in turn, comes from the plugin's own
-    /// folder through its deps file, or else (an assembly the host shares, or one its deps file doesn't name) from the
-    /// host's default context: the engine's root (its deps file's runtime assemblies, <paramref name="engineAssemblies"/>)
-    /// or the shared frameworks. Each at the version referenced or later. Assemblies from the root have their own closure
-    /// checked by the engine's deps file; the frameworks are whole.
-    /// </summary>
-    private static void CheckPluginClosure(List<string> problems, string root, HashSet<string> engineAssemblies, string pluginDll)
-    {
-        // What PluginLoadContext always leaves to the host.
-        string[] shared = ["InfoPanel.Plugins.Graphics", "SkiaSharp"];
-        // The engine runs on Microsoft.NETCore.App and Microsoft.AspNetCore.App, as this test process does.
-        string[] frameworks =
-        [
-            Path.GetDirectoryName(typeof(object).Assembly.Location)!,
-            Path.GetDirectoryName(typeof(Microsoft.AspNetCore.Http.HttpContext).Assembly.Location)!,
-        ];
-        var resolver = new System.Runtime.Loader.AssemblyDependencyResolver(pluginDll);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var queue = new Queue<string>([pluginDll]);
-        while (queue.TryDequeue(out var path))
-        {
-            foreach (var reference in References(path))
-            {
-                if (!seen.Add(reference.FullName))
-                    continue;
-                var name = reference.Name!;
-                var fromPlugin = shared.Contains(name, StringComparer.OrdinalIgnoreCase) ? null : resolver.ResolveAssemblyToPath(reference);
-                var found = fromPlugin
-                    ?? (engineAssemblies.Contains(name + ".dll") ? Path.Combine(root, name + ".dll") : null)
-                    ?? frameworks.Select(f => Path.Combine(f, name + ".dll")).FirstOrDefault(File.Exists);
-                var by = Path.GetFileName(path);
-                if (found == null || !File.Exists(found))
-                {
-                    problems.Add($"InfoPanel.Extras: {reference.FullName} (referenced by {by}) is neither in the plugin's folder, the engine's root nor the frameworks");
-                    continue;
-                }
-                var version = AssemblyName.GetAssemblyName(found).Version;
-                if (reference.Version != null && (version == null || version < reference.Version))
-                    problems.Add($"InfoPanel.Extras: {reference.FullName} (referenced by {by}) resolves to {found}, version {version}");
-                if (fromPlugin != null)
-                    queue.Enqueue(fromPlugin);
-            }
-        }
-    }
-
-    /// <summary>The assemblies <paramref name="path"/> references.</summary>
-    private static List<AssemblyName> References(string path)
-    {
-        using var stream = File.OpenRead(path);
-        using var pe = new System.Reflection.PortableExecutable.PEReader(stream);
-        var metadata = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe);
-        return [.. metadata.AssemblyReferences.Select(h => metadata.GetAssemblyReference(h).GetAssemblyName())];
     }
 
     /// <summary>

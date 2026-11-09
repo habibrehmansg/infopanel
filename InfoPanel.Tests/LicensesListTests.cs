@@ -9,7 +9,7 @@ namespace InfoPanel.Tests;
 /// and version, that its project's restore graph (<c>obj/project.assets.json</c>, written by the restore every build
 /// runs) puts files of into the output: a package added, removed or bumped fails here until the list follows. A
 /// package counts when it has runtime or native files, or runtime-specific ones for a runtime that build ships for (the
-/// bundled plugin and the sensor helper run on Windows only); a package whose files are all placeholders (<c>_._</c>)
+/// sensor helper runs on Windows only); a package whose files are all placeholders (<c>_._</c>)
 /// counts for nothing. The last section lists, by name, what isn't in those graphs (<see cref="NotFromTheGraphs"/>).
 /// </summary>
 public class LicensesListTests
@@ -20,7 +20,6 @@ public class LicensesListTests
     private static readonly (string Heading, string Project, string RuntimePrefix)[] BuildSections =
     [
         ("## The engine", "InfoPanel", ""),
-        ("## The bundled plugin", "InfoPanel.Extras", "win"),
         ("## The sensor helper", "InfoPanel.SensorHelper", "win"),
     ];
 

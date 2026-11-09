@@ -43,11 +43,11 @@ and 27). The icon is `packaging/macos/AppIcon.icns`, made from `Images/logo.png`
 (desktop-shell.md, "Opening the editor").
 
 **Its layout.** `codesign` takes every file in `Contents/MacOS` for code: a managed `.dll`, a `.json` or a folder there
-(the satellite assemblies, `plugins/InfoPanel.Extras`) makes it refuse to sign the bundle. So the publish goes to
+(the satellite assemblies) makes it refuse to sign the bundle. So the publish goes to
 `Contents/Resources/engine`, its Mach-O files (the executable, the .NET runtime's and SkiaSharp's libraries) move to
 `Contents/MacOS`, and each side links to the other's entries with relative symlinks. The executable finds its libraries
 and managed files beside it; .NET takes the app's folder from `InfoPanel.dll`'s real path, `Contents/Resources/engine`,
-and finds the libraries there through the links, and the bundled plugins in `plugins/` beside it. A Mach-O file below
+and finds the libraries there through the links. A Mach-O file below
 the publish's top level stops the script: this layout would seal it as a resource rather than sign it as code.
 
 **libusb.** `native/libusb/build.sh` downloads libusb's release tarball (the version in `native/libusb/pins.txt`), refuses
@@ -133,8 +133,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1 
   symbolic link. The checks on the bundled files hold only against a folder nobody else can change.
 - It runs on Windows because only a build on Windows writes the manifest and the icon into `InfoPanel.exe`.
 
-`build.ps1` publishes the engine self-contained for `win-x64` (with the sensor helper in `sensor-helper\` and the
-bundled plugin in `plugins\InfoPanel.Extras\`), adds four files it downloads (or takes from a download) and checks, and compiles the installer:
+`build.ps1` publishes the engine self-contained for `win-x64` (with the sensor helper in `sensor-helper\`; no plugin is bundled), adds four files it downloads (or takes from a download) and checks, and compiles the installer:
 
 | File | Where from | Checked against | Installed |
 |---|---|---|---|
@@ -190,7 +189,7 @@ The Task Scheduler can't hold a task and a folder of one name at its root: with 
 - **Over a running InfoPanel 2** (an update or a repair): Setup first stops this install's running sensor helper
   tasks (the helper runs as SYSTEM in session 0), then stops the engine as it stops at a sign-out (below). The Restart
   Manager then closes, without forcing, anything else holding a file (`CloseApplications=yes`), and Setup restarts
-  nothing. An earlier 2.0's `sensor-helper\`, `plugins\InfoPanel.Extras\` and `pawnio\` are replaced whole.
+  nothing. An earlier 2.0's `sensor-helper\` and `pawnio\` are replaced whole, and the bundled plugin folder of earlier builds is removed.
 - **Stopping the engine** (Setup and the uninstaller): each of this install's engines on Setup's desktop gets
   `WM_ENDSESSION` at its hidden window (`InfoPanelMessageWindow`), which it takes as the session ending: its own orderly
   stop, which writes every unsaved change to `recovery.json`. Setup waits up to 20 s for it, then up to 5 s for its

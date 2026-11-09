@@ -1,6 +1,6 @@
 # Third-party components
 
-What InfoPanel 2.0's builds carry from other projects, grouped by where it goes in a build. Each NuGet package is listed by id and version as the restore graph resolves it (`obj/project.assets.json` of `InfoPanel`, `InfoPanel.Extras` and `InfoPanel.SensorHelper`), with the licence its package declares (an SPDX expression, a file in the package, or an address), the copyright line it states, and its project's address. Packages only the tests use are not listed. `InfoPanel.Tests/LicensesListTests.cs` checks each build section against its graph.
+What InfoPanel 2.0's builds carry from other projects, grouped by where it goes in a build. Each NuGet package is listed by id and version as the restore graph resolves it (`obj/project.assets.json` of `InfoPanel` and `InfoPanel.SensorHelper`), with the licence its package declares (an SPDX expression, a file in the package, or an address), the copyright line it states, and its project's address. Packages only the tests use are not listed. `InfoPanel.Tests/LicensesListTests.cs` checks each build section against its graph.
 
 InfoPanel's own licence is in [`LICENSE`](LICENSE); the formats in `spec/` have theirs in [`spec/LICENSE`](spec/LICENSE).
 
@@ -232,15 +232,6 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Licence**: Apache-2.0
 - **Copyright**: none stated in the package (authors: Topten Software)
 - **Project**: https://github.com/toptensoftware/richtextkit
-
-## The bundled plugin (`plugins/InfoPanel.Extras/`)
-
-Beside the engine in every build (`InfoPanel/InfoPanel.csproj` copies it there on build and on publish); it holds no plugin now, since the engine reads the sensors its plugins read ([plugins](docs/2.0/plugins.md)). The `InfoPanel.Extras` graph, Windows runtimes.
-
-### Serilog 4.3.1
-- **Licence**: Apache-2.0
-- **Copyright**: Copyright © Serilog Contributors
-- **Project**: https://serilog.net/
 
 ## The sensor helper (`sensor-helper/`, Windows)
 
