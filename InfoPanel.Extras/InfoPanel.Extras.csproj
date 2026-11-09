@@ -10,7 +10,6 @@
 
   <ItemGroup>
     <PackageReference Include="Serilog" />
-    <PackageReference Include="System.Diagnostics.PerformanceCounter" />
   </ItemGroup>
 
   <ItemGroup>

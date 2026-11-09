@@ -4,6 +4,7 @@ using InfoPanel.Enums;
 using InfoPanel.Sensors.Clock;
 using InfoPanel.Sensors.Drives;
 using InfoPanel.Sensors.Network;
+using InfoPanel.Sensors.SystemInfo;
 using InfoPanel.Sensors.Volume;
 using InfoPanel.Sensors.Weather;
 
@@ -11,7 +12,7 @@ namespace InfoPanel.Sensors;
 
 /// <summary>
 /// The 1.x plugins whose sensors the engine's own sources read now, under keys of their own (the Clock, Drive Info,
-/// Network Info and Volume Info plugins'), or whose place a source of the engine's takes (the Weather plugin's): the plugins source
+/// Network Info, Volume Info and System Info plugins'), or whose place a source of the engine's takes (the Weather plugin's): the plugins source
 /// refuses a package's plugin with such an id (an old copy of a bundled package), so their keys don't come back half
 /// live, and a 1.x import binds each of their keys that a source has an entry for to that entry's key, once
 /// (<see cref="Translate"/>). The engine never answers their keys: a binding to one that wasn't imported reads
@@ -30,6 +31,7 @@ public static class RetiredPlugins
         ["network-info-plugin"] = NetworkSource.Name,
         ["weather-plugin"] = WeatherSource.Name,
         ["volume-plugin"] = VolumeSource.Name,
+        ["system-info-plugin"] = SystemInfoSource.Name,
     };
 
     /// <summary>
@@ -48,7 +50,7 @@ public static class RetiredPlugins
     ];
 
     // A retired plugin's key id (1.x's PluginSensorId) → what it is bound to on import, for the plugins whose keys are
-    // fixed (the clock's, the weather's); a drive's, the network's and the volume's keys follow a rule (DriveKey,
+    // fixed (the clock's, the weather's, the system information's); a drive's, the network's and the volume's keys follow a rule (DriveKey,
     // NetworkKey, VolumeKey).
     private static readonly Dictionary<string, Translation> Keys = Build();
 
@@ -65,6 +67,13 @@ public static class RetiredPlugins
         // The 1.x Weather plugin: one container, "Weather" (weather), its entries by WeatherEntries.
         foreach (var (entry, id) in WeatherEntries)
             keys[$"/weather-plugin/weather/{entry}"] = new Translation(WeatherSource.KeyOf(id), "Weather", WeatherSource.Name, WeatherSource.EntryOf(id)!.Name);
+        // The 1.x System Info plugin: two containers, "Uptime" (uptime) and "Processes" (processes), its entries the
+        // source's under the same path, one to one.
+        foreach (var (id, group, name, _, _) in SystemInfoSource.Entries)
+        {
+            var slash = id.IndexOf('/');
+            keys[$"/system-info-plugin/{id}"] = new Translation(SystemInfoSource.KeyOf(id[..slash], id[(slash + 1)..]), "System Info", SystemInfoSource.Name, $"{name} of {group}");
+        }
         return keys;
     }
 
@@ -72,7 +81,7 @@ public static class RetiredPlugins
     public static string? SourceOf(string pluginId) => Sources.TryGetValue(pluginId, out var source) ? source : null;
 
     /// <summary>
-    /// Every fixed key a 1.x import binds (the Clock plugin's and the Weather plugin's), and what it binds it to. The
+    /// Every fixed key a 1.x import binds (the Clock plugin's, the Weather plugin's and the System Info plugin's), and what it binds it to. The
     /// Drive Info plugin's keys, one set per drive, the Network Info plugin's and the Volume Info plugin's follow a rule
     /// instead (<see cref="Translate"/>).
     /// </summary>
@@ -89,6 +98,8 @@ public static class RetiredPlugins
     /// What a 1.x import binds <paramref name="key"/> to: the native entry for a retired plugin's key, else null (any
     /// other key, and an entry no source has). The Clock plugin's eight keys go to the clock's; the Weather plugin's
     /// <c>/weather-plugin/weather/{entry}</c>, for 15 of its 19 entries, to the weather source's (<see cref="WeatherEntries"/>);
+    /// the System Info plugin's 15, <c>/system-info-plugin/{uptime|processes}/{entry}</c>, to the system information
+    /// source's <c>plugin:/infopanel.system-info/{uptime|processes}/{entry}</c>, its tables too;
     /// the Drive Info plugin's
     /// <c>/drive-info-plugin/{drive}/{entry}</c>, for any drive id the plugin could make (<see cref="DriveSource.IsDriveId"/>)
     /// and each of its entries, to the drives source's <c>plugin:/infopanel.drives/{drive}/{entry}</c>, whether or not

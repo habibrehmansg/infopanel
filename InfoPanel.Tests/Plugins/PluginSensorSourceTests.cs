@@ -136,18 +136,18 @@ public class PluginSensorSourceTests
         var source = new PluginSensorSource();
 
         var refused = source.Load(old,
-            [new PluginMetadataDto { Id = id, Name = "Clock" }, new PluginMetadataDto { Id = "system-info-plugin", Name = "System Info" }],
+            [new PluginMetadataDto { Id = id, Name = "Clock" }, new PluginMetadataDto { Id = "sample-plugin", Name = "Sample" }],
             new Dictionary<string, List<ContainerDto>>
             {
                 [id] = [Container("clock", "Clock", eph: false, Sensor("second", "Second", 7, ""))],
-                ["system-info-plugin"] = [Container("cpu", "CPU", eph: false, Sensor("usage", "Usage", 21, "%"))],
+                ["sample-plugin"] = [Container("cpu", "CPU", eph: false, Sensor("usage", "Usage", 21, "%"))],
             });
         source.SetState(old, PluginHostState.Running);
 
         var refusal = Assert.Single(refused);
         Assert.Equal((id, "its sensors are built into the engine now (the Clock source)"), (refusal.PluginId, refusal.Reason));
-        Assert.Equal(["plugin:/system-info-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
-        Assert.Equal(SensorStatus.Live, source.GetStatus(SensorKey.Plugin("/system-info-plugin/cpu/usage")));
+        Assert.Equal(["plugin:/sample-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
+        Assert.Equal(SensorStatus.Live, source.GetStatus(SensorKey.Plugin("/sample-plugin/cpu/usage")));
         Assert.False(source.Handles(SensorKey.Plugin($"/{id}/clock/second")));
     }
 
@@ -161,17 +161,17 @@ public class PluginSensorSourceTests
         var source = new PluginSensorSource();
 
         var refused = source.Load(old,
-            [new PluginMetadataDto { Id = id, Name = "Drive Info" }, new PluginMetadataDto { Id = "system-info-plugin", Name = "System Info" }],
+            [new PluginMetadataDto { Id = id, Name = "Drive Info" }, new PluginMetadataDto { Id = "sample-plugin", Name = "Sample" }],
             new Dictionary<string, List<ContainerDto>>
             {
                 [id] = [Container("c", "C:", eph: false, Sensor("free_space", "Free Space", 1000, "MB"))],
-                ["system-info-plugin"] = [Container("cpu", "CPU", eph: false, Sensor("usage", "Usage", 21, "%"))],
+                ["sample-plugin"] = [Container("cpu", "CPU", eph: false, Sensor("usage", "Usage", 21, "%"))],
             });
         source.SetState(old, PluginHostState.Running);
 
         var refusal = Assert.Single(refused);
         Assert.Equal((id, "its sensors are built into the engine now (the Drives source)"), (refusal.PluginId, refusal.Reason));
-        Assert.Equal(["plugin:/system-info-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
+        Assert.Equal(["plugin:/sample-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
         Assert.False(source.Handles(SensorKey.Plugin($"/{id}/c/free_space")));
     }
 
@@ -185,17 +185,17 @@ public class PluginSensorSourceTests
         var source = new PluginSensorSource();
 
         var refused = source.Load(old,
-            [new PluginMetadataDto { Id = id, Name = "Network Info" }, new PluginMetadataDto { Id = "system-info-plugin", Name = "System Info" }],
+            [new PluginMetadataDto { Id = id, Name = "Network Info" }, new PluginMetadataDto { Id = "sample-plugin", Name = "Sample" }],
             new Dictionary<string, List<ContainerDto>>
             {
                 [id] = [Container("public-ip", "Public IP", eph: false, Sensor("ipv4", "IPv4", 0, ""))],
-                ["system-info-plugin"] = [Container("cpu", "CPU", eph: false, Sensor("usage", "Usage", 21, "%"))],
+                ["sample-plugin"] = [Container("cpu", "CPU", eph: false, Sensor("usage", "Usage", 21, "%"))],
             });
         source.SetState(old, PluginHostState.Running);
 
         var refusal = Assert.Single(refused);
         Assert.Equal((id, "its sensors are built into the engine now (the Network source)"), (refusal.PluginId, refusal.Reason));
-        Assert.Equal(["plugin:/system-info-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
+        Assert.Equal(["plugin:/sample-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
         Assert.False(source.Handles(SensorKey.Plugin($"/{id}/public-ip/ipv4")));
     }
 
@@ -209,17 +209,17 @@ public class PluginSensorSourceTests
         var source = new PluginSensorSource();
 
         var refused = source.Load(old,
-            [new PluginMetadataDto { Id = id, Name = "Weather Info - OpenWeatherMap" }, new PluginMetadataDto { Id = "system-info-plugin", Name = "System Info" }],
+            [new PluginMetadataDto { Id = id, Name = "Weather Info - OpenWeatherMap" }, new PluginMetadataDto { Id = "sample-plugin", Name = "Sample" }],
             new Dictionary<string, List<ContainerDto>>
             {
                 [id] = [Container("weather", "Weather", eph: false, Sensor("temp", "Temperature", 21, "°C"))],
-                ["system-info-plugin"] = [Container("cpu", "CPU", eph: false, Sensor("usage", "Usage", 21, "%"))],
+                ["sample-plugin"] = [Container("cpu", "CPU", eph: false, Sensor("usage", "Usage", 21, "%"))],
             });
         source.SetState(old, PluginHostState.Running);
 
         var refusal = Assert.Single(refused);
         Assert.Equal((id, "its sensors are built into the engine now (the Weather source)"), (refusal.PluginId, refusal.Reason));
-        Assert.Equal(["plugin:/system-info-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
+        Assert.Equal(["plugin:/sample-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
         Assert.False(source.Handles(SensorKey.Plugin($"/{id}/weather/temp")));
     }
 
@@ -246,6 +246,31 @@ public class PluginSensorSourceTests
         Assert.Equal(["plugin:/sample-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
         Assert.Equal(SensorStatus.Live, source.GetStatus(SensorKey.Plugin("/sample-plugin/cpu/usage")));
         Assert.False(source.Handles(SensorKey.Plugin($"/{id}/default/volume")));
+    }
+
+    [Theory]
+    [InlineData("system-info-plugin")]
+    [InlineData("System-Info-Plugin")]
+    public void The_retired_System_Info_id_is_refused_naming_the_System_Info_source_and_the_packages_other_plugins_load(string id)
+    {
+        // An old copy of the bundled Extras under another folder name: the engine reads the system information itself now.
+        const string old = "InfoPanel.ExtrasOld";
+        var source = new PluginSensorSource();
+
+        var refused = source.Load(old,
+            [new PluginMetadataDto { Id = id, Name = "System Info" }, new PluginMetadataDto { Id = "sample-plugin", Name = "Sample" }],
+            new Dictionary<string, List<ContainerDto>>
+            {
+                [id] = [Container("uptime", "Uptime", eph: false, Sensor("seconds", "Seconds", 7, ""))],
+                ["sample-plugin"] = [Container("cpu", "CPU", eph: false, Sensor("usage", "Usage", 21, "%"))],
+            });
+        source.SetState(old, PluginHostState.Running);
+
+        var refusal = Assert.Single(refused);
+        Assert.Equal((id, "its sensors are built into the engine now (the System Info source)"), (refusal.PluginId, refusal.Reason));
+        Assert.Equal(["plugin:/sample-plugin/cpu/usage"], source.GetSensors().Select(s => s.Key.ToString()).ToArray());
+        Assert.Equal(SensorStatus.Live, source.GetStatus(SensorKey.Plugin("/sample-plugin/cpu/usage")));
+        Assert.False(source.Handles(SensorKey.Plugin($"/{id}/uptime/seconds")));
     }
 
     [Fact]

@@ -10,8 +10,8 @@ using Xunit;
 
 namespace InfoPanel.Tests;
 
-// The engine's own sources (the clock, the drives, the network, the weather on every OS; the volume on macOS and
-// Windows; the system information on macOS):
+// The engine's own sources (the clock, the drives, the network, the weather on every OS; the volume and the system
+// information on macOS and Windows):
 // registered outside mock mode and a replay, none in either; the network's public address lookup is left out under
 // --offline, and follows the engine's settings (sources.network.publicIp) as they change; the weather follows
 // sources.weather.
@@ -21,7 +21,7 @@ public class BuiltInSourcesTests
     [InlineData(false, false, new[] { "infopanel.clock", "infopanel.drives", "infopanel.network", "infopanel.weather" })]
     [InlineData(true, false, new string[0])]
     [InlineData(false, true, new string[0])]
-    public void The_clock_the_drives_the_network_the_weather_on_macOS_and_Windows_the_volume_and_on_macOS_the_system_information_are_registered_outside_mock_mode_and_a_replay(bool mock, bool replay, string[] everywhere)
+    public void The_clock_the_drives_the_network_the_weather_and_on_macOS_and_Windows_the_volume_and_the_system_information_are_registered_outside_mock_mode_and_a_replay(bool mock, bool replay, string[] everywhere)
     {
         var services = new ServiceCollection().AddSingleton(TimeProvider.System);
         services.AddBuiltInSources(new EngineOptions { Mock = mock, ReplaySensors = replay ? "recording" : null });
@@ -29,8 +29,7 @@ public class BuiltInSourcesTests
         using var provider = services.BuildServiceProvider();
 
         string[] expected = everywhere.Length == 0 ? everywhere
-            : OperatingSystem.IsMacOS() ? [.. everywhere, "infopanel.volume", "infopanel.system-info"]
-            : OperatingSystem.IsWindows() ? [.. everywhere, "infopanel.volume"]
+            : OperatingSystem.IsMacOS() || OperatingSystem.IsWindows() ? [.. everywhere, "infopanel.volume", "infopanel.system-info"]
             : everywhere;
         Assert.Equal(expected, provider.GetServices<ISensorSource>().Select(s => s.Id));
     }

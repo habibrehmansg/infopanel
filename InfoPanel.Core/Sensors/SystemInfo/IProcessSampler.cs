@@ -12,10 +12,20 @@ public readonly record struct ProcessReading(int Pid, string Name, TimeSpan CpuT
 
 /// <summary>
 /// What <see cref="SystemInfoSource"/> reads from the operating system, a call per reading, each read when asked; any
-/// call may throw (its readings fail that round). Called from one thread at a time.
+/// reading may throw (its readings fail that round). Called from one thread at a time, each round opened by
+/// <see cref="BeginRound"/>.
 /// </summary>
 public interface IProcessSampler
 {
+    /// <summary>
+    /// A new round begins: the readings asked for until the next call are this round's. A reader that serves several
+    /// readings from one read of the system reads it again in the new round. Reads nothing, so it doesn't throw; by
+    /// default it does nothing (macOS reads each reading when asked).
+    /// </summary>
+    void BeginRound()
+    {
+    }
+
     /// <summary>The logical CPUs: the CPU time a second of wall time holds, in seconds.</summary>
     int ProcessorCount { get; }
 

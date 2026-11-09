@@ -24,7 +24,7 @@
 | USB LCD panels | Later | Later |
 | 1.x profiles and settings | Read, never changed | Read, never changed |
 
-¹ A build from source has no configured service by default, so its weather stays off. ² A plugin built on a Windows-only library runs on Windows only (the bundled System Info among them). Linux isn't supported yet: the code has Linux paths (the clock, drives and network; the preview's video through ffmpeg), but no Linux build is tested, and it reads no hardware sensors and opens no desktop windows.
+¹ A build from source has no configured service by default, so its weather stays off. ² A plugin built on a Windows-only library runs on Windows only. Linux isn't supported yet: the code has Linux paths (the clock, drives and network; the preview's video through ffmpeg), but no Linux build is tested, and it reads no hardware sensors and opens no desktop windows.
 
 **[Documentation](docs/2.0/README.md) · [Run from source](#run-from-source) · [Website][website] · [Discord][discord] · [Reddit][reddit]**
 

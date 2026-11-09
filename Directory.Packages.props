@@ -14,15 +14,16 @@
     <PackageVersion Include="SkiaSharp" Version="3.119.2" />
     <PackageVersion Include="StreamJsonRpc" Version="2.24.84" />
     <PackageVersion Include="System.CommandLine" Version="2.0.6" />
-    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="10.0.6" />
     <PackageVersion Include="System.Threading.Tasks.Extensions" Version="4.6.3" />
   </ItemGroup>
 
-  <!-- InfoPanel.Core (also uses Serilog and SkiaSharp above; keep SkiaSharp aligned with InfoPanel.Plugins.Graphics) -->
+  <!-- InfoPanel.Core (also uses Serilog and SkiaSharp above; keep SkiaSharp aligned with InfoPanel.Plugins.Graphics;
+       PerformanceCounter for the system information source's Windows reader) -->
   <ItemGroup>
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.6" />
     <PackageVersion Include="Svg.Skia" Version="4.3.0" />
+    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="10.0.6" />
     <PackageVersion Include="System.IO.Hashing" Version="10.0.14" />
     <PackageVersion Include="Topten.RichTextKit" Version="0.4.167" />
   </ItemGroup>

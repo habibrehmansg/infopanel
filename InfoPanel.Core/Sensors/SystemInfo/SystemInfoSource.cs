@@ -86,9 +86,11 @@ public static class SystemInfoSource
     public static PolledSensorSource Create(IProcessSampler processes, TimeProvider? time = null, PolledSensorSourceOptions? options = null, ILogger? log = null) =>
         new(SourceId, () => new SystemInfoSampler(processes, log), options ?? new PolledSensorSourceOptions { Interval = Interval }, time, log: log);
 
-    /// <summary>The source over this Mac (<see cref="MacProcessSampler"/>).</summary>
+    /// <summary>The source over this computer: <see cref="MacProcessSampler"/> on macOS, <see cref="WinProcessSampler"/> on Windows.</summary>
     [SupportedOSPlatform("macos")]
-    public static PolledSensorSource CreateSystem(TimeProvider? time = null) => Create(new MacProcessSampler(), time);
+    [SupportedOSPlatform("windows")]
+    public static PolledSensorSource CreateSystem(TimeProvider? time = null) =>
+        Create(OperatingSystem.IsWindows() ? new WinProcessSampler() : new MacProcessSampler(), time);
 }
 
 /// <summary>
@@ -135,6 +137,8 @@ public sealed class SystemInfoSampler : ISensorSampler
         if (samples.Length < SystemInfoSource.Entries.Count)
             return;
 
+        // Every reading below is this poll's: a reader that shares one read of the system among them reads it afresh.
+        _system.BeginRound();
         if (Try(Part.Uptime, _system.Uptime, out var uptime))
         {
             var (f, d, h, m, s) = SystemInfoSource.UptimeTexts(uptime);

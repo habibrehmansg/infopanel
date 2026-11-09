@@ -208,7 +208,22 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/dotnet/command-line-api
 
+### System.Configuration.ConfigurationManager 10.0.6
+- **Licence**: MIT
+- **Copyright**: © Microsoft Corporation. All rights reserved.
+- **Project**: https://dot.net/
+
+### System.Diagnostics.PerformanceCounter 10.0.6
+- **Licence**: MIT
+- **Copyright**: © Microsoft Corporation. All rights reserved.
+- **Project**: https://dot.net/
+
 ### System.IO.Hashing 10.0.14
+- **Licence**: MIT
+- **Copyright**: © Microsoft Corporation. All rights reserved.
+- **Project**: https://dot.net/
+
+### System.Security.Cryptography.ProtectedData 10.0.6
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
@@ -220,37 +235,12 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 
 ## The bundled plugin (`plugins/InfoPanel.Extras/`)
 
-Beside the engine in every build (`InfoPanel/InfoPanel.csproj` copies it there on build and on publish); its plugins list sensors on Windows only ([plugins](docs/2.0/plugins.md)). The `InfoPanel.Extras` graph, Windows runtimes.
+Beside the engine in every build (`InfoPanel/InfoPanel.csproj` copies it there on build and on publish); it holds no plugin now, since the engine reads the sensors its plugins read ([plugins](docs/2.0/plugins.md)). The `InfoPanel.Extras` graph, Windows runtimes.
 
 ### Serilog 4.3.1
 - **Licence**: Apache-2.0
 - **Copyright**: Copyright © Serilog Contributors
 - **Project**: https://serilog.net/
-
-### System.Configuration.ConfigurationManager 10.0.6
-- **Licence**: MIT
-- **Copyright**: © Microsoft Corporation. All rights reserved.
-- **Project**: https://dot.net/
-
-### System.Diagnostics.EventLog 10.0.6
-- **Licence**: MIT
-- **Copyright**: © Microsoft Corporation. All rights reserved.
-- **Project**: https://dot.net/
-
-### System.Diagnostics.PerformanceCounter 10.0.6
-- **Licence**: MIT
-- **Copyright**: © Microsoft Corporation. All rights reserved.
-- **Project**: https://dot.net/
-
-### System.Security.Cryptography.ProtectedData 10.0.6
-- **Licence**: MIT
-- **Copyright**: © Microsoft Corporation. All rights reserved.
-- **Project**: https://dot.net/
-
-### System.Threading.AccessControl 10.0.6
-- **Licence**: MIT
-- **Copyright**: © Microsoft Corporation. All rights reserved.
-- **Project**: https://dot.net/
 
 ## The sensor helper (`sensor-helper/`, Windows)
 

@@ -314,6 +314,164 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         }
     }
 
+    // ---- The 1.x System Info plugin (system-info-plugin), read by the system information source (infopanel.system-info) ----
+
+    private static readonly string[] UptimeIds = ["formatted", "days", "hours", "minutes", "seconds"];
+
+    private static readonly string[] ProcessesIds =
+    [
+        "process-count", "thread-count", "handle-count", "cpu-usage", "cpu-utility", "memory-usage", "memory-compression",
+        "top-cpu-usage", "top-cpu-utility", "top-memory-usage",
+    ];
+
+    private static readonly string[] SystemInfoIds = [.. UptimeIds.Select(id => $"uptime/{id}"), .. ProcessesIds.Select(id => $"processes/{id}")];
+
+    /// <summary>A PC's system: its uptime, counts, CPU and memory, and one busy process whose CPU time grows a second a round.</summary>
+    private sealed class ThisPcsSystem : InfoPanel.Sensors.SystemInfo.IProcessSampler
+    {
+        private int _rounds;
+
+        public int ProcessorCount => 4;
+        public TimeSpan Uptime() => new(1, 2, 3, 4);
+        public int ProcessCount() => 201;
+        public int? ThreadCount() => 3078;
+        public int? HandleCount() => 175_792;
+        public double? CpuUsage() => 25;
+        public double? CpuUtility() => 29;
+        public long MemoryUsage() => 2048L * 1024 * 1024;
+        public long MemoryCompression() => 49L * 1024 * 1024;
+
+        public IReadOnlyList<InfoPanel.Sensors.SystemInfo.ProcessReading> Processes() =>
+            [new(1234, "busy", TimeSpan.FromSeconds(_rounds++), 8L * 1024 * 1024, 1)];
+    }
+
+    /// <summary>The system information source over this PC's system, polled twice a second apart (its tables read from the second).</summary>
+    private PolledSensorSource OpenSystemInfo()
+    {
+        var source = InfoPanel.Sensors.SystemInfo.SystemInfoSource.Create(new ThisPcsSystem(), _time);
+        source.Open();
+        _time.Advance(InfoPanel.Sensors.SystemInfo.SystemInfoSource.Interval);
+        source.Poll();
+        return source;
+    }
+
+    private V1ReadContext SystemInfoContext(PolledSensorSource systemInfo) => new(_kit.Workspace, new SensorHub([new ClockSensorSource(_time), systemInfo]), null, Fonts.Contains);
+
+    private static string Sys(string id) => $"/system-info-plugin/{id}";
+
+    [Fact]
+    public void SystemInfo_EveryEntry_IsBoundToTheSystemInfoSource_InPropsAndMeta_Live_AndListedOnce()
+    {
+        using var systemInfo = OpenSystemInfo();
+        var envelope = V1Reader.ReadArchive(new MemoryStream(V1Archive(Items(
+            [.. SystemInfoIds.Select(id => Bound(id.StartsWith("processes/top-", StringComparison.Ordinal) ? "TableSensorDisplayItem" : "SensorDisplayItem", $"System {id}", Sys(id)))]))),
+            SystemInfoContext(systemInfo));
+
+        Assert.Equal(SystemInfoIds.Select(id => $"/infopanel.system-info/{id}"), envelope.Items.Select(PropsKey));
+        Assert.Equal(SystemInfoIds.Select(id => $"plugin:/infopanel.system-info/{id}"), envelope.Items.Select(n => n.Meta.Sensor!.Key));
+        Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
+        Assert.All(envelope.Items, n => Assert.Equal("Plugin", (string)n.Props["sensorType"]!));
+
+        var translated = With(envelope, "import.sensor.translated");
+        Assert.Equal(SystemInfoIds.Select((_, i) => $"/items/{i}"), translated.Select(d => d.Path));
+        Assert.All(translated, d => Assert.Equal(("info", "DisplayItems.xml"), (d.Severity, d.File)));
+        Assert.Equal(
+            "'System uptime/formatted' was bound to plugin:/system-info-plugin/uptime/formatted, the 1.x System Info plugin's; bound to plugin:/infopanel.system-info/uptime/formatted, 'Formatted of Uptime' in 'System Info', which the engine reads itself.",
+            translated[0].Message);
+        Assert.Equal(
+            "'System processes/top-cpu-usage' was bound to plugin:/system-info-plugin/processes/top-cpu-usage, the 1.x System Info plugin's; bound to plugin:/infopanel.system-info/processes/top-cpu-usage, 'Top CPU Usage of Processes' in 'System Info', which the engine reads itself.",
+            translated[12].Message);
+        Assert.Empty(With(envelope, "import.sensor"));
+    }
+
+    [Fact]
+    public void SystemInfo_AnUptimeTextAndATopCpuTable_AtAnyDepth_AreBound_TheTableAsATable()
+    {
+        using var systemInfo = OpenSystemInfo();
+        var envelope = V1Reader.ReadArchive(new MemoryStream(V1Archive(Items(
+            Bound("SensorDisplayItem", "Uptime", Sys("uptime/formatted")),
+            Bound("GaugeDisplayItem", "CPU", Sys("processes/cpu-usage")),
+            Group("Box", Bound("TableSensorDisplayItem", "Top", Sys("processes/top-cpu-usage")))))), SystemInfoContext(systemInfo));
+
+        var bound = envelope.Items.Take(2).Append(envelope.Items[2].Children![0]).ToList();
+        Assert.Equal(["sensor", "gauge", "table"], bound.Select(n => n.Kind));
+        Assert.Equal(
+            ["plugin:/infopanel.system-info/uptime/formatted", "plugin:/infopanel.system-info/processes/cpu-usage", "plugin:/infopanel.system-info/processes/top-cpu-usage"],
+            bound.Select(n => n.Meta.Sensor!.Key));
+        Assert.All(bound, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
+        Assert.Equal(["/items/0", "/items/1", "/items/2/children/0"], With(envelope, "import.sensor.translated").Select(d => d.Path));
+        Assert.Empty(With(envelope, "import.sensor"));
+    }
+
+    [Fact]
+    public void SystemInfo_OnTheFolderRoute_Too()
+    {
+        using var systemInfo = OpenSystemInfo();
+        var root = _kit.Temp.Combine("v1");
+        CopyFolder(Path.Combine(AppContext.BaseDirectory, "Fixtures", "v1-folder"), root);
+        const string desk = "6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7";
+        File.WriteAllText(Path.Combine(root, "profiles", desk + ".xml"), Items(
+            Bound("SensorDisplayItem", "Uptime", Sys("uptime/formatted")),
+            Bound("TableSensorDisplayItem", "Top", Sys("processes/top-cpu-usage"))));
+
+        var envelope = new V1Folder(root).ReadProfile(Guid.Parse(desk), SystemInfoContext(systemInfo))!;
+
+        Assert.Equal("folder", envelope.Source);
+        Assert.Equal(["plugin:/infopanel.system-info/uptime/formatted", "plugin:/infopanel.system-info/processes/top-cpu-usage"], envelope.Items.Select(n => n.Meta.Sensor!.Key));
+        Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
+        Assert.Equal(["/items/0", "/items/1"], With(envelope, "import.sensor.translated").Select(d => d.Path));
+        Assert.Empty(With(envelope, "import.sensor"));
+    }
+
+    [Fact]
+    public void SystemInfo_AnEntryTheSourceDoesntHave_StaysBound_AndUnresolved()
+    {
+        using var systemInfo = OpenSystemInfo();
+        string[] keys =
+        [
+            Sys("uptime/weeks"),
+            Sys("Uptime/formatted"),
+            Sys("processes/Process-Count"),
+            Sys("processes/top-gpu-usage"),
+            Sys("memory/memory-usage"),
+            "/system-info-plugin/uptime",
+            "/system-info-plugin/formatted",
+        ];
+        var envelope = V1Reader.ReadArchive(new MemoryStream(V1Archive(Items([.. keys.Select((k, i) => Bound("SensorDisplayItem", $"Item {i}", k))]))), SystemInfoContext(systemInfo));
+
+        Assert.Equal(keys, envelope.Items.Select(PropsKey));
+        Assert.Equal(keys.Select(k => $"plugin:{k}"), envelope.Items.Select(n => n.Meta.Sensor!.Key));
+        Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Unavailable, n.Meta.Sensor!.Status));
+        Assert.Empty(With(envelope, "import.sensor.translated"));
+        Assert.Equal(keys.Select((_, i) => $"/items/{i}"), With(envelope, "import.sensor").Select(d => d.Path));
+    }
+
+    [Fact]
+    public void SystemInfo_TheOldKeysAre1xs_AndEveryNewKeyIsInTheSourcesCatalogue_UnderTheSamePath()
+    {
+        // 1.x's ids: the plugin SDK's ids of the plugin's container and entry names.
+        Assert.Equal(["uptime", "processes"], new[] { new PluginContainer("Uptime").Id, new PluginContainer("Processes").Id });
+        Assert.Equal(UptimeIds, new[] { "Formatted", "Days", "Hours", "Minutes", "Seconds" }.Select(n => new PluginText(n, "-").Id));
+        Assert.Equal(ProcessesIds,
+            new[] { "Process Count", "Thread Count", "Handle Count", "CPU Usage", "CPU Utility", "Memory Usage", "Memory Compression", "Top CPU Usage", "Top CPU Utility", "Top Memory Usage" }
+                .Select(n => new PluginSensor(n, 0).Id));
+        using var systemInfo = OpenSystemInfo();
+        var catalogue = systemInfo.GetSensors().ToDictionary(s => s.Key);
+        Assert.Equal(SystemInfoIds.Length, RetiredPlugins.All.Count(t => t.Key.Id.StartsWith("/system-info-plugin/", StringComparison.Ordinal)));
+        foreach (var id in SystemInfoIds)
+        {
+            var translation = RetiredPlugins.Translate(SensorKey.Plugin(Sys(id)));
+            Assert.NotNull(translation);
+            Assert.Equal($"plugin:/infopanel.system-info/{id}", translation.Key.ToString());
+            Assert.True(catalogue.TryGetValue(translation.Key, out var sensor), $"{translation.Key} isn't listed by the system information source");
+            Assert.Equal(("System Info", "System Info"), (translation.Plugin, translation.Source));
+            Assert.Equal($"{sensor!.Name} of {sensor.Group}", translation.Name);
+        }
+
+        Assert.Equal("System Info", RetiredPlugins.SourceOf("system-info-plugin"));
+        Assert.Equal("System Info", RetiredPlugins.SourceOf("System-Info-Plugin"));
+    }
+
     private static void CopyFolder(string from, string to)
     {
         Directory.CreateDirectory(to);
