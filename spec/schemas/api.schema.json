@@ -1994,7 +1994,8 @@
         "profileId": { "$ref": "urn:infopanel:common:1#/$defs/documentId" },
         "scale": { "$ref": "#/$defs/frameRequestScale" },
         "maxFps": { "$ref": "#/$defs/frameRequestFps" },
-        "encoding": { "description": "How the subscription's frames are encoded: `png` (the default), each frame a PNG; or `h264`, an H.264 video stream, with PNG frames that say why (`fallback`) where the engine can't send video (docs/api.md#video-frames). To change it, a client subscribes again.", "enum": ["png", "h264"] }
+        "encoding": { "description": "How the subscription's frames are encoded: `png` (the default), each frame a PNG; or `h264`, an H.264 video stream, with PNG frames that say why (`fallback`) where the engine can't send video (docs/api.md#video-frames). To change it, a client subscribes again.", "enum": ["png", "h264"] },
+        "sensors": { "description": "Where the subscription's inputs read: `live` (the default), this computer's sensors, as every other output reads them; or `simulated`, made-up numbers that move, drawn only for `simulated` subscriptions, with text and tables read as `live` reads them (docs/api.md#simulated-sensors). An engine that doesn't take it answers `schema` at `/sensors`: a client subscribes again without it. To change it, a client subscribes again.", "enum": ["live", "simulated"] }
       }
     },
     "viewMessage": {

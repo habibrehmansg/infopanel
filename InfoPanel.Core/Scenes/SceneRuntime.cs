@@ -19,6 +19,12 @@ public sealed class SceneRuntimeOptions
     /// <summary>Decoded media; null draws every asset as missing.</summary>
     public MediaSampleCache? Media { get; init; }
 
+    /// <summary>
+    /// Null: videos play on <see cref="Media"/>'s decode sessions every runtime without one shares. Another: on sessions of
+    /// its own (a clock of their own), closed when the runtime is disposed.
+    /// </summary>
+    internal object? VideoOwner { get; init; }
+
     /// <summary>Media providers by name (capability <c>media.provider</c>).</summary>
     public IReadOnlyDictionary<string, IMediaProvider> Providers { get; init; } = new Dictionary<string, IMediaProvider>();
 
@@ -241,6 +247,7 @@ public sealed class SceneRuntime : IDisposable
         var services = new TickServices
         {
             Media = _options.Media,
+            VideoOwner = _options.VideoOwner,
             Providers = _options.Providers,
             Live = advance,
             LayoutsLeft = _options.LayoutsPerTick,
@@ -469,5 +476,6 @@ public sealed class SceneRuntime : IDisposable
             _reserved = -1;
             _items.Clear();
         }
+        if (_options.VideoOwner is { } owner) _options.Media?.ReleaseVideos(owner);
     }
 }

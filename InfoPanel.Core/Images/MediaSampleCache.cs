@@ -222,11 +222,18 @@ namespace InfoPanel.Images
         /// The frame of video <paramref name="hash"/> at <paramref name="seconds"/> into it, for a box of
         /// <paramref name="boxWidth"/> x <paramref name="boxHeight"/> scene units (null: the video's own size on that
         /// axis), retained for the caller (<see cref="Video.VideoPlayer"/>). Never blocks unless the cache is synchronous.
-        /// <see cref="MediaLookup.Info"/> is the video's header once probed: its size is the natural size.
+        /// <see cref="MediaLookup.Info"/> is the video's header once probed: its size is the natural size. A non-null
+        /// <paramref name="owner"/> plays it on decode sessions of its own, closed by <see cref="ReleaseVideos"/>.
         /// </summary>
-        public MediaLookup GetVideo(string hash, double seconds, MediaPlayback playback, float? boxWidth, float? boxHeight) =>
+        public MediaLookup GetVideo(string hash, double seconds, MediaPlayback playback, float? boxWidth, float? boxHeight, object? owner = null) =>
             _disposed ? new MediaLookup(MediaState.Failed, null, null, "The media cache is shut down.")
-                : _videos.Get(hash, seconds, playback, boxWidth, boxHeight);
+                : _videos.Get(hash, seconds, playback, boxWidth, boxHeight, owner);
+
+        /// <summary>Closes the decode sessions <see cref="GetVideo"/> opened for <paramref name="owner"/>.</summary>
+        internal void ReleaseVideos(object owner)
+        {
+            if (!_disposed) _videos.Release(owner);
+        }
 
         /// <summary>Decode sessions playing videos.</summary>
         internal int VideoSessions => _videos.Sessions;

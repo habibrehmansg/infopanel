@@ -580,13 +580,13 @@ After an `auth` failure, the engine waits at most 2 seconds for the client's clo
 
 A client sends JSON text messages of at most 4,096 bytes in UTF-8 (`socketMessageBytes`, [limits](limits.md#socket-limits); `clientMessage`):
 
-- `subscribe` (`subscribeMessage`): `profileId`, and optionally `scale` (frame pixels per profile pixel, 1 when absent, [frame size](#frame-size)) `maxFps` (30 when absent; the engine draws at most 60) and `encoding` (`png` when absent, or `h264`, [video frames](#video-frames)). A subscription the engine starts ends any earlier one, and is answered with a `doc` message, then frames; one it can't start is answered with an `error` and leaves the earlier one as it was.
+- `subscribe` (`subscribeMessage`): `profileId`, and optionally `scale` (frame pixels per profile pixel, 1 when absent, [frame size](#frame-size)) `maxFps` (30 when absent; the engine draws at most 60), `encoding` (`png` when absent, or `h264`, [video frames](#video-frames)) and `sensors` (`live` when absent, or `simulated`, [simulated sensors](#simulated-sensors)). A subscription the engine starts ends any earlier one, and is answered with a `doc` message, then frames; one it can't start is answered with an `error` and leaves the earlier one as it was.
 - `view` (`viewMessage`): a new `scale` or `maxFps` for the current subscription; a member left out keeps its value.
 - `keyframe` (`keyframeMessage`): the client lost its video decoder's state; the next `h264` frame of the subscription is a keyframe, drawn at once if nothing changes ([video frames](#video-frames)). It does nothing for a `png` subscription.
 - `unsubscribe` (`unsubscribeMessage`): no more `doc` messages or frames until the next `subscribe`.
 - `auth` (`authMessage`): only as the first message, above.
 
-The engine reads each message as the formats read JSON ([validation](validation.md#json)) before reading any member of it, members it doesn't define included: a message nested deeper than `jsonDepth`, with a number that rounds to ±∞, an object that repeats a member name (never resolved by keeping one) or a string or member name that isn't Unicode text is one it can't act on. Client messages are closed ([versioning](versioning.md#unknown-members-and-values)): a message with a member its definition doesn't have is one the engine can't act on, and it acts on no part of it. It answers `error` to a message it can't act on and keeps the socket open: one that isn't JSON as the formats read it or isn't a JSON object with a string `type`, a binary message, an unknown `type`, a member the message's definition doesn't have, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number, a `maxFps` that isn't a whole number from 1 to 2,147,483,647 or an `encoding` the engine doesn't take, or a `view` or `keyframe` without a subscription.
+The engine reads each message as the formats read JSON ([validation](validation.md#json)) before reading any member of it, members it doesn't define included: a message nested deeper than `jsonDepth`, with a number that rounds to ±∞, an object that repeats a member name (never resolved by keeping one) or a string or member name that isn't Unicode text is one it can't act on. Client messages are closed ([versioning](versioning.md#unknown-members-and-values)): a message with a member its definition doesn't have is one the engine can't act on, and it acts on no part of it. It answers `error` to a message it can't act on and keeps the socket open: one that isn't JSON as the formats read it or isn't a JSON object with a string `type`, a binary message, an unknown `type`, a member the message's definition doesn't have, a `subscribe` without a string `profileId`, a `scale` that isn't a positive number, a `maxFps` that isn't a whole number from 1 to 2,147,483,647, an `encoding` or `sensors` the engine doesn't take, or a `view` or `keyframe` without a subscription.
 
 The engine sends (`serverMessage`):
 
@@ -605,7 +605,7 @@ An `error` names what went wrong with a `code`, and with a `path`: the JSON poin
 |---|---|---|
 | `json` | The value, or `""` | The message isn't JSON as the formats read it ([validation](validation.md#json)): it isn't UTF-8 JSON text, or is binary (at `""`); a number rounds to ±∞ (at the number); a string isn't Unicode text (at the string; a member name's at its object) |
 | `limit.jsonDepth` | `""` | The message is nested deeper than `jsonDepth` |
-| `schema` | The value | The message isn't an object with a `type` (at `""`); its `type` isn't a string, or is a type the engine doesn't take (at `/type`); it has a member its definition doesn't (at the member) or repeats a member name (at its object); a `subscribe` has no `profileId` (at `""`) or one that isn't a string (at `/profileId`); a `scale` that isn't a positive number (at `/scale`); a `maxFps` that isn't a whole number from 1 to 2,147,483,647 (at `/maxFps`); an `encoding` that isn't one the engine takes (at `/encoding`: a client that gets it subscribes again with one it knows) |
+| `schema` | The value | The message isn't an object with a `type` (at `""`); its `type` isn't a string, or is a type the engine doesn't take (at `/type`); it has a member its definition doesn't (at the member) or repeats a member name (at its object); a `subscribe` has no `profileId` (at `""`) or one that isn't a string (at `/profileId`); a `scale` that isn't a positive number (at `/scale`); a `maxFps` that isn't a whole number from 1 to 2,147,483,647 (at `/maxFps`); an `encoding` that isn't one the engine takes (at `/encoding`: a client that gets it subscribes again with one it knows); a `sensors` that isn't one the engine takes (at `/sensors`: a client that gets it subscribes again without it, for `live`) |
 | `subscription.missing` | `""` | A `view` or `keyframe` without a subscription |
 | `profile.missing` | `/profileId` | A `subscribe` to a profile that doesn't exist |
 | `profile.unsupported`, `profile.unreadable` | `/profileId` | A `subscribe` to a profile that can't be opened: `profile.` and its status ([profiles](#profiles)) |
@@ -657,6 +657,16 @@ The stream:
 - **BT.709** primaries, transfer and matrix, limited range, also written in the SPS's VUI.
 
 The bit rate and which encoder the engine uses are the engine's choice. `view`'s `maxFps` applies to the running stream, and a `view` that changes the frame's size is followed by a keyframe. To change the encoding, a client subscribes again.
+
+#### Simulated sensors
+
+A subscription with `sensors` `simulated` is drawn with made-up numbers that move, so a profile can be seen alive on a computer that doesn't have its sensors, or whose sensors sit still. The engine draws it in a render loop of its own for that profile, shared by every `simulated` subscription to it and ended with the last; every other output (`live` subscriptions, desktop windows, panels, thumbnails and the previews an AI app's tools draw) reads the sensors as before and never shows a simulated subscription's values.
+
+- **Numbers.** Every `number` input bound to a well-formed key reads `live`, with a value that walks from where it starts, a step a second from the loop's first tick, seeded from the key. A key this computer reads a number for starts at that reading and moves around it within a band proportional to it, keeping its unit: a percentage (unit `%`) stays from 0 to 100, and a reading that isn't negative never turns negative. A key this computer has no number for starts somewhere from 20 to 80 and stays within 20 to 80. Its `min`, `max` and `avg` are the walk's.
+- **History.** Each number's history starts with 120 values already walked, its start the oldest, so a graph is full from the first frame; then one more a second.
+- **Text and tables** read as a `live` subscription reads them.
+
+A `view` keeps the subscription's `sensors`; to change it, a client subscribes again. An engine that doesn't take `sensors` answers `schema` at `/sensors` ([errors](#errors-on-the-socket)): a client that gets it can subscribe again without it.
 
 #### Frame size
 

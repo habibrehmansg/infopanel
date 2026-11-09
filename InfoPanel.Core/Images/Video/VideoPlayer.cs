@@ -30,7 +30,10 @@ public sealed class VideoOptions
     /// </summary>
     public long WorkingBytes { get; init; } = 768L * 1024 * 1024;
 
-    /// <summary>Past <see cref="MaxSessions"/> or <see cref="WorkingBytes"/>, a session no tick has asked for this long is closed to make room.</summary>
+    /// <summary>
+    /// Past <see cref="MaxSessions"/> or <see cref="WorkingBytes"/>, a session no tick has asked for this long is closed to
+    /// make room; for a shared session, one with an owner is closed at once, and an owner's never closes a shared one.
+    /// </summary>
     public TimeSpan RoomAfter { get; init; } = TimeSpan.FromSeconds(1);
 
     /// <summary>Frames a session decodes ahead of the time asked for.</summary>
@@ -75,7 +78,7 @@ internal sealed class VideoPlayer : IDisposable
     private readonly long _start;
     private readonly Lock _lock = new();
     private readonly Dictionary<string, Probe> _probes = new(StringComparer.Ordinal);
-    private readonly Dictionary<(string Hash, int Width, int Height, MediaPlayback Playback), Session> _sessions = new();
+    private readonly Dictionary<(string Hash, int Width, int Height, MediaPlayback Playback, object? Owner), Session> _sessions = new();
     private bool _disposed;
 
     public VideoPlayer(IMediaAssetStore store, VideoOptions options, SpecLimits limits, bool synchronous, TimeProvider time, IFrameBudget budget)
@@ -142,9 +145,12 @@ internal sealed class VideoPlayer : IDisposable
     /// <summary>
     /// The frame of video <paramref name="hash"/> at <paramref name="seconds"/> into it (elapsed × speed), drawn in a box
     /// of <paramref name="boxWidth"/> x <paramref name="boxHeight"/> (null: the video's own size on that axis), retained
-    /// for the caller. Never blocks unless the player is synchronous.
+    /// for the caller. Never blocks unless the player is synchronous. Its session is <paramref name="owner"/>'s: null, the
+    /// one every caller without an owner shares (the live loops, one-off renders); another, one of its own
+    /// (<see cref="Release"/>: a simulated loop's), within the same limits, where a shared session goes first
+    /// (<see cref="MakeRoomLocked"/>): it closes an owner's at once, and an owner's never closes one.
     /// </summary>
-    public MediaLookup Get(string hash, double seconds, MediaPlayback playback, float? boxWidth, float? boxHeight)
+    public MediaLookup Get(string hash, double seconds, MediaPlayback playback, float? boxWidth, float? boxHeight, object? owner = null)
     {
         if (_options.Decoder is null)
             return new MediaLookup(MediaState.Failed, null, null, "media.video: This engine has no video decoder.");
@@ -162,17 +168,17 @@ internal sealed class VideoPlayer : IDisposable
         {
             var now = Now();
             SweepLocked(now);
-            var key = (hash, width, height, playback);
+            var key = (hash, width, height, playback, owner);
             if (!_sessions.TryGetValue(key, out session!))
             {
-                if (_sessions.Count >= Math.Max(1, _options.MaxSessions) && !MakeRoomLocked(now))
+                if (_sessions.Count >= Math.Max(1, _options.MaxSessions) && !MakeRoomLocked(now, owner))
                     return new MediaLookup(MediaState.Failed, null, info,
                         $"media.budget: {_options.MaxSessions} videos are decoding already; this one waits for one of them to stop.");
                 // The decoders' memory, estimated: past the budget a session not asked for lately makes room; one alone always fits.
                 var working = WorkingSet(info);
                 while (_sessions.Count > 0 && WorkingLocked() + working > _options.WorkingBytes)
                 {
-                    if (!MakeRoomLocked(now))
+                    if (!MakeRoomLocked(now, owner))
                         return new MediaLookup(MediaState.Failed, null, info,
                             $"media.budget: The videos decoding already leave no room for this one's decoder (about {working / (1024 * 1024)} MiB); it waits for one of them to stop.");
                 }
@@ -273,6 +279,19 @@ internal sealed class VideoPlayer : IDisposable
         }
     }
 
+    /// <summary>Closes <paramref name="owner"/>'s sessions (<see cref="Get"/>).</summary>
+    public void Release(object owner)
+    {
+        lock (_lock)
+        {
+            foreach (var (key, session) in _sessions.Where(s => s.Key.Owner == owner).ToList())
+            {
+                _sessions.Remove(key);
+                session.Close();
+            }
+        }
+    }
+
     private void SweepLocked(long now)
     {
         var idle = (long)_options.IdleAfter.TotalMilliseconds;
@@ -283,10 +302,18 @@ internal sealed class VideoPlayer : IDisposable
         }
     }
 
-    private bool MakeRoomLocked(long now)
+    /// <summary>
+    /// Closes a session to make room for one of <paramref name="owner"/>'s, the one asked for longest ago that it may
+    /// close: live videos come first. A shared session (no owner) may close any session with an owner, or one no tick has
+    /// asked for in <see cref="VideoOptions.RoomAfter"/>; a session with an owner may close only another with an owner not
+    /// asked for in that time, never a shared one. False when there is none.
+    /// </summary>
+    private bool MakeRoomLocked(long now, object? owner)
     {
         var room = (long)_options.RoomAfter.TotalMilliseconds;
-        var oldest = _sessions.Where(s => now - s.Value.LastAsked > room).OrderBy(s => s.Value.LastAsked).FirstOrDefault();
+        var oldest = _sessions
+            .Where(s => s.Key.Owner is not null ? owner is null || now - s.Value.LastAsked > room : owner is null && now - s.Value.LastAsked > room)
+            .OrderBy(s => s.Value.LastAsked).FirstOrDefault();
         if (oldest.Value is null) return false;
         _sessions.Remove(oldest.Key);
         oldest.Value.Close();

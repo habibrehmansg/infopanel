@@ -241,7 +241,7 @@ public static class PreviewSocketHandler
     internal static readonly IReadOnlyDictionary<string, string[]> ClientMessageMembers = new Dictionary<string, string[]>
     {
         ["auth"] = ["type", "token"],
-        ["subscribe"] = ["type", "profileId", "scale", "maxFps", "encoding"],
+        ["subscribe"] = ["type", "profileId", "scale", "maxFps", "encoding", "sensors"],
         ["view"] = ["type", "scale", "maxFps"],
         ["keyframe"] = ["type"],
         ["unsubscribe"] = ["type"],
@@ -636,6 +636,18 @@ internal sealed class PreviewSession
             encoding = encodingElement.GetString()!;
         }
 
+        var sensors = WebPreviewSink.Live;
+        if (message.TryGetProperty("sensors", out var sensorsElement))
+        {
+            if (sensorsElement.ValueKind != JsonValueKind.String || sensorsElement.GetString() is not (WebPreviewSink.Live or WebPreviewSink.Simulated))
+            {
+                SendError("schema", "/sensors", "\"sensors\" must be \"live\" or \"simulated\".");
+                return;
+            }
+
+            sensors = sensorsElement.GetString()!;
+        }
+
         var found = _workspace.Find(profileId);
         if (found.Document is not { } doc)
         {
@@ -654,7 +666,10 @@ internal sealed class PreviewSession
         {
             var backends = _backends;
             sink = new WebPreviewSink(profileId, request, Wake, OnSinkClosed, encoding, backends == null ? null
-                : (wake, refresh, skipped) => new VideoStream(backends, request.MaxFps, wake, refresh, skipped, _logger, _time));
+                : (wake, refresh, skipped) => new VideoStream(backends, request.MaxFps, wake, refresh, skipped, _logger, _time))
+            {
+                Sensors = sensors,
+            };
             var created = sink;
             created.Refresh = () => _render.Refresh(created);
             _sink = sink;
@@ -672,7 +687,7 @@ internal sealed class PreviewSession
         {
             // Frames and doc events come from the one document found: deleted since (its id perhaps created again), the
             // subscription ends as a delete ends it.
-            if (_render.Attach(sink, doc))
+            if (_render.Attach(sink, doc, simulated: sensors == WebPreviewSink.Simulated))
                 return;
             error = new PreviewError("profile.deleted", "/profileId", $"Profile '{Truncate(profileId)}' was deleted.");
         }

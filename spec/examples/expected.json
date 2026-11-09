@@ -276,6 +276,7 @@
   "api/settingsStatusProblem/invalid/without-problem.json": {"code": "schema", "path": ""},
   "api/subscribeMessage/invalid/unknown-encoding.json": {"code": "schema", "path": "/encoding"},
   "api/subscribeMessage/invalid/unknown-member.json": {"code": "schema", "path": "/zoom"},
+  "api/subscribeMessage/invalid/unknown-sensors.json": {"code": "schema", "path": "/sensors"},
   "api/subscribeMessage/invalid/without-profile.json": {"code": "schema", "path": ""},
   "api/subscribeMessage/invalid/zero-fps.json": {"code": "schema", "path": "/maxFps"},
   "api/subscribeMessage/invalid/zero-scale.json": {"code": "schema", "path": "/scale"},

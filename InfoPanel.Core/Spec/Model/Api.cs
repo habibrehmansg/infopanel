@@ -1275,6 +1275,9 @@ public sealed record SubscribeMessage
 
     /// <summary><c>png</c> (when absent) or <c>h264</c>.</summary>
     public string? Encoding { get; init; }
+
+    /// <summary><c>live</c> (when absent) or <c>simulated</c>.</summary>
+    public string? Sensors { get; init; }
 }
 
 /// <summary>Changes the subscription's scale or frame rate. <see cref="Type"/> is always <c>view</c>.</summary>

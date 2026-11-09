@@ -127,6 +127,9 @@ internal sealed class ProviderHold(string provider, string reference, bool publi
 internal sealed class TickServices
 {
     public MediaSampleCache? Media;
+
+    /// <summary>Whose decode sessions videos play on (<see cref="SceneRuntimeOptions.VideoOwner"/>).</summary>
+    public object? VideoOwner;
     public IReadOnlyDictionary<string, IMediaProvider> Providers = new Dictionary<string, IMediaProvider>();
 
     /// <summary>A render loop's tick, whose asks may start a provider's fetch; false for a one-off render.</summary>
@@ -1125,7 +1128,7 @@ internal sealed class SceneEvaluator
         var key = (hash, seconds, playback, w, h);
         if (!_services.Videos.TryGetValue(key, out var lookup))
         {
-            lookup = media.GetVideo(hash, seconds, playback, w, h);
+            lookup = media.GetVideo(hash, seconds, playback, w, h, _services.VideoOwner);
             _services.Videos[key] = lookup;
             if (lookup.Sample is { } retained) _services.Retained.Add(retained);
         }

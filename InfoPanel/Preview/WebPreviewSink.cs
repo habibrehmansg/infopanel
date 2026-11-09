@@ -29,6 +29,9 @@ internal sealed class WebPreviewSink : IFrameSink
     public const string Png = "png";
     public const string H264 = "h264";
 
+    /// <summary>The <c>sensors</c> a subscription takes.</summary>
+    public const string Live = "live", Simulated = "simulated";
+
     private readonly Channel<(FrameHeader Header, ReadOnlyMemory<byte> Png)> _frames;
     private readonly Action _wake;
     private readonly Action<WebPreviewSink, FrameSinkClosedReason> _closed;
@@ -57,6 +60,9 @@ internal sealed class WebPreviewSink : IFrameSink
 
     /// <summary>The subscription's <c>encoding</c>: <c>png</c> or <c>h264</c>.</summary>
     public string Encoding { get; }
+
+    /// <summary>The subscription's <c>sensors</c>: <c>live</c>, or <c>simulated</c> (its frames come from the profile's simulated loop).</summary>
+    public string Sensors { get; init; } = Live;
 
     /// <summary>The video stream of an <c>h264</c> subscription (tests).</summary>
     internal VideoStream? Video => _video;

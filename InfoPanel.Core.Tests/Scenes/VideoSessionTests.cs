@@ -80,9 +80,9 @@ public sealed class VideoSessionTests : IDisposable
     }
 
     private static int Shown(MediaSampleCache cache, string hash, double seconds, MediaPlayback playback = MediaPlayback.Loop,
-        float? w = null, float? h = null)
+        float? w = null, float? h = null, object? owner = null)
     {
-        var lookup = cache.GetVideo(hash, seconds, playback, w, h);
+        var lookup = cache.GetVideo(hash, seconds, playback, w, h, owner);
         Assert.True(lookup.State == MediaState.Ready, $"{lookup.State}: {lookup.Problem}");
         try
         {
@@ -281,6 +281,74 @@ public sealed class VideoSessionTests : IDisposable
         Assert.Equal(3, Shown(cache, second, 0.35, w: 16, h: 16));
         Assert.Equal(1, cache.VideoSessions);
         Assert.Equal(VideoPlayer.WorkingSet(VideoProbe.Inspect(_store.Read(second)!, out _)!), cache.VideoWorkingBytes);
+    }
+
+    /// <summary>A lookup's state, its sample released.</summary>
+    private static MediaLookup Look(MediaSampleCache cache, string hash, double seconds, object? owner = null, float? w = null, float? h = null)
+    {
+        var lookup = cache.GetVideo(hash, seconds, MediaPlayback.Loop, w, h, owner);
+        lookup.Sample?.Release();
+        return lookup;
+    }
+
+    [Fact]
+    public void WithEverySessionASimulatedLoops_ALiveVideo_ClosesOneAtOnce_AndPlays()
+    {
+        var cache = Cache();
+        var ids = VideoFixtures.Clips.Select(c => _store.Add(c.File)).ToList();
+        var simulated = new object();
+        foreach (var id in ids.Take(8)) Assert.Equal(0, Shown(cache, id, 0, owner: simulated));
+        Assert.Equal(8, cache.VideoSessions);
+
+        // Every simulated session was asked for just now: the live video still takes one's place.
+        Assert.Equal(0, Shown(cache, ids[8], 0));
+        Assert.Equal(8, cache.VideoSessions);
+
+        // The simulated video closed waits for room; the live one plays on.
+        var again = ids.Take(8).Select(id => Look(cache, id, 0.1, simulated)).ToList();
+        Assert.Equal(7, again.Count(l => l.State == MediaState.Ready));
+        Assert.StartsWith("media.budget", again.Single(l => l.State == MediaState.Failed).Problem);
+        Assert.Equal(1, Shown(cache, ids[8], 0.1));
+        Assert.Equal(8, cache.VideoSessions);
+    }
+
+    [Fact]
+    public void WithEverySessionLive_ASimulatedVideo_IsOverBudget_AndClosesNone_EvenOfThoseUnaskedForASecond()
+    {
+        var cache = Cache();
+        var ids = VideoFixtures.Clips.Select(c => _store.Add(c.File)).ToList();
+        foreach (var id in ids.Take(8)) Assert.Equal(0, Shown(cache, id, 0));
+        _time.Advance(TimeSpan.FromMilliseconds(1500));
+
+        var refused = Look(cache, ids[8], 0, new object());
+        Assert.Equal(MediaState.Failed, refused.State);
+        Assert.StartsWith("media.budget", refused.Problem);
+        Assert.Equal(8, cache.VideoSessions);
+        var opens = _store.Opens;
+        foreach (var id in ids.Take(8)) Assert.Equal(1, Shown(cache, id, 0.1));
+        Assert.Equal(opens, _store.Opens); // every live session kept: none opened its video again
+    }
+
+    [Fact]
+    public void UnderTheDecodersMemory_ALiveVideo_ClosesASimulatedDecoderAtOnce_AndASimulatedOne_NeverALiveOne()
+    {
+        var cache = Cache();
+        var first = _store.Add(WithCodedSize(4096, 4096));
+        var second = _store.Add(WithCodedSize(4096, 4000));
+        var simulated = new object();
+
+        Assert.Equal(3, Shown(cache, first, 0.35, w: 16, h: 16, owner: simulated));
+        Assert.Equal(3, Shown(cache, second, 0.35, w: 16, h: 16));
+        Assert.Equal(1, cache.VideoSessions);
+        var live = VideoPlayer.WorkingSet(VideoProbe.Inspect(_store.Read(second)!, out _)!);
+        Assert.Equal(live, cache.VideoWorkingBytes);
+
+        // Unasked for a second and more, the live decoder still keeps its room from a simulated one.
+        _time.Advance(TimeSpan.FromMilliseconds(1500));
+        var refused = Look(cache, first, 0.35, simulated, 16, 16);
+        Assert.Equal(MediaState.Failed, refused.State);
+        Assert.StartsWith("media.budget", refused.Problem);
+        Assert.Equal((1, live), (cache.VideoSessions, cache.VideoWorkingBytes));
     }
 
     [Theory]

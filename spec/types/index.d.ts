@@ -1891,6 +1891,8 @@ export interface SubscribeMessage {
   maxFps?: FrameRequestFps;
   /** How the subscription's frames are encoded: `png` (the default), each frame a PNG; or `h264`, an H.264 video stream, with PNG frames that say why (`fallback`) where the engine can't send video (docs/api.md#video-frames). To change it, a client subscribes again. */
   encoding?: "png" | "h264";
+  /** Where the subscription's inputs read: `live` (the default), this computer's sensors, as every other output reads them; or `simulated`, made-up numbers that move, drawn only for `simulated` subscriptions, with text and tables read as `live` reads them (docs/api.md#simulated-sensors). An engine that doesn't take it answers `schema` at `/sensors`: a client subscribes again without it. To change it, a client subscribes again. */
+  sensors?: "live" | "simulated";
 }
 
 /** Changes the current subscription's scale or frame rate; a member left out keeps its value. Without a subscription it is answered with an error message. */

@@ -31,21 +31,10 @@ public sealed class SensorHub : ISensorStatusReader
 {
     public static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
 
-    private sealed class Simulated(uint seed)
-    {
-        public readonly Mulberry32 Rng = new(seed);
-        public double Base;
-        public double Now;
-        public double Min;
-        public double Max;
-        public double Avg;
-        public long Count;
-    }
-
     private readonly ISensorSource[] _sources;
     private readonly SensorHubOptions _options;
     private readonly Lock _lock = new();
-    private readonly Dictionary<SensorKey, Simulated> _simulated = [];
+    private readonly Dictionary<SensorKey, SensorWalk> _simulated = [];
 
     public SensorHub(IEnumerable<ISensorSource> sources, SensorHubOptions? options = null)
     {
@@ -116,11 +105,11 @@ public sealed class SensorHub : ISensorStatusReader
             {
                 if (_simulated.Count >= _options.MaxSimulatedKeys)
                     return false;
-                sim = CreateSimulated(key);
+                sim = SensorWalk.ForUnknownKey(key);
                 _simulated[key] = sim;
             }
 
-            reading = new SensorReading(sim.Min, sim.Max, sim.Avg, sim.Now, string.Empty);
+            reading = sim.Reading(string.Empty);
             return true;
         }
     }
@@ -219,7 +208,7 @@ public sealed class SensorHub : ISensorStatusReader
         lock (_lock)
         {
             foreach (var sim in _simulated.Values)
-                Step(sim);
+                sim.Step();
         }
     }
 
@@ -261,24 +250,5 @@ public sealed class SensorHub : ISensorStatusReader
         }
 
         return null;
-    }
-
-    private static Simulated CreateSimulated(SensorKey key)
-    {
-        var sim = new Simulated(StableHash.Fnv1a(key.ToString()));
-        sim.Base = 20 + sim.Rng.NextDouble() * 60;
-        sim.Now = sim.Min = sim.Max = sim.Avg = sim.Base;
-        sim.Count = 1;
-        return sim;
-    }
-
-    private static void Step(Simulated sim)
-    {
-        var next = sim.Now + (sim.Base - sim.Now) * 0.15 + (sim.Rng.NextDouble() * 2 - 1) * 4;
-        sim.Now = Math.Clamp(next, 0, 100);
-        sim.Count++;
-        sim.Min = Math.Min(sim.Min, sim.Now);
-        sim.Max = Math.Max(sim.Max, sim.Now);
-        sim.Avg += (sim.Now - sim.Avg) / sim.Count;
     }
 }

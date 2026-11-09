@@ -559,6 +559,46 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         Assert.False(Render.IsRendering(id));
     }
 
+    [Fact]
+    public async Task A_simulated_subscription_is_drawn_by_a_loop_of_its_own_that_ends_with_it()
+    {
+        var (id, _) = await CreateProfile("Simulated preview");
+        await using var client = await Connect();
+
+        // An unknown value is the subscribe's schema error, at the member: a client subscribes again without it.
+        await client.SendAsync(new { type = "subscribe", profileId = id, sensors = "other" }, Ct);
+        Assert.Equal(("schema", "/sensors"), CodeAndPath(await client.ReceiveTextAsync("error", Ct)));
+        Assert.False(Render.IsSimulating(id));
+
+        await client.SendAsync(new { type = "subscribe", profileId = id, scale = 0.5, sensors = "simulated" }, Ct);
+        await client.ReceiveTextAsync("doc", Ct);
+        Assert.Equal(id, (await client.ReceiveFrameAsync(Ct)).Header.ProfileId);
+        Assert.True(Render.IsSimulating(id));
+        Assert.False(Render.IsRendering(id));
+
+        // A live subscription beside it has the live loop, and ends it alone.
+        await using (var live = await Connect())
+        {
+            await live.SendAsync(new { type = "subscribe", profileId = id, sensors = "live" }, Ct);
+            await live.ReceiveFrameAsync(Ct);
+            Assert.True(Render.IsRendering(id));
+            Assert.True(Render.IsSimulating(id));
+        }
+        await WaitUntil(() => !Render.IsRendering(id));
+        Assert.True(Render.IsSimulating(id));
+
+        // Subscribing again without it ends the simulated loop; with it, starts one; unsubscribing ends that.
+        await client.SendAsync(new { type = "subscribe", profileId = id }, Ct);
+        await client.ReceiveFrameAsync(Ct);
+        await WaitUntil(() => !Render.IsSimulating(id));
+        Assert.True(Render.IsRendering(id));
+        await client.SendAsync(new { type = "subscribe", profileId = id, sensors = "simulated" }, Ct);
+        await client.ReceiveFrameAsync(Ct);
+        await WaitUntil(() => Render.IsSimulating(id) && !Render.IsRendering(id));
+        await client.SendAsync(new { type = "unsubscribe" }, Ct);
+        await WaitUntil(() => !Render.IsSimulating(id));
+    }
+
     private static async Task WaitUntil(Func<bool> condition)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);

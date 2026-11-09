@@ -21,6 +21,9 @@ public sealed record RenderServiceOptions(bool AutoTick = true);
 /// first <see cref="Attach"/> and disposed when the last sink detaches, each with its own <see cref="SceneRuntime"/>
 /// (made with <see cref="SceneOptions"/>), and thumbnails from a running loop's latest tick snapshot. Thread-safe.
 /// <list type="bullet">
+/// <item>A profile with simulated sinks (<see cref="Attach(IFrameSink, ProfileDocument, bool)"/>) has a second loop for
+/// them, with made-up numbers, listed apart: thumbnails, inspections and the latest snapshot only ever read the first.
+/// Deletes, unrenderable profiles and shutdown close its sinks as the first's.</item>
 /// <item>A deleted profile (seen on <see cref="Workspace.ProfilesChanged"/>) stops its loop, and each of its sinks
 /// gets <see cref="IFrameSink.OnClosed"/> with <see cref="FrameSinkClosedReason.ProfileDeleted"/>.</item>
 /// <item><see cref="DisposeAsync"/> (host shutdown) stops every loop and closes the sinks with
@@ -43,8 +46,12 @@ public sealed class RenderService : IAsyncDisposable
     private readonly RenderServiceOptions _options;
     private readonly Lock _lock = new();
     private readonly Dictionary<string, RenderLoop> _loops = new(StringComparer.Ordinal);
+
+    /// <summary>Simulated sinks' loops, apart from <see cref="_loops"/>, which every read of a profile's frames uses.</summary>
+    private readonly Dictionary<string, RenderLoop> _simulatedLoops = new(StringComparer.Ordinal);
+
     private readonly Dictionary<IFrameSink, (RenderLoop Loop, AttachedSink Entry)> _sinkLoops = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<string, Task> _stopping = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Id, bool Simulated), Task> _stopping = [];
     private long _frameId;
     private bool _disposed;
 
@@ -66,17 +73,46 @@ public sealed class RenderService : IAsyncDisposable
 
     internal TimeProvider Time => _time;
 
-    /// <summary>The number of profiles being rendered (each has at least one sink).</summary>
+    /// <summary>The number of profiles being rendered (each has at least one sink); simulated loops aren't counted.</summary>
     public int LoopCount
     {
         get { lock (_lock) return _loops.Count; }
     }
 
-    /// <summary>True while a loop renders the profile.</summary>
+    /// <summary>True while a loop renders the profile (not its simulated loop: <see cref="IsSimulating"/>).</summary>
     public bool IsRendering(string profileId)
     {
         lock (_lock) return _loops.ContainsKey(profileId);
     }
+
+    /// <summary>True while the profile's simulated loop renders it (it has a simulated sink).</summary>
+    public bool IsSimulating(string profileId)
+    {
+        lock (_lock) return _simulatedLoops.ContainsKey(profileId);
+    }
+
+    /// <summary>
+    /// What a simulated loop's runtime is made with: <paramref name="live"/>'s options, with inputs of its own that make up
+    /// the numbers over <paramref name="live"/>'s (<see cref="SimulatedSceneInputs"/>), and video decode sessions of its
+    /// own, so its clock never moves another loop's videos (closed when the loop ends).
+    /// </summary>
+    internal static SceneRuntimeOptions SimulatedOptions(SceneRuntimeOptions live, TimeProvider time) => new()
+    {
+        Inputs = new SimulatedSceneInputs(live.Inputs, time, live.Limits),
+        Media = live.Media,
+        VideoOwner = new object(),
+        Providers = live.Providers,
+        Limits = live.Limits,
+        Support = live.Support,
+        LocalZone = live.LocalZone,
+        Locale = live.Locale,
+        Logger = live.Logger,
+        LayoutsPerTick = live.LayoutsPerTick,
+        ItemBudgetMs = live.ItemBudgetMs,
+        DrawTime = live.DrawTime,
+        SuspendFor = live.SuspendFor,
+        ProcessBudget = live.ProcessBudget,
+    };
 
     internal long NextFrameId() => Interlocked.Increment(ref _frameId);
 
@@ -93,8 +129,14 @@ public sealed class RenderService : IAsyncDisposable
     /// document (it follows that instance's events too). False when the document is no longer its profile's (deleted,
     /// the id perhaps created again since): nothing is attached, and no other loop is touched.
     /// </summary>
+    /// <param name="simulated">
+    /// True: the sink gets the profile's simulated loop, a loop of its own drawn with made-up numbers
+    /// (<see cref="SimulatedSceneInputs"/>), shared by the profile's simulated sinks and stopped with the last. No other
+    /// read here (<see cref="RenderOnce"/>, <see cref="Inspect"/>, <see cref="LatestSnapshot"/>, <see cref="IsRendering"/>,
+    /// <see cref="LoopCount"/>) sees it.
+    /// </param>
     /// <exception cref="InvalidOperationException">The sink is already attached.</exception>
-    public bool Attach(IFrameSink sink, ProfileDocument document)
+    public bool Attach(IFrameSink sink, ProfileDocument document, bool simulated = false)
     {
         RenderLoop loop;
         Task? previous = null;
@@ -110,14 +152,16 @@ public sealed class RenderService : IAsyncDisposable
             if (!_workspace.IsOpen(document))
                 return false;
 
-            if (!_loops.TryGetValue(document.Id, out loop!) || loop.Document != document)
+            var loops = simulated ? _simulatedLoops : _loops;
+            if (!loops.TryGetValue(document.Id, out loop!) || loop.Document != document)
             {
                 // A listed loop of an earlier document of this id was deleted, its ProfilesChanged not handled yet.
                 if (loop != null)
                     retired = TakeSinks(loop);
-                previous = _stopping.GetValueOrDefault(document.Id) ?? Task.CompletedTask;
-                loop = new RenderLoop(this, document, new SceneRuntime(SceneOptions), _time);
-                _loops[document.Id] = loop;
+                previous = _stopping.GetValueOrDefault((document.Id, simulated)) ?? Task.CompletedTask;
+                var options = simulated ? SimulatedOptions(SceneOptions, _time) : SceneOptions;
+                loop = new RenderLoop(this, document, new SceneRuntime(options), _time);
+                loops[document.Id] = loop;
             }
 
             var entry = new AttachedSink(sink);
@@ -183,15 +227,19 @@ public sealed class RenderService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Runs one tick of the profile's loop now, on the calling thread, and returns the number of frames delivered
-    /// (0 when nothing is rendering the profile). For tests and hand-driven loops (<see cref="RenderServiceOptions.AutoTick"/> false).
+    /// Runs one tick of the profile's loop now, and of its simulated loop, on the calling thread, and returns the number
+    /// of frames delivered (0 when nothing is rendering the profile). For tests and hand-driven loops
+    /// (<see cref="RenderServiceOptions.AutoTick"/> false).
     /// </summary>
     public int Tick(string profileId)
     {
-        RenderLoop? loop;
+        RenderLoop? loop, simulated;
         lock (_lock)
+        {
             _loops.TryGetValue(profileId, out loop);
-        return loop?.RunTick() ?? 0;
+            _simulatedLoops.TryGetValue(profileId, out simulated);
+        }
+        return (loop?.RunTick() ?? 0) + (simulated?.RunTick() ?? 0);
     }
 
     /// <summary>
@@ -269,7 +317,7 @@ public sealed class RenderService : IAsyncDisposable
             _workspace.ProfilesChanged -= OnProfilesChanged;
             sinks = [.. _sinkLoops.Values.Select(p => p.Entry)];
             _sinkLoops.Clear();
-            foreach (var loop in _loops.Values.ToList())
+            foreach (var loop in _loops.Values.Concat(_simulatedLoops.Values).ToList())
                 StopLoop(loop);
             stopped = [.. _stopping.Values];
         }
@@ -288,13 +336,13 @@ public sealed class RenderService : IAsyncDisposable
 
     private void OnProfilesChanged(object? sender, ProfilesChangedEventArgs e) => CloseDeleted();
 
-    /// <summary>Stops the loops of profiles that are no longer open in the workspace and closes their sinks.</summary>
+    /// <summary>Stops the loops (simulated ones too) of profiles that are no longer open in the workspace and closes their sinks.</summary>
     private void CloseDeleted()
     {
         var closed = new List<AttachedSink>();
         lock (_lock)
         {
-            foreach (var loop in _loops.Values.ToList())
+            foreach (var loop in _loops.Values.Concat(_simulatedLoops.Values).ToList())
             {
                 if (_workspace.IsOpen(loop.Document))
                     continue;
@@ -317,13 +365,23 @@ public sealed class RenderService : IAsyncDisposable
         List<AttachedSink> closed;
         lock (_lock)
         {
-            if (!_loops.TryGetValue(loop.ProfileId, out var listed) || listed != loop)
+            if (MapOf(loop) == null)
                 return;
 
             closed = TakeSinks(loop);
         }
 
         Close(closed, FrameSinkClosedReason.Unrenderable);
+    }
+
+    /// <summary>Under the service lock: the map that lists <paramref name="loop"/>, live or simulated; null when neither does.</summary>
+    private Dictionary<string, RenderLoop>? MapOf(RenderLoop loop)
+    {
+        if (_loops.TryGetValue(loop.ProfileId, out var live) && live == loop)
+            return _loops;
+        if (_simulatedLoops.TryGetValue(loop.ProfileId, out var simulated) && simulated == loop)
+            return _simulatedLoops;
+        return null;
     }
 
     /// <summary>Under the service lock: detaches every sink of <paramref name="loop"/>, stops it and returns the sinks to close.</summary>
@@ -343,10 +401,11 @@ public sealed class RenderService : IAsyncDisposable
     /// <summary>Under the service lock.</summary>
     private void StopLoop(RenderLoop loop)
     {
-        if (_loops.TryGetValue(loop.ProfileId, out var listed) && listed == loop)
-            _loops.Remove(loop.ProfileId);
+        var map = MapOf(loop);
+        map?.Remove(loop.ProfileId);
 
-        var id = loop.ProfileId;
+        // A new loop of the profile waits for the one it follows, of its own kind, to stop.
+        var id = (loop.ProfileId, map == _simulatedLoops);
         var stopped = loop.Stop();
         _stopping[id] = stopped;
         stopped.ContinueWith(task =>
