@@ -38,14 +38,15 @@ public sealed class WorkspaceTests : IDisposable
         _temp.Dispose();
     }
 
-    private Workspace StartWorkspace(IReadOnlyList<string>? examples = null, DateTimeOffset? now = null, ILogger? logger = null)
+    private Workspace StartWorkspace(IReadOnlyList<string>? examples = null, DateTimeOffset? now = null, ILogger? logger = null, TimeProvider? time = null)
     {
-        var options = new WorkspaceOptions { Instance = Instance, HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes), Logger = logger };
+        var options = new WorkspaceOptions { Instance = Instance, HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes), Logger = logger, Time = time ?? TimeProvider.System };
         var workspace = Workspace.Start(Paths, examples is null ? options : new WorkspaceOptions
         {
             Instance = options.Instance,
             HistoryBudget = options.HistoryBudget,
             Logger = logger,
+            Time = options.Time,
             Examples = examples,
         }, now ?? Start);
         _open.Add(workspace);
@@ -69,7 +70,10 @@ public sealed class WorkspaceTests : IDisposable
     }
 
     /// <summary>A workspace whose store already exists (no example), holding the given stored documents.</summary>
-    private Workspace With(params (string Id, string Json)[] stored)
+    private Workspace With(params (string Id, string Json)[] stored) => With(TimeProvider.System, stored);
+
+    /// <summary>A workspace whose store already exists, as above, on <paramref name="time"/>.</summary>
+    private Workspace With(TimeProvider time, params (string Id, string Json)[] stored)
     {
         Directory.CreateDirectory(Paths.ProfilesDirectory);
         File.WriteAllText(Paths.ProfileOrderFile, """{"order":[]}""");
@@ -78,7 +82,7 @@ public sealed class WorkspaceTests : IDisposable
             Directory.CreateDirectory(Paths.ProfileFolder(id));
             File.WriteAllText(Paths.DocumentFile(id), json);
         }
-        return StartWorkspace();
+        return StartWorkspace(time: time);
     }
 
     private static string DocJson(string id, params JsonObject[] items)
@@ -640,6 +644,141 @@ public sealed class WorkspaceTests : IDisposable
         Assert.False(workspace.DeleteWithItsTag(A));
         Assert.False(workspace.Find(A).Found);
         Assert.Equal([1L], versions);
+    }
+
+    [Fact]
+    public void EveryChangeToAListedRevisionOrUnsavedState_RaisesEntriesChanged_WithTheNextVersion()
+    {
+        var workspace = With((A, DocJson(A, Scene("a", 10, 10))));
+        Assert.Equal(201, workspace.Create(CreateBody(B, "Created")).Status);
+        var stored = workspace.Open(A)!;
+        var created = workspace.Open(B)!;
+        var entries = new List<long>();
+        workspace.EntriesChanged += (_, e) => entries.Add(e.Version);
+        var before = workspace.Version;
+
+        stored.Ok(Commit(stored, "move", null, Place("a", 40, 10)));
+        stored.UndoOwn();
+        stored.RedoOwn();
+        stored.Save();
+        Assert.False(stored.Dirty);
+        stored.Ok(Commit(stored, "move-again", null, Place("a", 50, 10)));
+        stored.RevertOwn();
+        created.Ok(Commit(created, "rename", null, Profile(new JsonObject { ["name"] = "Renamed" })));
+
+        // Each of the seven, in order, on the version the list's own changes count.
+        Assert.Equal(Enumerable.Range(1, 7).Select(i => before + i), entries);
+        Assert.Equal(before + 7, workspace.Version);
+
+        // A commit that changes nothing (the place saved, then reverted to) makes no revision and raises nothing.
+        var rev = stored.Rev;
+        stored.Ok(Commit(stored, "same-place", null, Place("a", 40, 10)));
+        Assert.Equal(rev, stored.Rev);
+        Assert.Equal(before + 7, workspace.Version);
+        Assert.Equal(7, entries.Count);
+    }
+
+    [Fact]
+    public void AChangeToAnOpenProfile_RaisesNoProfilesChanged_WhichStaysForCreateAndDelete()
+    {
+        var workspace = With((A, DocJson(A, Scene("a", 10, 10))));
+        var doc = workspace.Open(A)!;
+        var listed = new List<long>();
+        var entries = new List<long>();
+        workspace.ProfilesChanged += (_, e) => listed.Add(e.Version);
+        workspace.EntriesChanged += (_, e) => entries.Add(e.Version);
+
+        doc.Ok(Commit(doc, "move", null, Place("a", 40, 10)));
+        doc.Save();
+        Assert.Empty(listed);
+        Assert.Equal([1L, 2L], entries);
+
+        Assert.Equal(201, workspace.Create(CreateBody(B, "B")).Status);
+        Assert.True(workspace.DeleteWithItsTag(B));
+        Assert.Equal([3L, 4L], listed);
+        Assert.Equal([1L, 2L], entries);
+    }
+
+    /// <summary>
+    /// A change whose document leaves the workspace (deleted, or the workspace stopped) while the change is being told
+    /// raises no <see cref="Workspace.EntriesChanged"/> after it left, and leaves the version as it was: the workspace's
+    /// handler, which the document's raise had already taken, no longer counts. The undo is paused in the handler told
+    /// before the workspace's (the recovery scheduler's, at its read of the clock) while the document leaves. A change
+    /// to the held document afterwards is refused, and raises nothing either.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AChangeToldAfterItsDocumentLeft_RaisesNoEntriesChanged_AndLeavesTheVersion(bool workspaceDisposed)
+    {
+        using var time = new PausingTime();
+        var workspace = With(time, (A, DocJson(A, Scene("a", 10, 10))));
+        var doc = workspace.Open(A)!;
+        doc.Ok(Commit(doc, "move", null, Place("a", 40, 10)));
+        var entries = new List<long>();
+        workspace.EntriesChanged += (_, e) =>
+        {
+            lock (entries)
+                entries.Add(e.Version);
+        };
+
+        var undo = Task.Run(() =>
+        {
+            time.PauseThisThreadAtItsNextRead();
+            doc.UndoOwn();
+        }, TestContext.Current.CancellationToken);
+        long version;
+        try
+        {
+            Assert.True(time.Reached.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "The undo was never told");
+            if (workspaceDisposed)
+                workspace.Dispose();
+            else
+                Assert.True(workspace.DeleteWithItsTag(A));
+            version = workspace.Version;
+        }
+        finally
+        {
+            time.Resume.Set();
+        }
+        await undo;
+
+        Assert.Throws<ObjectDisposedException>(() => doc.Commit(Commit(doc, "after", null, Place("a", 50, 10))));
+        lock (entries)
+            Assert.Empty(entries);
+        Assert.Equal(version, workspace.Version);
+    }
+
+    /// <summary>
+    /// The system's clock, except that the thread that armed it stops at its next read of the timestamp (once), until
+    /// <see cref="Resume"/> is set.
+    /// </summary>
+    private sealed class PausingTime : TimeProvider, IDisposable
+    {
+        private int _armed = -1;
+
+        public ManualResetEventSlim Reached { get; } = new();
+
+        public ManualResetEventSlim Resume { get; } = new();
+
+        public void PauseThisThreadAtItsNextRead() => Volatile.Write(ref _armed, Environment.CurrentManagedThreadId);
+
+        public override long GetTimestamp()
+        {
+            var thread = Environment.CurrentManagedThreadId;
+            if (Interlocked.CompareExchange(ref _armed, -1, thread) == thread)
+            {
+                Reached.Set();
+                Resume.Wait(TimeSpan.FromSeconds(30));
+            }
+            return base.GetTimestamp();
+        }
+
+        public void Dispose()
+        {
+            Reached.Dispose();
+            Resume.Dispose();
+        }
     }
 
     [Fact]

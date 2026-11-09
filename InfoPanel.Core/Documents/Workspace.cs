@@ -57,7 +57,10 @@ public sealed class WorkspaceOptions
     internal IStorageFaults? StorageFaults { get; init; }
 }
 
-/// <summary>Raised when profiles are created or deleted. <see cref="Version"/> goes up by one each time.</summary>
+/// <summary>
+/// Raised when the profile list changes (<see cref="Workspace.ProfilesChanged"/>, <see cref="Workspace.EntriesChanged"/>).
+/// <see cref="Version"/> goes up by one each time, over both.
+/// </summary>
 public sealed class ProfilesChangedEventArgs(long version) : EventArgs
 {
     public long Version { get; } = version;
@@ -131,7 +134,9 @@ public sealed record StoredBlob(BlobInfo Info, bool Created);
 /// when the document next opens, when it was made against the saved document as it is (<see cref="ProfileDocument.Restore"/>).
 /// A file that can't be used is logged and left.</item>
 /// <item>Lock order: the workspace, then a document's save lock, then the stores'; <see cref="ProfilesChanged"/> and
-/// <see cref="BlobStored"/> are raised outside the lock.</item>
+/// <see cref="BlobStored"/> are raised outside the lock. <see cref="EntriesChanged"/> is raised where its document
+/// raises <see cref="ProfileDocument.Changed"/>, outside the document's locks but under any lock its caller holds (the
+/// workspace's included), so its handlers only note the version and wake.</item>
 /// </list>
 /// </summary>
 public sealed class Workspace : IDisposable
@@ -183,11 +188,26 @@ public sealed class Workspace : IDisposable
 
     public EngineSupport Support => _options.Support;
 
-    /// <summary>How many times the profile list changed (<see cref="ProfilesChangedEventArgs.Version"/> of the latest).</summary>
+    /// <summary>
+    /// How many times the profile list changed (<see cref="ProfilesChangedEventArgs.Version"/> of the latest
+    /// <see cref="ProfilesChanged"/> or <see cref="EntriesChanged"/>).
+    /// </summary>
     public long Version => Interlocked.Read(ref _version);
 
-    /// <summary>Raised after a profile is created, duplicated or deleted.</summary>
+    /// <summary>
+    /// Raised after a profile is created, duplicated or deleted. The engine's own followers of the list (render loops,
+    /// desktop windows, panels) listen to this one only.
+    /// </summary>
     public event EventHandler<ProfilesChangedEventArgs>? ProfilesChanged;
+
+    /// <summary>
+    /// Raised after a listed profile's revision or unsaved state changed: every commit that made a revision, undo, redo,
+    /// revert or save of an open document, whoever made it (<see cref="ProfileDocument.Changed"/>, but not a change of its
+    /// history alone, which changes nothing listed). Its version is the next <see cref="Version"/>, shared with
+    /// <see cref="ProfilesChanged"/>, which isn't raised for these. A document opened with unsaved changes restored raises
+    /// nothing for them: a read of the list after it shows them.
+    /// </summary>
+    public event EventHandler<ProfilesChangedEventArgs>? EntriesChanged;
 
     /// <summary>
     /// Raised with a blob's id after <see cref="PutBlob"/> stored it (new or again), so a failed lookup of it can be
@@ -518,9 +538,10 @@ public sealed class Workspace : IDisposable
                             id, load.Check.Items.Count, load.Check.Items[0].Id, load.Check.Items[0].Problem);
                     var doc = OpenDocument(id, generation, bytes);
                     Recover(id, doc, bytes);
+                    var watch = new DocumentWatch(this, doc);
                     if (doc.RemovalPending)
                         _recovery.Note(doc);
-                    return new Slot(doc, null);
+                    return new Slot(doc, null, watch);
                 }
 
                 var first = load.Check.Errors.FirstOrDefault() ?? new SpecError("", "schema", "The document can't be opened.");
@@ -806,7 +827,7 @@ public sealed class Workspace : IDisposable
 
             StoreChanged?.Invoke(id);
             doc = OpenDocument(id, generation, bytes);
-            _slots[id] = new Slot(doc, null);
+            _slots[id] = new Slot(doc, null, new DocumentWatch(this, doc));
         }
 
         Logger.Information("Created profile {ProfileId} ({ProfileName}, {Items} top-level items)", id, generation.Document.Profile.Name, generation.Document.Items.Count);
@@ -856,6 +877,7 @@ public sealed class Workspace : IDisposable
                         StoreChanged?.Invoke(id);
                         if (_slots.Remove(id, out var slot) && slot.Document is { } removed)
                         {
+                            slot.Watch?.Detach();
                             _recovery.Forget(removed);
                             removed.Dispose();
                         }
@@ -945,6 +967,15 @@ public sealed class Workspace : IDisposable
         ProfilesChanged?.Invoke(this, new ProfilesChangedEventArgs(version));
     }
 
+    /// <summary>An open document's change: <see cref="EntriesChanged"/>, unless only its history changed (nothing listed did).</summary>
+    private void OnDocumentChanged(DocumentChangedEventArgs e)
+    {
+        if (e.Change == DocumentChange.History)
+            return;
+        var version = Interlocked.Increment(ref _version);
+        EntriesChanged?.Invoke(this, new ProfilesChangedEventArgs(version));
+    }
+
     /// <summary>
     /// The engine is stopping: stops the recovery scheduler (waiting for a checkpoint under way), keeps each dirty
     /// document's unsaved changes not yet kept at its current revision, then disposes every open document. A document
@@ -966,6 +997,8 @@ public sealed class Workspace : IDisposable
                 return;
             _disposed = true;
             open = [.. _slots.Values.Select(s => s.Document).OfType<ProfileDocument>()];
+            foreach (var slot in _slots.Values)
+                slot.Watch?.Detach();
             _slots.Clear();
         }
 
@@ -1078,7 +1111,41 @@ public sealed class Workspace : IDisposable
         Exists = new ExistsProblem { Title = "Profile exists", Detail = $"A profile with the id '{id}' already exists.", Status = 409, Code = "exists" },
     };
 
-    private sealed record Slot(ProfileDocument? Document, ProfileEntry? Entry);
+    /// <summary>A profile as the workspace holds it: its open document and the workspace's watch on it, or its status entry.</summary>
+    private sealed record Slot(ProfileDocument? Document, ProfileEntry? Entry, DocumentWatch? Watch = null);
+
+    /// <summary>
+    /// The workspace's handler on one open document's <see cref="ProfileDocument.Changed"/>, from its open until it leaves
+    /// the workspace (deleted, or the workspace disposed: <see cref="Detach"/>, under the workspace lock). Detached, it is
+    /// off the event and no longer live: a call the document's raise took before it left (the raise runs outside the
+    /// document's locks) does nothing when it runs after, so the version stays and no <see cref="EntriesChanged"/> is raised
+    /// for a profile that is gone. Its flag is read without the workspace lock, so the lock order stays as it is.
+    /// </summary>
+    private sealed class DocumentWatch
+    {
+        private readonly Workspace _workspace;
+        private readonly ProfileDocument _document;
+        private volatile bool _live = true;
+
+        public DocumentWatch(Workspace workspace, ProfileDocument document)
+        {
+            _workspace = workspace;
+            _document = document;
+            document.Changed += OnChanged;
+        }
+
+        public void Detach()
+        {
+            _live = false;
+            _document.Changed -= OnChanged;
+        }
+
+        private void OnChanged(object? sender, DocumentChangedEventArgs e)
+        {
+            if (_live)
+                _workspace.OnDocumentChanged(e);
+        }
+    }
 
     /// <summary>
     /// Saves a document's generations in its profile folder, and keeps its unsaved changes beside them

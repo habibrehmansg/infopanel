@@ -338,6 +338,73 @@ public class PreviewSocketTests(EngineFactory factory) : IClassFixture<EngineFac
         Assert.True(message.GetProperty("version").GetInt64() > before);
     }
 
+    [Fact]
+    public async Task ACommitToAProfile_SendsAProfilesEvent_ToASocketSubscribedToNothing()
+    {
+        var (id, shape) = await CreateProfile("Commit, listed");
+        await using var client = await Connect();
+        using var api = factory.CreateApiClient();
+        var before = Workspace.Version;
+
+        using (var commit = await TestDocs.CommitAsync(api, id, Ct, TestDocs.Place(shape, 40, 10)))
+            Assert.Equal(HttpStatusCode.OK, commit.StatusCode);
+        Assert.Equal(before + 1, Workspace.Version);
+
+        var message = await client.ReceiveTextAsync("profiles", Ct, m => m.GetProperty("version").GetInt64() > before);
+        Assert.Equal(before + 1, message.GetProperty("version").GetInt64());
+        var entry = await ListedAsync(api, id);
+        Assert.Equal((2L, true), (entry.GetProperty("rev").GetInt64(), entry.GetProperty("dirty").GetBoolean()));
+    }
+
+    [Fact]
+    public async Task ASaveThatOnlyClearsUnsavedChanges_SendsAProfilesEvent()
+    {
+        var (id, shape) = await CreateProfile("Save, listed");
+        using var api = factory.CreateApiClient();
+        using (var commit = await TestDocs.CommitAsync(api, id, Ct, TestDocs.Place(shape, 40, 10)))
+            Assert.Equal(HttpStatusCode.OK, commit.StatusCode);
+        await using var client = await Connect();
+        var before = Workspace.Version;
+
+        using (var save = await api.PostAsync($"/api/profiles/{id}/save", null, Ct))
+            Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+        Assert.Equal(before + 1, Workspace.Version);
+
+        var message = await client.ReceiveTextAsync("profiles", Ct, m => m.GetProperty("version").GetInt64() > before);
+        Assert.Equal(before + 1, message.GetProperty("version").GetInt64());
+        var entry = await ListedAsync(api, id);
+        Assert.Equal((2L, false), (entry.GetProperty("rev").GetInt64(), entry.GetProperty("dirty").GetBoolean()));
+    }
+
+    [Fact]
+    public async Task ACommitThatChangesNothing_SendsNoProfilesEvent()
+    {
+        var (id, shape) = await CreateProfile("No change, listed");
+        await using var client = await Connect();
+        using var api = factory.CreateApiClient();
+        var before = Workspace.Version;
+
+        // The shape is already at 10, 10: no revision.
+        using (var same = await TestDocs.CommitAsync(api, id, Ct, TestDocs.Place(shape, 10, 10)))
+        {
+            Assert.Equal(HttpStatusCode.OK, same.StatusCode);
+            Assert.Equal(1, (await same.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("rev").GetInt64());
+        }
+        Assert.Equal(before, Workspace.Version);
+
+        // The first profiles message the socket gets is the next change's: none was sent for the commit.
+        using (var created = await api.PostAsJsonAsync("/api/profiles", new { id = TestDocs.NewId(), name = "After no change", width = 100, height = 100 }, Ct))
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var message = await client.ReceiveTextAsync("profiles", Ct);
+        Assert.Equal(before + 1, message.GetProperty("version").GetInt64());
+    }
+
+    private Workspace Workspace => factory.Services.GetRequiredService<Workspace>();
+
+    /// <summary>The profile's entry in <c>GET /api/profiles</c>.</summary>
+    private static async Task<JsonElement> ListedAsync(HttpClient api, string id) =>
+        (await api.GetFromJsonAsync<JsonElement>("/api/profiles", Ct)).EnumerateArray().Single(p => p.GetProperty("id").GetString() == id);
+
     [Theory]
     [InlineData("""{"type":"subscribe","profileId":"6f1b8a3e-0000-4000-8000-000000000000"}""", "No profile", "profile.missing", "/profileId")]
     [InlineData("""{"type":"subscribe","profileId":"nope"}""", "No profile 'nope'", "profile.missing", "/profileId")]

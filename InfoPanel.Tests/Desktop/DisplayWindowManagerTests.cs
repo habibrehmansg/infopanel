@@ -946,6 +946,32 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AUserMove_RaisesTheWorkspacesEntriesChangedOnce_AndAPlainClick_None()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var entries = new ConcurrentQueue<long>();
+        Workspace.EntriesChanged += (_, e) => entries.Enqueue(e.Version);
+        var before = Workspace.Version;
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.EndUserMove();
+        });
+        await _platform.IdleAsync();
+        Assert.Equal(1, doc.Rev);
+        Assert.Empty(entries);
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(120, 64, 960, 240)));
+        await _platform.IdleAsync();
+        Assert.Equal(2, doc.Rev);
+        Assert.Equal([before + 1], entries);
+        Assert.Equal(before + 1, Workspace.Version);
+        AssertNoErrors();
+    }
+
+    [Fact]
     public async Task ADragOntoADisplayOfAnotherScale_StaysWhereTheUserHasIt_UntilTheDrop()
     {
         var doc = await Start();

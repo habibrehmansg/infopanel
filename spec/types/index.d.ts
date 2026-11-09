@@ -1939,7 +1939,7 @@ export interface HelloMessage {
   instance: InstanceId;
 }
 
-/** The profile list changed: a profile was created, duplicated or deleted, by any client. The client reads GET /api/profiles. The engine keeps only the newest to send. */
+/** The profile list changed: a profile was created, duplicated or deleted, or a listed profile's revision or unsaved state changed (a commit, undo, redo, revert or save, by any client or by the engine itself). The client reads GET /api/profiles. The engine keeps only the newest to send. */
 export interface ProfilesMessage {
   type: "profiles";
   /**

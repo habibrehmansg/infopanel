@@ -46,9 +46,10 @@ public sealed record PreviewSocketOptions(TimeSpan? AuthTimeout = null)
 /// <item>Server → client (the spec's <c>serverMessage</c>, written from its models): <c>hello</c> on connect
 /// (<c>protocol</c> 2 and the run's <c>instance</c>); <c>doc</c> (<c>docEvent</c>, with the document's tag)
 /// on subscribe and after every change of the subscribed document's revision or state, whichever client made it;
-/// <c>profiles</c> on every <see cref="Workspace.ProfilesChanged"/>; <c>settings</c> after every change to the stored
-/// engine settings (<see cref="SettingsStore.Changed"/>), on a connection authenticated with the session token only,
-/// since only it reads them; <c>devices</c> after every change to the USB panel devices' list
+/// <c>profiles</c> on every <see cref="Workspace.ProfilesChanged"/> and <see cref="Workspace.EntriesChanged"/> (a profile
+/// created, duplicated or deleted, or a listed one's revision or unsaved state changed); <c>settings</c> after every
+/// change to the stored engine settings (<see cref="SettingsStore.Changed"/>), on a connection authenticated with the
+/// session token only, since only it reads them; <c>devices</c> after every change to the USB panel devices' list
 /// (<see cref="InfoPanel.Panels.PanelManager.Changed"/>), on every connection, and after <c>hello</c> when the list has
 /// changed this run; <c>error</c> for a bad message, an unknown profile,
 /// one that can't be opened or a deleted one, each with its code and its path into the message it answers
@@ -446,6 +447,7 @@ internal sealed class PreviewSession
         if (_closing)
             abort.CancelAfter(CloseTimeout);
         _workspace.ProfilesChanged += OnProfilesChanged;
+        _workspace.EntriesChanged += OnProfilesChanged;
         if (_settings != null)
             _settings.Changed += OnSettingsChanged;
         if (_panels != null)
@@ -472,6 +474,7 @@ internal sealed class PreviewSession
         finally
         {
             _workspace.ProfilesChanged -= OnProfilesChanged;
+            _workspace.EntriesChanged -= OnProfilesChanged;
             if (_settings != null)
                 _settings.Changed -= OnSettingsChanged;
             if (_panels != null)
