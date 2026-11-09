@@ -22,7 +22,7 @@ public sealed record RenderServiceOptions(bool AutoTick = true);
 /// (made with <see cref="SceneOptions"/>), and thumbnails from a running loop's latest tick snapshot. Thread-safe.
 /// <list type="bullet">
 /// <item>A profile with simulated sinks (<see cref="Attach(IFrameSink, ProfileDocument, bool)"/>) has a second loop for
-/// them, with made-up numbers, listed apart: thumbnails, inspections and the latest snapshot only ever read the first.
+/// them, with made-up values, listed apart: thumbnails, inspections and the latest snapshot only ever read the first.
 /// Deletes, unrenderable profiles and shutdown close its sinks as the first's.</item>
 /// <item>A deleted profile (seen on <see cref="Workspace.ProfilesChanged"/>) stops its loop, and each of its sinks
 /// gets <see cref="IFrameSink.OnClosed"/> with <see cref="FrameSinkClosedReason.ProfileDeleted"/>.</item>
@@ -93,7 +93,7 @@ public sealed class RenderService : IAsyncDisposable
 
     /// <summary>
     /// What a simulated loop's runtime is made with: <paramref name="live"/>'s options, with inputs of its own that make up
-    /// the numbers over <paramref name="live"/>'s (<see cref="SimulatedSceneInputs"/>), and video decode sessions of its
+    /// every value over <paramref name="live"/>'s (<see cref="SimulatedSceneInputs"/>), and video decode sessions of its
     /// own, so its clock never moves another loop's videos (closed when the loop ends).
     /// </summary>
     internal static SceneRuntimeOptions SimulatedOptions(SceneRuntimeOptions live, TimeProvider time) => new()
@@ -130,7 +130,7 @@ public sealed class RenderService : IAsyncDisposable
     /// the id perhaps created again since): nothing is attached, and no other loop is touched.
     /// </summary>
     /// <param name="simulated">
-    /// True: the sink gets the profile's simulated loop, a loop of its own drawn with made-up numbers
+    /// True: the sink gets the profile's simulated loop, a loop of its own drawn with made-up values
     /// (<see cref="SimulatedSceneInputs"/>), shared by the profile's simulated sinks and stopped with the last. No other
     /// read here (<see cref="RenderOnce"/>, <see cref="Inspect"/>, <see cref="LatestSnapshot"/>, <see cref="IsRendering"/>,
     /// <see cref="LoopCount"/>) sees it.

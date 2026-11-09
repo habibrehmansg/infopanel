@@ -10,11 +10,22 @@ namespace InfoPanel.Scenes;
 /// <summary>
 /// A simulated subscription's inputs (spec/docs/api.md, "Simulated sensors"): every <c>number</c> input bound to a
 /// well-formed key reads <see cref="SceneInputStatus.Live"/>, with a made-up value that walks (<see cref="SensorWalk"/>),
-/// a step a second from the first read; text, tables and keys that aren't well formed read as <paramref name="live"/>
-/// reads them.
+/// a step a second from the first read; every text and table <paramref name="live"/> has a reading for reads
+/// <see cref="SceneInputStatus.Live"/> too, made up by <see cref="SimulatedText"/> from the key's source, the sensor's
+/// display name in <paramref name="catalogue"/> (by default the hub's, under <see cref="SensorSceneInputs"/>) and the
+/// value's shape. The engine's clock (<see cref="SimulatedText.IsRealTime"/>), keys that aren't well formed and text or
+/// tables <paramref name="live"/> has no reading for read as <paramref name="live"/> reads them.
 /// <list type="bullet">
+/// <item>Text: each key keeps what it first showed while it is read; an address, name or sample is the next of its
+/// kind, a source's texts of one adapter, drive or audio device the same one. System Info's uptime starts from
+/// <see cref="SimulatedText.UptimeStart"/> at the first read and moves as time does. At most a text key for each binding
+/// a document within <paramref name="limits"/> holds is kept: a new one past that forgets the key read longest ago, and
+/// only its sample, which the next new key of its kind may take.</item>
+/// <item>Tables: the columns and rows of <paramref name="live"/>'s (<see cref="SimulatedText.Table"/>), their numbers
+/// made up again each step.</item>
 /// <item>Where it starts: a key <paramref name="live"/> reads a number for walks <see cref="SensorWalk.Around"/> that
-/// first reading, in its unit; one it doesn't, as mock mode's walk for the key (<see cref="SensorWalk.ForUnknownKey"/>),
+/// first reading, shown in its unit when that is one of <see cref="SimulatedText.Units"/> (in the list's spelling,
+/// <see cref="SimulatedText.Unit"/>) and in none otherwise; one it doesn't, as mock mode's walk for the key (<see cref="SensorWalk.ForUnknownKey"/>),
 /// which starts from 20 to 80, kept within <see cref="NoReadingLow"/> to <see cref="NoReadingHigh"/>. Each starts when
 /// it is first read and keeps its start.</item>
 /// <item>History: <see cref="Backfill"/> values already walked when it starts, the start the oldest, then one a step,
@@ -28,7 +39,7 @@ namespace InfoPanel.Scenes;
 /// </list>
 /// One per simulated render loop; thread-safe.
 /// </summary>
-internal sealed class SimulatedSceneInputs(ISceneInputSource live, TimeProvider time, SpecLimits? limits = null) : ISceneInputSource
+internal sealed class SimulatedSceneInputs(ISceneInputSource live, TimeProvider time, SpecLimits? limits = null, Func<IReadOnlyList<SensorInfo>>? catalogue = null) : ISceneInputSource
 {
     /// <summary>The values a number's history holds when it starts.</summary>
     public const int Backfill = 120;
@@ -125,9 +136,185 @@ internal sealed class SimulatedSceneInputs(ISceneInputSource live, TimeProvider 
     private int _histories;
     private long? _origin;
 
+    /// <summary>
+    /// A text key's place: its kind, its turn among its kind's (shared by its scope's keys, <see cref="SimulatedText.Scope"/>),
+    /// its label, and whether it is placed for good (the catalogue listed it, or there is no catalogue).
+    /// </summary>
+    private sealed class Placed(string key)
+    {
+        public readonly string Key = key;
+        public SimulatedText.Kind Kind;
+        public (SimulatedText.Kind, string) Scope;
+        public int Turn;
+        public string Label = "";
+        public bool ForGood;
+    }
+
+    /// <summary>The text keys placed, the one read longest ago first: at most <see cref="_maxKeys"/>.</summary>
+    private readonly Dictionary<string, LinkedListNode<Placed>> _texts = new(StringComparer.Ordinal);
+    private readonly LinkedList<Placed> _textsByRead = new();
+
+    /// <summary>Each scope's turn and the keys holding it: an entry for each scope a placed key holds, so no more than them.</summary>
+    private readonly Dictionary<(SimulatedText.Kind, string), (int Turn, int Keys)> _turns = [];
+
+    /// <summary>Each kind's turns: the next never given, and those given back, the lowest taken first.</summary>
+    private readonly Dictionary<SimulatedText.Kind, (int Next, SortedSet<int> Free)> _kindTurns = [];
+
+    private readonly Func<IReadOnlyList<SensorInfo>>? _catalogue = catalogue ?? (live as SensorSceneInputs)?.Catalogue;
+    private readonly Lock _catalogueLock = new();
+    private Dictionary<SensorKey, SensorInfo>? _infos;
+    private long _infosAt;
+
+    /// <summary>A text or table: made up from <paramref name="live"/>'s reading; one without a reading as it reads.</summary>
+    private SceneReading MadeUp(string key, string inputType)
+    {
+        var reading = live.Read(key, inputType);
+        if (!reading.Available)
+            return reading;
+        if (!SensorKey.TryParse(key, out var parsed))
+            return SceneReading.Unavailable;
+
+        if (inputType == "table")
+        {
+            var table = SimulatedText.Table(parsed, reading.Table, (long)(Elapsed() / StepInterval));
+            return new SceneReading { Status = SceneInputStatus.Live, Table = table, Text = SimulatedText.Summary(table) };
+        }
+        if (SimulatedText.IsRealTime(parsed))
+            return reading;
+
+        (SimulatedText.Kind Kind, int Turn, string Label) made;
+        bool forGood;
+        lock (_lock)
+            forGood = Touch(key, out made);
+        if (!forGood)
+        {
+            var info = Describe(parsed);
+            var name = info?.Name ?? "";
+            var kind = SimulatedText.Classify(parsed, name, reading.Text);
+            lock (_lock)
+                made = Place(key, parsed, kind, SimulatedText.Label(parsed, name), info is not null || _catalogue is null);
+        }
+
+        var text = made.Kind == SimulatedText.Kind.Uptime
+            ? SimulatedText.Uptime(parsed, made.Label, Elapsed())
+            : SimulatedText.Value(made.Kind, made.Turn, made.Label, reading.Text);
+        return new SceneReading { Status = SceneInputStatus.Live, Text = text };
+    }
+
+    /// <summary>Under the lock: the key's place, now the one read last; false when it has none for good yet.</summary>
+    private bool Touch(string key, out (SimulatedText.Kind, int, string) made)
+    {
+        made = default;
+        if (!_texts.TryGetValue(key, out var node))
+            return false;
+        _textsByRead.Remove(node);
+        _textsByRead.AddLast(node);
+        var p = node.Value;
+        made = (p.Kind, p.Turn, p.Label);
+        return p.ForGood;
+    }
+
+    /// <summary>
+    /// Under the lock: places the key, or places it again (a key the catalogue didn't list yet), as the one read last. A
+    /// new key past <see cref="_maxKeys"/> forgets the key read longest ago, and gives back its turn when no other key of
+    /// its scope holds it.
+    /// </summary>
+    private (SimulatedText.Kind, int, string) Place(string key, SensorKey parsed, SimulatedText.Kind kind, string label, bool forGood)
+    {
+        if (_texts.TryGetValue(key, out var node))
+        {
+            if (node.Value.ForGood)
+                return (node.Value.Kind, node.Value.Turn, node.Value.Label);
+            Remove(node);
+        }
+        else if (_texts.Count >= _maxKeys)
+            Remove(_textsByRead.First!);
+
+        var placed = new Placed(key) { Kind = kind, Scope = (kind, SimulatedText.Scope(parsed, kind) ?? key), Label = label, ForGood = forGood };
+        if (_turns.TryGetValue(placed.Scope, out var held))
+        {
+            placed.Turn = held.Turn;
+            _turns[placed.Scope] = (held.Turn, held.Keys + 1);
+        }
+        else
+        {
+            var (next, free) = _kindTurns.TryGetValue(kind, out var turns) ? turns : (0, new SortedSet<int>());
+            if (free.Count > 0)
+            {
+                placed.Turn = free.Min;
+                free.Remove(placed.Turn);
+            }
+            else
+                placed.Turn = next++;
+            _kindTurns[kind] = (next, free);
+            _turns[placed.Scope] = (placed.Turn, 1);
+        }
+        _texts[key] = _textsByRead.AddLast(placed);
+        return (placed.Kind, placed.Turn, placed.Label);
+    }
+
+    /// <summary>Under the lock: forgets a text key, and gives back its turn when no other key of its scope holds it.</summary>
+    private void Remove(LinkedListNode<Placed> node)
+    {
+        _textsByRead.Remove(node);
+        _texts.Remove(node.Value.Key);
+        var scope = node.Value.Scope;
+        var held = _turns[scope];
+        if (held.Keys > 1)
+        {
+            _turns[scope] = (held.Turn, held.Keys - 1);
+            return;
+        }
+        _turns.Remove(scope);
+        _kindTurns[scope.Item1].Free.Add(held.Turn);
+    }
+
+    /// <summary>The text keys placed and the turns they hold.</summary>
+    internal (int Keys, int Turns) TextState
+    {
+        get
+        {
+            lock (_lock) return (_texts.Count, _turns.Count);
+        }
+    }
+
+    /// <summary>The time since the first read: what a table's numbers move with, and what the uptime adds to its start.</summary>
+    private TimeSpan Elapsed()
+    {
+        lock (_lock)
+        {
+            var now = time.GetTimestamp();
+            _origin ??= now;
+            return time.GetElapsedTime(_origin.Value, now);
+        }
+    }
+
+    /// <summary>The sensor's entry in the catalogue, looked up again at most a step after a key it didn't list.</summary>
+    private SensorInfo? Describe(SensorKey key)
+    {
+        if (_catalogue is null)
+            return null;
+        lock (_catalogueLock)
+        {
+            if (_infos is not null && _infos.TryGetValue(key, out var info))
+                return info;
+            var now = time.GetTimestamp();
+            if (_infos is null || time.GetElapsedTime(_infosAt, now) >= StepInterval)
+            {
+                _infos = [];
+                foreach (var sensor in _catalogue())
+                    _infos.TryAdd(sensor.Key, sensor);
+                _infosAt = now;
+            }
+            return _infos.GetValueOrDefault(key);
+        }
+    }
+
     public SceneReading Read(string key, string inputType)
     {
-        if (inputType != "number" || Walk(key) is not { } walked)
+        if (inputType != "number")
+            return MadeUp(key, inputType);
+        if (Walk(key) is not { } walked)
             return live.Read(key, inputType);
 
         lock (_lock)
@@ -174,7 +361,7 @@ internal sealed class SimulatedSceneInputs(ISceneInputSource live, TimeProvider 
     /// <summary>The key's walk, started on its first read and stepped up to now; null for a key that doesn't walk.</summary>
     private Walked? Walk(string key)
     {
-        if (!SensorKey.TryParse(key, out var parsed) || !SensorHub.IsWellFormed(parsed))
+        if (!SensorKey.TryParse(key, out var parsed) || !SensorHub.IsWellFormed(parsed) || SimulatedText.IsRealTime(parsed))
             return null;
 
         lock (_lock)
@@ -231,7 +418,7 @@ internal sealed class SimulatedSceneInputs(ISceneInputSource live, TimeProvider 
     {
         var reading = live.Read(key, "number");
         var walked = reading.Available
-            ? new Walked(key, SensorWalk.Around(parsed, reading.Now, reading.Unit), reading.Unit, double.NegativeInfinity, double.PositiveInfinity, keepsHistory)
+            ? new Walked(key, SensorWalk.Around(parsed, reading.Now, reading.Unit), SimulatedText.Unit(parsed, reading.Unit), double.NegativeInfinity, double.PositiveInfinity, keepsHistory)
             : new Walked(key, SensorWalk.ForUnknownKey(parsed), "", NoReadingLow, NoReadingHigh, keepsHistory);
         walked.Take();
         for (var i = 1; i < Backfill; i++)

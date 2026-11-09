@@ -143,13 +143,14 @@ public class SimulatedSceneInputsTests
     }
 
     [Fact]
-    public void Text_and_tables_read_as_live_ones_do()
+    public void Text_and_tables_are_made_up_and_those_this_computer_lacks_read_unavailable_as_live_ones_do()
     {
         _sensors.Readings[Name] = new SensorReading("Apple M4 Pro");
         var (live, simulated) = Inputs();
 
-        Assert.Equal(live.Read(Name.ToString(), "text"), simulated.Read(Name.ToString(), "text"));
-        Assert.Equal("Apple M4 Pro", simulated.Read(Name.ToString(), "text").Text);
+        Assert.Equal("Apple M4 Pro", live.Read(Name.ToString(), "text").Text);
+        Assert.Equal(SceneInputStatus.Live, simulated.Read(Name.ToString(), "text").Status);
+        Assert.NotEqual("Apple M4 Pro", simulated.Read(Name.ToString(), "text").Text);
         Assert.Equal(SceneInputStatus.Unavailable, simulated.Read(Unknown.ToString(), "text").Status);
         Assert.Equal(SceneInputStatus.Unavailable, simulated.Read(Unknown.ToString(), "table").Status);
     }

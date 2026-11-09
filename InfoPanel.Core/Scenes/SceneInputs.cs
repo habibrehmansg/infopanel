@@ -76,6 +76,9 @@ public sealed class SensorSceneInputs(ISensorReader sensors, ISensorHistory hist
 
     private readonly ISensorStatusReader? _statuses = sensors as ISensorStatusReader;
 
+    /// <summary>The sensors' list (their display names) when the reader is the hub; null otherwise.</summary>
+    internal Func<IReadOnlyList<SensorInfo>>? Catalogue => sensors is SensorHub hub ? hub.GetSensors : null;
+
     public SceneReading Read(string key, string inputType)
     {
         if (!SensorKey.TryParse(key, out var parsed)) return SceneReading.Unavailable;

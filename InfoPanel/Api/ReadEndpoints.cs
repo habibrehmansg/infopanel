@@ -213,9 +213,11 @@ public static partial class ReadEndpoints
     /// The optional API features the engine has (spec/docs/api.md, "Session"): every operation added after this version of
     /// the API comes under a name here: <c>plugins</c>, the plugins' requests (<see cref="PluginEndpoints"/>), listed whether or
     /// not the engine hosts plugins; <c>devices</c>, the USB panel devices' requests and message (<see cref="DeviceEndpoints"/>),
-    /// listed whether or not the engine drives panels.
+    /// listed whether or not the engine drives panels; <c>simulated.text</c>, a <c>simulated</c> subscription that makes up
+    /// text and tables as well as numbers (spec/docs/api.md, "Simulated sensors"), so a client can say every value is
+    /// made up.
     /// </summary>
-    public static IReadOnlyList<string> Features { get; } = ["plugins", "devices"];
+    public static IReadOnlyList<string> Features { get; } = ["plugins", "devices", "simulated.text"];
 
     /// <summary>What the engine reads, by format string: each format's newest minor version, its capabilities the engine has and its limits.</summary>
     public static IReadOnlyDictionary<string, SupportedFormat> FormatSupportOf(Workspace workspace) =>
