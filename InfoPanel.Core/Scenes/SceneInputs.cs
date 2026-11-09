@@ -124,13 +124,17 @@ public sealed class SensorSceneInputs(ISensorReader sensors, ISensorHistory hist
     public IReadOnlyList<double> History(string key) =>
         SensorKey.TryParse(key, out var parsed) ? history.GetSamples(parsed) : [];
 
-    internal static SceneTable FromDataTable(DataTable table)
+    /// <summary>
+    /// <paramref name="table"/> as a scene reads it: its column names and the text of its first <paramref name="maxRows"/>
+    /// rows' cells (only those rows are formatted).
+    /// </summary>
+    internal static SceneTable FromDataTable(DataTable table, int maxRows = 100)
     {
         var columns = table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToArray();
-        var rows = new List<IReadOnlyList<string>>(Math.Min(table.Rows.Count, 100));
+        var rows = new List<IReadOnlyList<string>>(Math.Min(table.Rows.Count, maxRows));
         foreach (DataRow row in table.Rows)
         {
-            if (rows.Count == 100) break;
+            if (rows.Count == maxRows) break;
             rows.Add(row.ItemArray.Select(v => v is IFormattable f ? f.ToString(null, CultureInfo.InvariantCulture) : v?.ToString() ?? "").ToArray());
         }
         return new SceneTable(columns, rows);

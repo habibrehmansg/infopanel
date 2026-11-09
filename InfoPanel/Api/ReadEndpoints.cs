@@ -200,6 +200,8 @@ public static partial class ReadEndpoints
                     Avg = Finite(reading.ValueAvg),
                     Unit = reading.Unit ?? "",
                     Text = text,
+                    // A table's columns, first rows, row count and suggested layout, from the reading the text is from.
+                    Table = reading.ValueTable is { } table ? SensorTable.Of(table, reading.ValueTableFormat) : null,
                     History = samples,
                     Status = status,
                 });

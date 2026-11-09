@@ -130,6 +130,44 @@ public sealed class McpToolTests
         }
     }
 
+    /// <summary>
+    /// <c>list_sensors</c> gives each sensor's type, and a table's columns and format, so an AI app can set a table's
+    /// columns; of its rows, only the first row's text it always gave (the value), never another row.
+    /// </summary>
+    [Fact]
+    public async Task ListSensors_GivesEachType_AndATablesColumnsAndFormat_ButNoRowPastTheFirst()
+    {
+        var table = new System.Data.DataTable();
+        table.Columns.Add("Process", typeof(InfoPanel.Plugins.PluginText));
+        table.Columns.Add("CPU", typeof(InfoPanel.Plugins.PluginSensor));
+        table.Rows.Add(new InfoPanel.Plugins.PluginText("", "", "first-row-app"), new InfoPanel.Plugins.PluginSensor("", "", 12.5f, "%"));
+        table.Rows.Add(new InfoPanel.Plugins.PluginText("", "", "second-row-app"), new InfoPanel.Plugins.PluginSensor("", "", 3.25f, "%"));
+        var source = new FixedSensorSource("fixed",
+            (InfoPanel.Sensors.SensorKey.Plugin("/fixed/top"), "Top apps", new(InfoPanel.Sensors.SensorStatus.Live, InfoPanel.Sensors.SensorKind.Table,
+                new InfoPanel.Models.SensorReading(table, "0:150|1:60", "first-row-app, 12.5%"))),
+            (InfoPanel.Sensors.SensorKey.Plugin("/fixed/load"), "Load", new(InfoPanel.Sensors.SensorStatus.Live, InfoPanel.Sensors.SensorKind.Number,
+                new InfoPanel.Models.SensorReading(1d, 9d, 5d, 4d, "%"))),
+            (InfoPanel.Sensors.SensorKey.Plugin("/fixed/song"), "Song", new(InfoPanel.Sensors.SensorStatus.Live, InfoPanel.Sensors.SensorKind.Text,
+                new InfoPanel.Models.SensorReading("Artist - Title"))),
+            (InfoPanel.Sensors.SensorKey.Plugin("/fixed/idle"), "Idle", InfoPanel.Sensors.SensorState.Without(InfoPanel.Sensors.SensorStatus.Unavailable, InfoPanel.Sensors.SensorKind.Table)));
+        using var fresh = new EngineFactory();
+        using var engine = FixedSensorSource.Engine(fresh, source);
+        var host = engine.Services.GetRequiredService<McpToolHost>();
+
+        var (text, error, _) = await Call(host, "list_sensors", """{"query":"plugin:/fixed/"}""");
+
+        Assert.False(error);
+        var lines = text.Split('\n')[1..].Select(l => JsonNode.Parse(l)!.AsObject()).ToDictionary(l => l["key"]!.GetValue<string>());
+        Assert.Equal(
+            """{"key":"plugin:/fixed/top","name":"Top apps","group":"Fixed","unit":"","type":"table","status":"live","value":"first-row-app, 12.5%","columns":[{"name":"Process","type":"text","unit":""},{"name":"CPU","type":"number","unit":"%"}],"format":"0:150|1:60"}""",
+            lines["plugin:/fixed/top"].ToJsonString());
+        Assert.Equal(("number", 4d), (lines["plugin:/fixed/load"]["type"]!.GetValue<string>(), lines["plugin:/fixed/load"]["value"]!.GetValue<double>()));
+        Assert.Equal(("text", "Artist - Title"), (lines["plugin:/fixed/song"]["type"]!.GetValue<string>(), lines["plugin:/fixed/song"]["value"]!.GetValue<string>()));
+        // A table with no reading: its type, nothing more.
+        Assert.Equal("""{"key":"plugin:/fixed/idle","name":"Idle","group":"Fixed","unit":"","type":"table","status":"unavailable"}""", lines["plugin:/fixed/idle"].ToJsonString());
+        Assert.DoesNotContain("second-row-app", text);
+    }
+
     [Fact]
     public async Task ListProfiles_GetProfile_ListSensors_AndRenderPreview_Answer()
     {

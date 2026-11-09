@@ -1124,6 +1124,7 @@
         "avg": { "description": "The average of the values the source has reported.", "type": "number" },
         "unit": { "description": "The unit of its values, for people; empty when it has none.", "type": "string" },
         "text": { "description": "A text or table sensor's text (\"\" for a table without one); absent for a number sensor.", "type": "string" },
+        "table": { "$ref": "#/$defs/sensorTable", "description": "A table sensor's table; absent for a number or text sensor." },
         "history": {
           "description": "With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one every `graphRate` milliseconds (engineSettings; one a second by default, docs/bindings.md#history). Absent otherwise, and for a text or table sensor.",
           "type": "array",
@@ -1131,6 +1132,41 @@
           "maxItems": 4096
         },
         "status": { "description": "`live`, or `stale` for the last value of a sensor that has stopped updating. A client treats a status it doesn't know as no reading.", "enum": ["live", "stale"] }
+      }
+    },
+    "sensorTable": {
+      "description": "A table sensor's table in its sensorValue (docs/api.md#fonts-and-sensors): its columns, its first rows, how many rows it has, and the layout its source suggests.",
+      "type": "object",
+      "required": ["columns", "rows", "rowCount", "format"],
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "description": "Its columns, in order: the names a scene's table input names them by (docs/bindings.md).",
+          "type": "array",
+          "items": { "$ref": "#/$defs/sensorTableColumn" }
+        },
+        "rows": {
+          "description": "Its first 10 rows at most, in its order: each a cell's text per column, as a scene's table input reads it.",
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } },
+          "maxItems": 10
+        },
+        "rowCount": { "description": "How many rows it has, `rows` and the rest.", "type": "integer", "minimum": 0 },
+        "format": { "description": "The layout its source suggests, as the source gives it (a 1.x table's format: a column's index and width in pixels, pairs joined by `|`, such as `0:200|1:60`); \"\" when it suggests none.", "type": "string" }
+      }
+    },
+    "sensorTableColumn": {
+      "description": "A column of a table sensor's table (sensorTable).",
+      "type": "object",
+      "required": ["name", "type", "unit"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "description": "The column's name.", "type": "string" },
+        "type": {
+          "description": "`number` when its cells are numbers with a unit, each read as text with that unit (`28.6%`), else `text`. A client treats a type it doesn't know as `text`.",
+          "enum": ["number", "text"]
+        },
+        "unit": { "description": "A number column's unit, the one all its cells have (\"%\", \" MB\"); \"\" for a text column, a number column whose cells differ in unit (\" MB\" and \" GB\"), or a table without rows.", "type": "string" }
       }
     },
     "sensorSource": {

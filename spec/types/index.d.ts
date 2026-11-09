@@ -1043,6 +1043,8 @@ export interface SensorValue {
   unit: string;
   /** A text or table sensor's text ("" for a table without one); absent for a number sensor. */
   text?: string;
+  /** A table sensor's table; absent for a number or text sensor. */
+  table?: SensorTable;
   /**
    * With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one every `graphRate` milliseconds (engineSettings; one a second by default, docs/bindings.md#history). Absent otherwise, and for a text or table sensor.
    * Items: ≤ 4096.
@@ -1050,6 +1052,34 @@ export interface SensorValue {
   history?: number[];
   /** `live`, or `stale` for the last value of a sensor that has stopped updating. A client treats a status it doesn't know as no reading. */
   status: "live" | "stale";
+}
+
+/** A table sensor's table in its sensorValue (docs/api.md#fonts-and-sensors): its columns, its first rows, how many rows it has, and the layout its source suggests. */
+export interface SensorTable {
+  /** Its columns, in order: the names a scene's table input names them by (docs/bindings.md). */
+  columns: SensorTableColumn[];
+  /**
+   * Its first 10 rows at most, in its order: each a cell's text per column, as a scene's table input reads it.
+   * Items: ≤ 10.
+   */
+  rows: string[][];
+  /**
+   * How many rows it has, `rows` and the rest.
+   * Range: ≥ 0.
+   */
+  rowCount: number;
+  /** The layout its source suggests, as the source gives it (a 1.x table's format: a column's index and width in pixels, pairs joined by `|`, such as `0:200|1:60`); "" when it suggests none. */
+  format: string;
+}
+
+/** A column of a table sensor's table (sensorTable). */
+export interface SensorTableColumn {
+  /** The column's name. */
+  name: string;
+  /** `number` when its cells are numbers with a unit, each read as text with that unit (`28.6%`), else `text`. A client treats a type it doesn't know as `text`. */
+  type: "number" | "text";
+  /** A number column's unit, the one all its cells have ("%", " MB"); "" for a text column, a number column whose cells differ in unit (" MB" and " GB"), or a table without rows. */
+  unit: string;
 }
 
 /** One sensor source in GET /api/sensors/sources, an array of these: every source the engine runs, in the order it asks them for a key (the order of GET /api/sensors), listed even when it offers no sensors, with its state now and why (docs/api.md#sensor-sources). */

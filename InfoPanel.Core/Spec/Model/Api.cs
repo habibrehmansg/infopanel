@@ -655,8 +655,8 @@ public sealed record SensorEntry
 
 /// <summary>
 /// A listed sensor that has a reading (<c>GET /api/sensors/values</c>); <see cref="Status"/> is <c>live</c> or
-/// <c>stale</c> (the last value). <see cref="Text"/> is set for a text or table sensor, <see cref="History"/> for a
-/// number sensor when asked for.
+/// <c>stale</c> (the last value). <see cref="Text"/> is set for a text or table sensor, <see cref="Table"/> for a table
+/// sensor, <see cref="History"/> for a number sensor when asked for.
 /// </summary>
 [SpecDef("urn:infopanel:api:1#/$defs/sensorValue")]
 public sealed record SensorValue
@@ -668,8 +668,82 @@ public sealed record SensorValue
     public required double Avg { get; init; }
     public required string Unit { get; init; }
     public string? Text { get; init; }
+    public SensorTable? Table { get; init; }
     public IReadOnlyList<double>? History { get; init; }
     public required InfoPanel.Sensors.SensorStatus Status { get; init; }
+}
+
+/// <summary>
+/// A table sensor's table in its <see cref="SensorValue"/>: its columns, its first <see cref="MaxRows"/> rows, each cell's
+/// text as a scene's table input reads it, how many rows it has, and the layout its source suggests (<c>""</c> when none).
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/sensorTable")]
+public sealed record SensorTable
+{
+    /// <summary>The rows a value carries at most: enough to show what the table holds, not the whole of a long one.</summary>
+    public const int MaxRows = 10;
+
+    public required IReadOnlyList<SensorTableColumn> Columns { get; init; }
+    public required IReadOnlyList<IReadOnlyList<string>> Rows { get; init; }
+    public required int RowCount { get; init; }
+    public required string Format { get; init; }
+
+    /// <summary>The table of a reading of <paramref name="table"/> with the source's <paramref name="format"/>.</summary>
+    public static SensorTable Of(System.Data.DataTable table, string? format) => new()
+    {
+        Columns = ColumnsOf(table),
+        Rows = InfoPanel.Scenes.SensorSceneInputs.FromDataTable(table, MaxRows).Rows,
+        RowCount = table.Rows.Count,
+        Format = format ?? "",
+    };
+
+    /// <summary>
+    /// The columns of <paramref name="table"/>: a number when its cells are a plugin's numbers (its type says so, or each
+    /// of its cells is one: a plugin's table, as the plugin host passes it on, has columns of any type), else text; a
+    /// number's unit is the one all its cells have, <c>""</c> when they differ (megabytes and gigabytes, say) or there
+    /// are none.
+    /// </summary>
+    public static IReadOnlyList<SensorTableColumn> ColumnsOf(System.Data.DataTable table)
+    {
+        var columns = new List<SensorTableColumn>(table.Columns.Count);
+        foreach (System.Data.DataColumn column in table.Columns)
+        {
+            var numbers = table.Rows.Count > 0;
+            string? unit = null;
+            var shared = true;
+            foreach (System.Data.DataRow row in table.Rows)
+            {
+                if (row[column] is not InfoPanel.Plugins.IPluginSensor cell)
+                {
+                    numbers = false;
+                    break;
+                }
+
+                var cellUnit = cell.Unit ?? "";
+                shared &= unit is null || unit == cellUnit;
+                unit ??= cellUnit;
+            }
+
+            var number = numbers || typeof(InfoPanel.Plugins.IPluginSensor).IsAssignableFrom(column.DataType);
+            columns.Add(new SensorTableColumn
+            {
+                Name = column.ColumnName,
+                Type = number ? "number" : "text",
+                Unit = numbers && shared ? unit ?? "" : "",
+            });
+        }
+
+        return columns;
+    }
+}
+
+/// <summary>A column of a <see cref="SensorTable"/>: its name, <c>number</c> or <c>text</c>, and a number's unit.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/sensorTableColumn")]
+public sealed record SensorTableColumn
+{
+    public required string Name { get; init; }
+    public required string Type { get; init; }
+    public required string Unit { get; init; }
 }
 
 /// <summary>

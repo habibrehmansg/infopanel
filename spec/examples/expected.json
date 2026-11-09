@@ -197,6 +197,7 @@
   "api/sensorSource/invalid/elevation-unknown-member.json": {"code": "schema", "path": "/elevation/task"},
   "api/sensorValue/invalid/history-of-text.json": {"code": "schema", "path": "/history/0"},
   "api/sensorValue/invalid/unavailable.json": {"code": "schema", "path": "/status"},
+  "api/sensorValue/invalid/table-over-10-rows.json": {"code": "schema", "path": "/table/rows"},
   "api/serviceCredential/invalid/empty.json": {"code": "schema", "path": "/credential"},
   "api/serviceCredential/invalid/equals-inside.json": {"code": "schema", "path": "/credential"},
   "api/serviceCredential/invalid/not-a-string.json": {"code": "schema", "path": "/credential"},

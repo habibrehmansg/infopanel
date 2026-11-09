@@ -583,6 +583,32 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     }
 
     [Fact]
+    public async Task SensorValues_NumberAndTextValues_AreWrittenByteForByteAsBefore()
+    {
+        // Only a table sensor's value has a table: a number's and a text's are the members they always had, in their order.
+        var number = InfoPanel.Sensors.SensorKey.Plugin("/fixed/number");
+        var notFinite = InfoPanel.Sensors.SensorKey.Plugin("/fixed/not-finite");
+        var text = InfoPanel.Sensors.SensorKey.Plugin("/fixed/text");
+        var source = new FixedSensorSource("fixed",
+            (number, "Number", new(InfoPanel.Sensors.SensorStatus.Live, InfoPanel.Sensors.SensorKind.Number, new InfoPanel.Models.SensorReading(3d, 97.25d, 38.1d, 41.5d, "%"))),
+            (notFinite, "Not finite", new(InfoPanel.Sensors.SensorStatus.Stale, InfoPanel.Sensors.SensorKind.Number,
+                new InfoPanel.Models.SensorReading(double.NegativeInfinity, double.NaN, 0.5d, double.NaN, "W"))),
+            (text, "Text", new(InfoPanel.Sensors.SensorStatus.Stale, InfoPanel.Sensors.SensorKind.Text, new InfoPanel.Models.SensorReading("Artist - Title"))));
+        using var fresh = new EngineFactory();
+        using var engine = FixedSensorSource.Engine(fresh, source);
+        using var client = FixedSensorSource.Client(engine);
+
+        var values = JsonDocument.Parse(await client.GetStringAsync("/api/sensors/values", Ct)).RootElement;
+
+        Assert.Equal(
+        [
+            """{"key":"plugin:/fixed/number","now":41.5,"min":3,"max":97.25,"avg":38.1,"unit":"%","status":"live"}""",
+            """{"key":"plugin:/fixed/not-finite","now":0,"min":0,"max":0,"avg":0.5,"unit":"W","status":"stale"}""",
+            """{"key":"plugin:/fixed/text","now":0,"min":0,"max":0,"avg":0,"unit":"","text":"Artist - Title","status":"stale"}""",
+        ], values.EnumerateArray().Where(v => v.GetProperty("key").GetString()!.StartsWith("plugin:/fixed/", StringComparison.Ordinal)).Select(v => v.GetRawText()));
+    }
+
+    [Fact]
     public async Task Profiles_ListsTheExampleProfile()
     {
         var profiles = await GetJson("/api/profiles");
