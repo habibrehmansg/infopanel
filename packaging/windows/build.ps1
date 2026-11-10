@@ -9,10 +9,10 @@
 # the installer go there, nothing is deleted. The two files it bundles are downloaded into -Out (or taken from
 # -PawnIoSetup and -DotnetRuntime) and refused unless their hashes are the pinned ones: PawnIO's setup against
 # PawnIoInstaller.BundledSha256, the .NET runtime installer against $Runtime.Sha512 below. The USB panels' library,
-# libusb-1.0.dll, comes from libusb's release (its 7z downloaded, or -LibusbArchive, and unpacked with Windows' own tar),
-# the archive and the DLL both checked against native\libusb\pins.txt, and goes into the publish beside the engine, with
-# libusb's licence text, libusb-COPYING.txt: the COPYING of the release's source tarball (downloaded, or -LibusbSource),
-# the tarball and the file both checked against pins.txt too.
+# libusb-1.0.dll, comes from libusb's release (its 7z downloaded, or -LibusbArchive, and unpacked with Windows' own tar,
+# or with 7-Zip where that tar can't read it), the archive and the DLL both checked against native\libusb\pins.txt, and
+# goes into the publish beside the engine, with libusb's licence text, libusb-COPYING.txt: the COPYING of the release's
+# source tarball (downloaded, or -LibusbSource), the tarball and the file both checked against pins.txt too.
 param(
   [Parameter(Mandatory = $true)][string]$Version,
   [Parameter(Mandatory = $true)][string]$AllowOrigin,
@@ -89,21 +89,47 @@ foreach ($line in Get-Content -LiteralPath (Join-Path $repo 'native\libusb\pins.
 foreach ($key in 'version', 'source_sha256', 'source_copying_sha256', 'windows_archive_sha256', 'windows_dll_path', 'windows_dll_sha256') {
   if (-not $libusbPins[$key]) { throw "native\libusb\pins.txt has no $key." }
 }
+# Windows' own tar.exe reads the 7z only when it is built with liblzma, and the .tar.bz2 only with bz2lib: Windows 11's
+# is (its --version lists both), Windows Server 2022's (bsdtar 3.5.2, zlib only) isn't. Without the codec, 7-Zip's
+# 7z.exe unpacks the file instead (GitHub's Windows images carry it); with neither, the build stops.
+$tarVersion = (& tar.exe --version) -join ' '
+# $Member (a path with '/') of $Archive unpacked into the new folder $Name in downloads; its full path is returned.
+# $Codec is the library tar.exe needs for the file: liblzma for a 7z, bz2lib for a .tar.bz2.
+function Expand-Member([string]$Archive, [string]$Name, [string]$Member, [string]$Codec) {
+  $into = (New-Item -ItemType Directory -Path (Join-Path $downloads $Name)).FullName
+  if ($tarVersion -match "\b$Codec/") {
+    & tar.exe -xf $Archive -C $into $Member | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "tar.exe couldn't unpack $Member from $Archive (exit $LASTEXITCODE)." }
+  } else {
+    $sevenZip = (Get-Command 7z.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    if (-not $sevenZip) { $sevenZip = Join-Path $env:ProgramFiles '7-Zip\7z.exe' }
+    if (-not (Test-Path -LiteralPath $sevenZip)) { throw "tar.exe ($tarVersion) has no $Codec to read $Archive, and 7-Zip's 7z.exe isn't on the PATH or in $env:ProgramFiles\7-Zip: install 7-Zip." }
+    Write-Host "tar.exe has no ${Codec}: $Archive unpacked with $sevenZip"
+    if ($Archive -like '*.tar.bz2') {
+      # 7-Zip takes off the bzip2 layer; tar.exe reads the plain tar inside.
+      & $sevenZip x $Archive "-o$into" -y -bsp0 | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "7z.exe couldn't unpack $Archive (exit $LASTEXITCODE)." }
+      $tar = Join-Path $into ([IO.Path]::GetFileNameWithoutExtension($Archive))
+      & tar.exe -xf $tar -C $into $Member | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "tar.exe couldn't unpack $Member from $tar (exit $LASTEXITCODE)." }
+    } else {
+      & $sevenZip x $Archive "-o$into" -y -bsp0 ($Member -replace '/', '\') | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "7z.exe couldn't unpack $Member from $Archive (exit $LASTEXITCODE)." }
+    }
+  }
+  $path = Join-Path $into ($Member -replace '/', '\')
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "$Member isn't in $Archive." }
+  $path
+}
 $libusbArchiveName = "libusb-$($libusbPins.version).7z"
 $libusbArchivePath = Get-Pinned $libusbArchiveName "https://github.com/libusb/libusb/releases/download/v$($libusbPins.version)/$libusbArchiveName" $LibusbArchive 'SHA256' $libusbPins.windows_archive_sha256
-$libusbUnpacked = (New-Item -ItemType Directory -Path (Join-Path $downloads 'libusb')).FullName
-& tar.exe -xf $libusbArchivePath -C $libusbUnpacked $libusbPins.windows_dll_path
-if ($LASTEXITCODE -ne 0) { throw "tar.exe couldn't unpack $libusbArchivePath (exit $LASTEXITCODE)." }
-$libusbDll = Join-Path $libusbUnpacked ($libusbPins.windows_dll_path -replace '/', '\')
+$libusbDll = Expand-Member $libusbArchivePath 'libusb' $libusbPins.windows_dll_path 'liblzma'
 Assert-Pinned $libusbDll 'SHA256' $libusbPins.windows_dll_sha256
 # libusb's licence text: the 7z holds none, so it is the COPYING of the release's source tarball (downloaded, or
 # -LibusbSource), the tarball and the file both checked against pins.txt; installed beside the engine as libusb-COPYING.txt.
 $libusbSourceName = "libusb-$($libusbPins.version).tar.bz2"
 $libusbSourcePath = Get-Pinned $libusbSourceName "https://github.com/libusb/libusb/releases/download/v$($libusbPins.version)/$libusbSourceName" $LibusbSource 'SHA256' $libusbPins.source_sha256
-$libusbSourceUnpacked = (New-Item -ItemType Directory -Path (Join-Path $downloads 'libusb-source')).FullName
-& tar.exe -xf $libusbSourcePath -C $libusbSourceUnpacked "libusb-$($libusbPins.version)/COPYING"
-if ($LASTEXITCODE -ne 0) { throw "tar.exe couldn't unpack $libusbSourcePath (exit $LASTEXITCODE)." }
-$libusbCopying = Join-Path $libusbSourceUnpacked "libusb-$($libusbPins.version)\COPYING"
+$libusbCopying = Expand-Member $libusbSourcePath 'libusb-source' "libusb-$($libusbPins.version)/COPYING" 'bz2lib'
 Assert-Pinned $libusbCopying 'SHA256' $libusbPins.source_copying_sha256
 
 $pawnIo = Get-Pinned 'PawnIO_setup.exe' "https://github.com/namazso/PawnIO.Setup/releases/download/$pawnIoVersion/PawnIO_setup.exe" $PawnIoSetup 'SHA256' $pawnIoSha256
