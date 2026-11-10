@@ -195,6 +195,7 @@ namespace InfoPanel.Images
         private long _bytes;
         private long _peak;
         private long _lastSweep;
+        private readonly ITimer _expiry;
         private volatile bool _disposed;
         private readonly long _start;
         private readonly SizeStore _sizes;
@@ -216,6 +217,17 @@ namespace InfoPanel.Images
                 ? []
                 : Enumerable.Range(0, Math.Clamp(_options.Workers, 1, 8)).Select(_ => Task.Run(WorkAsync)).ToArray();
             _videos = new Video.VideoPlayer(store, _options.Video, _options.Limits, _options.Synchronous, _options.Time, this);
+            // Idle assets are dropped on the clock, not only when a lookup runs: once nothing asks for media, nothing else would.
+            _expiry = _options.Time.CreateTimer(_ => Expire(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+
+        /// <summary>The timer's sweep (<see cref="SweepLocked"/>).</summary>
+        private void Expire()
+        {
+            lock (_lock)
+            {
+                if (!_disposed) SweepLocked();
+            }
         }
 
         /// <summary>
@@ -946,6 +958,7 @@ namespace InfoPanel.Images
         {
             if (_disposed) return;
             _disposed = true;
+            _expiry.Dispose();
             _videos.Dispose();
             _queue.Writer.TryComplete();
             _stop.Cancel();

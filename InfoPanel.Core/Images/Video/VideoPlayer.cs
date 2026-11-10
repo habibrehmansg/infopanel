@@ -25,8 +25,9 @@ public sealed class VideoOptions
 
     /// <summary>
     /// What open decoders may hold between them, estimated per session from its coded size and codec
-    /// (<see cref="VideoPlayer.WorkingSet"/>): 768 MiB, so one video within the media limits always fits alone. A session
-    /// that would take them past it waits as one past <see cref="MaxSessions"/> does.
+    /// (<see cref="VideoPlayer.WorkingSet"/>): 768 MiB. A session that would take them past it waits as one past
+    /// <see cref="MaxSessions"/> does; a video alone (no other session decoding: a failed one holds no decoder) is always
+    /// admitted, even when its estimate is past it.
     /// </summary>
     public long WorkingBytes { get; init; } = 768L * 1024 * 1024;
 
@@ -59,7 +60,7 @@ internal interface IFrameBudget
 /// time is at or before the time asked for, never one later. Frames count against the cache's budget while a session
 /// holds them. At most <see cref="VideoOptions.MaxSessions"/> sessions are open, their decoders' estimated memory within
 /// <see cref="VideoOptions.WorkingBytes"/>; a closed session's decoder stops at FFmpeg's next read. One no tick has asked for in
-/// <see cref="VideoOptions.IdleAfter"/> is closed. Every session reads its video through the store's stream and runs the
+/// <see cref="VideoOptions.IdleAfter"/> is closed, by a timer on the clock, whether or not anything asks for a video again. Every session reads its video through the store's stream and runs the
 /// probe on that stream again before FFmpeg sees a byte of it.
 /// </summary>
 internal sealed class VideoPlayer : IDisposable
@@ -79,6 +80,7 @@ internal sealed class VideoPlayer : IDisposable
     private readonly Lock _lock = new();
     private readonly Dictionary<string, Probe> _probes = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Hash, int Width, int Height, MediaPlayback Playback, object? Owner), Session> _sessions = new();
+    private readonly ITimer _expiry;
     private bool _disposed;
 
     public VideoPlayer(IMediaAssetStore store, VideoOptions options, SpecLimits limits, bool synchronous, TimeProvider time, IFrameBudget budget)
@@ -90,6 +92,8 @@ internal sealed class VideoPlayer : IDisposable
         _time = time;
         _budget = budget;
         _start = time.GetTimestamp();
+        // Idle sessions close on the clock, not only when a lookup runs: once no tick asks for any video, nothing else would.
+        _expiry = time.CreateTimer(_ => Expire(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
     private long Now() => (long)_time.GetElapsedTime(_start).TotalMilliseconds;
@@ -115,13 +119,14 @@ internal sealed class VideoPlayer : IDisposable
     private long WorkingLocked() => _sessions.Values.Where(s => !s.Failed).Sum(s => s.Working);
 
     /// <summary>
-    /// What FFmpeg holds to decode a video, estimated from its header: the coded picture at 2 bytes a pixel (8-bit 4:2:0
-    /// is 1.5) for each picture a decoder of its codec keeps (the most references it may hold, one per decoding thread,
+    /// What FFmpeg holds to decode a video, estimated from its header: the coded picture at
+    /// <paramref name="bytesPerPixel"/> bytes a pixel, at least 2 (8-bit 4:2:0 is 1.5; the pixel format the decoder takes,
+    /// once it is known, <see cref="VideoDecoder.BytesPerPixel"/>: 10-bit 4:2:0 is 3, 10-bit 4:4:4 6) for each picture a decoder of its codec keeps (the most references it may hold, one per decoding thread,
     /// and the one being decoded). Intra-only codecs keep no references. A 4096 x 4096 H.264 or HEVC stream is about 660 MB.
     /// The picture is the largest the decoder may allocate (<see cref="VideoDecoder.PictureArea"/>): a stream whose
     /// pictures are larger than its container states fails to decode rather than outgrow this.
     /// </summary>
-    internal static long WorkingSet(MediaInfo info)
+    internal static long WorkingSet(MediaInfo info, double bytesPerPixel = 2)
     {
         var references = info.Codec switch
         {
@@ -131,7 +136,7 @@ internal sealed class VideoPlayer : IDisposable
             "mpeg4" => 2,
             _ => 0, // mjpeg, prores
         };
-        return VideoDecoder.PictureArea(info) * 2 * (references + VideoDecoder.Threads + 1);
+        return (long)Math.Ceiling(VideoDecoder.PictureArea(info) * Math.Max(2, bytesPerPixel)) * (references + VideoDecoder.Threads + 1);
     }
 
     /// <summary>What a video's probe found, once it has run: its header or why it can't play.</summary>
@@ -140,6 +145,9 @@ internal sealed class VideoPlayer : IDisposable
         public volatile bool Done;
         public MediaInfo? Info;
         public string? Problem;
+
+        /// <summary>The bytes a pixel its decoder takes, once one has run (<see cref="Grow"/>); 2 until then. Under the player's lock.</summary>
+        public double BytesPerPixel = 2;
     }
 
     /// <summary>
@@ -163,33 +171,87 @@ internal sealed class VideoPlayer : IDisposable
         if (probe.Info is not { } info) return new MediaLookup(MediaState.Failed, null, null, probe.Problem);
 
         var (width, height) = DecodeSize(info, boxWidth, boxHeight);
-        Session session;
+        // Sessions are closed outside the lock: a decoder asks for room (Grow) under its session's gate, which Close takes.
+        var closing = new List<Session>();
+        Session? session;
+        MediaLookup refused;
+        try
+        {
+            session = Admit(hash, info, probe, width, height, playback, owner, closing, out refused);
+        }
+        finally
+        {
+            foreach (var closed in closing) closed.Close();
+        }
+        return session is null ? refused : session.Get(seconds);
+    }
+
+    /// <summary>The session for a lookup, opened if there is room for it; null with the lookup to answer when there isn't.</summary>
+    private Session? Admit(string hash, MediaInfo info, Probe probe, int width, int height, MediaPlayback playback, object? owner,
+        List<Session> closing, out MediaLookup refused)
+    {
+        refused = default;
         lock (_lock)
         {
             var now = Now();
-            SweepLocked(now);
+            SweepLocked(now, closing);
             var key = (hash, width, height, playback, owner);
-            if (!_sessions.TryGetValue(key, out session!))
+            // A session whose decoder took a pixel format there was no room for waits as a new one does, reckoned at that format.
+            if (_sessions.TryGetValue(key, out var waiting) && waiting.Problem?.StartsWith(VideoDecoder.MediaBudgetCode + ":", StringComparison.Ordinal) == true)
             {
-                if (_sessions.Count >= Math.Max(1, _options.MaxSessions) && !MakeRoomLocked(now, owner))
-                    return new MediaLookup(MediaState.Failed, null, info,
-                        $"media.budget: {_options.MaxSessions} videos are decoding already; this one waits for one of them to stop.");
-                // The decoders' memory, estimated: past the budget a session not asked for lately makes room; one alone always fits.
-                var working = WorkingSet(info);
-                while (_sessions.Count > 0 && WorkingLocked() + working > _options.WorkingBytes)
+                _sessions.Remove(key);
+                closing.Add(waiting);
+            }
+            if (!_sessions.TryGetValue(key, out var session))
+            {
+                if (_sessions.Count >= Math.Max(1, _options.MaxSessions) && !MakeRoomLocked(now, owner, closing))
                 {
-                    if (!MakeRoomLocked(now, owner))
-                        return new MediaLookup(MediaState.Failed, null, info,
-                            $"media.budget: The videos decoding already leave no room for this one's decoder (about {working / (1024 * 1024)} MiB); it waits for one of them to stop.");
+                    refused = new MediaLookup(MediaState.Failed, null, info,
+                        $"media.budget: {_options.MaxSessions} videos are decoding already; this one waits for one of them to stop.");
+                    return null;
                 }
-                session = new Session(this, hash, info, width, height, playback, working);
+                // The decoders' memory, estimated: past the budget a session not asked for lately makes room; one alone (no
+                // other session decoding: a failed one holds no decoder) is always admitted, even past the budget.
+                var working = WorkingSet(info, probe.BytesPerPixel);
+                while (WorkingLocked() is var decoding && decoding > 0 && decoding + working > _options.WorkingBytes)
+                {
+                    if (!MakeRoomLocked(now, owner, closing))
+                    {
+                        refused = new MediaLookup(MediaState.Failed, null, info,
+                            $"media.budget: The videos decoding already leave no room for this one's decoder (about {working / (1024 * 1024)} MiB); it waits for one of them to stop.");
+                        return null;
+                    }
+                }
+                session = new Session(this, hash, info, width, height, playback, working, probe.BytesPerPixel);
                 _sessions.Add(key, session);
                 session.LastAsked = now;
                 if (!_synchronous) session.Start();
             }
             session.LastAsked = now;
+            return session;
         }
-        return session.Get(seconds);
+    }
+
+    /// <summary>
+    /// A session's decoder takes a pixel format of <paramref name="bytesPerPixel"/>, more than its memory was reckoned
+    /// at: true, and reckoned at that from now on, when the decoders' memory has room for it (one alone always fits);
+    /// false, and the video waits, when not. The video's later sessions are reckoned at it either way. Never closes a
+    /// session (called on a decoding thread, maybe under a session's gate).
+    /// </summary>
+    private bool Grow(Session session, double bytesPerPixel)
+    {
+        lock (_lock)
+        {
+            if (_probes.TryGetValue(session.Hash, out var probe) && probe.Info is not null)
+                probe.BytesPerPixel = Math.Max(probe.BytesPerPixel, bytesPerPixel);
+            if (_disposed || !_sessions.ContainsValue(session)) return false;
+            var working = WorkingSet(session.Info, bytesPerPixel);
+            if (working <= session.Working) return true;
+            var others = _sessions.Values.Where(s => s != session && !s.Failed).Sum(s => s.Working);
+            if (others > 0 && others + working > _options.WorkingBytes) return false;
+            session.Working = working;
+            return true;
+        }
     }
 
     /// <summary>The size a video is decoded at: twice its box, in steps of an eighth of its own size, never above it.</summary>
@@ -267,6 +329,7 @@ internal sealed class VideoPlayer : IDisposable
     /// </summary>
     public void Retry(string hash)
     {
+        var closing = new List<Session>();
         lock (_lock)
         {
             if (_probes.TryGetValue(hash, out var probe) && probe.Done && probe.Info is null)
@@ -274,31 +337,47 @@ internal sealed class VideoPlayer : IDisposable
             foreach (var (key, session) in _sessions.Where(s => s.Key.Hash == hash && s.Value.Failed).ToList())
             {
                 _sessions.Remove(key);
-                session.Close();
+                closing.Add(session);
             }
         }
+        foreach (var session in closing) session.Close();
     }
 
     /// <summary>Closes <paramref name="owner"/>'s sessions (<see cref="Get"/>).</summary>
     public void Release(object owner)
     {
+        var closing = new List<Session>();
         lock (_lock)
         {
             foreach (var (key, session) in _sessions.Where(s => s.Key.Owner == owner).ToList())
             {
                 _sessions.Remove(key);
-                session.Close();
+                closing.Add(session);
             }
         }
+        foreach (var session in closing) session.Close();
     }
 
-    private void SweepLocked(long now)
+    /// <summary>The timer's sweep: closes the sessions no tick has asked for in <see cref="VideoOptions.IdleAfter"/>.</summary>
+    private void Expire()
+    {
+        var idle = new List<Session>();
+        lock (_lock)
+        {
+            if (_disposed) return;
+            SweepLocked(Now(), idle);
+        }
+        foreach (var session in idle) session.Close();
+    }
+
+    /// <summary>Takes the sessions no tick has asked for in <see cref="VideoOptions.IdleAfter"/> out, into <paramref name="closing"/>.</summary>
+    private void SweepLocked(long now, List<Session> closing)
     {
         var idle = (long)_options.IdleAfter.TotalMilliseconds;
         foreach (var (key, session) in _sessions.Where(s => now - s.Value.LastAsked > idle).ToList())
         {
             _sessions.Remove(key);
-            session.Close();
+            closing.Add(session);
         }
     }
 
@@ -306,9 +385,10 @@ internal sealed class VideoPlayer : IDisposable
     /// Closes a session to make room for one of <paramref name="owner"/>'s, the one asked for longest ago that it may
     /// close: live videos come first. A shared session (no owner) may close any session with an owner, or one no tick has
     /// asked for in <see cref="VideoOptions.RoomAfter"/>; a session with an owner may close only another with an owner not
-    /// asked for in that time, never a shared one. False when there is none.
+    /// asked for in that time, never a shared one. False when there is none. The session taken out goes into
+    /// <paramref name="closing"/>, closed once the lock is let go.
     /// </summary>
-    private bool MakeRoomLocked(long now, object? owner)
+    private bool MakeRoomLocked(long now, object? owner, List<Session> closing)
     {
         var room = (long)_options.RoomAfter.TotalMilliseconds;
         var oldest = _sessions
@@ -316,7 +396,7 @@ internal sealed class VideoPlayer : IDisposable
             .OrderBy(s => s.Value.LastAsked).FirstOrDefault();
         if (oldest.Value is null) return false;
         _sessions.Remove(oldest.Key);
-        oldest.Value.Close();
+        closing.Add(oldest.Value);
         return true;
     }
 
@@ -327,6 +407,7 @@ internal sealed class VideoPlayer : IDisposable
         {
             if (_disposed) return;
             _disposed = true;
+            _expiry.Dispose();
             sessions = [.. _sessions.Values];
             _sessions.Clear();
         }
@@ -342,21 +423,26 @@ internal sealed class VideoPlayer : IDisposable
     /// asked for into a short queue; synchronous, each lookup decodes to its frame on the caller's thread. Times are on
     /// the session's clock: elapsed × speed seconds, the video's own time plus whole loops before it.
     /// </summary>
-    private sealed class Session(VideoPlayer player, string hash, MediaInfo info, int width, int height, MediaPlayback playback, long working)
+    private sealed class Session(VideoPlayer player, string hash, MediaInfo info, int width, int height, MediaPlayback playback, long working,
+        double bytesPerPixel)
     {
         private readonly object _gate = new();
 
         /// <summary>Cancelled when the session closes: its decoder stops at FFmpeg's next read, mid-decode or mid-open.</summary>
         private readonly CancellationTokenSource _cancel = new();
 
-        /// <summary>The decoder's estimated working set (<see cref="WorkingSet"/>).</summary>
-        public long Working => working;
+        /// <summary>The decoder's estimated working set (<see cref="WorkingSet"/>), grown when it takes a heavier pixel format. Under the player's lock.</summary>
+        public long Working { get; set; } = working;
+
+        public string Hash => hash;
+
+        public MediaInfo Info => info;
         private readonly List<Frame> _queue = [];
         private VideoDecoder? _decoder;
         private Thread? _thread;
         private Frame? _shown;
         private Frame? _first;
-        private string? _problem;
+        private volatile string? _problem; // set under the gate; read without it (the player's lock never takes a gate)
         private bool _closed;
         private bool _opened;
         private double _wanted;
@@ -382,13 +468,10 @@ internal sealed class VideoPlayer : IDisposable
 
         public long LastAsked;
 
-        public bool Failed
-        {
-            get
-            {
-                lock (_gate) return _problem is not null;
-            }
-        }
+        public bool Failed => _problem is not null;
+
+        /// <summary>Why the session failed (<c>code: message</c>); null while it plays.</summary>
+        public string? Problem => _problem;
 
         public void Start()
         {
@@ -479,7 +562,7 @@ internal sealed class VideoPlayer : IDisposable
                 throw new VideoException(code, problem?[(code.Length + 1)..].Trim() ?? "The video can't be read.");
             }
             return VideoDecoder.Open(player._options.Decoder!, stream, checkedInfo, width, height, player._limits,
-                url => player._options.Opening?.Invoke(hash, url), _cancel.Token);
+                url => player._options.Opening?.Invoke(hash, url), _cancel.Token, bytesPerPixel, bytes => player.Grow(this, bytes));
         }
 
         private void Fail(Exception e)
@@ -515,6 +598,10 @@ internal sealed class VideoPlayer : IDisposable
                 catch (Exception e) when (e is not OutOfMemoryException)
                 {
                     Fail(e);
+                    // As the render loop's decoder does when it stops: a failed session's memory is no longer reckoned
+                    // (WorkingLocked), so its decoder holds none.
+                    _decoder?.Dispose();
+                    _decoder = null;
                     return new MediaLookup(MediaState.Failed, null, info, _problem);
                 }
             }

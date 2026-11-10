@@ -22,6 +22,9 @@ public sealed class VideoSessionTests : IDisposable
         public readonly ConcurrentDictionary<string, byte[]> Blobs = new();
         public int Opens;
 
+        /// <summary>Every stream handed out, with the video it reads.</summary>
+        public readonly ConcurrentQueue<(string Hash, NotedStream Stream)> Streams = new();
+
         public string Add(byte[] bytes)
         {
             var id = BlobStore.IdOf(bytes);
@@ -38,7 +41,29 @@ public sealed class VideoSessionTests : IDisposable
         public Stream? Open(string hash)
         {
             Interlocked.Increment(ref Opens);
-            return Blobs.TryGetValue(hash, out var b) ? new MemoryStream(b, writable: false) : null;
+            if (!Blobs.TryGetValue(hash, out var b)) return null;
+            var stream = new NotedStream(b);
+            Streams.Enqueue((hash, stream));
+            return stream;
+        }
+
+        /// <summary>Whether every stream handed out for <paramref name="hash"/> has been disposed (at least one was).</summary>
+        public bool AllClosed(string hash)
+        {
+            var opened = Streams.Where(s => s.Hash == hash).ToList();
+            return opened.Count > 0 && opened.All(s => s.Stream.Disposed);
+        }
+    }
+
+    /// <summary>A video's bytes, read as any memory stream, noting when it is disposed.</summary>
+    private sealed class NotedStream(byte[] bytes) : MemoryStream(bytes, writable: false)
+    {
+        public volatile bool Disposed;
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
         }
     }
 
@@ -281,6 +306,125 @@ public sealed class VideoSessionTests : IDisposable
         Assert.Equal(3, Shown(cache, second, 0.35, w: 16, h: 16));
         Assert.Equal(1, cache.VideoSessions);
         Assert.Equal(VideoPlayer.WorkingSet(VideoProbe.Inspect(_store.Read(second)!, out _)!), cache.VideoWorkingBytes);
+    }
+
+    /// <summary>The ProRes fixture (10-bit 4:4:4, 6 bytes a pixel decoded) as another blob: an empty <c>free</c> box after it.</summary>
+    private static byte[] AnotherProRes() => [.. VideoFixtures.Read("clip-prores.mov"), 0, 0, 0, 8, (byte)'f', (byte)'r', (byte)'e', (byte)'e'];
+
+    [Fact]
+    public void ADecodersMemory_IsReckonedAtThePixelFormatItDecodesIn_NotTwoBytesAPixel()
+    {
+        // clip-prores.mov decodes as 10-bit 4:4:4 (yuv444p10le), 6 bytes a pixel; ProRes keeps no reference pictures.
+        var cache = Cache();
+        var id = _store.Add("clip-prores.mov");
+        Assert.Equal(3, Shown(cache, id, 0.35));
+        var info = VideoProbe.Inspect(VideoFixtures.Read("clip-prores.mov"), out _)!;
+        Assert.Equal(VideoDecoder.PictureArea(info) * 6 * (VideoDecoder.Threads + 1), cache.VideoWorkingBytes);
+    }
+
+    [Fact]
+    public void ADecoderThatTakesAHeavierPixelFormat_WaitsForRoomAsAnyOtherOverTheBudget()
+    {
+        // Room for one 64 x 48 ProRes decoder at its 6 bytes a pixel, or three reckoned at 2.
+        var info = VideoProbe.Inspect(VideoFixtures.Read("clip-prores.mov"), out _)!;
+        var one = VideoDecoder.PictureArea(info) * 6 * (VideoDecoder.Threads + 1);
+        var cache = new MediaSampleCache(_store, new MediaSampleCacheOptions
+        {
+            Synchronous = true,
+            Time = _time,
+            Video = new VideoOptions { Decoder = FFmpegForTests.Library, WorkingBytes = one + one / 2 },
+        });
+        _caches.Add(cache);
+        var first = _store.Add("clip-prores.mov");
+        var second = _store.Add(AnotherProRes());
+        Assert.NotEqual(first, second);
+
+        Assert.Equal(3, Shown(cache, first, 0.35));
+        // The second's format is known only once its decoder runs: then it is over the room, and waits.
+        var refused = Look(cache, second, 0.35);
+        Assert.Equal(MediaState.Failed, refused.State);
+        Assert.StartsWith("media.budget", refused.Problem);
+        Assert.True(cache.VideoWorkingBytes <= one + one / 2, $"{cache.VideoWorkingBytes} bytes reckoned");
+        // Its decoder is closed with the refusal: no memory is held that the budget no longer counts.
+        Assert.True(_store.AllClosed(second), "the refused decoder's stream is still open");
+
+        // A second later, the first unasked makes room, and the second plays, reckoned at its own format.
+        _time.Advance(TimeSpan.FromMilliseconds(1500));
+        Assert.Equal(3, Shown(cache, second, 0.35));
+        Assert.Equal(one, cache.VideoWorkingBytes);
+    }
+
+    /// <summary>The 10-bit AV1 fixture as another blob: an empty EBML Void element after it.</summary>
+    private static byte[] AnotherAv1TenBit() => [.. VideoFixtures.Read("clip-av1-10bit.webm"), 0xEC, 0x80];
+
+    [Fact]
+    public void ADecodersMemory_IsReckonedAtThePixelFormatItDecodesIn_EvenWhenItNamesItOnlyWithItsFirstPicture()
+    {
+        // clip-av1-10bit.webm decodes as 10-bit 4:2:0 (yuv420p10le), 3 bytes a pixel. AV1 decodes through dav1d, which
+        // names its format only with the pictures it decodes: the first picture's format is what is reckoned.
+        var info = VideoProbe.Inspect(VideoFixtures.Read("clip-av1-10bit.webm"), out _)!;
+        var one = VideoDecoder.PictureArea(info) * 3 * (8 + VideoDecoder.Threads + 1);
+        // Room for one at 3 bytes a pixel and another reckoned at 2, not for two at 3.
+        var cache = new MediaSampleCache(_store, new MediaSampleCacheOptions
+        {
+            Synchronous = true,
+            Time = _time,
+            Video = new VideoOptions { Decoder = FFmpegForTests.Library, WorkingBytes = one + one * 4 / 5 },
+        });
+        _caches.Add(cache);
+        var first = _store.Add("clip-av1-10bit.webm");
+        var second = _store.Add(AnotherAv1TenBit());
+        Assert.NotEqual(first, second);
+
+        Assert.Equal(3, Shown(cache, first, 0.35));
+        Assert.Equal(one, cache.VideoWorkingBytes);
+
+        // The second is admitted at 2 bytes a pixel; its first picture is 3, over the room: it waits, its decoder closed.
+        var refused = Look(cache, second, 0.35);
+        Assert.Equal(MediaState.Failed, refused.State);
+        Assert.StartsWith("media.budget", refused.Problem);
+        Assert.Equal(one, cache.VideoWorkingBytes);
+        Assert.True(_store.AllClosed(second), "the refused decoder's stream is still open");
+
+        // A second and a half later, the first unasked makes room, and the second plays, reckoned at its own format.
+        _time.Advance(TimeSpan.FromMilliseconds(1500));
+        Assert.Equal(3, Shown(cache, second, 0.35));
+        Assert.Equal(one, cache.VideoWorkingBytes);
+    }
+
+    /// <summary>The h264 mov with its media data zeroed: its header probes as before, but no picture decodes.</summary>
+    private static byte[] WithNothingToDecode()
+    {
+        var bytes = VideoFixtures.Read("clip-h264.mov");
+        var at = bytes.AsSpan().IndexOf("mdat"u8) - 4;
+        var size = (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(at));
+        bytes.AsSpan(at + 8, size - 8).Clear();
+        Assert.NotNull(VideoProbe.Inspect(bytes, out _));
+        return bytes;
+    }
+
+    [Fact]
+    public void AFailedSession_NeverMakesALoneVideoWait_EvenOneOverTheDecodersMemory()
+    {
+        var info = VideoProbe.Inspect(VideoFixtures.Read("clip-h264.mp4"), out _)!;
+        var cache = new MediaSampleCache(_store, new MediaSampleCacheOptions
+        {
+            Synchronous = true,
+            Time = _time,
+            Video = new VideoOptions { Decoder = FFmpegForTests.Library, WorkingBytes = VideoPlayer.WorkingSet(info) - 1 },
+        });
+        _caches.Add(cache);
+        var broken = _store.Add(WithNothingToDecode());
+        var video = _store.Add("clip-h264.mp4");
+
+        // The broken video fails, and is still asked for every tick; it holds no decoder, so the other is alone.
+        var failed = Look(cache, broken, 0);
+        Assert.Equal(MediaState.Failed, failed.State);
+        Assert.DoesNotContain("media.budget", failed.Problem);
+        Assert.Equal((1, 0L), (cache.VideoSessions, cache.VideoWorkingBytes));
+        Assert.Equal(MediaState.Failed, Look(cache, broken, 0.1).State);
+        var lookup = Look(cache, video, 0.1);
+        Assert.True(lookup.State == MediaState.Ready, $"{lookup.State}: {lookup.Problem}");
     }
 
     /// <summary>A lookup's state, its sample released.</summary>
@@ -619,6 +763,30 @@ public sealed class VideoSessionTests : IDisposable
         Assert.Equal(0, Shown(cache, other, 0));
         Assert.Equal(1, cache.VideoSessions);
         Assert.Equal(64L * 48 * 4, cache.Bytes); // the closed session's frame is gone; the new one's first frame
+    }
+
+    [Fact]
+    public void ASessionNotAskedForIn30Seconds_IsClosedOnTheClock_WithNoLaterLookup()
+    {
+        // A clock whose timers fire as it passes them: nothing asks for any video after the first lookup.
+        var time = new InfoPanel.Core.Tests.Sensors.TimerTimeProvider(DateTimeOffset.UnixEpoch);
+        var cache = new MediaSampleCache(_store, new MediaSampleCacheOptions
+        {
+            Synchronous = true,
+            Time = time,
+            Video = new VideoOptions { Decoder = FFmpegForTests.Library },
+        });
+        _caches.Add(cache);
+        var id = _store.Add("clip-h264.mp4");
+        Assert.Equal(3, Shown(cache, id, 0.35));
+        Assert.Equal(1, cache.VideoSessions);
+        Assert.Equal(64L * 48 * 4, cache.Bytes);
+
+        time.Advance(TimeSpan.FromSeconds(29));
+        Assert.Equal(1, cache.VideoSessions);
+        time.Advance(TimeSpan.FromSeconds(3));
+        Assert.Equal(0, cache.VideoSessions); // closed with no other lookup: its decoder and frames are gone
+        Assert.Equal(0, cache.Bytes);
     }
 
     [Fact]

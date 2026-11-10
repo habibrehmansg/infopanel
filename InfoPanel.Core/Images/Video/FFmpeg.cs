@@ -42,6 +42,7 @@ public sealed unsafe class FFmpeg
     internal delegate* unmanaged[Cdecl]<void*, byte*, void*, int, void*> av_dict_get;
     internal delegate* unmanaged[Cdecl]<int, void> av_log_set_level;
     internal delegate* unmanaged[Cdecl]<int, byte*, nuint, int> av_strerror;
+    internal delegate* unmanaged[Cdecl]<int, int, int, int, int> av_image_get_buffer_size;
 
     // libavcodec
     internal delegate* unmanaged[Cdecl]<uint> avcodec_version;
@@ -53,6 +54,7 @@ public sealed unsafe class FFmpeg
     internal delegate* unmanaged[Cdecl]<void*, void*, int> avcodec_send_packet;
     internal delegate* unmanaged[Cdecl]<void*, void*, int> avcodec_receive_frame;
     internal delegate* unmanaged[Cdecl]<void*, void> avcodec_flush_buffers;
+    internal delegate* unmanaged[Cdecl]<void*, int*, int> avcodec_default_get_format;
     internal delegate* unmanaged[Cdecl]<void*> av_packet_alloc;
     internal delegate* unmanaged[Cdecl]<void**, void> av_packet_free;
     internal delegate* unmanaged[Cdecl]<void*, void> av_packet_unref;
@@ -162,6 +164,7 @@ public sealed unsafe class FFmpeg
             f.av_dict_get = (delegate* unmanaged[Cdecl]<void*, byte*, void*, int, void*>)Export(avutil, "av_dict_get");
             f.av_log_set_level = (delegate* unmanaged[Cdecl]<int, void>)Export(avutil, "av_log_set_level");
             f.av_strerror = (delegate* unmanaged[Cdecl]<int, byte*, nuint, int>)Export(avutil, "av_strerror");
+            f.av_image_get_buffer_size = (delegate* unmanaged[Cdecl]<int, int, int, int, int>)Export(avutil, "av_image_get_buffer_size");
 
             f.avcodec_find_decoder_by_name = (delegate* unmanaged[Cdecl]<byte*, void*>)Export(avcodec, "avcodec_find_decoder_by_name");
             f.avcodec_alloc_context3 = (delegate* unmanaged[Cdecl]<void*, void*>)Export(avcodec, "avcodec_alloc_context3");
@@ -171,6 +174,7 @@ public sealed unsafe class FFmpeg
             f.avcodec_send_packet = (delegate* unmanaged[Cdecl]<void*, void*, int>)Export(avcodec, "avcodec_send_packet");
             f.avcodec_receive_frame = (delegate* unmanaged[Cdecl]<void*, void*, int>)Export(avcodec, "avcodec_receive_frame");
             f.avcodec_flush_buffers = (delegate* unmanaged[Cdecl]<void*, void>)Export(avcodec, "avcodec_flush_buffers");
+            f.avcodec_default_get_format = (delegate* unmanaged[Cdecl]<void*, int*, int>)Export(avcodec, "avcodec_default_get_format");
             f.av_packet_alloc = (delegate* unmanaged[Cdecl]<void*>)Export(avcodec, "av_packet_alloc");
             f.av_packet_free = (delegate* unmanaged[Cdecl]<void**, void>)Export(avcodec, "av_packet_free");
             f.av_packet_unref = (delegate* unmanaged[Cdecl]<void*, void>)Export(avcodec, "av_packet_unref");

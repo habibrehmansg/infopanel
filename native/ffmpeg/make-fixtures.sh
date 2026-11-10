@@ -38,6 +38,10 @@ make clip-mpeg4.avi  -c:v mpeg4 -q:v 2 -g 10 -bf 0
 make clip-mjpeg.avi  -c:v mjpeg -q:v 2 -pix_fmt yuvj420p
 make clip-prores.mov -c:v prores_ks -profile:v 0
 
+# A pixel format heavier than the 2 bytes a pixel a decoder's memory is first reckoned at (10-bit 4:2:0 is 3), from a
+# decoder that names its format only with the pictures it decodes (dav1d).
+make clip-av1-10bit.webm -c:v libsvtav1 -pix_fmt yuv420p10le -crf 10 -g 10 -svtav1-params log-level=0
+
 # For the rtsp provider's test camera: a larger picture a camera switches to (640 x 480, the same colours), and pictures
 # in a format the cameras' decoders aren't budgeted for (4:4:4 at 10 bits), each read as a camera's frames.
 "$FFMPEG" "${GLOBAL[@]}" -f lavfi -i "color=c=black:s=640x480:r=10:d=1" "${OUTPUT[@]}" -vf "$COLOURS" \

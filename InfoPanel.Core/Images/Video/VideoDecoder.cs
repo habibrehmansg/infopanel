@@ -21,6 +21,12 @@ internal sealed class VideoException(string code, string message) : Exception(me
 /// file, address or protocol itself), with the demuxer the probe named, only that demuxer and decoder allowed, the
 /// decoder's picture size held to the media limits, and every stream but the first video track discarded. The caller
 /// probes the stream (<see cref="VideoProbe"/>) before handing it over: FFmpeg never sees a file the probe refused.
+/// <para>
+/// The decoder's memory was reckoned at <see cref="BytesPerPixel"/> bytes a pixel, but only the decoder knows the pixel
+/// format it decodes in: the format FFmpeg would choose (its <c>get_format</c>, asked before it allocates a picture in
+/// that format, by the decoders that ask) and each decoded frame's format (the decoders that don't) are reckoned, and one
+/// of more bytes a pixel is decoded only once the caller has room for it; else the video fails with <c>media.budget</c>.
+/// </para>
 /// </summary>
 internal sealed unsafe class VideoDecoder : IDisposable
 {
@@ -49,6 +55,11 @@ internal sealed unsafe class VideoDecoder : IDisposable
     private double _lastSeconds = double.NaN;
     private SpecLimits _limits = SpecLimits.Default;
     private CancellationToken _cancel;
+    private readonly Lock _formatLock = new(); // get_format may run on a decoding thread of FFmpeg's, one at a time
+    private Func<double, bool>? _room;
+    private double _bytesPerPixel = 2;
+    private int _formatChecked = FFmpegAbi.PixFmtNone;
+    private string? _refused; // why a pixel format was refused: the video waits for room
 
     /// <summary>The threads FFmpeg decodes one video with (each holds a picture of its own).</summary>
     internal const int Threads = 2;
@@ -75,6 +86,15 @@ internal sealed unsafe class VideoDecoder : IDisposable
     /// <summary>What the probe read of the file.</summary>
     public MediaInfo Info { get; }
 
+    /// <summary>The bytes a pixel the decoder's memory is reckoned at: at least 2, more once it takes a heavier pixel format.</summary>
+    public double BytesPerPixel
+    {
+        get
+        {
+            lock (_formatLock) return _bytesPerPixel;
+        }
+    }
+
     /// <summary>The size frames are scaled to.</summary>
     public int Width { get; }
 
@@ -94,15 +114,20 @@ internal sealed unsafe class VideoDecoder : IDisposable
     /// <paramref name="opening"/> is told the address FFmpeg is given, always none: it reads through the callbacks.
     /// Once <paramref name="cancel"/> is cancelled FFmpeg's next read fails and the decoder stops: opening or decoding
     /// throws <see cref="OperationCanceledException"/> rather than read on.
+    /// <paramref name="bytesPerPixel"/> is what its memory was reckoned at (at least 2); a pixel format of more is decoded
+    /// only when <paramref name="room"/>, told that format's bytes a pixel, answers true (none: always).
     /// </summary>
     /// <exception cref="VideoException">FFmpeg refused the file, or its first video track isn't what the probe read.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancel"/> was cancelled.</exception>
     public static VideoDecoder Open(FFmpeg f, Stream stream, MediaInfo probe, int width, int height, SpecLimits limits, Action<string?>? opening = null,
-        CancellationToken cancel = default)
+        CancellationToken cancel = default, double bytesPerPixel = 2, Func<double, bool>? room = null)
     {
         if (probe.Codec is not { } codecName || !probe.IsVideo)
             throw new VideoException(MediaProbe.FormatCode, "Not a video.");
-        var decoder = new VideoDecoder(f, stream, probe, Math.Max(1, width), Math.Max(1, height)) { _limits = limits, _cancel = cancel };
+        var decoder = new VideoDecoder(f, stream, probe, Math.Max(1, width), Math.Max(1, height))
+        {
+            _limits = limits, _cancel = cancel, _bytesPerPixel = Math.Max(2, bytesPerPixel), _room = room,
+        };
         try
         {
             decoder.OpenInput(opening);
@@ -214,6 +239,9 @@ internal sealed unsafe class VideoDecoder : IDisposable
         if (_codec is null) throw new VideoException(MediaProbe.MalformedCode, "No memory for the decoder.");
         var copied = _f.avcodec_parameters_to_context(_codec, parameters);
         if (copied < 0) throw new VideoException(MediaProbe.MalformedCode, $"The video's parameters were refused: {_f.Error(copied)}.");
+        // The decoders that ask which format to decode in do so before they allocate a picture in it.
+        SetField(_codec, FFmpegAbi.CodecContextOpaque, GCHandle.ToIntPtr(_self));
+        SetField(_codec, FFmpegAbi.CodecContextGetFormat, (IntPtr)(delegate* unmanaged[Cdecl]<void*, int*, int>)&GetFormat);
         void* options = null;
         try
         {
@@ -316,6 +344,7 @@ internal sealed unsafe class VideoDecoder : IDisposable
             if (received == 0)
             {
                 CheckFrame();
+                CheckFormat(Field<int>(_frame, FFmpegAbi.FrameFormat));
                 _decoded = true;
                 return _lastSeconds = SecondsOf(_frame);
             }
@@ -323,6 +352,7 @@ internal sealed unsafe class VideoDecoder : IDisposable
                 return End();
             if (received != FFmpegAbi.ErrorAgain)
             {
+                ThrowIfRefused();
                 _error = received;
                 if (++errors > MaxErrors) throw new VideoException(MediaProbe.MalformedCode, $"The video could not be decoded: {_f.Error(received)}.");
                 continue;
@@ -347,6 +377,7 @@ internal sealed unsafe class VideoDecoder : IDisposable
             _f.av_packet_unref(_packet);
             if (sent < 0 && sent != FFmpegAbi.ErrorAgain)
             {
+                ThrowIfRefused();
                 _error = sent;
                 if (++errors > MaxErrors) throw new VideoException(MediaProbe.MalformedCode, $"The video could not be decoded: {_f.Error(sent)}.");
             }
@@ -356,6 +387,7 @@ internal sealed unsafe class VideoDecoder : IDisposable
     /// <summary>The stream's end: a stream that ends before any frame decoded, its packets refused, fails.</summary>
     private double? End()
     {
+        ThrowIfRefused();
         if (!_decoded && _error is { } error)
             throw new VideoException(MediaProbe.MalformedCode, $"The video could not be decoded: {_f.Error(error)}.");
         return null;
@@ -367,6 +399,83 @@ internal sealed unsafe class VideoDecoder : IDisposable
         var (w, h, _) = FrameShape;
         if (w < 1 || h < 1 || w > _limits.MediaSide || h > _limits.MediaSide || (long)w * h > _limits.MediaArea)
             throw new VideoException(MediaProbe.MalformedCode, $"The decoder reads a {w} x {h} picture, outside the media limits.");
+    }
+
+    /// <summary>
+    /// The bytes a pixel of <paramref name="format"/> takes (its planes at a reference size, so chroma subsampling and
+    /// depth count); infinite for a format FFmpeg can't size.
+    /// </summary>
+    private double BytesOf(int format)
+    {
+        const int side = 256;
+        var bytes = _f.av_image_get_buffer_size(format, side, side, 1);
+        return bytes > 0 ? (double)bytes / (side * side) : double.PositiveInfinity;
+    }
+
+    /// <summary>
+    /// Whether the decoder may decode in <paramref name="format"/>: yes within the bytes a pixel its memory is reckoned
+    /// at, else only once the caller has made room for that format's (and from then on it is reckoned at that).
+    /// </summary>
+    private bool Admit(int format)
+    {
+        lock (_formatLock)
+        {
+            if (format == _formatChecked) return true;
+            var bytes = BytesOf(format);
+            if (bytes > _bytesPerPixel)
+            {
+                if (double.IsPositiveInfinity(bytes))
+                {
+                    _refused ??= $"The video's pixel format ({format}) can't be reckoned.";
+                    return false;
+                }
+                if (_room is { } room && !room(bytes))
+                {
+                    _refused ??= $"This video's decoder takes {bytes:0.##} bytes a pixel (its pixel format), and the videos decoding already leave no room for that; it waits for one of them to stop.";
+                    return false;
+                }
+                _bytesPerPixel = bytes;
+            }
+            _formatChecked = format;
+            return true;
+        }
+    }
+
+    /// <summary>A decoded frame in a format not yet reckoned (from a decoder that doesn't ask which format): admitted or the video waits.</summary>
+    private void CheckFormat(int format)
+    {
+        if (!Admit(format)) ThrowIfRefused();
+    }
+
+    /// <summary>A format refused for want of room fails the video with <c>media.budget</c>, not as a decode error.</summary>
+    private void ThrowIfRefused()
+    {
+        string? refused;
+        lock (_formatLock) refused = _refused;
+        if (refused is not null) throw new VideoException(MediaBudgetCode, refused);
+    }
+
+    /// <summary>The code of a video waiting for decoder memory (spec/docs/limits.md).</summary>
+    internal const string MediaBudgetCode = "media.budget";
+
+    /// <summary>
+    /// FFmpeg's <c>get_format</c>: the format FFmpeg itself would choose, when the decoder may decode in it
+    /// (<see cref="Admit"/>); none, and the decode fails, when not. Called before FFmpeg allocates a picture in it, on a
+    /// decoding thread, one call at a time.
+    /// </summary>
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int GetFormat(void* context, int* formats)
+    {
+        try
+        {
+            var decoder = (VideoDecoder)GCHandle.FromIntPtr(Field<IntPtr>(context, FFmpegAbi.CodecContextOpaque)).Target!;
+            var chosen = decoder._f.avcodec_default_get_format(context, formats);
+            return chosen == FFmpegAbi.PixFmtNone || decoder.Admit(chosen) ? chosen : FFmpegAbi.PixFmtNone;
+        }
+        catch
+        {
+            return FFmpegAbi.PixFmtNone;
+        }
     }
 
     private double SecondsOf(void* frame)

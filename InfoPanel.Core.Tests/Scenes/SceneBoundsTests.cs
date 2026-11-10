@@ -382,6 +382,23 @@ public sealed class SceneBoundsTests
         Assert.True(painted > 0, "nothing painted: no window shows the paint at the outline's edge");
     }
 
+    /// <summary>
+    /// A start of 10⁹ degrees (an animated spinner's after a long run) is 2,777,777 turns and 280°: drawn and measured as the
+    /// arc at 280°. A float can't hold 10⁹ + 30 (its step there is 64), so a start left unreduced loses or snaps the sweep.
+    /// </summary>
+    [Theory]
+    [InlineData("'close':'open'")]
+    [InlineData("'close':'sector','inner':100")]
+    public void An_arc_at_a_large_start_angle_is_drawn_and_measured_as_its_start_less_whole_turns(string close)
+    {
+        static string Arc(string start, string close) =>
+            $"[{{'kind':'arc','cx':200,'cy':200,'r':150,'start':{start},'sweep':30,{close},'stroke':{{'paint':'#ffffff','width':4}}}}]";
+        var (reduced, reducedPainted) = BoundsAndPixels(Canvas400(0, 0, Arc("280", close)));
+        var (large, largePainted) = BoundsAndPixels(Canvas400(0, 0, Arc("1e9", close)));
+        Assert.Equal(new[] { reduced.Ink.X, reduced.Ink.Y, reduced.Ink.W, reduced.Ink.H }, new[] { large.Ink.X, large.Ink.Y, large.Ink.W, large.Ink.H });
+        Assert.Equal(reducedPainted, largePainted);
+    }
+
     [Theory]
     [InlineData("'close':'open'")]
     [InlineData("'close':'sector','inner':20")]

@@ -296,6 +296,37 @@ public sealed class SceneHostileTests
         Assert.True(tick + draw < TimeSpan.FromSeconds(2), $"{tick} + {draw}");
     }
 
+    /// <summary>
+    /// Every group at an opacity below 1 (or with a blend or effects) draws into a layer held until the group ends, so
+    /// nested ones are all allocated at once, each up to the frame: past the layer budget the item is over budget, within
+    /// it (or side by side, one open at a time) it draws.
+    /// </summary>
+    [Theory]
+    [InlineData("nested", 8, false)]
+    [InlineData("nested", 9, true)]
+    [InlineData("nested", 23, true)]
+    [InlineData("siblings", 23, false)]
+    public void Layers_open_at_once_are_bounded(string shape, int groups, bool over)
+    {
+        const string rect = "{\"kind\":\"rect\",\"w\":800,\"h\":600,\"fill\":\"#ffffff\"}";
+        string nodes;
+        if (shape == "nested")
+        {
+            nodes = rect;
+            for (var i = 0; i < groups; i++) nodes = $"{{\"kind\":\"group\",\"opacity\":0.5,\"children\":[{nodes}]}}";
+        }
+        else
+        {
+            nodes = string.Join(",", Enumerable.Range(0, groups).Select(_ => $"{{\"kind\":\"group\",\"opacity\":0.5,\"children\":[{rect}]}}"));
+        }
+        var (s, _, _) = Time(Scene(nodes));
+        using (s)
+        {
+            Assert.Equal(over ? "budget" : null, s.Bounds.Single().Problem);
+            Assert.Equal(over, s.Diagnostics.Any(d => d.Code == "budget.layers"));
+        }
+    }
+
     [Fact]
     public void The_most_effects_on_a_full_canvas_are_bounded()
     {

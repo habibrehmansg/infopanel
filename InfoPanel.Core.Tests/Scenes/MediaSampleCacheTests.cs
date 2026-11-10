@@ -195,6 +195,23 @@ public sealed class MediaSampleCacheTests
     }
 
     [Fact]
+    public void An_asset_no_tick_asks_for_is_dropped_on_the_clock_with_no_later_lookup()
+    {
+        var store = new MemoryAssets();
+        store.Assets["red"] = MemoryAssets.Png(SKColors.Red);
+        var time = new InfoPanel.Core.Tests.Sensors.TimerTimeProvider(DateTimeOffset.UnixEpoch);
+        using var media = new MediaSampleCache(store, new MediaSampleCacheOptions { Synchronous = true, Time = time });
+        media.Get("red", 0, MediaPlayback.Loop).Sample!.Release();
+        Assert.Equal(1, media.AssetCount);
+        Assert.Equal(4L * 4 * 4, media.Bytes);
+
+        // Nothing asks for any media again: the idle asset and its frame go on the clock alone.
+        time.Advance(TimeSpan.FromSeconds(40));
+        Assert.Equal(0, media.AssetCount);
+        Assert.Equal(0, media.Bytes);
+    }
+
+    [Fact]
     public void Shutting_down_while_a_decode_outlasts_the_wait_does_not_deadlock()
     {
         var store = new MemoryAssets { Gated = "slow" };

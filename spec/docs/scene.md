@@ -78,7 +78,7 @@ A group draws its children in its own coordinates, applying in this order:
 4. `effects`, up to 4, in order, on the composited children: `blur` (Gaussian, `sigma`), `shadow` (the children's coverage filled with `color`, offset by `dx`, `dy`, blurred by `sigma`, drawn under them) and `glow` (a shadow without offset). Sigma is clamped to 0–64 pixels; a blur reaches 3 sigma. Effect parameters are in the group's own coordinates, after its transform, so a shadow's offset (and every sigma) turns and scales with the group. Effects act on the clipped children but are not clipped by the group's own `clip`: a glow or shadow extends past it.
 5. `opacity` and `blend` when compositing the result onto what is below. `blend` is one of the W3C Compositing and Blending modes (`normal` default, `multiply`, `screen`, `overlay`, `darken`, `lighten`, `color-dodge`, `color-burn`, `hard-light`, `soft-light`, `difference`, `exclusion`, `hue`, `saturation`, `color`, `luminosity`) or `plus` (adds the colours).
 
-A group with effects, opacity below 1 or a blend other than `normal` is drawn as a layer (an engine may skip the layer when the result is the same). Effects cost more than shapes; their cost counts against a scene's budget ([limits](limits.md)).
+A group with effects, opacity below 1 or a blend other than `normal` is drawn as a layer (an engine may skip the layer when the result is the same). Effects cost more than shapes; their cost counts against a scene's budget ([limits](limits.md)). Groups drawn as layers and nested in one another hold their layers at once, and an item that nests more of them than the run-time budget allows is drawn as over budget ([limits](limits.md#run-time-budgets)).
 
 ## Order of evaluation
 

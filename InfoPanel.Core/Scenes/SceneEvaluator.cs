@@ -187,6 +187,12 @@ internal sealed class SceneEvaluator
     /// </summary>
     public const int MaxItemLayouts = 2_000;
 
+    /// <summary>
+    /// Most groups drawn as layers (effects, an opacity below 1, a blend other than source-over) one item may nest in one
+    /// another: each holds a layer up to the frame's size until the group ends, so nested ones are allocated at once.
+    /// </summary>
+    public const int MaxOpenLayers = 8;
+
     private readonly CompiledScene _scene;
     private readonly ItemRuntime _rt;
     private readonly TickServices _services;
@@ -199,6 +205,12 @@ internal sealed class SceneEvaluator
 
     /// <summary>The dash segments the item's dashed strokes resolved so far would draw (each stroke's estimate, summed).</summary>
     private double _dashSegments;
+
+    /// <summary>The layered groups enclosing the nodes being resolved, which the drawer holds open at once (<see cref="MaxOpenLayers"/>).</summary>
+    private int _layers;
+
+    /// <summary>Whether the nodes being resolved are inside a group at opacity 0, which the drawer skips with all it holds.</summary>
+    private bool _unseen;
 
     /// <summary>More than any scale the frame is drawn at, for the dash budget.</summary>
     private readonly double _frameScale;
@@ -352,7 +364,7 @@ internal sealed class SceneEvaluator
             var opacity = node.Opacity is { } o ? (float)Math.Clamp(o.Num(_e), 0, 1) : 1f;
             RNode? r = node switch
             {
-                CGroup g => ResolveGroup(g),
+                CGroup g => ResolveGroup(g, opacity),
                 CShape s => ResolveShape(s),
                 CText t => LayText(t),
                 CSeries s => ResolveSeries(s),
@@ -367,7 +379,8 @@ internal sealed class SceneEvaluator
         return result.ToArray();
     }
 
-    private RGroup ResolveGroup(CGroup g)
+    /// <param name="opacity">The group's own opacity, which <see cref="Resolve(CNode[])"/> applies to it.</param>
+    private RGroup ResolveGroup(CGroup g, float opacity)
     {
         var m = SKMatrix.Identity;
         foreach (var step in g.Transform) m = m.PreConcat(Step(step));
@@ -382,9 +395,16 @@ internal sealed class SceneEvaluator
             effects.Add(new REffect(fx.Kind, dx, dy, sigma, color));
         }
         var clip = g.Clip is null ? null : ResolveClip(g.Clip);
+        // A group drawn as a layer (as RGroup.NeedsLayer decides) holds it while its children draw, inside its enclosing
+        // groups' layers: the layer budget counts them nested. A group at opacity 0 isn't drawn, nor anything in it.
+        var layered = !_unseen && opacity > 0 && (effects.Count > 0 || opacity < 1 || g.Blend != SKBlendMode.SrcOver);
+        if (layered && ++_layers > MaxOpenLayers)
+            throw new BudgetExceeded("budget.layers", $"Its groups would draw {_layers} layers at once; at most {MaxOpenLayers} are drawn.");
         // The children are drawn through the group's transform, concatenated as the drawer does.
         var outer = _matrix;
+        var unseen = _unseen;
         _matrix = _matrix.PreConcat(m);
+        _unseen = unseen || opacity <= 0;
         RNode[] children;
         try
         {
@@ -393,6 +413,8 @@ internal sealed class SceneEvaluator
         finally
         {
             _matrix = outer;
+            _unseen = unseen;
+            if (layered) _layers--;
         }
         return new RGroup
         {
@@ -465,7 +487,9 @@ internal sealed class SceneEvaluator
         var y = SceneMath.F(cy.Num(_e));
         var r = SceneMath.F(cr.Num(_e));
         var inner = Math.Max(0, SceneMath.F(cinner.Num(_e)));
-        var start = SceneMath.F(cstart.Num(_e));
+        // Less whole turns, in double before it becomes a float: past 2^24 degrees a float's step is over a degree, and the
+        // bounds, ink and path code (and Skia) add the sweep to the start. Within ±360 the angle is unchanged, bit for bit.
+        var start = SceneMath.F(SceneMath.Finite(cstart.Num(_e)) % 360);
         var sweep = (float)Math.Clamp(csweep.Num(_e), -360, 360);
         if (r <= 0 || (!open && inner >= r) || sweep == 0) return null;
         return new ArcGeom(x, y, r, open ? 0 : inner, start, sweep, open);
