@@ -10,6 +10,8 @@ InfoPanel reads your computer's sensors (CPU and GPU temperatures, load, fan spe
 
 **[Download](#download) · [Documentation](docs/2.0/README.md) · [Discord][discord] · [Reddit][reddit]**
 
+![The editor in the browser: a 1920 × 480 profile on the canvas, drawn live by InfoPanel, with its layers and its settings](docs/images/readme/editor.png)
+
 ## Download
 
 InfoPanel 2.0 is in beta: try it, and [tell us what breaks][issues]. Builds are on the [Releases page][releases] as pre-releases; until one is there, [build from source](#build-from-source).
@@ -31,7 +33,11 @@ Then choose **Open Editor** in the menu (on Windows, a click on the icon does th
 
 **USB panels.** All 21 BeadaPanel models, from 320 × 480 up to the 1920 × 480 bars. InfoPanel finds a panel you plug in and saves it switched off; give it a profile and turn it on, and it shows that profile live, rotated as you set it and scaled to fit ([USB panels](docs/2.0/panels.md)). The BeadaPanel 8 and its 1920 × 480 relatives get JPEG frames, about twice as many a second as raw ones. A panel another program is using is left alone.
 
+![A 1920 × 480 profile as InfoPanel draws it for a panel: GPU gauges and load graph, the clock and frame rate, CPU and network](docs/images/readme/panel.png)
+
 **Desktop windows** (macOS and Windows). Any profile can have a window of its own on your desktop; **Show on Desktop** in the menu turns each one on or off. **Click-Through** lets clicks pass to whatever is underneath.
+
+![Devices: a BeadaPanel 8 showing one profile and a desktop window showing another](docs/images/readme/devices.png)
 
 ## What it reads
 
@@ -40,6 +46,8 @@ Then choose **Open Editor** in the menu (on Windows, a click on the icon does th
 - **On Linux:** the hwmon and thermal-zone sensors in `/sys`.
 - **Everywhere:** the clock, your drives, network interfaces and public address, uptime and the busiest processes, and the weather, which needs the configured weather service. Volume on macOS and Windows.
 - **Plugins:** .NET plugins add sensors, texts and tables of their own. Add the plugin package to the data folder's `plugins` folder and restart InfoPanel; each package runs in its own process ([plugins](docs/2.0/plugins.md), [writing one](PLUGINS.md), [community plugins](PLUGIN-REGISTRY.md)).
+
+![Data sources: every sensor InfoPanel reads, with its current value and the last minute, here the demo sensors](docs/images/readme/data-sources.png)
 
 A profile can hold text and live values, graphs, tables, images and SVG, image-sequence gauges, web images and cameras. Video files and RTSP cameras need FFmpeg's libraries, which the downloads don't include; MJPEG cameras work without them ([video](docs/2.0/video.md)).
 
