@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using InfoPanel.Output;
 using InfoPanel.Panels.BeadaPanel;
+using InfoPanel.Panels.Sdk;
 using InfoPanel.Panels.Usb;
 using Serilog;
 using SkiaSharp;
@@ -29,15 +30,17 @@ public sealed record PanelRunnerOptions
 }
 
 /// <summary>
-/// One running BeadaPanel, on a thread of its own: the start sequence, then frames from its <see cref="PanelSink"/>
-/// (transformed to the panel's size and rotation, as RGB565, or on a JPEG stream as RGBA encoded once as JPEG), the
+/// One running panel, on a thread of its own, through its driver's <see cref="IPanelSession"/>: the start
+/// (<see cref="IPanelDriver.Open"/>), then frames from its <see cref="PanelSink"/> (transformed to the panel's size and
+/// rotation, as RGB565, or on a JPEG stream as RGBA encoded once as JPEG), the
 /// brightness re-sent between frames when it changed, the last frame re-sent (not encoded again) after
 /// <see cref="PanelRunnerOptions.KeepAlive"/> without a new one; on any stop, the screen-off. Waits go through the
 /// <see cref="TimeProvider"/>. Its pacing (<see cref="PanelPacer"/>, a new one each session and each change of the frame
-/// rate setting), checked once a second: the sink asks for at most the panel's ceiling (a T113's, kept at the write from the
-/// first frame), under what the thread
+/// rate setting), checked once a second: the sink asks for at most the panel's ceiling (its session's
+/// <see cref="PanelCapabilities.MaxFps"/> under 60, a T113's; kept at the write from the first frame), under what the thread
 /// can write (0.85 × 1000 / the mean frame time), and, once the device's buffer is seen to fill, under what the device
-/// showed, so a change waits behind a frame or two, not a buffer; the thread itself writes no sooner than one interval of
+/// showed (each write's <see cref="PanelWrite.DeviceTime"/>, as the driver measured its transfer), so a change waits
+/// behind a frame or two, not a buffer; the thread itself writes no sooner than one interval of
 /// the lower of the setting and the pace after its last write began. The fps is writes per 0.5 s, the frame time the mean
 /// of the last 60 writes, each with its encode on a JPEG stream. The log has a line for each new document
 /// revision written and for each change of pace of more than a fifth (at most one every <see cref="PaceLogEvery"/>).
@@ -47,8 +50,9 @@ public sealed class PanelRunner
     /// <summary>The least time between two lines in the log about the pace.</summary>
     public static readonly TimeSpan PaceLogEvery = TimeSpan.FromSeconds(5);
 
-    private readonly IUsbBackend _backend;
-    private readonly UsbDeviceId _usb;
+    private readonly IPanelDriver _driver;
+    private readonly PanelCandidate _device;
+    private readonly PanelIdentity _identity;
     private readonly string _label;
     private readonly Func<PanelSink, bool> _attach;
     private readonly Action<PanelSink> _detach;
@@ -84,14 +88,30 @@ public sealed class PanelRunner
     private double _fps;
     private double _frameTimeMs;
 
+    /// <summary>A BeadaPanel at <paramref name="usb"/>, through the built-in <see cref="BeadaPanelDriver"/> (its start reads the panel's info itself).</summary>
     /// <param name="attach">Attaches the sink to the render service (false: the profile can't be rendered now).</param>
     /// <param name="encoding">How frames are sent (<see cref="BeadaPanelProtocol.StreamsJpeg"/>); raw unless given.</param>
     public PanelRunner(IUsbBackend backend, UsbDeviceId usb, string label, string profileId, int brightness, PanelRotation rotation,
         Func<PanelSink, bool> attach, Action<PanelSink> detach, Action<PanelSink> requestChanged, Action<PanelSink> refresh, Func<int> frameRate,
         TimeProvider time, PanelRunnerOptions options, ILogger logger, PanelEncoding encoding = PanelEncoding.Raw)
+        : this(new BeadaPanelDriver(backend, time), PanelManager.CandidateOf(usb), new PanelIdentity("", 0, 0, null, null), label, profileId, brightness,
+            rotation, attach, detach, requestChanged, refresh, frameRate, time, options, logger, encoding)
     {
-        _backend = backend;
-        _usb = usb;
+    }
+
+    /// <summary>The panel <paramref name="driver"/> found at <paramref name="device"/> as <paramref name="identity"/>.</summary>
+    /// <param name="attach">Attaches the sink to the render service (false: the profile can't be rendered now).</param>
+    /// <param name="encoding">
+    /// The format asked of the driver: <see cref="PanelEncoding.Auto"/> none (its own choice), <see cref="PanelEncoding.Jpeg"/>
+    /// JPEG, <see cref="PanelEncoding.Raw"/> RGB565; raw unless given.
+    /// </param>
+    public PanelRunner(IPanelDriver driver, PanelCandidate device, PanelIdentity identity, string label, string profileId, int brightness, PanelRotation rotation,
+        Func<PanelSink, bool> attach, Action<PanelSink> detach, Action<PanelSink> requestChanged, Action<PanelSink> refresh, Func<int> frameRate,
+        TimeProvider time, PanelRunnerOptions options, ILogger logger, PanelEncoding encoding = PanelEncoding.Raw)
+    {
+        _driver = driver;
+        _device = device;
+        _identity = identity;
         _label = label;
         _profileId = profileId;
         _brightness = brightness;
@@ -216,22 +236,27 @@ public sealed class PanelRunner
     private void Run()
     {
         var end = new PanelRunEnd(false, UsbStatus.Ok, "stopped");
-        BeadaPanelSession? session = null;
+        IPanelSession? session = null;
         try
         {
             // A refused JPEG start is kept at once, so the manager remembers it whatever the start comes to.
-            var start = BeadaPanelSession.Start(_backend, _usb, _brightness, _encoding, _time, _stop.Token, refused =>
+            var options = new PanelOpenOptions(_brightness, (int)Rotation, FormatOf(_encoding))
             {
-                _jpegRefused = new StrongBox<UsbStatus>(refused);
-                _logger.Information("Panel {Panel}: the JPEG start wasn't taken ({Status}): raw frames, for this panel until the engine restarts", _label, refused);
-            });
-            if (start.Session is null)
+                FormatRefused = refused =>
+                {
+                    var status = UsbStatusOf(refused);
+                    _jpegRefused = new StrongBox<UsbStatus>(status);
+                    _logger.Information("Panel {Panel}: the JPEG start wasn't taken ({Status}): raw frames, for this panel until the engine restarts", _label, status);
+                },
+            };
+            var open = _driver.Open(_device, _identity, options, _stop.Token);
+            if (open.Session is null)
             {
-                end = new PanelRunEnd(true, start.Status, start.Message);
+                end = new PanelRunEnd(true, UsbStatusOf(open.Status), open.Message);
                 return;
             }
-            session = start.Session;
-            _jpeg = session.Jpeg;
+            session = open.Session;
+            _jpeg = WrittenFormat(session.Capabilities) == PanelFrameFormat.Jpeg;
             end = Loop(session);
         }
         catch (OperationCanceledException)
@@ -245,26 +270,64 @@ public sealed class PanelRunner
         }
         finally
         {
-            Running = false;
+            // Whatever the stop comes to, nothing escapes the panel's thread (that would end the engine) and Ended completes.
+            try
+            {
+                End(session);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Panel {Panel}: its stop failed", _label);
+            }
+            finally
+            {
+                _ended.TrySetResult(end);
+            }
+        }
+    }
+
+    /// <summary>The sink detached, then the session closed (<see cref="Close"/>), whatever the detach came to.</summary>
+    private void End(IPanelSession? session)
+    {
+        Running = false;
+        try
+        {
             if (_attached is { } sink)
             {
                 _attached = null;
                 _detach(sink);
                 sink.Retire();
             }
-            try
-            {
-                var askedAt = Interlocked.Read(ref _stopAskedAt);
-                session?.Stop(askedAt >= 0 ? askedAt : null);
-            }
-            catch (Exception ex)
-            {
-                _logger.Warning(ex, "Panel {Panel}: its screen off failed", _label);
-            }
-            if (session != null)
-                _logger.Information("Panel {Panel}: stopped after {Writes} frames ({Fps:0.#} fps, {FrameTime:0.#} ms a frame)", _label, Writes, Fps, FrameTimeMs);
-            _ended.TrySetResult(end);
         }
+        finally
+        {
+            if (session != null)
+                Close(session);
+        }
+    }
+
+    /// <summary>The session's screen-off, then its letting the device go, each tried whatever the other came to (a driver's failure in either is logged).</summary>
+    private void Close(IPanelSession session)
+    {
+        try
+        {
+            // The screen-off's bound counts from the first ask to stop: the session is given what is left of it.
+            var askedAt = Interlocked.Read(ref _stopAskedAt);
+            session.Close(screenOff: true, askedAt >= 0 ? BeadaPanelSession.ScreenOffBound - _time.GetElapsedTime(askedAt) : BeadaPanelSession.ScreenOffBound);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Panel {Panel}: its screen off failed", _label);
+        }
+        try
+        {
+            session.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Panel {Panel}: letting the panel go failed", _label);
+        }
+        _logger.Information("Panel {Panel}: stopped after {Writes} frames ({Fps:0.#} fps, {FrameTime:0.#} ms a frame)", _label, Writes, Fps, FrameTimeMs);
     }
 
     /// <summary>
@@ -300,22 +363,27 @@ public sealed class PanelRunner
         return made;
     }
 
-    private PanelRunEnd Loop(BeadaPanelSession session)
+    private PanelRunEnd Loop(IPanelSession session)
     {
-        var ceiling = PanelPacer.CeilingOf(session.Info, session.Jpeg);
+        var capabilities = session.Capabilities;
+        if (WrittenFormat(capabilities) is not { } streamed)
+            return Failed(UsbStatus.NotSupported, "the panel takes none of the pixel formats the engine writes");
+        // The panel's own ceiling; none at 60 or more, which the pace never passes anyway.
+        int? ceiling = capabilities.MaxFps < 60 ? Math.Max(1, capabilities.MaxFps) : null;
         _pacer = new PanelPacer(ceiling);
         var profileId = ProfileId;
         if (AttachSink(profileId) is not { } sink)
             return new PanelRunEnd(true, UsbStatus.Ok, $"profile {profileId} can't be rendered", FrameSinkClosedReason.ProfileDeleted);
         Running = true;
-        var jpeg = session.Jpeg;
+        var jpeg = streamed == PanelFrameFormat.Jpeg;
         _jpeg = jpeg;
-        _logger.Information("Panel {Panel}: running, {Width} x {Height}, {Encoding:l}, profile {ProfileId}", _label, session.Width, session.Height,
-            jpeg ? $"JPEG q{BeadaPanelProtocol.JpegQuality}" : "raw RGB565", profileId);
+        var (width, height) = (capabilities.Width, capabilities.Height);
+        _logger.Information("Panel {Panel}: running, {Width} x {Height}, {Encoding:l}, profile {ProfileId}", _label, width, height,
+            jpeg ? $"JPEG q{capabilities.JpegQuality}" : "raw RGB565", profileId);
 
         // A raw stream writes the transformed frame; a JPEG one encodes it once, and a re-send writes the same JPEG.
         var format = jpeg ? PanelPixelFormat.Rgba8888 : PanelPixelFormat.Rgb565Le;
-        var target = new byte[PanelTransform.TargetLength(session.Width, session.Height, format)];
+        var target = new byte[PanelTransform.TargetLength(width, height, format)];
         var encoded = Array.Empty<byte>();
         var encodedLength = 0;
         var written = false;
@@ -344,7 +412,7 @@ public sealed class PanelRunner
                 _logger.Information("Panel {Panel}: profile {ProfileId}", _label, profileId);
             }
 
-            var status = session.SetBrightness(_brightness);
+            var status = UsbStatusOf(session.SetBrightness(_brightness));
             if (status != UsbStatus.Ok)
                 return Failed(status, "the brightness wasn't taken");
             if (_stop.IsCancellationRequested)
@@ -358,7 +426,7 @@ public sealed class PanelRunner
             {
                 try
                 {
-                    Transform(frame, target, session.Width, session.Height, format);
+                    Transform(frame, target, width, height, format);
                     _frameId = frame.FrameId;
                     _frameRev = frame.Rev;
                 }
@@ -369,7 +437,7 @@ public sealed class PanelRunner
                 if (jpeg)
                 {
                     encodeStarted = _time.GetTimestamp();
-                    encodedLength = PanelJpeg.Encode(target, session.Width, session.Height, BeadaPanelProtocol.JpegQuality, ref encoded);
+                    encodedLength = PanelJpeg.Encode(target, width, height, capabilities.JpegQuality, ref encoded);
                     Interlocked.Increment(ref _encodes);
                     _options.AfterEncode?.Invoke();
                 }
@@ -388,7 +456,8 @@ public sealed class PanelRunner
             // A JPEG frame's time counts its encode too: the panel's thread spends both on it.
             var writeStarted = _time.GetTimestamp();
             var before = encodeStarted ?? writeStarted;
-            status = session.WriteFrame(jpeg ? encoded.AsSpan(0, encodedLength) : target);
+            var write = session.WriteFrame(new PanelFrameView(jpeg ? encoded.AsSpan(0, encodedLength) : target, streamed, _frameId, repeat: frame == null), _stop.Token);
+            status = UsbStatusOf(write.Status);
             if (status != UsbStatus.Ok)
                 return Failed(status, "a frame wasn't taken");
             lastWrite = _time.GetTimestamp();
@@ -396,7 +465,8 @@ public sealed class PanelRunner
             Interlocked.Exchange(ref _lastFrameId, _frameId);
             var frameMs = _time.GetElapsedTime(before, lastWrite).TotalMilliseconds;
             Count(frameMs, lastWrite);
-            _pacer.Record(_time.GetElapsedTime(writeStarted, lastWrite).TotalMilliseconds, frameMs, idleMs, lastWrite, _time);
+            // The write's own time is the device's, as the driver measured its transfer; the frame's is the thread's.
+            _pacer.Record(write.DeviceTime.TotalMilliseconds, frameMs, idleMs, lastWrite, _time);
             if (_frameRev != loggedRev)
             {
                 loggedRev = _frameRev;
@@ -445,6 +515,34 @@ public sealed class PanelRunner
             ? new PanelRunEnd(true, UsbStatus.Ok, $"profile {ProfileId} closed ({closed})", closed)
             : new PanelRunEnd(false, UsbStatus.Ok, "stopped");
     }
+
+    /// <summary>The format the engine writes the session in: the first of its formats that is JPEG or RGB565 (little-endian); null when none is.</summary>
+    private static PanelFrameFormat? WrittenFormat(PanelCapabilities capabilities)
+    {
+        foreach (var format in capabilities.Formats)
+            if (format is PanelFrameFormat.Jpeg or PanelFrameFormat.Rgb565Le)
+                return format;
+        return null;
+    }
+
+    /// <summary>The format asked of the driver for <paramref name="encoding"/>: none (its own choice), JPEG, or RGB565.</summary>
+    private static PanelFrameFormat? FormatOf(PanelEncoding encoding) => encoding switch
+    {
+        PanelEncoding.Jpeg => PanelFrameFormat.Jpeg,
+        PanelEncoding.Raw => PanelFrameFormat.Rgb565Le,
+        _ => null,
+    };
+
+    internal static UsbStatus UsbStatusOf(PanelDeviceStatus status) => status switch
+    {
+        PanelDeviceStatus.Ok => UsbStatus.Ok,
+        PanelDeviceStatus.Busy => UsbStatus.Busy,
+        PanelDeviceStatus.Access => UsbStatus.Access,
+        PanelDeviceStatus.Gone => UsbStatus.NoDevice,
+        PanelDeviceStatus.NotSupported => UsbStatus.NotSupported,
+        PanelDeviceStatus.Timeout => UsbStatus.Timeout,
+        _ => UsbStatus.Io,
+    };
 
     private PanelRunEnd Failed(UsbStatus status, string what)
     {

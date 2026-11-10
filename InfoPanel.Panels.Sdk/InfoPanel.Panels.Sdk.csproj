@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The panel driver SDK: what a USB panel family implements (IPanelDriver, IPanelSession) and the records they pass.
+       On net10.0, the engine's own runtime, unlike the sensor plugin SDK (net8.0); no dependency beyond the framework. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>InfoPanel.Panels.Sdk</RootNamespace>
+  </PropertyGroup>
+
+</Project>

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using InfoPanel.Output;
 using InfoPanel.Panels.BeadaPanel;
+using InfoPanel.Panels.Sdk;
 using InfoPanel.Panels.Usb;
 using Serilog;
 
@@ -43,9 +44,13 @@ public sealed class PanelsNotSavedException(Exception inner) : Exception("The pa
 /// sessions' ends and profile changes are queued to it; a timer's pass is dropped while one is queued or running). The
 /// only lock is the set of running panels the stop asks, so the stop reaches them whatever the thread is doing.
 /// <list type="bullet">
-/// <item>Each pass lists the USB devices (what the OS has cached, no I/O to them). A BeadaPanel at a bus and address not
-/// seen before is identified (its info query, 1000 ms timeouts, one at a time); a busy one is tried again on the next
-/// pass, logged once; an unknown model is logged once and left alone while it stays plugged in.</item>
+/// <item>Each pass lists the USB devices (what the OS has cached, no I/O to them). A device some driver's matches name
+/// (<see cref="IPanelDriver"/>; the built-in list, <see cref="BuiltInDrivers"/>, is BeadaPanel's), at a bus and address
+/// not seen before, is offered to those drivers in their order, one device at a time, and is the first's whose probe says
+/// "mine" (BeadaPanel's: its info query, 1000 ms timeouts) until it is unplugged; one a probe couldn't ask (busy, a
+/// probe that threw or passed its <see cref="ProbeDeadline"/>; the stop and the sleep cut a probe short too) is offered
+/// again on the next pass, logged once a change; one every driver passes on (a BeadaPanel of an unknown model) is logged
+/// once and left alone while it stays plugged in. A device no driver names is never opened.</item>
 /// <item>An identified panel is matched to a saved one by its serial (saved panels sharing it by serial and saved port
 /// together), else (a saved panel without one) by its USB port; else, or when panels sharing a serial still can't be
 /// told apart, it is saved as new, off and without a profile. A matched panel's new port or model is saved.</item>
@@ -65,7 +70,17 @@ public sealed class PanelManager : IAsyncDisposable
     /// <summary>The most identities forgotten panels are remembered by in a run (<see cref="ForgetAsync"/>): past it no saved panel adopts one.</summary>
     public const int MaxForgotten = 256;
 
+    /// <summary>How long a driver's probe is given (real time, as the USB transfers' own timeouts).</summary>
+    public static readonly TimeSpan ProbeDeadline = TimeSpan.FromSeconds(5);
+
+    /// <summary>The probe's deadline this manager gives (tests: a shorter one); <see cref="ProbeDeadline"/> unless set.</summary>
+    internal TimeSpan ProbeTimeout { get; init; } = ProbeDeadline;
+
+    /// <summary>Tests: how much later than <see cref="ProbeTimeout"/> the manager acts on the deadline (a delayed timer, a slow thread); zero unless set.</summary>
+    internal TimeSpan ProbeDeadlineDelay { get; init; }
+
     private readonly IUsbBackend _backend;
+    private readonly IReadOnlyList<IPanelDriver> _drivers;
     private readonly PanelStore _store;
     private readonly PanelHost _host;
     private readonly TimeProvider _time;
@@ -79,7 +94,8 @@ public sealed class PanelManager : IAsyncDisposable
     private readonly Dictionary<UsbDeviceId, long> _forgottenJpegEnds = []; // a forgotten panel's JPEG end, kept while it stays plugged in
     private readonly HashSet<string> _forgotten = new(StringComparer.Ordinal); // the forgotten panels' identities this run (IdentitiesOf), at most MaxForgotten: never adopted
     private bool _adoptionOff; // an identity couldn't be remembered (_forgotten is full): no saved panel adopts one for the rest of the run
-    private readonly TaskCompletionSource _threadEnded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // Set when the manager's thread ends, to the probes it left running (_probesLeft then): done once they have all ended.
+    private readonly TaskCompletionSource<Task> _threadEnded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Lock _liveLock = new();
     private readonly HashSet<PanelRunner> _live = []; // runners started and not yet ended, for the stop (under _liveLock)
     private Thread? _thread;
@@ -87,6 +103,8 @@ public sealed class PanelManager : IAsyncDisposable
     private volatile bool _stopping; // set under _liveLock; read anywhere
     private volatile bool _suspended; // the computer is going to sleep or asleep (SuspendAsync to ResumeAsync); set under _liveLock
     private (long Timestamp, TimeSpan SinceBoot) _asleepFrom; // when SuspendAsync came, on both clocks (under _liveLock)
+    private CancellationTokenSource _probeStop = new(); // cancelled by the stop and the sleep, a new one at the wake (under _liveLock)
+    private readonly Dictionary<(byte Bus, byte Address), Task> _probesLeft = []; // probes left running past their deadline, by device (this thread)
     private int _passQueued; // 1 while a timer's pass is queued or running: further ticks are dropped
     private long _profilesGeneration; // how many times the profiles changed (the manager's thread)
     private long _version; // how many times the list changed this run (written on the manager's thread)
@@ -97,9 +115,11 @@ public sealed class PanelManager : IAsyncDisposable
     /// A monotonic clock that keeps counting while the computer sleeps (<see cref="Power.PowerEvents.SinceBoot"/>), for
     /// the time asleep when <paramref name="time"/>'s timestamps stop then (macOS's do); null when they don't.
     /// </param>
+    /// <param name="drivers">The panel drivers, in the order a device is offered to them; null: <see cref="BuiltInDrivers"/>.</param>
     public PanelManager(IUsbBackend backend, PanelStore store, PanelHost host, TimeProvider time, ILogger logger, PanelRunnerOptions? runnerOptions = null,
-        Func<TimeSpan>? sinceBoot = null)
+        Func<TimeSpan>? sinceBoot = null, IReadOnlyList<IPanelDriver>? drivers = null)
     {
+        _drivers = drivers ?? BuiltInDrivers(backend, time);
         _sinceBoot = sinceBoot;
         if (store.Problem != null)
             throw new ArgumentException("A store the engine can't hold runs no panels.", nameof(store));
@@ -112,6 +132,19 @@ public sealed class PanelManager : IAsyncDisposable
         _devices = [.. store.Devices];
         _published = [.. _devices.Select(StatusOf)];
     }
+
+    /// <summary>The drivers built into the engine, in the order a device is offered to them: BeadaPanel's.</summary>
+    public static IReadOnlyList<IPanelDriver> BuiltInDrivers(IUsbBackend backend, TimeProvider time) => [new BeadaPanelDriver(backend, time)];
+
+    /// <summary>A listed USB device as a driver is offered it.</summary>
+    internal static PanelCandidate CandidateOf(UsbDeviceId usb) => new(usb.VendorId, usb.ProductId, usb.Bus, usb.Address, usb.PortPath);
+
+    /// <summary>The drivers whose matches name <paramref name="usb"/>'s ids, in their order.</summary>
+    private IEnumerable<IPanelDriver> DriversOf(UsbDeviceId usb) =>
+        _drivers.Where(d => d.Matches.Any(m => m.VendorId == usb.VendorId && m.ProductId == usb.ProductId));
+
+    /// <summary>A family's name in the log: BeadaPanel's as it is written, any other's id.</summary>
+    private static string NameOf(string family) => family == SavedPanel.BeadaPanelFamily ? "BeadaPanel" : family;
 
     /// <summary>How many times the saved panels and their state changed this run: 0 at start (<see cref="Changed"/>).</summary>
     public long Version => Interlocked.Read(ref _version);
@@ -171,7 +204,8 @@ public sealed class PanelManager : IAsyncDisposable
         }
         finally
         {
-            _threadEnded.TrySetResult();
+            // No probe starts once this thread has ended (they start only on it), so these are all that may still run.
+            _threadEnded.TrySetResult(Task.WhenAll(_probesLeft.Values.Select(p => p.ContinueWith(static _ => { }, TaskScheduler.Default))));
         }
     }
 
@@ -435,7 +469,8 @@ public sealed class PanelManager : IAsyncDisposable
             return;
         }
 
-        var panels = listed.Where(d => d.VendorId == BeadaPanelProtocol.VendorId && d.ProductId == BeadaPanelProtocol.ProductId).ToList();
+        // Only the devices some driver's matches name: no other is ever opened.
+        var panels = listed.Where(d => DriversOf(d).Any()).ToList();
         foreach (var gone in _forgottenJpegEnds.Keys.Where(u => !panels.Contains(u)).ToList())
             _forgottenJpegEnds.Remove(gone); // unplugged: it starts afresh
 
@@ -473,7 +508,10 @@ public sealed class PanelManager : IAsyncDisposable
     /// A panel identified in this pass that matches no saved panel, while a saved one might take it (<see cref="Adopt"/>):
     /// <paramref name="Ambiguous"/> or <paramref name="HeldElsewhere"/> when its serial clashes, so it is new whatever.
     /// </summary>
-    private sealed record Unmatched(UsbDeviceId Usb, BeadaPanelInfo Info, string? Serial, bool Ambiguous, bool HeldElsewhere);
+    private sealed record Unmatched(UsbDeviceId Usb, IPanelDriver Driver, PanelIdentity Identity, bool Ambiguous, bool HeldElsewhere)
+    {
+        public string? Serial => Identity.Serial;
+    }
 
     /// <summary>
     /// Every identity a panel has for <see cref="_forgotten"/>: its serial (when known) and its port (when it has had
@@ -511,11 +549,12 @@ public sealed class PanelManager : IAsyncDisposable
     }
 
     /// <summary>
-    /// A saved BeadaPanel of <paramref name="model"/> that has never been plugged in and has no serial (a client saved it
-    /// so, from what another program knew of it): it may take a panel that matches no saved one (<see cref="Adopt"/>).
+    /// A saved panel of <paramref name="family"/> and <paramref name="model"/> that has never been plugged in and has no
+    /// serial (a client saved it so, from what another program knew of it): it may take a panel that matches no saved one
+    /// (<see cref="Adopt"/>).
     /// </summary>
-    private List<int> NeverSeen(string model) =>
-        [.. Enumerable.Range(0, _devices.Count).Where(i => _devices[i] is { Family: SavedPanel.BeadaPanelFamily, Serial: null, Port: null } d && d.Model == model)];
+    private List<int> NeverSeen(string family, string model) =>
+        [.. Enumerable.Range(0, _devices.Count).Where(i => _devices[i] is { Serial: null, Port: null } d && d.Family == family && d.Model == model)];
 
     /// <summary>
     /// The panels found in this pass that match no saved one (serial clashes included), while a saved panel without a
@@ -529,52 +568,161 @@ public sealed class PanelManager : IAsyncDisposable
     {
         foreach (var panel in unmatched)
         {
-            var model = panel.Info.Model.Id;
-            var candidates = NeverSeen(model);
-            var found = unmatched.Count(p => p.Info.Model.Id == model);
+            var family = panel.Driver.Family;
+            var model = panel.Identity.Model;
+            var name = NameOf(family);
+            var candidates = NeverSeen(family, model);
+            var found = unmatched.Count(p => p.Driver.Family == family && p.Identity.Model == model);
             var clashes = panel.Ambiguous || panel.HeldElsewhere;
             var forgotten = IdentitiesOf(panel.Serial, panel.Usb.PortPath).Any(_forgotten.Contains);
             var index = candidates.Count == 1 && found == 1 && !clashes && !forgotten && !_adoptionOff ? candidates[0] : -1;
             if (index < 0 && !clashes)
             {
                 if (forgotten)
-                    _logger.Information("BeadaPanel {Model} at {Port}: forgotten this run, so no saved panel takes it", model, panel.Usb.PortPath);
+                    _logger.Information("{Family:l} {Model} at {Port}: forgotten this run, so no saved panel takes it", name, model, panel.Usb.PortPath);
                 else if (_adoptionOff)
-                    _logger.Information("BeadaPanel {Model} at {Port}: no saved panel takes a panel any more (the forgotten panels' memory is full)", model, panel.Usb.PortPath);
+                    _logger.Information("{Family:l} {Model} at {Port}: no saved panel takes a panel any more (the forgotten panels' memory is full)", name, model, panel.Usb.PortPath);
                 else
-                    _logger.Information("BeadaPanel {Model} at {Port}: {Count} saved panels of its model without a serial that were never plugged in, and {Found} found: none takes it",
-                        model, panel.Usb.PortPath, candidates.Count, found);
+                    _logger.Information("{Family:l} {Model} at {Port}: {Count} saved panels of its model without a serial that were never plugged in, and {Found} found: none takes it",
+                        name, model, panel.Usb.PortPath, candidates.Count, found);
             }
-            Claim(panel.Usb, panel.Info, panel.Serial, index, panel.Ambiguous, panel.HeldElsewhere, adopted: index >= 0);
+            Claim(panel.Usb, panel.Driver, panel.Identity, index, panel.Ambiguous, panel.HeldElsewhere, adopted: index >= 0);
         }
     }
 
     /// <summary>
-    /// Identifies a panel and matches it to a saved one, or saves it as new; null once that is done (or it can't be
-    /// identified). A panel that matches none while a saved panel without a serial that was never plugged in might take
-    /// it is answered instead, for <see cref="Adopt"/>.
+    /// One driver's probe of <paramref name="device"/>, its token cancelled by the stop, the sleep, and its deadline
+    /// (<see cref="ProbeTimeout"/>, real time). A probe that throws, or that hasn't answered by its deadline, is a failure
+    /// of that device alone (status <see cref="PanelDeviceStatus.Io"/> or <see cref="PanelDeviceStatus.Timeout"/>), as one
+    /// that couldn't ask it is. <c>Failure</c>: what the failure was (null: none), for its log line once a change;
+    /// <c>Error</c>: the driver's exception.
+    /// </summary>
+    private (PanelProbe Probe, string? Failure, Exception? Error) ProbeOf(IPanelDriver driver, PanelCandidate device)
+    {
+        var key = (device.Bus, device.Address);
+        if (_probesLeft.TryGetValue(key, out var left))
+        {
+            if (!left.IsCompleted)
+                return (new PanelProbe(false, null, PanelDeviceStatus.Timeout, "its last probe hasn't ended"), "deadline", null);
+            _probesLeft.Remove(key);
+        }
+
+        // The probe runs on the thread pool; this thread enforces its deadline by a bounded wait, so no cancellation runs
+        // on a timer thread, and the driver's cancellation callbacks run guarded (CancelProbe).
+        var stop = _probeStop.Token; // replaced only on this thread (the wake)
+        var source = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        var cut = source.Token.WaitHandle; // set by the stop, the sleep and the deadline's cancel
+        var started = TimeProvider.System.GetTimestamp(); // the clock of StopAsync's bound
+        var probing = Task.Run(() => driver.Probe(device, source.Token));
+        var bound = ProbeTimeout == Timeout.InfiniteTimeSpan ? ProbeTimeout : ProbeTimeout + ProbeDeadlineDelay;
+        WaitHandle.WaitAny([((IAsyncResult)probing).AsyncWaitHandle, cut], bound);
+        // An answer counts only if it came within the deadline, whenever this thread got to look (a delayed thread).
+        var inTime = probing.IsCompleted
+            && (ProbeTimeout == Timeout.InfiniteTimeSpan || TimeProvider.System.GetElapsedTime(started) <= ProbeTimeout);
+        if (!probing.IsCompleted)
+        {
+            CancelProbe(source, probing);
+            ((IAsyncResult)probing).AsyncWaitHandle.WaitOne(ProbeGrace); // a probe that heeds its token ends before the device is offered on
+            if (!probing.IsCompleted)
+                _probesLeft[key] = probing; // not offered again until it ends
+        }
+        else
+            source.Dispose();
+
+        var timeout = (new PanelProbe(false, null, PanelDeviceStatus.Timeout,
+            stop.IsCancellationRequested ? "cut short" : $"no answer within {ProbeTimeout.TotalSeconds:0.#} s"), "deadline", (Exception?)null);
+        if (!inTime)
+            return timeout;
+        if (probing.Exception?.InnerException is { } ex)
+            return ex is OperationCanceledException && stop.IsCancellationRequested ? timeout
+                : (new PanelProbe(false, null, PanelDeviceStatus.Io, $"its driver failed: {ex.Message}"), $"threw {ex.GetType().FullName}", ex);
+        if (probing.Result is not { } probe)
+            return (new PanelProbe(false, null, PanelDeviceStatus.Io, "its driver failed: its probe answered nothing"), $"threw {typeof(InvalidOperationException).FullName}", null);
+        return (probe, probe.Status == PanelDeviceStatus.Ok ? null : $"{probe.Status}: {probe.Message}", null);
+    }
+
+    /// <summary>How long a probe cancelled by its deadline, the stop or the sleep is given to end before the manager moves on.</summary>
+    private static readonly TimeSpan ProbeGrace = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Cancels a probe's token off the manager's thread, guarded: a driver's cancellation callback that throws is logged,
+    /// one that blocks holds up only its pool thread. The probe's source goes once the probe has ended.
+    /// </summary>
+    private void CancelProbe(CancellationTokenSource source, Task probing)
+    {
+        _ = Task.Run(() =>
+        {
+            Cancel(source);
+            probing.ContinueWith(t =>
+            {
+                _ = t.Exception; // observed: a cancelled probe's failure is no failure of the engine's
+                source.Dispose();
+            }, TaskScheduler.Default);
+        });
+    }
+
+    /// <summary>Cancels <paramref name="source"/>, a driver's callback that throws logged (the stop, the sleep, a deadline).</summary>
+    private void Cancel(CancellationTokenSource source)
+    {
+        try
+        {
+            source.Cancel();
+        }
+        catch (Exception ex) // AggregateException: the callbacks' failures
+        {
+            _logger.Warning(ex, "USB panels: a driver's probe failed when it was cancelled");
+        }
+    }
+
+    /// <summary>
+    /// Offers a device to the drivers whose matches name it, in their order, until one's probe says "mine" (a probe that
+    /// couldn't ask it, threw or passed its deadline ends the offer until the next pass); then matches the panel found to
+    /// a saved one, or saves it as new; null once that is done (or no driver took it). A panel that matches none while a saved panel without a serial
+    /// that was never plugged in might take it is answered instead, for <see cref="Adopt"/>.
     /// </summary>
     private Unmatched? Identify(UsbDeviceId usb, Seen? seen)
     {
-        var identity = BeadaPanelSession.Identify(_backend, usb);
-        if (identity.Status != UsbStatus.Ok || identity.Info is not { } info)
+        var device = CandidateOf(usb);
+        IPanelDriver? driver = null;
+        PanelIdentity? identity = null;
+        List<string> passedOn = [];
+        foreach (var offered in DriversOf(usb))
         {
-            if (identity.Error == BeadaPanelInfoError.UnknownModel)
+            var (probe, failure, error) = ProbeOf(offered, device);
+            if (_stopping || _suspended)
+                return null; // cut short: the wake's pass offers the device again (the stop ends the passes)
+            if (probe.Status != PanelDeviceStatus.Ok)
             {
-                _seen[(usb.Bus, usb.Address)] = new Seen(usb) { Ignored = true };
-                _logger.Information("A BeadaPanel at {Port} reports model code {Code}, which InfoPanel doesn't know: it isn't driven", usb.PortPath, identity.ModelCode);
+                // A failure of this device alone: offered again on the next pass, logged once a change.
+                if (seen == null)
+                    _seen[(usb.Bus, usb.Address)] = seen = new Seen(usb);
+                if (seen.Failure != failure)
+                {
+                    seen.Failure = failure;
+                    _logger.Write(error == null ? Serilog.Events.LogEventLevel.Information : Serilog.Events.LogEventLevel.Warning, error,
+                        "A {Family:l} at {Port} couldn't be identified ({Why:l}): tried again every second",
+                        NameOf(offered.Family), usb.PortPath, probe.Message ?? probe.Status.ToString());
+                }
                 return null;
             }
-            if (seen == null)
+            if (probe.Mine && probe.Identity is { } mine)
             {
-                _seen[(usb.Bus, usb.Address)] = new Seen(usb);
-                _logger.Information("A BeadaPanel at {Port} couldn't be identified ({Status}{Error}): tried again every second",
-                    usb.PortPath, identity.Status, identity.Error == BeadaPanelInfoError.None ? "" : $", {identity.Error}");
+                (driver, identity) = (offered, mine);
+                break;
             }
+            passedOn.Add(probe.Message ?? $"not {offered.Family}'s");
+        }
+        if (driver == null || identity == null)
+        {
+            _seen[(usb.Bus, usb.Address)] = new Seen(usb) { Ignored = true };
+            _logger.Information("The USB device {Ids:l} at {Port} isn't driven while it stays plugged in: {Why:l}",
+                $"{usb.VendorId:x4}:{usb.ProductId:x4}", usb.PortPath, string.Join("; ", passedOn));
             return null;
         }
+        _logger.Information("The USB device {Ids:l} at {Port}: driver {Driver:l}, built in", $"{usb.VendorId:x4}:{usb.ProductId:x4}", usb.PortPath, driver.Family);
 
-        var serial = info.Serial.Length > 0 ? info.Serial : identity.UsbSerial is { Length: > 0 } s && s.All(char.IsAsciiLetterOrDigit) ? s : null;
+        var family = driver.Family;
+        var serial = identity.Serial;
         var claimed = _runtime.Where(r => r.Value.Usb != null).Select(r => r.Key).ToHashSet(StringComparer.Ordinal);
         var index = -1;
         var ambiguous = false;
@@ -586,7 +734,7 @@ public sealed class PanelManager : IAsyncDisposable
             // panel that still isn't told apart is saved as new. A unique serial whose panel is already connected
             // elsewhere is another panel reporting it: matched by port as a panel without a serial is, else new.
             var bySerial = Enumerable.Range(0, _devices.Count)
-                .Where(i => _devices[i].Family == SavedPanel.BeadaPanelFamily && _devices[i].Serial == serial)
+                .Where(i => _devices[i].Family == family && _devices[i].Serial == serial)
                 .ToList();
             if (bySerial.Count == 1)
             {
@@ -601,54 +749,59 @@ public sealed class PanelManager : IAsyncDisposable
             }
         }
         if (index < 0 && !ambiguous)
-            index = _devices.FindIndex(d => d.Family == SavedPanel.BeadaPanelFamily && d.Serial == null && d.Port == usb.PortPath && !claimed.Contains(d.Id));
+            index = _devices.FindIndex(d => d.Family == family && d.Serial == null && d.Port == usb.PortPath && !claimed.Contains(d.Id));
 
-        if (index < 0 && NeverSeen(info.Model.Id).Count > 0)
-            return new Unmatched(usb, info, serial, ambiguous, heldElsewhere); // counted by Adopt, then claimed
-        Claim(usb, info, serial, index, ambiguous, heldElsewhere, adopted: false);
+        if (index < 0 && NeverSeen(family, identity.Model).Count > 0)
+            return new Unmatched(usb, driver, identity, ambiguous, heldElsewhere); // counted by Adopt, then claimed
+        Claim(usb, driver, identity, index, ambiguous, heldElsewhere, adopted: false);
         return null;
     }
 
     /// <summary>
-    /// The identified panel at <paramref name="usb"/> taken as the saved panel at <paramref name="index"/> (its new port,
-    /// model and serial saved), or, at -1, saved as new, off and without a profile.
+    /// The panel <paramref name="driver"/> identified at <paramref name="usb"/> taken as the saved panel at
+    /// <paramref name="index"/> (its new port, model and serial saved), or, at -1, saved as new, off and without a profile.
     /// </summary>
-    private void Claim(UsbDeviceId usb, BeadaPanelInfo info, string? serial, int index, bool ambiguous, bool heldElsewhere, bool adopted)
+    private void Claim(UsbDeviceId usb, IPanelDriver driver, PanelIdentity identity, int index, bool ambiguous, bool heldElsewhere, bool adopted)
     {
+        var name = NameOf(driver.Family);
+        var model = identity.Model;
+        var serial = identity.Serial;
         SavedPanel saved;
         if (index < 0)
         {
-            saved = new SavedPanel(Guid.NewGuid().ToString("D"), SavedPanel.BeadaPanelFamily, info.Model.Id, serial, usb.PortPath);
+            saved = new SavedPanel(Guid.NewGuid().ToString("D"), driver.Family, model, serial, usb.PortPath);
             _devices.Add(saved);
             Save();
             if (ambiguous)
-                _logger.Warning("BeadaPanel {Model} at {Port} reports serial {Serial}, which more than one saved panel has, none of them last seen at this port: saved as a new panel, off ({Id})",
-                    info.Model.Id, usb.PortPath, serial, saved.Id);
+                _logger.Warning("{Family:l} {Model} at {Port} reports serial {Serial}, which more than one saved panel has, none of them last seen at this port: saved as a new panel, off ({Id})",
+                    name, model, usb.PortPath, serial, saved.Id);
             else if (heldElsewhere)
-                _logger.Warning("BeadaPanel {Model} at {Port} reports serial {Serial}, which a panel already connected has: saved as a new panel, off ({Id})",
-                    info.Model.Id, usb.PortPath, serial, saved.Id);
+                _logger.Warning("{Family:l} {Model} at {Port} reports serial {Serial}, which a panel already connected has: saved as a new panel, off ({Id})",
+                    name, model, usb.PortPath, serial, saved.Id);
             else
-                _logger.Information("BeadaPanel {Model} found, serial {Serial}, at {Port}: saved, off ({Id})", info.Model.Id, serial ?? "none", usb.PortPath, saved.Id);
+                _logger.Information("{Family:l} {Model} found, serial {Serial}, at {Port}: saved, off ({Id})", name, model, serial ?? "none", usb.PortPath, saved.Id);
         }
         else
         {
             saved = _devices[index];
-            if (saved.Port != usb.PortPath || saved.Model != info.Model.Id || (saved.Serial == null && serial != null))
+            if (saved.Port != usb.PortPath || saved.Model != model || (saved.Serial == null && serial != null))
             {
-                saved = saved with { Port = usb.PortPath, Model = info.Model.Id, Serial = saved.Serial ?? serial };
+                saved = saved with { Port = usb.PortPath, Model = model, Serial = saved.Serial ?? serial };
                 _devices[index] = saved;
                 Save();
             }
             if (adopted)
-                _logger.Information("BeadaPanel {Model} at {Port}, serial {Serial}: taken as the saved panel {Id}, saved without a serial and never plugged in before",
-                    info.Model.Id, usb.PortPath, serial ?? "none", saved.Id);
-            _logger.Information("BeadaPanel {Model} connected at {Port} ({Id}, {State})", info.Model.Id, usb.PortPath, saved.Id, saved.Enabled ? "on" : "off");
+                _logger.Information("{Family:l} {Model} at {Port}, serial {Serial}: taken as the saved panel {Id}, saved without a serial and never plugged in before",
+                    name, model, usb.PortPath, serial ?? "none", saved.Id);
+            _logger.Information("{Family:l} {Model} connected at {Port} ({Id}, {State})", name, model, usb.PortPath, saved.Id, saved.Enabled ? "on" : "off");
         }
 
         _seen[(usb.Bus, usb.Address)] = new Seen(usb) { DeviceId = saved.Id };
         var runtime = RuntimeOf(saved.Id);
         runtime.Usb = usb;
-        runtime.Info = info;
+        runtime.Driver = driver;
+        runtime.Identity = identity;
+        runtime.Info = (driver as BeadaPanelDriver)?.InfoOf(identity);
         runtime.Reason = null;
         if (_forgottenJpegEnds.Remove(usb, out var ended) && !(runtime.JpegEndedAt > ended))
             runtime.JpegEndedAt = ended;
@@ -712,7 +865,7 @@ public sealed class PanelManager : IAsyncDisposable
             }
             return;
         }
-        if (!wanted || runtime.Usb is not { } usb)
+        if (!wanted || runtime.Usb is not { } usb || runtime.Driver is not { } driver || runtime.Identity is not { } identity)
             return;
 
         // After a JPEG stream the panel takes no new one for a while: the start waits for it (the next passes try again).
@@ -727,7 +880,7 @@ public sealed class PanelManager : IAsyncDisposable
 
         // A panel that refused the JPEG start once this run is raw until the engine restarts, whatever its setting.
         var encoding = runtime.JpegRefused ? PanelEncoding.Raw : saved.Encoding;
-        var started = new PanelRunner(_backend, usb, Label(saved.Id), saved.ProfileId!, saved.Brightness, saved.Rotation,
+        var started = new PanelRunner(driver, CandidateOf(usb), identity, Label(saved.Id), saved.ProfileId!, saved.Brightness, saved.Rotation,
             sink => _host.Attach(sink), sink => _host.Detach(sink), sink => _host.RequestChanged(sink), sink => _host.Refresh(sink), _host.FrameRate,
             _time, _runnerOptions, _logger, encoding);
         lock (_liveLock)
@@ -792,44 +945,53 @@ public sealed class PanelManager : IAsyncDisposable
     private string Label(string id)
     {
         var saved = _devices.Find(d => d.Id == id);
-        return saved == null ? id : $"BeadaPanel {saved.Model ?? "?"} ({id[..8]})";
+        return saved == null ? id : $"{NameOf(saved.Family)} {saved.Model ?? "?"} ({id[..8]})";
     }
 
     /// <summary>
     /// Stops detection and every panel, each turning its screen off, waiting at most <paramref name="bound"/> from the call
     /// for all of them and the manager's thread together (3 s). Running panels are asked to stop at once, whatever the
-    /// manager's thread is doing; a detection pass under way stops before its next panel's query. A panel still writing
-    /// at the bound is left to its thread. True when every panel's thread and the manager's thread ended.
+    /// manager's thread is doing; a detection pass under way stops before its next panel's query, and a probe's token is
+    /// cancelled (a driver waiting on its device stops waiting). A panel still writing, or a probe still under way (one
+    /// its grace left behind, a driver blocked in its device), at the bound is left to its thread. True when every
+    /// panel's thread, the manager's thread and every probe it started ended; false keeps the USB backend in use, so
+    /// the caller mustn't dispose it (a probe inside it would hold that disposal for ever).
     /// </summary>
     public async Task<bool> StopAsync(TimeSpan bound)
     {
         var started = TimeProvider.System.GetTimestamp();
         _timer?.Dispose();
         List<PanelRunner> runners;
+        CancellationTokenSource probeStop;
         lock (_liveLock)
         {
             _stopping = true;
             runners = [.. _live];
+            probeStop = _probeStop;
         }
         foreach (var runner in runners)
             runner.RequestStop();
+        // Then a probe under way stops waiting on its device: its callbacks off this path, guarded.
+        _ = Task.Run(() => Cancel(probeStop));
         _queue.CompleteAdding(); // what is queued still runs (a pass returns at once); nothing more is taken
         if (_thread == null)
-            _threadEnded.TrySetResult(); // never started: nothing to wait for
+            _threadEnded.TrySetResult(Task.CompletedTask); // never started: nothing to wait for
 
-        var all = Task.WhenAll(runners.Select(r => r.Ended).Append(_threadEnded.Task));
+        var probesEnded = _threadEnded.Task.Unwrap(); // the manager's thread, then the probes it left running
+        var all = Task.WhenAll(runners.Select(r => r.Ended).Append(probesEnded));
         var left = bound - TimeProvider.System.GetElapsedTime(started);
         var ended = left > TimeSpan.Zero && await Task.WhenAny(all, Task.Delay(left, TimeProvider.System)).ConfigureAwait(false) == all;
         if (!ended)
             _logger.Warning("USB panels: {Count} didn't turn off within {Bound} s{Thread}", runners.Count(r => !r.Ended.IsCompleted), bound.TotalSeconds,
-                _threadEnded.Task.IsCompleted ? "" : " (a panel's query was still under way)");
+                !_threadEnded.Task.IsCompleted ? " (a panel's query was still under way)"
+                : !probesEnded.IsCompleted ? " (a driver's probe was still under way; the USB backend is kept)" : "");
         return ended;
     }
 
     /// <summary>
     /// The computer is going to sleep: every running panel is asked to stop at once, whatever the manager's thread is
     /// doing, each turning its screen off; until <see cref="ResumeAsync"/> no pass runs (one under way stops before its
-    /// next panel's query) and no panel starts. Waits at most <paramref name="bound"/> from the call for the panels; a
+    /// next panel's query, its probe's token cancelled; the wake's pass offers that device again) and no panel starts. Waits at most <paramref name="bound"/> from the call for the panels; a
     /// panel still writing then is left to its thread. True when every panel asked has ended. <paramref name="stillAsleep"/>,
     /// asked with the sleep's lock held: false (a wake came since the sleep) does nothing.
     /// </summary>
@@ -837,6 +999,7 @@ public sealed class PanelManager : IAsyncDisposable
     {
         var started = TimeProvider.System.GetTimestamp();
         List<PanelRunner> runners;
+        CancellationTokenSource probeStop;
         lock (_liveLock)
         {
             if (_stopping)
@@ -850,9 +1013,12 @@ public sealed class PanelManager : IAsyncDisposable
                 _asleepFrom = (_time.GetTimestamp(), _sinceBoot());
             _suspended = true;
             runners = [.. _live];
+            probeStop = _probeStop;
         }
         foreach (var runner in runners)
             runner.RequestStop();
+        // Then a probe under way stops waiting on its device (the wake's pass offers the device again): off this path, guarded.
+        _ = Task.Run(() => Cancel(probeStop));
         _logger.Information("USB panels: the computer is going to sleep; {Count} turned off", runners.Count);
         if (runners.Count == 0)
             return true;
@@ -881,6 +1047,9 @@ public sealed class PanelManager : IAsyncDisposable
             if (_suspended)
             {
                 _suspended = false;
+                // The sleep's cancelled token goes: probes from now on get one only the stop or the next sleep cancels.
+                // The old one isn't disposed: the sleep's cancel may still be running its callbacks on the pool.
+                _probeStop = new CancellationTokenSource();
                 // The time the boot clock counted and the manager's didn't: the time asleep, when the manager's stops then.
                 var uncounted = _sinceBoot == null ? TimeSpan.Zero
                     : _sinceBoot() - _asleepFrom.SinceBoot - _time.GetElapsedTime(_asleepFrom.Timestamp);
@@ -909,7 +1078,9 @@ public sealed class PanelManager : IAsyncDisposable
     private sealed class Runtime
     {
         public UsbDeviceId? Usb;
-        public BeadaPanelInfo? Info;
+        public IPanelDriver? Driver; // the driver whose probe took the device, with Usb
+        public PanelIdentity? Identity; // what its probe found
+        public BeadaPanelInfo? Info; // a BeadaPanel's info reply, for the API
         public PanelRunner? Runner;
         public bool Stopping;
         public string? Reason;
@@ -928,5 +1099,6 @@ public sealed class PanelManager : IAsyncDisposable
         public UsbDeviceId Usb { get; } = usb;
         public string? DeviceId { get; init; }
         public bool Ignored { get; init; }
+        public string? Failure { get; set; } // its probe's last failure, logged once a change (the manager's thread)
     }
 }

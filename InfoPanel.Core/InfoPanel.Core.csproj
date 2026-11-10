@@ -39,6 +39,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
+    <ProjectReference Include="..\InfoPanel.Panels.Sdk\InfoPanel.Panels.Sdk.csproj" />
   </ItemGroup>
 
 </Project>
