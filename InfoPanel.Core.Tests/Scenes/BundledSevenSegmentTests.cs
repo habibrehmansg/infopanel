@@ -43,11 +43,15 @@ public sealed class BundledSevenSegmentTests
         return green / (double)Scale;
     }
 
-    /// <summary>The width <see cref="Digits"/> takes in the registry's embedded DSEG7 Classic.</summary>
+    /// <summary>
+    /// The width <see cref="Digits"/> takes in the registry's embedded DSEG7 Classic, set as the scene sets its glyphs
+    /// (unhinted, linear metrics): Skia's default font is hinted, which FreeType (Linux) applies to the advances and
+    /// CoreText (macOS) doesn't.
+    /// </summary>
     private static double EmbeddedDseg7Width()
     {
         Assert.True(FontRegistry.TryGet("DSEG7 Classic", 400, SKFontStyleSlant.Upright, out var typeface));
-        using var font = new SKFont(typeface, Size);
+        using var font = TextLayoutEngine.MakeFont(typeface, Size);
         return font.MeasureText(Digits);
     }
 

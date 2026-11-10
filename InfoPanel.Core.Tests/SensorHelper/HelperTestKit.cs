@@ -110,6 +110,14 @@ internal static class HelperTestKit
 
     public static readonly TimeSpan Patience = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// Why a test of the helper's stand-in as a child process skips on Linux. The helper runs on Windows only; its
+    /// stand-in proves the lifetime on macOS (and Windows). It serves only an engine whose start time matches the one
+    /// it was given exactly, and on Linux .NET derives a process's start time from the boot time at each reading, so
+    /// two processes read the same process's start a fraction of a millisecond apart: the stand-in never serves there.
+    /// </summary>
+    public const string LinuxChildSkip = "Linux: the helper is Windows-only, and its stand-in's exact start-time check can't match across processes on Linux (.NET reads a process's start from the boot time at each reading).";
+
     /// <summary>A never-ending engine process, for helpers that should stop only when their pipe closes.</summary>
     public static Task EngineRunsOn => new TaskCompletionSource().Task;
 

@@ -158,8 +158,8 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/mono/SkiaSharp
 
-### SkiaSharp.NativeAssets.Linux 2.88.7 (native libraries for Linux)
-- **Licence**: by address, https://go.microsoft.com/fwlink/?linkid=868514
+### SkiaSharp.NativeAssets.Linux 3.119.4 (native libraries for Linux)
+- **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/mono/SkiaSharp
 

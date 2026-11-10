@@ -203,7 +203,7 @@ public sealed class ServiceReleaseEndpointTests : IAsyncDisposable
     {
         var factory = new EngineFactory();
         RecentLog log;
-        TimeSpan took;
+        var clock = new Stopwatch();
         try
         {
             using var api = factory.CreateApiClient();
@@ -216,10 +216,14 @@ public sealed class ServiceReleaseEndpointTests : IAsyncDisposable
         }
         finally
         {
-            var clock = Stopwatch.StartNew();
+            clock.Start();
             await factory.DisposeAsync();
-            took = clock.Elapsed;
         }
+
+        // The host's disposal can return before the entry point has disposed the engine's services (EngineFactory), so the
+        // stop is done once the release has said how it ended.
+        await Until(() => log.After(0).Any(e => e.Message.Contains(ReleaseLine)), "the release's line");
+        var took = clock.Elapsed;
 
         // The service still holds its answer: the engine's stop dropped the request, logged it, and didn't wait for the bound.
         Assert.False(_answer.Task.IsCompleted);

@@ -140,7 +140,12 @@ public sealed class HelperChildProcessTests
     private static void Log(string what, TimeSpan after) =>
         TestContext.Current.TestOutputHelper?.WriteLine($"helper child: {what}: ended {after.TotalMilliseconds:0} ms on");
 
-    private static Process Engine() => LongRunningProcess();
+    /// <summary>The engine, for a test of the stand-in as a child process: on Linux the test skips here, before it starts any process.</summary>
+    private static Process Engine()
+    {
+        Assert.SkipWhen(OperatingSystem.IsLinux(), LinuxChildSkip);
+        return LongRunningProcess();
+    }
 
     private static void End(Process engine)
     {

@@ -30,6 +30,7 @@ public sealed class LibreHelperProcessTests
 
     private static LibreRig ProcessRig(string behaviour, out LibreHelperProcess launcher)
     {
+        Assert.SkipWhen(OperatingSystem.IsLinux(), InfoPanel.Core.Tests.SensorHelper.HelperTestKit.LinuxChildSkip);
         LibreHelperProcess? made = null;
         var rig = new LibreRig((time, log) => made = new LibreHelperProcess(HostPath, [behaviour], time, log));
         launcher = made!;

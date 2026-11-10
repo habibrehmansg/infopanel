@@ -27,6 +27,13 @@ public sealed class ServiceReleaseTests : IDisposable
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    /// <summary>
+    /// How much sooner than a <see cref="Stopwatch"/> says a timed wait may end: .NET's timers count on a coarse clock
+    /// (on Linux the kernel's coarse monotonic clock, a few milliseconds a tick), so a 300 ms wait can end at 299 ms
+    /// by the stopwatch's finer one.
+    /// </summary>
+    private static readonly TimeSpan TimerGrain = TimeSpan.FromMilliseconds(16);
+
     private readonly TempDirectory _temp = new();
     private readonly List<LogEvent> _log = [];
     private readonly ILogger _logger;
@@ -155,7 +162,7 @@ public sealed class ServiceReleaseTests : IDisposable
 
         await Release(client, bound).Start(replaced).WaitAsync(TimeSpan.FromSeconds(10), Ct);
 
-        Assert.True(clock.Elapsed >= bound, $"ended after {clock.Elapsed}, before the bound");
+        Assert.True(clock.Elapsed >= bound - TimerGrain, $"ended after {clock.Elapsed}, before the bound");
         Assert.Single(service.Requests);
         var line = Assert.Single(Lines());
         Assert.Equal((LogEventLevel.Warning, Couldnt + " (no answer in 0.3 s)"), (line.Level, line.RenderMessage()));
@@ -483,7 +490,7 @@ public sealed class ServiceReleaseTests : IDisposable
         await running.WaitAsync(TimeSpan.FromSeconds(30), Ct);
 
         Assert.False(endedFirst, "the release ended before the stop's wait: this test needs it held past it");
-        Assert.True(stopTook >= stopWait && stopTook < stopWait + TimeSpan.FromSeconds(5), $"the stop waited {stopTook}");
+        Assert.True(stopTook >= stopWait - TimerGrain && stopTook < stopWait + TimeSpan.FromSeconds(5), $"the stop waited {stopTook}");
         Assert.Equal(1, StopWarnings());
         Assert.Empty(service.Requests);
         Assert.Empty(Lines());

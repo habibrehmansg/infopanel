@@ -22,6 +22,11 @@
   <ItemGroup>
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.6" />
+    <!-- Linux's Skia native, in SkiaSharp's own release line: SkiaSharp loads only a native of its major.minor (119), and
+         Topten.RichTextKit alone would pull 2.88's, which can't load. 3.119.4, not SkiaSharp's 3.119.2: 3.119.2's
+         linux-arm64 native leaves libuuid's and FreeType's symbols unresolved, 3.119.4's links fontconfig and FreeType
+         itself. Move it with SkiaSharp, to the same version once SkiaSharp is at 3.119.4 or later. -->
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
     <PackageVersion Include="Svg.Skia" Version="4.3.0" />
     <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="10.0.6" />
     <PackageVersion Include="System.IO.Hashing" Version="10.0.14" />

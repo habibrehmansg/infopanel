@@ -16,6 +16,8 @@
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="SkiaSharp" />
+    <!-- Linux's native at SkiaSharp's version (Directory.Packages.props); Windows' and macOS's come with SkiaSharp itself. -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
     <!-- The system information source's Windows reader (WinProcessSampler) reads Windows' performance counters. -->
     <PackageReference Include="System.Diagnostics.PerformanceCounter" />
     <!-- RenderLoop hashes rendered frames with XxHash3. -->

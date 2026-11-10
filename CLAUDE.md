@@ -63,6 +63,15 @@ TSC=path/to/tsc npm run check                  # also type-check the valid examp
 
 The check that everything is green, from the repo root: `dotnet build InfoPanel.slnx && dotnet test InfoPanel.slnx`, and `npm run check` in `spec/`.
 
+On Linux, in Docker (linux/arm64 natively on an Apple silicon Mac): the test image `packaging/linux/test.Dockerfile` (the SDK image pinned by digest, fontconfig, DejaVu, libusb; runs as uid 1000, since root ignores file modes). Run it on a copy of the repository without `bin/` and `obj/` (a Linux build in a macOS or Windows checkout overwrites its `obj/project.assets.json`), with a NuGet cache mounted at `/nuget`:
+
+```bash
+docker build -f packaging/linux/test.Dockerfile -t infopanel-linux-test packaging/linux
+docker run --rm --user 1000:1000 -v <copy>:/src -v <nuget cache>:/nuget infopanel-linux-test sh -c 'dotnet build InfoPanel.slnx && dotnet test InfoPanel.slnx --no-build --blame-hang-timeout 5m'
+```
+
+The Linux goldens (`Golden/linux/`, `Golden/scene/linux/`, `Golden/panels/linux/`) are generated in that image, with `UPDATE_GOLDENS=1 dotnet test InfoPanel.slnx --filter Category=Golden` as its command; the image has no CJK font, so a CJK fallback draws boxes there. A test that can't run on Linux skips with a reason that starts `Linux:`. SkiaSharp's Linux native (`SkiaSharp.NativeAssets.Linux`) is referenced directly, in SkiaSharp's own release line (`Directory.Packages.props`): SkiaSharp loads only a native of its own major.minor.
+
 ### Regenerating committed outputs (only on purpose; review the diff)
 
 | What | Command | When |
