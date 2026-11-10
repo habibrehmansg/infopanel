@@ -181,7 +181,7 @@ namespace InfoPanel.Services
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
-                    // キャンセル要求時にエラーログを出力しないように追加
+                    // Avoid logging an error when cancellation is requested.
                     break;
                 }
                 catch (Exception ex)
