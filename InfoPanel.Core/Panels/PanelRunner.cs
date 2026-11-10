@@ -33,12 +33,20 @@ public sealed record PanelRunnerOptions
 /// (transformed to the panel's size and rotation, as RGB565, or on a JPEG stream as RGBA encoded once as JPEG), the
 /// brightness re-sent between frames when it changed, the last frame re-sent (not encoded again) after
 /// <see cref="PanelRunnerOptions.KeepAlive"/> without a new one; on any stop, the screen-off. Waits go through the
-/// <see cref="TimeProvider"/>. Its pacing (InfoPanel 1.4's): the sink asks for at most 1000 / (0.9 × the mean frame time)
-/// frames a second, checked once a second; the fps is writes per 0.5 s, the frame time the mean of the last 60 writes,
-/// each with its encode on a JPEG stream.
+/// <see cref="TimeProvider"/>. Its pacing (<see cref="PanelPacer"/>, a new one each session and each change of the frame
+/// rate setting), checked once a second: the sink asks for at most the panel's ceiling (a T113's, kept at the write from the
+/// first frame), under what the thread
+/// can write (0.85 × 1000 / the mean frame time), and, once the device's buffer is seen to fill, under what the device
+/// showed, so a change waits behind a frame or two, not a buffer; the thread itself writes no sooner than one interval of
+/// the lower of the setting and the pace after its last write began. The fps is writes per 0.5 s, the frame time the mean
+/// of the last 60 writes, each with its encode on a JPEG stream. The log has a line for each new document
+/// revision written and for each change of pace of more than a fifth (at most one every <see cref="PaceLogEvery"/>).
 /// </summary>
 public sealed class PanelRunner
 {
+    /// <summary>The least time between two lines in the log about the pace.</summary>
+    public static readonly TimeSpan PaceLogEvery = TimeSpan.FromSeconds(5);
+
     private readonly IUsbBackend _backend;
     private readonly UsbDeviceId _usb;
     private readonly string _label;
@@ -54,6 +62,7 @@ public sealed class PanelRunner
     private readonly SemaphoreSlim _wake = new(0, 1);
     private readonly TaskCompletionSource<PanelRunEnd> _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly double[] _writeMs = new double[60];
+    private PanelPacer _pacer = new(null);
     private readonly Lock _sinkLock = new();
     private volatile int _brightness;
     private volatile int _rotation;
@@ -69,6 +78,7 @@ public sealed class PanelRunner
     private long _lastFrameId;
     private long _turns;
     private long _frameId;
+    private long _frameRev;
     private long _fpsWindowStart;
     private int _fpsWindowWrites;
     private double _fps;
@@ -282,6 +292,7 @@ public sealed class PanelRunner
             });
             Sink = made;
             made.Rotation = Rotation;
+            made.PacedFps = _pacer.Paced; // the panel's pace, whichever profile it shows
         }
         if (!_attach(made))
             return null;
@@ -291,6 +302,8 @@ public sealed class PanelRunner
 
     private PanelRunEnd Loop(BeadaPanelSession session)
     {
+        var ceiling = PanelPacer.CeilingOf(session.Info, session.Jpeg);
+        _pacer = new PanelPacer(ceiling);
         var profileId = ProfileId;
         if (AttachSink(profileId) is not { } sink)
             return new PanelRunEnd(true, UsbStatus.Ok, $"profile {profileId} can't be rendered", FrameSinkClosedReason.ProfileDeleted);
@@ -311,6 +324,10 @@ public sealed class PanelRunner
         var nextStats = _options.FirstStats;
         var lastPace = started;
         _fpsWindowStart = started;
+        var loggedRev = long.MinValue;
+        var pacedRate = _frameRate();
+        var loggedFps = Math.Min(pacedRate, sink.PacedFps);
+        long loggedPaceAt = -1;
 
         while (!_stop.IsCancellationRequested)
         {
@@ -323,6 +340,7 @@ public sealed class PanelRunner
                     return new PanelRunEnd(true, UsbStatus.Ok, $"profile {profileId} can't be rendered", FrameSinkClosedReason.ProfileDeleted);
                 sink = moved;
                 written = false;
+                loggedRev = long.MinValue; // the new profile's first frame is logged, whatever its revision
                 _logger.Information("Panel {Panel}: profile {ProfileId}", _label, profileId);
             }
 
@@ -333,6 +351,8 @@ public sealed class PanelRunner
                 break; // asked to stop during the brightness: no frame now, the screen-off next
 
             var frame = sink.Take();
+            // How long the thread waited for this frame since its last write returned: an unloaded write needs one.
+            var idleMs = written ? _time.GetElapsedTime(lastWrite).TotalMilliseconds : double.PositiveInfinity;
             long? encodeStarted = null;
             if (frame != null)
             {
@@ -340,6 +360,7 @@ public sealed class PanelRunner
                 {
                     Transform(frame, target, session.Width, session.Height, format);
                     _frameId = frame.FrameId;
+                    _frameRev = frame.Rev;
                 }
                 finally
                 {
@@ -365,23 +386,45 @@ public sealed class PanelRunner
             if (_stop.IsCancellationRequested)
                 break;
             // A JPEG frame's time counts its encode too: the panel's thread spends both on it.
-            var before = encodeStarted ?? _time.GetTimestamp();
+            var writeStarted = _time.GetTimestamp();
+            var before = encodeStarted ?? writeStarted;
             status = session.WriteFrame(jpeg ? encoded.AsSpan(0, encodedLength) : target);
             if (status != UsbStatus.Ok)
                 return Failed(status, "a frame wasn't taken");
             lastWrite = _time.GetTimestamp();
             written = true;
             Interlocked.Exchange(ref _lastFrameId, _frameId);
-            Count(_time.GetElapsedTime(before, lastWrite).TotalMilliseconds, lastWrite);
+            var frameMs = _time.GetElapsedTime(before, lastWrite).TotalMilliseconds;
+            Count(frameMs, lastWrite);
+            _pacer.Record(_time.GetElapsedTime(writeStarted, lastWrite).TotalMilliseconds, frameMs, idleMs, lastWrite, _time);
+            if (_frameRev != loggedRev)
+            {
+                loggedRev = _frameRev;
+                _logger.Information("Panel {Panel}: wrote rev {Rev}, encode+write {Ms:0.#} ms", _label, _frameRev, frameMs);
+            }
 
             if (_time.GetElapsedTime(lastPace) >= TimeSpan.FromSeconds(1))
             {
                 lastPace = _time.GetTimestamp();
-                var paced = FrameTimeMs > 0 ? (int)Math.Floor(1000 / (0.9 * FrameTimeMs)) : 60;
-                if (Math.Clamp(paced, 1, 60) != sink.PacedFps)
+                var frameRate = _frameRate();
+                if (frameRate != pacedRate)
+                {
+                    // A new setting: what was learned at the old one is forgotten.
+                    pacedRate = frameRate;
+                    _pacer = new PanelPacer(ceiling);
+                }
+                var paced = _pacer.Evaluate(FrameTimeMs, Math.Min(frameRate, sink.PacedFps));
+                if (paced != sink.PacedFps)
                 {
                     sink.PacedFps = paced;
                     _requestChanged(sink);
+                }
+                var fps = Math.Min(frameRate, paced);
+                if (Math.Abs(fps - loggedFps) > 0.2 * loggedFps && (loggedPaceAt < 0 || _time.GetElapsedTime(loggedPaceAt) >= PaceLogEvery))
+                {
+                    loggedFps = fps;
+                    loggedPaceAt = lastPace;
+                    _logger.Information("Panel {Panel}: pacing {Fps} fps (writes {Recent:0.#} ms, unloaded {Base:0.#} ms)", _label, fps, _pacer.RecentMs, _pacer.UnloadedMs);
                 }
             }
 
@@ -390,6 +433,12 @@ public sealed class PanelRunner
                 nextStats += _options.StatsEvery;
                 _logger.Information("Panel {Panel}: {Fps:0.#} fps, {FrameTime:0.#} ms a frame", _label, Fps, FrameTimeMs);
             }
+
+            // The pace is kept here, at every write: the render loop may deliver a frame every one of its ticks, faster than
+            // the pace when that is a little under them. The next write begins no sooner than one interval of the lower of
+            // the setting and the pace after this one began, with the newest frame by then.
+            var pace = Math.Clamp(Math.Min(Math.Min(_frameRate(), sink.PacedFps), ceiling ?? 60), 1, 60);
+            PaceWait(TimeSpan.FromTicks((TimeSpan.TicksPerSecond + pace - 1) / pace) - _time.GetElapsedTime(writeStarted));
         }
 
         return _sinkClosed?.Value is { } closed
@@ -401,6 +450,21 @@ public sealed class PanelRunner
     {
         _logger.Information("Panel {Panel}: {What} ({Status})", _label, what, status);
         return new PanelRunEnd(true, status, $"{what} ({status})");
+    }
+
+    /// <summary>Waits <paramref name="due"/> (through the <see cref="TimeProvider"/>), or until a stop; a new frame doesn't end it.</summary>
+    private void PaceWait(TimeSpan due)
+    {
+        if (due <= TimeSpan.Zero || _stop.IsCancellationRequested)
+            return;
+        try
+        {
+            // Rounded up: a delay counts whole milliseconds, and one cut short would let the pace be exceeded.
+            Task.Delay(TimeSpan.FromMilliseconds(Math.Ceiling(due.TotalMilliseconds)), _time, _stop.Token).Wait();
+        }
+        catch (AggregateException) when (_stop.IsCancellationRequested)
+        {
+        }
     }
 
     private void WaitForWork(TimeSpan due)

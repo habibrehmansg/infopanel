@@ -276,9 +276,12 @@ public sealed class PanelJpegRunnerTests : IAsyncLifetime
     public async Task Pacing_follows_the_shorter_jpeg_writes_with_their_encode()
     {
         var id = await WideBar();
+        // JPEG forced on a panel other than a T113, whose ceiling (15) would hide the rate computed here.
+        _device.Reply = PanelReplies.Info(2, 4, 21, 1920, 480, "934072005c");
         _device.WriteDelay = TimeSpan.FromMilliseconds(22); // the demo's mean JPEG q90 write, on the fake clock the runner times by
         // The encode takes 4 ms on that clock (the demo measured 3.6 ms): a frame is 26 ms of the panel's thread.
-        var runner = Runner(id, _backend.Clock, Timeout.InfiniteTimeSpan, frameRate: 60, afterEncode: () => _backend.Clock.Advance(TimeSpan.FromMilliseconds(4)));
+        var runner = Runner(id, _backend.Clock, Timeout.InfiniteTimeSpan, PanelEncoding.Jpeg, frameRate: 60,
+            afterEncode: () => _backend.Clock.Advance(TimeSpan.FromMilliseconds(4)));
         runner.Start();
         await Until(() => runner.Running, "the panel never ran");
         Assert.Equal(60, runner.Sink!.Request.MaxFps);
@@ -290,10 +293,11 @@ public sealed class PanelJpegRunnerTests : IAsyncLifetime
             await Until(() => runner.Writes >= runner.Sink.FramesCopied, "a frame wasn't written");
         }
 
-        // 1000 / (0.9 × 26 ms) = 42 frames a second (the write alone would give 50; raw's 60 ms writes give 18).
+        // 0.85 × 1000 / 26 ms = 32 frames a second, under what the thread can write (the write alone would give 38;
+        // raw's 60 ms writes give 14).
         Assert.True(runner.Jpeg);
         Assert.NotEmpty(JpegWrites);
-        Assert.Equal(42, runner.Sink.Request.MaxFps);
+        Assert.Equal(32, runner.Sink.Request.MaxFps);
         Assert.Equal(26, runner.FrameTimeMs, 1);
         runner.RequestStop();
         await runner.Ended;

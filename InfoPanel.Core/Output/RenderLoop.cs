@@ -267,7 +267,10 @@ public sealed class RenderLoop
     {
         // Saving and history eviction change neither pixels nor revision.
         if (e.Change is not (DocumentChange.Saved or DocumentChange.History))
+        {
+            Logger.Information("Profile {ProfileId}: changed ({Change}) rev {Rev}", ProfileId, e.Change, e.Generation.Rev);
             Wake();
+        }
     }
 
     private void ShutDown()

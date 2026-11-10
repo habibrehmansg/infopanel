@@ -196,8 +196,8 @@ public sealed class PanelSinkTests : IAsyncLifetime
             await Until(() => runner.Writes >= runner.Sink.FramesCopied, "a frame wasn't written");
         }
 
-        // 1000 / (0.9 × 100 ms) = 11 frames a second.
-        Assert.Equal(11, runner.Sink.Request.MaxFps);
+        // 0.85 × 1000 / 100 ms = 8 frames a second, under what the thread can write.
+        Assert.Equal(8, runner.Sink.Request.MaxFps);
         Assert.Equal(100, runner.FrameTimeMs, 1);
         runner.RequestStop();
         await runner.Ended;

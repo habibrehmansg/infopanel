@@ -20,16 +20,20 @@ public sealed class PanelFrame(byte[] pixels, int width, int height, int rowByte
 
     public long FrameId { get; set; } = frameId;
 
+    /// <summary>The document revision the frame was drawn from (<see cref="RenderedFrame.Rev"/>).</summary>
+    public long Rev { get; set; }
+
     /// <summary>The rotation the frame is to be shown at (the device's when it was copied).</summary>
     public PanelRotation Rotation { get; set; } = rotation;
 }
 
 /// <summary>
-/// A USB panel's frame sink: scale 1, the engine's frame rate setting read on every tick, lowered when the panel takes
-/// frames more slowly (<see cref="PacedFps"/>), no bounds. <see cref="OnFrame"/> (render thread) copies the pixels into
-/// one of two buffers and leaves it as the one pending frame, replacing a pending one the panel's thread hasn't taken; it
-/// never waits for the panel and takes no lock but its own, held only to swap a buffer. A frame whose content hash, size
-/// and rotation equal the last one copied is skipped. The panel's thread takes the newest frame with <see cref="Take"/>.
+/// A USB panel's frame sink: scale 1, the engine's frame rate setting read on every tick, lowered to the panel's pace
+/// (<see cref="PacedFps"/>, its runner's <see cref="PanelPacer"/>), no bounds. <see cref="OnFrame"/> (render thread)
+/// copies the pixels into one of two buffers and leaves it as the one pending frame, replacing a pending one the panel's
+/// thread hasn't taken; it never waits for the panel and takes no lock but its own, held only to swap a buffer. A frame
+/// whose content hash, size and rotation equal the last one copied is skipped. The panel's thread takes the newest frame
+/// with <see cref="Take"/>.
 /// </summary>
 public sealed class PanelSink : IFrameSink
 {
@@ -68,7 +72,7 @@ public sealed class PanelSink : IFrameSink
 
     private Action<FrameSinkClosedReason>? Closed { get; }
 
-    /// <summary>The most frames a second the panel takes, by its write times; 60 until it is measured.</summary>
+    /// <summary>The most frames a second the panel is sent, by its write times (<see cref="PanelPacer"/>); 60 until it is measured.</summary>
     public int PacedFps
     {
         get => _paced;
@@ -137,6 +141,7 @@ public sealed class PanelSink : IFrameSink
             target.Rotation = rotation;
         }
 
+        target.Rev = frame.Rev;
         pixmap.GetPixelSpan()[..length].CopyTo(target.Pixels);
         (_lastHash, _lastWidth, _lastHeight, _lastRotation, _copied) = (frame.ContentHash, pixmap.Width, pixmap.Height, rotation, true);
         Interlocked.Increment(ref FramesCopied);
