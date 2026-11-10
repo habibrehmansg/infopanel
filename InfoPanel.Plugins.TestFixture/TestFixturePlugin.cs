@@ -35,12 +35,42 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
 
     public TestFixturePlugin() : base(FixtureMode.Current.Id ?? DefaultId, "Test Fixture", "A plugin for the engine's tests.")
     {
+        if (LargeTable() is { } large)
+        {
+            _table = new PluginTable("processes", "Processes", large, "");
+            return;
+        }
+
         var data = new DataTable();
         data.Columns.Add("Name", typeof(PluginText));
         data.Columns.Add("Load", typeof(PluginSensor));
         data.Rows.Add(new PluginText("alpha", "alpha"), new PluginSensor("load", 12.5f, "%"));
         data.Rows.Add(new PluginText("beta", "beta"), new PluginSensor("load", 40f, "%"));
         _table = new PluginTable("processes", "Processes", data, "0:150|1:80");
+    }
+
+    /// <summary>The Processes table <c>table-rows</c>, <c>table-columns</c> and <c>table-cell-chars</c> ask for; null when none is given.</summary>
+    private static DataTable? LargeTable()
+    {
+        var mode = FixtureMode.Current;
+        if (mode.TableRows is null && mode.TableColumns is null && mode.TableCellChars is null)
+            return null;
+
+        var (rows, columns, chars) = (mode.TableRows ?? 2, mode.TableColumns ?? 2, mode.TableCellChars ?? 16);
+        var data = new DataTable();
+        for (var c = 0; c < columns; c++)
+            data.Columns.Add($"c{c}", typeof(PluginText));
+        for (var r = 0; r < rows; r++)
+        {
+            var cells = new object[columns];
+            for (var c = 0; c < columns; c++)
+            {
+                var text = $"r{r}c{c}";
+                cells[c] = new PluginText("", text.PadRight(chars, 'x')[..chars]);
+            }
+            data.Rows.Add(cells);
+        }
+        return data;
     }
 
     public override TimeSpan UpdateInterval => TimeSpan.Zero;
@@ -76,7 +106,7 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
             throw new InvalidOperationException($"fixture: can't take {value}");
         _settings[key] = value;
         _applied = value;
-        if (key == "label")
+        if (key == "label" && FixtureMode.Current.TextChars is null)
             _status.Value = value?.ToString() ?? "";
     }
 
@@ -163,6 +193,27 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
                 flood.Entries.Add(sensor);
             }
             containers.Add(flood);
+        }
+
+        if (FixtureMode.Current.Texts > 0)
+        {
+            var texts = new PluginContainer("texts", "Texts");
+            for (var i = 0; i < FixtureMode.Current.Texts; i++)
+                texts.Entries.Add(new PluginText($"t{i}", $"Text {i}", new string('x', 4096)));
+            containers.Add(texts);
+        }
+
+        if (FixtureMode.Current.EmptyTables > 0)
+        {
+            var tables = new PluginContainer("empty-tables", "Empty tables");
+            for (var i = 0; i < FixtureMode.Current.EmptyTables; i++)
+            {
+                var data = new DataTable();
+                for (var c = 0; c < 64; c++)
+                    data.Columns.Add($"c{c}".PadRight(256, 'x'), typeof(PluginText));
+                tables.Entries.Add(new PluginTable($"e{i}", $"Table {i}", data, ""));
+            }
+            containers.Add(tables);
         }
     }
 

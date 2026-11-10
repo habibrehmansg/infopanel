@@ -19,7 +19,7 @@ namespace InfoPanel.Plugins.Host
         private readonly string? _settingsDirectory;
         private JsonRpc? _jsonRpc;
         private readonly List<PluginWrapper> _wrappers = [];
-        private readonly SensorSnapshotManager _snapshotManager = new();
+        private readonly SensorSnapshotManager _snapshotManager;
         private readonly List<PluginImageWriter> _imageWriters = [];
         private readonly Dictionary<PluginImageWriter, (string PluginId, string ImageId)> _writerMappings = [];
         private CancellationTokenSource? _updateCts;
@@ -47,6 +47,7 @@ namespace InfoPanel.Plugins.Host
             _pluginPath = pluginPath;
             _settingsDirectory = settingsDirectory;
             Logger = logger ?? Log.ForContext<HostService>();
+            _snapshotManager = new SensorSnapshotManager(logger, NotifyError);
         }
 
         public void SetJsonRpc(JsonRpc jsonRpc)
@@ -55,6 +56,17 @@ namespace InfoPanel.Plugins.Host
         }
 
         public async Task<List<PluginMetadataDto>> InitializeAsync()
+        {
+            var metadataList = await LoadPluginsAsync();
+            StartLoops();
+            return metadataList;
+        }
+
+        /// <summary>
+        /// Loads and starts the DLL's plugins and sends the catalogue, as <see cref="InitializeAsync"/> does before it starts
+        /// the loops; a test entry point, so a test can run the update cycle itself.
+        /// </summary>
+        internal async Task<List<PluginMetadataDto>> LoadPluginsAsync()
         {
             Logger.Information("Initializing plugins from {PluginPath}", _pluginPath);
 
@@ -68,10 +80,17 @@ namespace InfoPanel.Plugins.Host
             var descriptor = new PluginDescriptor(_pluginPath, pluginInfo);
             var metadataList = new List<PluginMetadataDto>();
             var containersByPluginId = new Dictionary<string, List<ContainerDto>>();
+            // The catalogue is one message: what is left of the host's message budget (by JsonSize's estimate) once each
+            // plugin's own fields, its containers and the entries listed so far are counted. An entry keeps its value (a
+            // text's, a table's rows) only while it fits what is left, and is listed without it past that: the first
+            // update sends every value, since nothing is marked sent then.
+            var catalogueBytes = IpcLimits.HostMessageBytes - JsonSize.MessageFixed;
 
             foreach (var plugin in plugins)
             {
                 var wrapper = new PluginWrapper(descriptor, plugin);
+                // The image buffers made for this plugin, released if its start fails.
+                var writersMade = new List<PluginImageWriter>();
 
                 try
                 {
@@ -119,6 +138,7 @@ namespace InfoPanel.Plugins.Host
                         {
                             Logger.Error("Failed to initialize plugin {PluginName}: reading its settings failed ({Error})", wrapper.Name, ex.GetType().Name);
                             NotifyError(wrapper.Id, $"Reading its settings failed ({ex.GetType().Name})");
+                            await DropAsync(descriptor, wrapper, writersMade);
                             continue;
                         }
                     }
@@ -126,8 +146,9 @@ namespace InfoPanel.Plugins.Host
                     var metadata = new PluginMetadataDto
                     {
                         Id = wrapper.Id,
-                        Name = wrapper.Name,
-                        Description = wrapper.Description,
+                        // Cut as the engine cuts them.
+                        Name = TableDtoConverter.Cut(wrapper.Name, IpcLimits.NameChars),
+                        Description = TableDtoConverter.Cut(wrapper.Description, IpcLimits.TextChars),
                         ConfigFilePath = plugin is IPluginConfigurable && wrapper.ConfigFilePath == null
                             ? GetConfigFilePath(wrapper)
                             : wrapper.ConfigFilePath,
@@ -146,9 +167,24 @@ namespace InfoPanel.Plugins.Host
                             var mmfName = $"InfoPanel.Image.{Environment.ProcessId}.{wrapper.Id}.{imgDescriptor.Id}";
                             var mmfSize = PluginImageWriter.ComputeMmfSize(imgDescriptor.Width, imgDescriptor.Height);
 
+                            // ComputeMmfSize has refused a size the writer can't hold, before anything is mapped. If
+                            // the view or the writer still fails, what was made here is released before the failure
+                            // goes on: the writer owns the mapping only once it is made.
                             var mmf = MemoryMappedFile.CreateOrOpen(mmfName, mmfSize);
-                            var accessor = mmf.CreateViewAccessor(0, mmfSize);
-                            var writer = new PluginImageWriter(mmfName, mmf, accessor, imgDescriptor.Width, imgDescriptor.Height);
+                            MemoryMappedViewAccessor? accessor = null;
+                            PluginImageWriter writer;
+                            try
+                            {
+                                accessor = mmf.CreateViewAccessor(0, mmfSize);
+                                writer = new PluginImageWriter(mmfName, mmf, accessor, imgDescriptor.Width, imgDescriptor.Height);
+                            }
+                            catch
+                            {
+                                accessor?.Dispose();
+                                mmf.Dispose();
+                                throw;
+                            }
+                            writersMade.Add(writer);
                             _imageWriters.Add(writer);
                             _writerMappings[writer] = (wrapper.Id, imgDescriptor.Id);
                             writer.Resized += OnWriterResized;
@@ -172,7 +208,8 @@ namespace InfoPanel.Plugins.Host
                         imageProvider.OnImageBuffersReady(writers);
                     }
 
-                    metadataList.Add(metadata);
+                    // The plugin's own fields, and its key in the containers' map, before its entries.
+                    catalogueBytes -= JsonSize.Of(metadata) + JsonSize.Of(wrapper.Id) + 4;
 
                     // Convert containers to DTOs
                     var containerDtos = new List<ContainerDto>();
@@ -181,13 +218,15 @@ namespace InfoPanel.Plugins.Host
                         var containerDto = new ContainerDto
                         {
                             Id = container.Id,
-                            Name = container.Name,
+                            Name = TableDtoConverter.Cut(container.Name, IpcLimits.NameChars),
                             IsEphemeralPath = container.IsEphemeralPath,
-                            Entries = container.Entries.Select(ConvertEntryToDto).ToList()
                         };
+                        catalogueBytes -= JsonSize.ContainerFixed + JsonSize.Of(containerDto.Id) + JsonSize.Of(containerDto.Name);
+                        containerDto.Entries = container.Entries.Select(entry => ConvertEntryToDto(entry, ref catalogueBytes)).ToList();
                         containerDtos.Add(containerDto);
                     }
-                    // Add image descriptors as text entries so they appear as selectable sensors
+                    // Add image descriptors as text entries so they appear as selectable sensors. They are counted like
+                    // the others, but always keep their values: no update sends them.
                     if (metadata.ImageDescriptors.Count > 0)
                     {
                         var imagesContainer = new ContainerDto
@@ -198,20 +237,25 @@ namespace InfoPanel.Plugins.Host
                             Entries = metadata.ImageDescriptors.Select(img => new EntryDto
                             {
                                 Id = img.Id,
-                                Name = img.Name,
+                                Name = TableDtoConverter.Cut(img.Name, IpcLimits.NameChars),
                                 Type = "text",
                                 TextValue = $"plugin-image://{wrapper.Id}/{img.Id}"
                             }).ToList()
                         };
+                        catalogueBytes -= JsonSize.ContainerFixed + JsonSize.Of(imagesContainer.Id) + JsonSize.Of(imagesContainer.Name)
+                            + imagesContainer.Entries.Sum(JsonSize.Of);
                         containerDtos.Add(imagesContainer);
                     }
 
+                    // Listed only once everything about it converted: a plugin whose start fails isn't listed.
+                    metadataList.Add(metadata);
                     containersByPluginId[wrapper.Id] = containerDtos;
                 }
                 catch (Exception ex)
                 {
                     Logger.Error(ex, "Failed to initialize plugin {PluginName}", wrapper.Name);
                     NotifyError(wrapper.Id, ex.Message);
+                    await DropAsync(descriptor, wrapper, writersMade);
                 }
             }
 
@@ -230,9 +274,37 @@ namespace InfoPanel.Plugins.Host
             // Notify main app about loaded plugins
             NotifyPluginsLoaded(metadataList, containersByPluginId);
 
-            StartLoops();
-
             return metadataList;
+        }
+
+        /// <summary>
+        /// Takes a plugin whose start failed out of the host: no longer updated, sent or served, then stopped (its own
+        /// update task ended and the plugin closed) and only then its image buffers released, so nothing of it can be
+        /// drawing into a buffer as its mapping goes. A plugin whose Initialize itself threw was never added; this is safe
+        /// for it.
+        /// </summary>
+        internal async Task DropAsync(PluginDescriptor descriptor, PluginWrapper wrapper, List<PluginImageWriter> writers)
+        {
+            _wrappers.Remove(wrapper);
+            if (descriptor.PluginWrappers.TryGetValue(wrapper.Id, out var listed) && ReferenceEquals(listed, wrapper))
+                descriptor.PluginWrappers.Remove(wrapper.Id);
+
+            try
+            {
+                await wrapper.StopAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error stopping plugin {PluginName} after its start failed", wrapper.Name);
+            }
+
+            foreach (var writer in writers)
+            {
+                writer.Resized -= OnWriterResized;
+                _imageWriters.Remove(writer);
+                _writerMappings.Remove(writer);
+                try { writer.Dispose(); } catch (Exception ex) { Logger.Warning(ex, "Failed to release an image buffer of plugin {PluginName}", wrapper.Name); }
+            }
         }
 
         /// <summary>
@@ -482,32 +554,69 @@ namespace InfoPanel.Plugins.Host
                 }
             }
 
-            // Snapshot and push changed values
+            // A plugin's failed updates (its Update above, or UpdateAsync on its own task) are logged and reported to the
+            // engine as its package's errors, once per streak of failures.
+            foreach (var wrapper in _wrappers)
+            {
+                if (wrapper.TakeUpdateFailure() is { } failure)
+                {
+                    Logger.Warning(failure, "Plugin {PluginName} failed to update; reported once until an update succeeds", wrapper.Name);
+                    await NotifyErrorAsync(wrapper.Id, $"Updating failed ({failure.GetType().Name})", token);
+                }
+            }
+
+            // Snapshot and push changed values, in as many messages as keep each within IpcLimits.HostMessageBytes (by
+            // JsonSize's estimate): the engine closes a host that sends one over its limit. Every update fits a message:
+            // texts, units and tables are cut to the engine's limits before they are compared (SensorSnapshotManager).
+            // Only ids aren't, and the engine refuses a plugin that lists a longer one than it takes.
             batches.Clear();
+            var bytes = JsonSize.MessageFixed;
 
             foreach (var wrapper in _wrappers)
             {
                 if (!wrapper.IsLoaded) continue;
 
-                var updates = _snapshotManager.GetChangedEntries(wrapper);
-                if (updates.Count > 0)
+                SensorUpdateBatchDto? batch = null;
+                foreach (var update in _snapshotManager.GetChangedEntries(wrapper))
                 {
-                    batches.Add(new SensorUpdateBatchDto
+                    var size = JsonSize.Of(update);
+                    var batchSize = batch == null ? JsonSize.BatchFixed + JsonSize.Of(wrapper.Id) : 0;
+                    if (batches.Count > 0 && bytes + batchSize + size > IpcLimits.HostMessageBytes)
                     {
-                        PluginId = wrapper.Id,
-                        Updates = updates
-                    });
+                        if (!await SendAsync(batches, token)) return;
+                        batches.Clear();
+                        bytes = JsonSize.MessageFixed;
+                        batch = null;
+                        batchSize = JsonSize.BatchFixed + JsonSize.Of(wrapper.Id);
+                    }
+
+                    if (batch == null)
+                    {
+                        batch = new SensorUpdateBatchDto { PluginId = wrapper.Id, Updates = [] };
+                        batches.Add(batch);
+                    }
+                    batch.Updates.Add(update);
+                    bytes += batchSize + size;
                 }
             }
 
-            // Only what the client was sent counts as sent: an update that wasn't goes again next cycle.
-            if (batches.Count > 0 && await NotifySensorUpdateAsync(batches, token))
+            if (batches.Count > 0)
+                await SendAsync(batches, token);
+        }
+
+        /// <summary>
+        /// Sends one message of updates and marks them sent once it was: only what the client was sent counts as sent, so
+        /// an update that wasn't goes again next cycle. False when the send failed (the cycle sends no more).
+        /// </summary>
+        private async Task<bool> SendAsync(List<SensorUpdateBatchDto> batches, CancellationToken token)
+        {
+            if (!await NotifySensorUpdateAsync(batches, token))
+                return false;
+            foreach (var batch in batches)
             {
-                foreach (var batch in batches)
-                {
-                    _snapshotManager.MarkSent(batch.PluginId, batch.Updates);
-                }
+                _snapshotManager.MarkSent(batch.PluginId, batch.Updates);
             }
+            return true;
         }
 
         private async Task PerformanceLoopAsync(CancellationToken token)
@@ -580,12 +689,18 @@ namespace InfoPanel.Plugins.Host
             return 0;
         }
 
-        private EntryDto ConvertEntryToDto(IPluginData entry)
+        /// <summary>
+        /// A catalogue entry, cut as the engine cuts it (its name, a sensor's unit, a text, a table), with its value only
+        /// while the entry with its value fits <paramref name="budget"/>: past that, a text is listed without its value and
+        /// a table without its rows (or, if its columns alone don't fit, without its value), which the first update sends.
+        /// The budget is reduced by what was listed.
+        /// </summary>
+        private EntryDto ConvertEntryToDto(IPluginData entry, ref long budget)
         {
             var dto = new EntryDto
             {
                 Id = entry.Id,
-                Name = entry.Name
+                Name = TableDtoConverter.Cut(entry.Name, IpcLimits.NameChars)
             };
 
             if (entry is IPluginSensor sensor)
@@ -597,20 +712,34 @@ namespace InfoPanel.Plugins.Host
                     ValueMin = sensor.ValueMin,
                     ValueMax = sensor.ValueMax,
                     ValueAvg = sensor.ValueAvg,
-                    Unit = sensor.Unit
+                    Unit = TableDtoConverter.Cut(sensor.Unit, IpcLimits.NameChars)
                 };
             }
             else if (entry is IPluginText text)
             {
                 dto.Type = "text";
-                dto.TextValue = text.Value;
+                dto.TextValue = TableDtoConverter.Cut(text.Value, IpcLimits.TextChars);
             }
             else if (entry is IPluginTable table)
             {
                 dto.Type = "table";
-                dto.TableValue = TableDtoConverter.ConvertTableToDto(table);
+                dto.TableValue = TableDtoConverter.Convert(table, IpcLimits.HostTableBytes).Table;
             }
 
+            if (JsonSize.Of(dto) > budget)
+            {
+                dto.TextValue = null;
+                if (dto.TableValue != null)
+                {
+                    dto.TableValue.Rows = [];
+                    // Its columns alone can still pass what is left (many tables with long column names): the whole value
+                    // is left out then, and the first update sends it.
+                    if (JsonSize.Of(dto) > budget)
+                        dto.TableValue = null;
+                }
+            }
+
+            budget -= JsonSize.Of(dto);
             return dto;
         }
 
@@ -663,9 +792,16 @@ namespace InfoPanel.Plugins.Host
                     var prop = props.FirstOrDefault(p => p.Key == kvp.Key);
                     if (prop == null) continue;
 
-                    var value = CoerceJsonElement(kvp.Value, prop.Type);
                     try
                     {
+                        // Each key on its own: a value that doesn't fit its setting's type (a setting whose type changed
+                        // with an update, say) is skipped, and the keys after it still load.
+                        if (!TryCoerceJsonElement(kvp.Value, prop.Type, out var value))
+                        {
+                            Logger.Warning("Skipped stored config key {Key} on plugin {PluginId}: a {Kind} value doesn't fit its type {Type}",
+                                kvp.Key, wrapper.Id, kvp.Value.ValueKind, prop.Type);
+                            continue;
+                        }
                         configurable.ApplyConfig(kvp.Key, value);
                     }
                     catch (Exception ex)
@@ -729,24 +865,47 @@ namespace InfoPanel.Plugins.Host
             }
         }
 
-        private static object? CoerceJsonElement(JsonElement element, PluginConfigType type)
+        /// <summary>
+        /// A stored value as its setting's type: a JSON value of the type's own kind, or a string or null read as before
+        /// (parsed, else the type's default). False for any other kind, or a number the type can't hold (1.5 for an
+        /// Integer): the value is skipped.
+        /// </summary>
+        private static bool TryCoerceJsonElement(JsonElement element, PluginConfigType type, out object? value)
         {
-            return type switch
+            var kind = element.ValueKind;
+            var text = kind is JsonValueKind.String or JsonValueKind.Null;
+            value = null;
+            switch (type)
             {
-                PluginConfigType.Boolean => element.ValueKind == JsonValueKind.True || element.ValueKind == JsonValueKind.False
-                    ? element.GetBoolean()
-                    : bool.TryParse(element.GetString(), out var b) ? b : false,
-                PluginConfigType.Integer => element.ValueKind == JsonValueKind.Number
-                    ? element.GetInt32()
-                    : int.TryParse(element.GetString(), out var i) ? i : 0,
-                PluginConfigType.Double => element.ValueKind == JsonValueKind.Number
-                    ? element.GetDouble()
-                    : double.TryParse(element.GetString(), System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0.0,
-                PluginConfigType.String => element.GetString() ?? "",
-                PluginConfigType.Choice => element.GetString() ?? "",
-                _ => element.GetString() ?? ""
-            };
+                case PluginConfigType.Boolean when kind is JsonValueKind.True or JsonValueKind.False:
+                    value = element.GetBoolean();
+                    return true;
+                case PluginConfigType.Boolean when text:
+                    value = bool.TryParse(element.GetString(), out var b) && b;
+                    return true;
+                case PluginConfigType.Integer when kind == JsonValueKind.Number:
+                    if (!element.TryGetInt32(out var number)) return false;
+                    value = number;
+                    return true;
+                case PluginConfigType.Integer when text:
+                    value = int.TryParse(element.GetString(), out var i) ? i : 0;
+                    return true;
+                case PluginConfigType.Double when kind == JsonValueKind.Number:
+                    if (!element.TryGetDouble(out var real)) return false;
+                    value = real;
+                    return true;
+                case PluginConfigType.Double when text:
+                    value = double.TryParse(element.GetString(), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0.0;
+                    return true;
+                case PluginConfigType.Boolean or PluginConfigType.Integer or PluginConfigType.Double:
+                    return false;
+                default:
+                    // String, Choice and any other type: a string, or null as the empty string.
+                    if (!text) return false;
+                    value = element.GetString() ?? "";
+                    return true;
+            }
         }
 
         private void NotifyPluginsLoaded(List<PluginMetadataDto> plugins, Dictionary<string, List<ContainerDto>> containers)
@@ -785,6 +944,29 @@ namespace InfoPanel.Plugins.Host
             {
                 Logger.Error(ex, "Failed to notify sensor update");
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Sends a plugin's error and waits for its write, as <see cref="NotifySensorUpdateAsync"/> does for updates, so the
+        /// update loop's errors go out in order with its updates; one that can't be sent is logged and dropped.
+        /// </summary>
+        private async Task NotifyErrorAsync(string pluginId, string message, CancellationToken token)
+        {
+            var jsonRpc = _jsonRpc;
+            if (jsonRpc == null) return;
+
+            try
+            {
+                await jsonRpc.NotifyAsync(nameof(IPluginClientCallback.OnPluginError), pluginId, message).WaitAsync(token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to notify plugin error");
             }
         }
 

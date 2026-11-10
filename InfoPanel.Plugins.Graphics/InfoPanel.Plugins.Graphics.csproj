@@ -12,6 +12,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The mapping seam (PluginImageWriter.OpenMapping) is internal. -->
+    <InternalsVisibleTo Include="InfoPanel.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
   </ItemGroup>
 

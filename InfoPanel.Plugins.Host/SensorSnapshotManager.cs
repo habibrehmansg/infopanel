@@ -22,7 +22,10 @@ namespace InfoPanel.Plugins.Host
         private readonly ConcurrentDictionary<(string pluginId, string containerId, string entryId), string> _keyCache = new();
         // Per table key: how many cycles in a row its read has failed and it was skipped.
         private readonly ConcurrentDictionary<string, int> _skipStreaks = new();
+        // The text and table keys whose cut has been reported (once each).
+        private readonly ConcurrentDictionary<string, bool> _cutReported = new();
         private readonly ILogger _logger;
+        private readonly Action<string, string>? _reportCut;
 
         /// <summary>
         /// Consecutive skipped reads of one table after which it is reported, once per streak: about 5 s of the host's
@@ -30,9 +33,14 @@ namespace InfoPanel.Plugins.Host
         /// </summary>
         internal const int SkipWarningCycles = 50;
 
-        public SensorSnapshotManager(ILogger? logger = null)
+        /// <param name="logger">The log; the process's by default.</param>
+        /// <param name="reportCut">
+        /// Told (plugin id, message) once per text or table that is cut to what the engine takes (<see cref="IpcLimits"/>).
+        /// </param>
+        public SensorSnapshotManager(ILogger? logger = null, Action<string, string>? reportCut = null)
         {
             _logger = logger ?? Log.ForContext<SensorSnapshotManager>();
+            _reportCut = reportCut;
         }
 
         public List<EntryUpdateDto> GetChangedEntries(PluginWrapper wrapper)
@@ -47,7 +55,7 @@ namespace InfoPanel.Plugins.Host
                     EntryUpdateDto? update;
                     try
                     {
-                        update = CreateUpdateIfChanged(key, container.Id, entry);
+                        update = CreateUpdateIfChanged(wrapper.Id, key, container.Id, entry);
                     }
                     catch (Exception ex) when (entry is IPluginTable && IsTableChangedDuringRead(ex))
                     {
@@ -115,15 +123,18 @@ namespace InfoPanel.Plugins.Host
                 or IndexOutOfRangeException or ArgumentOutOfRangeException;
 
         // Each entry is read once per cycle. The change check compares what was read with what was last delivered,
-        // and the payload is built from the same read, so the check always describes the payload sent.
-        private EntryUpdateDto? CreateUpdateIfChanged(string key, string containerId, IPluginData entry)
+        // and the payload is built from the same read, so the check always describes the payload sent. Texts, units and
+        // tables are cut to what the engine takes first (IpcLimits), as it would cut them, so no update can make a
+        // message the engine refuses, and what is compared is what is sent.
+        private EntryUpdateDto? CreateUpdateIfChanged(string pluginId, string key, string containerId, IPluginData entry)
         {
             object state;
             EntryUpdateDto update;
 
             if (entry is IPluginSensor sensor)
             {
-                var reading = new SensorReading(sensor.Value, sensor.ValueMin, sensor.ValueMax, sensor.ValueAvg, sensor.Unit);
+                var reading = new SensorReading(sensor.Value, sensor.ValueMin, sensor.ValueMax, sensor.ValueAvg,
+                    TableDtoConverter.Cut(sensor.Unit, IpcLimits.NameChars));
                 state = reading;
                 update = new EntryUpdateDto
                 {
@@ -142,7 +153,10 @@ namespace InfoPanel.Plugins.Host
             }
             else if (entry is IPluginText text)
             {
-                var value = text.Value;
+                var whole = text.Value;
+                var value = TableDtoConverter.Cut(whole, IpcLimits.TextChars);
+                if (whole?.Length > IpcLimits.TextChars)
+                    ReportCut(pluginId, key, $"Text '{entry.Id}' is over {IpcLimits.TextChars} characters; the rest is cut");
                 state = value;
                 update = new EntryUpdateDto
                 {
@@ -154,8 +168,12 @@ namespace InfoPanel.Plugins.Host
             }
             else if (entry is IPluginTable table)
             {
-                // The payload is the table's only read; it is compared whole, never through a hash of a second read.
-                var tableValue = TableDtoConverter.ConvertTableToDto(table);
+                // The payload is the table's only read; it is compared whole, never through a hash of a second read. It is
+                // cut to what the engine takes and what fits a message, so no table can make a message the engine refuses.
+                var (tableValue, _, cut) = TableDtoConverter.Convert(table, IpcLimits.HostTableBytes);
+                if (cut)
+                    ReportCut(pluginId, key, $"Table '{entry.Id}' is over {IpcLimits.TableRows} rows, {IpcLimits.TableColumns} columns, " +
+                        $"{IpcLimits.CellChars} characters a cell or {IpcLimits.HostTableBytes / (1024 * 1024)} MiB; the rest is cut");
                 state = tableValue;
                 update = new EntryUpdateDto
                 {
@@ -175,6 +193,14 @@ namespace InfoPanel.Plugins.Host
 
             _pending[key] = state;
             return update;
+        }
+
+        // A cut is logged and reported once per entry: an entry stays over the limit every cycle it changes.
+        private void ReportCut(string pluginId, string key, string message)
+        {
+            if (!_cutReported.TryAdd(key, true)) return;
+            _logger.Warning("Plugin entry {EntryKey}: {Message}", key, message);
+            _reportCut?.Invoke(pluginId, message);
         }
 
         // Everything a sensor's payload carries, the unit included: a change of unit alone is an update.
@@ -232,6 +258,7 @@ namespace InfoPanel.Plugins.Host
             _pending.Clear();
             _keyCache.Clear();
             _skipStreaks.Clear();
+            _cutReported.Clear();
         }
     }
 }

@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Data;
 using InfoPanel.Plugins;
 using InfoPanel.Plugins.Host;
 using InfoPanel.Plugins.Ipc;
@@ -93,6 +95,90 @@ public class HostServiceUpdateLoopTests
         }
     }
 
+    // A table the engine would cut to 1,000 rows, whose 20,000 rows of 10 cells of 64 characters (about 19 MB as JSON) pass the 16 MiB
+    // the engine reads in one message: the host cuts it before sending, so no message passes the engine's limit.
+    [Fact]
+    public async Task A_20000_row_table_is_cut_to_the_engines_rows_and_no_message_passes_its_limit()
+    {
+        var host = await HostWith(Table("processes", rows: 20_000, columns: 10, chars: 64));
+        var transport = new TestTransport();
+        Connect(host, transport);
+
+        await Cycle(host);
+
+        AllWithinTheEnginesLimit(transport);
+        Assert.Equal([("processes", 1_000)], transport.Tables);
+    }
+
+    // 1,000 rows of 64 cells of 1 KiB is within the engine's table limits but 64 MB: the host sends the rows that fit.
+    [Fact]
+    public async Task A_table_within_the_engines_limits_but_larger_than_a_message_is_cut_to_what_fits()
+    {
+        var host = await HostWith(Table("wide", rows: 1_000, columns: 64, chars: 1_024));
+        var transport = new TestTransport();
+        Connect(host, transport);
+
+        await Cycle(host);
+
+        AllWithinTheEnginesLimit(transport);
+        var (id, rows) = Assert.Single(transport.Tables);
+        Assert.Equal("wide", id);
+        Assert.InRange(rows, 1, 999);
+    }
+
+    // Six tables of 1,000 rows of 3 cells of 1,000 characters, about 3 MB each, are within every limit alone but 19 MB
+    // together: the cycle sends them all, whole, across messages within the limit.
+    [Fact]
+    public async Task Changes_larger_than_a_message_together_are_sent_whole_across_messages_in_one_cycle()
+    {
+        var tables = Enumerable.Range(0, 6).Select(i => Table($"t{i}", rows: 1_000, columns: 3, chars: 1_000)).ToArray();
+        var host = await HostWith(tables);
+        var transport = new TestTransport();
+        Connect(host, transport);
+
+        await Cycle(host);
+
+        AllWithinTheEnginesLimit(transport);
+        Assert.Equal(tables.Select(t => (t.Id, 1_000)), transport.Tables);
+    }
+
+    // One text of 20 million characters (a plugin putting a log file in a text) passes the 16 MiB the engine reads in one
+    // message: the host cuts it to the engine's 4,096 characters before sending, so no message passes the limit.
+    [Fact]
+    public async Task A_text_longer_than_a_message_is_cut_to_the_engines_characters_and_no_message_passes_its_limit()
+    {
+        var host = await HostWith(new PluginText("log", "Log", new string('x', 20_000_000)));
+        var transport = new TestTransport();
+        Connect(host, transport);
+
+        await Cycle(host);
+
+        AllWithinTheEnginesLimit(transport);
+        Assert.Equal([("log", PluginLimits.Default.TextChars)], transport.Texts);
+    }
+
+    private static void AllWithinTheEnginesLimit(TestTransport transport)
+    {
+        Assert.NotEmpty(transport.MessageBytes);
+        Assert.All(transport.MessageBytes, bytes => Assert.InRange(bytes, 1, PluginLimits.Default.MessageBytes));
+    }
+
+    /// <summary>A table of <paramref name="rows"/> × <paramref name="columns"/> text cells, each <paramref name="chars"/> characters.</summary>
+    private static PluginTable Table(string id, int rows, int columns, int chars)
+    {
+        var data = new DataTable();
+        for (var c = 0; c < columns; c++)
+            data.Columns.Add($"c{c}", typeof(PluginText));
+        for (var r = 0; r < rows; r++)
+        {
+            var cells = new object[columns];
+            for (var c = 0; c < columns; c++)
+                cells[c] = new PluginText("", $"r{r}c{c}".PadRight(chars, 'x')[..chars]);
+            data.Rows.Add(cells);
+        }
+        return new PluginTable(id, id, data, "");
+    }
+
     private static Task Cycle(HostService host) => host.RunUpdateCycleAsync([], TestContext.Current.CancellationToken);
 
     private static async Task<HostService> HostWith(params IPluginData[] entries)
@@ -116,13 +202,17 @@ public class HostServiceUpdateLoopTests
 
     /// <summary>
     /// A JsonRpc transport whose sensor update writes follow a script (then complete). Each OnSensorUpdate write is
-    /// recorded as (plugin, entry, value) when it starts, even one that then throws or blocks. Reads wait for
-    /// cancellation: the client never sends anything.
+    /// recorded when it starts, even one that then throws or blocks: its sensors as (plugin, entry, value), its tables as
+    /// (entry, rows), its texts as (entry, characters), and its size as the JSON the host's formatter writes. Reads wait for cancellation: the client never
+    /// sends anything.
     /// </summary>
     private sealed class TestTransport(params WriteOutcome[] script) : IJsonRpcMessageHandler
     {
         private readonly object _lock = new();
         private readonly List<(string, string, float)> _sent = [];
+        private readonly List<(string, int)> _tables = [];
+        private readonly List<(string, int)> _texts = [];
+        private readonly List<long> _messageBytes = [];
         private readonly TaskCompletionSource _writeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _writes;
@@ -136,6 +226,21 @@ public class HostServiceUpdateLoopTests
         public List<(string, string, float)> Sent
         {
             get { lock (_lock) return [.. _sent]; }
+        }
+
+        public List<(string Id, int Rows)> Tables
+        {
+            get { lock (_lock) return [.. _tables]; }
+        }
+
+        public List<(string Id, int Chars)> Texts
+        {
+            get { lock (_lock) return [.. _texts]; }
+        }
+
+        public List<long> MessageBytes
+        {
+            get { lock (_lock) return [.. _messageBytes]; }
         }
 
         public void OpenGate() => _gate.TrySetResult();
@@ -159,9 +264,18 @@ public class HostServiceUpdateLoopTests
                 {
                     foreach (var update in batch.Updates)
                     {
-                        _sent.Add((batch.PluginId, update.EntryId, update.SensorValue!.Value));
+                        if (update.TableValue is { } table)
+                            _tables.Add((update.EntryId, table.Rows.Count));
+                        else if (update.TextValue is { } text)
+                            _texts.Add((update.EntryId, text.Length));
+                        else
+                            _sent.Add((batch.PluginId, update.EntryId, update.SensorValue!.Value));
                     }
                 }
+
+                var json = new ArrayBufferWriter<byte>();
+                Formatter.Serialize(json, message);
+                _messageBytes.Add(json.WrittenCount);
 
                 outcome = _writes < script.Length ? script[_writes] : WriteOutcome.Complete;
                 _writes++;

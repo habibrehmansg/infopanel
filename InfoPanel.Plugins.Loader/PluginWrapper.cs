@@ -28,10 +28,33 @@ namespace InfoPanel.Plugins.Loader
 
         private CancellationTokenSource? _cts;
         private Task? _task;
+        // Set once the plugin's Initialize has returned, and once it has been closed: each plugin whose Initialize ran
+        // is closed exactly once, whether or not it has a task of its own.
+        private bool _initialized;
+        private bool _closed;
 
         public bool IsLoaded { get; private set; } = false;
 
         public bool IsRunning => _task is not null && !_task.IsCompleted && _cts is not null && !_cts.IsCancellationRequested;
+
+        // The first failure of the current streak of failed updates (Update, or UpdateAsync on the plugin's task), kept
+        // until the host takes it; the streak's later failures don't replace it, and an update that succeeds ends it.
+        private Exception? _failure;
+        private int _failing;
+
+        /// <summary>
+        /// The failure that started the current streak of failed updates, once: null when no update has failed since the
+        /// last one taken, or when the streak's first failure was already taken.
+        /// </summary>
+        public Exception? TakeUpdateFailure() => Interlocked.Exchange(ref _failure, null);
+
+        private void UpdateFailed(Exception ex)
+        {
+            if (Interlocked.Exchange(ref _failing, 1) == 0)
+                Interlocked.Exchange(ref _failure, ex);
+        }
+
+        private void UpdateSucceeded() => Interlocked.Exchange(ref _failing, 0);
 
         public void Update()
         {
@@ -43,10 +66,12 @@ namespace InfoPanel.Plugins.Loader
                 _stopwatch.Restart();
                 Plugin.Update();
                 _updateTimeMilliseconds = _stopwatch.ElapsedMilliseconds;
+                UpdateSucceeded();
             }
             catch (Exception ex)
             {
-
+                // Reported by the host, once per streak (TakeUpdateFailure).
+                UpdateFailed(ex);
             }
         }
 
@@ -54,6 +79,7 @@ namespace InfoPanel.Plugins.Loader
         {
             using var _ = await _startStopLock.LockAsync();
             Plugin.Initialize();
+            _initialized = true;
             Plugin.Load(PluginContainers);
             IsLoaded = true;
 
@@ -63,27 +89,36 @@ namespace InfoPanel.Plugins.Loader
             _task = Task.Run(() => DoWorkAsync(_cts.Token), _cts.Token);
         }
 
+        /// <summary>
+        /// Stops the plugin: cancels its own task and waits for it, when it has one, then closes the plugin, once, when its
+        /// Initialize ran (a plugin without an interval has no task, but what its Initialize or Load started is closed too).
+        /// A second call does nothing.
+        /// </summary>
         public async Task StopAsync()
         {
             using var _ = await _startStopLock.LockAsync();
-            if (_cts is null || _task is null) return;
 
-            _cts.Cancel();
+            if (_cts is not null && _task is not null)
+            {
+                _cts.Cancel();
 
-            try
-            {
-                await _task;
+                try
+                {
+                    await _task;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Task was canceled
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Exception during plugin task stop for {PluginName}", Name);
+                }
             }
-            catch (OperationCanceledException)
+
+            if (_initialized && !_closed)
             {
-                // Task was canceled
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Exception during plugin task stop for {PluginName}", Name);
-            }
-            finally
-            {
+                _closed = true;
                 DisposeResources();
             }
         }
@@ -102,10 +137,14 @@ namespace InfoPanel.Plugins.Loader
                         _stopwatch.Restart();
                         await Plugin.UpdateAsync(cancellationToken);
                         _updateTimeMilliseconds = _stopwatch.ElapsedMilliseconds;
+                        UpdateSucceeded();
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error(ex, "Exception during task execution for plugin {PluginName}", Name);
+                        // Reported by the host, once per streak (TakeUpdateFailure); each failure only at debug here.
+                        Logger.Debug(ex, "Exception during task execution for plugin {PluginName}", Name);
+                        if (!cancellationToken.IsCancellationRequested)
+                            UpdateFailed(ex);
                     }
 
                     await Task.Delay(Plugin.UpdateInterval, cancellationToken);

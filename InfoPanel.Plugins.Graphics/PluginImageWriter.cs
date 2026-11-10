@@ -37,6 +37,9 @@ namespace InfoPanel.Plugins.Graphics
 
         private const int HeaderSize = 16;
 
+        /// <summary>Creates or opens a resize's named mapping of the given size; a seam for tests.</summary>
+        internal Func<string, long, MemoryMappedFile> OpenMapping { get; init; } = MemoryMappedFile.CreateOrOpen;
+
         /// <summary>
         /// Raised after a successful resize. Host subscribes to notify the main app.
         /// </summary>
@@ -44,13 +47,14 @@ namespace InfoPanel.Plugins.Graphics
 
         public PluginImageWriter(string mmfName, MemoryMappedFile mmf, MemoryMappedViewAccessor accessor, int width, int height)
         {
+            var pixelBufferSize = PixelBufferSize(width, height);
             _mmfBaseName = mmfName;
             MmfName = mmfName;
             _mmf = mmf;
             _accessor = accessor;
             Width = width;
             Height = height;
-            _pixelBufferSize = width * height * 4;
+            _pixelBufferSize = pixelBufferSize;
             _writeIndex = 1; // Start writing to buffer 1, buffer 0 is initially active (empty)
 
             unsafe
@@ -66,8 +70,21 @@ namespace InfoPanel.Plugins.Graphics
                 *(int*)(_basePtr + 12) = 0;      // Reserved
             }
 
-            // Point bitmap at the write buffer (buffer 1)
-            Bitmap = CreateBitmapForBuffer(_writeIndex);
+            // Point bitmap at the write buffer (buffer 1). If that fails the pointer taken above is given back before the
+            // failure goes on: the caller disposes the view it passed in, and a pointer still held would keep it mapped.
+            try
+            {
+                Bitmap = CreateBitmapForBuffer(_writeIndex);
+            }
+            catch
+            {
+                unsafe
+                {
+                    _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+                    _basePtr = null;
+                }
+                throw;
+            }
         }
 
         public void Invalidate()
@@ -76,6 +93,9 @@ namespace InfoPanel.Plugins.Graphics
             {
                 unsafe
                 {
+                    // Disposed: there is no mapping to write to.
+                    if (_basePtr == null) return;
+
                     // Atomically swap active index to the buffer we just wrote
                     Interlocked.Exchange(ref *(int*)_basePtr, _writeIndex);
                 }
@@ -94,49 +114,79 @@ namespace InfoPanel.Plugins.Graphics
             if (newWidth <= 0 || newHeight <= 0)
                 throw new ArgumentException("Width and height must be positive.");
 
+            var pixelBufferSize = PixelBufferSize(newWidth, newHeight);
+
             lock (_sync)
             {
-                // Dispose old resources
-                Bitmap?.Dispose();
-                unsafe
-                {
-                    if (_basePtr != null)
-                        _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
-                }
-                _accessor.Dispose();
-                _mmf.Dispose();
-
-                // Create new MMF with versioned name
-                _version++;
-                MmfName = $"{_mmfBaseName}.v{_version}";
-                Width = newWidth;
-                Height = newHeight;
-                _pixelBufferSize = newWidth * newHeight * 4;
-                _writeIndex = 1;
-
+                // The new mapping is made first and the old one released only once it is ready: a resize that fails
+                // (the system can't map the size) leaves the writer as it was, drawing into its old mapping.
+                var version = _version + 1;
+                var name = $"{_mmfBaseName}.v{version}";
                 var mmfSize = ComputeMmfSize(newWidth, newHeight);
-                _mmf = MemoryMappedFile.CreateOrOpen(MmfName, mmfSize);
-                _accessor = _mmf.CreateViewAccessor(0, mmfSize);
-
+                MemoryMappedFile? mmf = null;
+                MemoryMappedViewAccessor? accessor = null;
+                var acquired = false;
                 unsafe
                 {
                     byte* ptr = null;
-                    _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+                    try
+                    {
+                        mmf = OpenMapping(name, mmfSize);
+                        accessor = mmf.CreateViewAccessor(0, mmfSize);
+                        accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+                        acquired = true;
+                    }
+                    catch
+                    {
+                        if (acquired) accessor!.SafeMemoryMappedViewHandle.ReleasePointer();
+                        accessor?.Dispose();
+                        mmf?.Dispose();
+                        throw;
+                    }
+
+                    *(int*)(ptr + 0) = 0;
+                    *(int*)(ptr + 4) = newWidth;
+                    *(int*)(ptr + 8) = newHeight;
+                    *(int*)(ptr + 12) = 0;
+
+                    // The bitmap over the new mapping is made before the old one is released too: a failure here leaves
+                    // the writer as it was, and a later resize to this size is tried again.
+                    var oldPtr = _basePtr;
+                    var (oldWidth, oldHeight, oldSize, oldIndex) = (Width, Height, _pixelBufferSize, _writeIndex);
                     _basePtr = ptr;
+                    (Width, Height, _pixelBufferSize, _writeIndex) = (newWidth, newHeight, pixelBufferSize, 1);
+                    SKBitmap bitmap;
+                    try
+                    {
+                        bitmap = CreateBitmapForBuffer(_writeIndex);
+                    }
+                    catch
+                    {
+                        _basePtr = oldPtr;
+                        (Width, Height, _pixelBufferSize, _writeIndex) = (oldWidth, oldHeight, oldSize, oldIndex);
+                        accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+                        accessor.Dispose();
+                        mmf.Dispose();
+                        throw;
+                    }
 
-                    *(int*)(_basePtr + 0) = 0;
-                    *(int*)(_basePtr + 4) = newWidth;
-                    *(int*)(_basePtr + 8) = newHeight;
-                    *(int*)(_basePtr + 12) = 0;
+                    _basePtr = oldPtr;
+                    ReleaseMapping();
+
+                    _mmf = mmf;
+                    _accessor = accessor;
+                    _basePtr = ptr;
+                    Bitmap = bitmap;
+                    _version = version;
+                    MmfName = name;
                 }
-
-                Bitmap = CreateBitmapForBuffer(_writeIndex);
             }
 
             Resized?.Invoke(this);
         }
 
-        private SKBitmap CreateBitmapForBuffer(int bufferIndex)
+        /// <summary>Makes the bitmap over one buffer; a seam for tests.</summary>
+        internal virtual SKBitmap CreateBitmapForBuffer(int bufferIndex)
         {
             var info = new SKImageInfo(Width, Height, SKColorType.Rgba8888, SKAlphaType.Premul);
             var bitmap = new SKBitmap();
@@ -154,26 +204,52 @@ namespace InfoPanel.Plugins.Graphics
         {
             lock (_sync)
             {
-                Bitmap?.Dispose();
-                unsafe
-                {
-                    if (_basePtr != null)
-                    {
-                        _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
-                    }
-                }
-                _accessor.Dispose();
-                _mmf.Dispose();
+                ReleaseMapping();
             }
             GC.SuppressFinalize(this);
         }
 
         /// <summary>
-        /// Computes the total MMF size needed for the given dimensions.
+        /// Disposes the bitmap, releases the view's pointer (nulled, so nothing writes through it again) and disposes the
+        /// view and the mapping. Safe to call twice.
+        /// </summary>
+        private void ReleaseMapping()
+        {
+            Bitmap?.Dispose();
+            unsafe
+            {
+                if (_basePtr != null)
+                {
+                    _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+                    _basePtr = null;
+                }
+            }
+            _accessor.Dispose();
+            _mmf.Dispose();
+        }
+
+        /// <summary>
+        /// One buffer's bytes, RGBA. A negative size, or one whose buffer can't be held in an int (its offsets would wrap),
+        /// is refused (<see cref="ArgumentException"/>). The pixel count is compared, not the bytes, so no product can
+        /// overflow: any two ints multiply within a long.
+        /// </summary>
+        private static int PixelBufferSize(int width, int height)
+        {
+            if (width < 0 || height < 0)
+                throw new ArgumentException($"An image of {width}x{height} can't be made: its width and height can't be negative.");
+            if ((long)width * height > int.MaxValue / 4)
+                throw new ArgumentException($"An image of {width}x{height} is too large: its buffer would pass {int.MaxValue} bytes.");
+            return width * height * 4;
+        }
+
+        /// <summary>
+        /// Computes the total MMF size needed for the given dimensions: the header and two buffers. Throws
+        /// <see cref="ArgumentException"/> for a size whose buffer can't be held (negative, or past an int's range of
+        /// bytes), so a caller learns it before it maps anything.
         /// </summary>
         public static long ComputeMmfSize(int width, int height)
         {
-            return HeaderSize + ((long)width * height * 4 * 2); // Header + 2 buffers
+            return HeaderSize + 2L * PixelBufferSize(width, height); // Header + 2 buffers
         }
     }
 }

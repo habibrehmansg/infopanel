@@ -141,6 +141,58 @@ public sealed class PluginEngineTests : IDisposable
         Assert.Equal(16_384, engine.Services.GetRequiredService<PluginSensorSource>().GetSensors().Count);
     }
 
+    // A table too large for one message (20,000 rows of 10 cells of 64 characters, about 19 MB; or 1,000 rows of 64 cells of 1 KiB, 64 MB) is cut
+    // by the host before it is sent, so the engine never closes the host for it and the package keeps running: its
+    // table arrives (within the engine's 1,000 rows, a part when it alone would pass a message) and the cut is reported.
+    [Theory]
+    [InlineData(20_000, 10, 64)]
+    [InlineData(1_000, 64, 1_024)]
+    public async Task A_host_whose_table_is_too_large_for_one_message_keeps_running_and_sends_its_table_cut(int rows, int columns, int chars)
+    {
+        using var factory = new EngineFactory();
+        using var engine = WithPlugins(factory, PluginFixtures.CopyFixture(Path.Combine(_root, "bundled"),
+            $"table-rows={rows}", $"table-columns={columns}", $"table-cell-chars={chars}"));
+        using var client = Client(engine);
+        var runner = await Runner(engine);
+        var inputs = engine.Services.GetRequiredService<SceneRuntimeOptions>().Inputs;
+        const string table = "plugin:/test-fixture/readings/processes";
+
+        // A host the engine closes for a message over its limit restarts, sends the same again, and the package fails.
+        await Until(() => runner.State == PluginHostState.Failed
+                || (runner.State == PluginHostState.Running && inputs.Read(table, "table").Table.Rows.Count > 0),
+            "the package runs with its table, or fails");
+
+        Assert.True(runner.State == PluginHostState.Running, $"the package is {runner.State}: {runner.Reason}");
+        var read = inputs.Read(table, "table");
+        Assert.Equal(columns, read.Table.Columns.Count);
+        Assert.InRange(read.Table.Rows.Count, 1, PluginLimits.Default.TableRows);
+        Assert.Equal("r0c0".PadRight(chars, 'x'), read.Table.Rows[0][0]);
+        await Until(() => runner.Errors.Any(e => e.Contains("processes") && e.Contains("cut")), "the cut is reported");
+    }
+
+    // A text of 20 million characters passes the 16 MiB the engine reads in one message, in the catalogue and in the
+    // first update: the host cuts it to the engine's 4,096 characters before it is sent, so the engine never closes the
+    // host for it, the package keeps running, the text arrives cut and the cut is reported.
+    [Fact]
+    public async Task A_host_whose_text_is_too_large_for_one_message_keeps_running_and_sends_it_cut()
+    {
+        using var factory = new EngineFactory();
+        using var engine = WithPlugins(factory, PluginFixtures.CopyFixture(Path.Combine(_root, "bundled"), "text-chars=20000000"));
+        using var client = Client(engine);
+        var runner = await Runner(engine);
+        var inputs = engine.Services.GetRequiredService<SceneRuntimeOptions>().Inputs;
+        const string status = "plugin:/test-fixture/readings/status";
+
+        // A host the engine closes for a message over its limit restarts, sends the same again, and the package fails.
+        await Until(() => runner.State == PluginHostState.Failed
+                || (runner.State == PluginHostState.Running && inputs.Read(status, "text").Text is { Length: > 0 }),
+            "the package runs with its text, or fails");
+
+        Assert.True(runner.State == PluginHostState.Running, $"the package is {runner.State}: {runner.Reason}");
+        Assert.Equal(PluginLimits.Default.TextChars, inputs.Read(status, "text").Text.Length);
+        await Until(() => runner.Errors.Any(e => e.Contains("status") && e.Contains("cut")), "the cut is reported");
+    }
+
     [Fact]
     public async Task A_host_writing_without_newlines_is_read_in_chunks_and_only_its_stderrs_end_is_kept()
     {

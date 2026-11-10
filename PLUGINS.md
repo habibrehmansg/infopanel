@@ -51,22 +51,33 @@ MyPlugin/
 
 ### 2. Add Project References
 
-For sensor/text/table plugins, reference the core package:
+For sensor/text/table plugins, reference the core package. InfoPanel provides it at run time, so don't copy it into your output (`Private` false, runtime assets excluded):
 
 ```xml
 <ItemGroup>
-  <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
+  <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj">
+    <Private>false</Private>
+    <ExcludeAssets>runtime</ExcludeAssets>
+  </ProjectReference>
 </ItemGroup>
 ```
 
-If your plugin provides images, also reference the graphics package:
+If your plugin provides images, also reference the graphics package, in the same way:
 
 ```xml
 <ItemGroup>
-  <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj" />
-  <ProjectReference Include="..\InfoPanel.Plugins.Graphics\InfoPanel.Plugins.Graphics.csproj" />
+  <ProjectReference Include="..\InfoPanel.Plugins\InfoPanel.Plugins.csproj">
+    <Private>false</Private>
+    <ExcludeAssets>runtime</ExcludeAssets>
+  </ProjectReference>
+  <ProjectReference Include="..\InfoPanel.Plugins.Graphics\InfoPanel.Plugins.Graphics.csproj">
+    <Private>false</Private>
+    <ExcludeAssets>runtime</ExcludeAssets>
+  </ProjectReference>
 </ItemGroup>
 ```
+
+A copy of either DLL left in your plugin's folder is ignored: the plugin always runs against InfoPanel's own.
 
 ### 3. Create PluginInfo.ini
 

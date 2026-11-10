@@ -12,11 +12,16 @@ namespace InfoPanel.TestFixture;
 /// <item><c>hang-exit-handler</c>: a process-exit handler that never returns.</item>
 /// <item><c>exit-after-ms=N</c>: the host process exits (code 3) N ms after the plugin starts, saying so on stderr.</item>
 /// <item><c>entries=N</c>: N more sensors, in a container of their own.</item>
-/// <item><c>text-chars=N</c>: the status text is N characters long.</item>
+/// <item><c>texts=N</c>: N more texts of 4,096 characters each, in a container of their own (<c>texts</c>).</item>
+/// <item><c>empty-tables=N</c>: N more tables without rows, each of 64 columns with names of 256 characters, in a
+/// container of their own (<c>empty-tables</c>).</item>
+/// <item><c>text-chars=N</c>: the status text is N characters long (applying the Label setting doesn't change it).</item>
 /// <item><c>settings-hang</c>: once the plugin has updated, asking its settings never returns (its start's own reads still do).</item>
 /// <item><c>throw-apply</c>: applying a setting throws, the value given in the exception's message.</item>
 /// <item><c>throw-settings</c>: once a setting has been applied, reading the settings throws, the value applied in the
 /// exception's message.</item>
+/// <item><c>table-rows=N</c>, <c>table-columns=N</c>, <c>table-cell-chars=N</c>: the Processes table is N rows by N
+/// columns (2 each by default) of text cells N characters long (16 by default), when any of the three is given.</item>
 /// <item><c>spew-bytes=N</c>: once started, N bytes to stdout and N to stderr with no newline, then <c>spew-end</c> on
 /// stderr, and the plugin runs on.</item>
 /// </list>
@@ -35,11 +40,16 @@ public sealed class FixtureMode
     public bool HangExitHandler { get; private init; }
     public int? ExitAfterMs { get; private init; }
     public int Entries { get; private init; }
+    public int Texts { get; private init; }
+    public int EmptyTables { get; private init; }
     public int? TextChars { get; private init; }
     public int? SpewBytes { get; private init; }
     public bool SettingsHang { get; private init; }
     public bool ThrowApply { get; private init; }
     public bool ThrowSettings { get; private init; }
+    public int? TableRows { get; private init; }
+    public int? TableColumns { get; private init; }
+    public int? TableCellChars { get; private init; }
 
     private static FixtureMode Load()
     {
@@ -65,11 +75,16 @@ public sealed class FixtureMode
             HangExitHandler = settings.ContainsKey("hang-exit-handler"),
             ExitAfterMs = Number("exit-after-ms"),
             Entries = Number("entries") ?? 0,
+            Texts = Number("texts") ?? 0,
+            EmptyTables = Number("empty-tables") ?? 0,
             TextChars = Number("text-chars"),
             SpewBytes = Number("spew-bytes"),
             SettingsHang = settings.ContainsKey("settings-hang"),
             ThrowApply = settings.ContainsKey("throw-apply"),
             ThrowSettings = settings.ContainsKey("throw-settings"),
+            TableRows = Number("table-rows"),
+            TableColumns = Number("table-columns"),
+            TableCellChars = Number("table-cell-chars"),
         };
     }
 }

@@ -6,14 +6,15 @@ namespace InfoPanel.Plugins;
 /// Bounds on what a plugin host may send. Plugins are code the user chose to run, but a buggy one must not take the
 /// engine's memory: a message over <see cref="MessageBytes"/>, or more waiting to be handled than
 /// <see cref="PendingMessages"/> or <see cref="PendingBytes"/>, closes the host's connection (it restarts by the policy);
-/// the rest is cut, with one warning per entry.
+/// the rest is cut, with one warning per entry. The defaults the host keeps to are <see cref="IpcLimits"/>' (it cuts its
+/// texts, names, units and tables to them and keeps each message under the limit), so they change together.
 /// </summary>
 public sealed record PluginLimits
 {
     public static PluginLimits Default { get; } = new();
 
     /// <summary>The largest message the engine reads from a host (16 MiB).</summary>
-    public long MessageBytes { get; init; } = 16 * 1024 * 1024;
+    public long MessageBytes { get; init; } = IpcLimits.MessageBytes;
 
     /// <summary>
     /// The most calls a host may have sent that the engine hasn't handled yet; one more closes its connection (it
@@ -28,19 +29,19 @@ public sealed record PluginLimits
     public int EntriesPerHost { get; init; } = 16_384;
 
     /// <summary>Names, groups and units are cut to this many characters.</summary>
-    public int NameChars { get; init; } = 256;
+    public int NameChars { get; init; } = IpcLimits.NameChars;
 
     /// <summary>A text's value is cut to this many characters (4 KiB).</summary>
-    public int TextChars { get; init; } = 4096;
+    public int TextChars { get; init; } = IpcLimits.TextChars;
 
     /// <summary>A table keeps this many rows.</summary>
-    public int TableRows { get; init; } = 1000;
+    public int TableRows { get; init; } = IpcLimits.TableRows;
 
     /// <summary>A table keeps this many columns.</summary>
-    public int TableColumns { get; init; } = 64;
+    public int TableColumns { get; init; } = IpcLimits.TableColumns;
 
     /// <summary>A table cell's text is cut to this many characters (1 KiB).</summary>
-    public int CellChars { get; init; } = 1024;
+    public int CellChars { get; init; } = IpcLimits.CellChars;
 
     /// <summary>A plugin id is at most this many characters.</summary>
     public int IdChars { get; init; } = 64;

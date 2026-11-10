@@ -9,9 +9,12 @@ namespace InfoPanel.Plugins.Loader
 
         // Assemblies that must be shared with the host process to enable cross-context
         // interop (e.g. IPluginImageWriter.Bitmap returns SKBitmap — the type must be
-        // the same instance in both the host and the plugin).
+        // the same instance in both the host and the plugin). The SDK itself too: a plugin
+        // built with a plain project reference carries its own InfoPanel.Plugins.dll, and
+        // its plugins must implement the host's IPlugin, not that copy's.
         private static readonly HashSet<string> SharedAssemblies = new(StringComparer.OrdinalIgnoreCase)
         {
+            "InfoPanel.Plugins",
             "InfoPanel.Plugins.Graphics",
             "SkiaSharp",
         };
