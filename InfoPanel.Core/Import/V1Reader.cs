@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Xml;
 using System.Xml.Linq;
 using InfoPanel.Documents;
@@ -12,6 +13,7 @@ using InfoPanel.Models;
 using InfoPanel.Persistence;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.HwInfo;
+using InfoPanel.Sensors.Linux;
 using InfoPanel.Spec;
 using SkiaSharp;
 
@@ -41,6 +43,21 @@ public sealed class V1ReadContext
 
     /// <summary>Whether a font family is among the engine's fonts (as <c>GET /api/fonts</c> lists them).</summary>
     public Func<string, bool> FontAvailable { get; }
+
+    /// <summary>
+    /// Whether this engine runs on Linux, where a Linux build's <c>Hwmon</c> items bind to the Linux source's sensors;
+    /// elsewhere they import unbound. The platform's answer unless a test sets it.
+    /// </summary>
+    public bool OnLinux { get; init; } = OperatingSystem.IsLinux();
+
+    /// <summary>
+    /// How long a Linux import waits for the Linux source's first discovery, when it is still starting (the service
+    /// serves before a slow discovery ends); past it the Hwmon items import unbound, saying so.
+    /// </summary>
+    public TimeSpan DiscoveryWait { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>Ends that wait early (the request was dropped): the read throws <see cref="OperationCanceledException"/>.</summary>
+    public CancellationToken Cancellation { get; init; }
 
     /// <summary>The fonts the engine draws with: its registered ones and the system's, by family, ignoring case.</summary>
     public static Func<string, bool> InstalledFonts()
@@ -217,16 +234,32 @@ public static class V1Reader
         int? LineOf(DisplayItem item) => report?.LineOf(item);
 
         // Unbound, the user binds such an item to a sensor on this PC; a table reads its plugin sensor whatever its type.
+        // On Linux, a Linux build's Hwmon item binds to the Linux source's sensor first (BindLinux).
         var unbound = new HashSet<DisplayItem>(ReferenceEqualityComparer.Instance);
-        foreach (var (item, values, line) in unknownSensorTypes)
+        var linuxBound = new HashSet<DisplayItem>(ReferenceEqualityComparer.Instance);
+        // The listing is taken (and the first discovery waited for) once per profile, by the first Hwmon item that needs it.
+        LinuxListing? linux = null;
+        Func<LinuxListing>? listing = context.OnLinux ? () => linux ??= LinuxListing.Of(context.Sensors, context.DiscoveryWait, context.Cancellation) : null;
+        foreach (var (item, values, line, _, channelLabel) in unknownSensorTypes)
         {
             var bound = SensorKeys.Of(item) is { } key && SensorHub.IsWellFormed(key) ? key : (SensorKey?)null;
+            string? cause = null;
+            if (bound is null && listing is not null && values is [var only] && only.Trim() == HwmonSensorType && item is ISensorItem sensorItem)
+            {
+                if (BindLinux(sensorItem, channelLabel, listing, diagnostics, PathOf(item), line ?? LineOf(item), itemsInput.File) is not { } why)
+                {
+                    linuxBound.Add(item);
+                    continue;
+                }
+                cause = why;
+            }
             if (bound is null)
                 unbound.Add(item);
             var named = string.Join(", ", values.Select(v => $"'{v}'"));
             diagnostics.Add(ImportDiagnostics.Warning, "import.element", PathOf(item),
                 $"'{item.Name}' has the sensor type{(values.Count > 1 ? "s" : "")} {named}, which 1.x's reader doesn't know; {(values.Count > 1 ? "they are" : "it is")} ignored, and the item "
-                + (bound is { } stays ? $"stays bound to {stays}." : "is imported unbound, to be bound to a sensor on this computer."),
+                + (bound is { } stays ? $"stays bound to {stays}." : "is imported unbound, to be bound to a sensor on this computer.")
+                + (cause is null ? "" : " " + cause),
                 itemsInput.File, line ?? LineOf(item));
         }
 
@@ -244,7 +277,7 @@ public static class V1Reader
         {
             if (item is TextDisplayItem text)
                 UseFont(text.Font, PathOf(item) + "/props/font");
-            if (!unbound.Contains(item) && SensorKeys.Of(item) is { } key && context.Sensors.GetStatus(key) is var status && status is SensorStatus.Unavailable or SensorStatus.Missing)
+            if (!unbound.Contains(item) && !linuxBound.Contains(item) && SensorKeys.Of(item) is { } key && context.Sensors.GetStatus(key) is var status && status is SensorStatus.Unavailable or SensorStatus.Missing)
                 diagnostics.Add(ImportDiagnostics.Info, "import.sensor", PathOf(item),
                     $"'{item.Name}' is bound to {key}, which this engine has {(status == SensorStatus.Missing ? "no sensor for" : "no reading of")} now; it stays bound.",
                     itemsInput.File, LineOf(item));
@@ -292,6 +325,110 @@ public static class V1Reader
             diagnostics.Add(ImportDiagnostics.Info, "import.sensor.translated", pathOf(item),
                 $"'{item.Name}' was bound to {key}, the 1.x {to.Plugin} plugin's; bound to {to.Key}, '{to.Name}' in '{to.Source}', which the engine reads itself.",
                 file, lineOf(item));
+        }
+    }
+
+    /// <summary>The sensor type a Linux build of 1.x writes for its sensors, whose ids are the Linux source's.</summary>
+    private const string HwmonSensorType = "Hwmon";
+
+    /// <summary>
+    /// The sensors the Linux source lists now, by key, and its hwmon channels parsed; <paramref name="Starting"/> when its
+    /// first discovery hadn't ended by the time the import stopped waiting for it, so an empty listing means nothing yet.
+    /// </summary>
+    private sealed record LinuxListing(IReadOnlyDictionary<SensorKey, SensorInfo> Sensors, IReadOnlyList<(LinuxSensorId Id, SensorInfo Info)> Hwmon, bool Starting)
+    {
+        private static readonly TimeSpan Step = TimeSpan.FromMilliseconds(25);
+
+        /// <summary>
+        /// The listing, taken once the Linux source's first discovery has ended: while it is starting (the service serves
+        /// before a slow discovery ends), waits for it up to <paramref name="wait"/>, ending early with
+        /// <see cref="OperationCanceledException"/> when <paramref name="ct"/> is cancelled.
+        /// </summary>
+        public static LinuxListing Of(SensorHub sensors, TimeSpan wait, CancellationToken ct)
+        {
+            var source = sensors.Sources.FirstOrDefault(s => s.Id == LinuxSensorSource.SourceId) as ISensorSourceState;
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (source is not { State.Kind: SourceStateKind.Starting } || watch.Elapsed >= wait)
+                    break;
+                ct.WaitHandle.WaitOne(Step);
+            }
+
+            // Read before the listing: a source that ended its discovery in between lists it all, and is not starting.
+            var starting = source is { State.Kind: SourceStateKind.Starting };
+            var listed = new Dictionary<SensorKey, SensorInfo>();
+            var hwmon = new List<(LinuxSensorId, SensorInfo)>();
+            foreach (var info in sensors.GetSensors())
+            {
+                if (info.SourceId != LinuxSensorSource.SourceId || !info.Key.Id.StartsWith(LinuxSensorSource.KeyPrefix, StringComparison.Ordinal)
+                    || LinuxSensorSource.KeyOf(info.Key.Id[LinuxSensorSource.KeyPrefix.Length..]) != info.Key)
+                    continue;
+                listed[info.Key] = info;
+                if (LinuxSensorIds.TryParse(info.Key.Id[LinuxSensorSource.KeyPrefix.Length..], out var id) && id.Family == LinuxSensorFamily.Hwmon)
+                    hwmon.Add((id, info));
+            }
+            return new LinuxListing(listed, hwmon, starting);
+        }
+    }
+
+    /// <summary>
+    /// On Linux, an item a Linux build of 1.x bound to a <c>Hwmon</c> sensor (its id in <c>LibreSensorId</c>), read
+    /// unbound, is bound to the Linux source's sensor, in the model: to the sensor of its id when the id is one
+    /// (<see cref="LinuxSensorIds.TryParse"/>, or a <c>system/…</c> id) and the source lists it
+    /// (<c>import.sensor.translated</c>); else, for a hwmon id, to the one listed sensor with its chip and channel, and
+    /// its stored channel label when it has one (<c>import.sensor.matched</c>), as a file made on another machine,
+    /// whose addresses and serials differ, needs. Returns null when bound; else why not, for the unbound diagnostic.
+    /// </summary>
+    private static string? BindLinux(ISensorItem item, string? channelLabel, Func<LinuxListing> listing, ImportDiagnostics diagnostics,
+        string path, int? line, string file)
+    {
+        ILibreSensorItem stored = item;
+        var id = stored.LibreSensorId;
+        var parsed = LinuxSensorIds.TryParse(id, out var parts);
+        if (string.IsNullOrEmpty(id) || (!parsed && !id.StartsWith("system/", StringComparison.Ordinal)))
+            return string.IsNullOrEmpty(id) ? "It has no Linux sensor id." : $"Its id '{id}' isn't a Linux sensor id.";
+
+        var linux = listing();
+        // Its sensors aren't listed yet: not a sensor this computer lacks, and an import later binds it.
+        if (linux.Starting)
+            return "The Linux sensors are still being read: import again in a moment.";
+
+        var name = ((DisplayItem)item).Name;
+        var exact = LinuxSensorSource.KeyOf(id);
+        if (linux.Sensors.TryGetValue(exact, out var info))
+        {
+            Bind(exact);
+            diagnostics.Add(ImportDiagnostics.Info, "import.sensor.translated", path,
+                $"'{name}' was bound to the Linux sensor '{id}' (sensor type '{HwmonSensorType}'); bound to {exact}, '{info.Name}' in '{info.Group}', which the engine reads itself.",
+                file, line);
+            return null;
+        }
+
+        if (!parsed || parts!.Family != LinuxSensorFamily.Hwmon || parts.Chip is not { } chip)
+            return $"This computer lists no sensor '{id}'.";
+
+        var labelled = channelLabel is null ? "" : $" labelled '{channelLabel}'";
+        var candidates = linux.Hwmon
+            .Where(c => c.Id.Chip == chip && c.Id.Channel == parts.Channel && (channelLabel is null || c.Info.Name == channelLabel))
+            .Take(2).ToList();
+        if (candidates is not [var match])
+            return candidates.Count == 0
+                ? $"This computer lists no sensor '{id}', nor one with its chip '{chip}' and channel '{parts.Channel}'{labelled}."
+                : $"This computer lists no sensor '{id}', and more than one with its chip '{chip}' and channel '{parts.Channel}'{labelled}, so none is chosen.";
+
+        Bind(match.Info.Key);
+        diagnostics.Add(ImportDiagnostics.Info, "import.sensor.matched", path,
+            $"'{name}' was bound to the Linux sensor '{id}', which this computer doesn't have; bound by its chip and channel to {match.Info.Key}, '{match.Info.Name}' in '{match.Info.Group}'.",
+            file, line);
+        return null;
+
+        void Bind(SensorKey key)
+        {
+            IPluginSensorItem plugin = item;
+            plugin.SensorType = Enums.SensorType.Plugin;
+            plugin.PluginSensorId = key.Id;
         }
     }
 

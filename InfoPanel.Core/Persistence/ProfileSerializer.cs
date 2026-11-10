@@ -15,9 +15,10 @@ namespace InfoPanel.Persistence;
 /// <summary>
 /// An item <see cref="ProfileSerializer.ReadItems(XDocument, XmlReadReport, List{UnknownSensorType})"/> read unbound
 /// because its sensor type was outside the enum (another build's sensor source): its distinct unknown
-/// <see cref="Values"/>, and the line of the first.
+/// <see cref="Values"/>, the line of the first, and the chip and channel label a Linux build stores beside its id
+/// (<c>HardwareSensorIdentity</c>'s <c>ChipName</c> and <c>ChannelLabel</c>; null when absent).
 /// </summary>
-public sealed record UnknownSensorType(DisplayItem Item, IReadOnlyList<string> Values, int? Line);
+public sealed record UnknownSensorType(DisplayItem Item, IReadOnlyList<string> Values, int? Line, string? ChipName = null, string? ChannelLabel = null);
 
 /// <summary>
 /// Reads and writes the 1.x XML formats: a profile's items (<c>ArrayOfDisplayItem</c>), the profile list
@@ -127,7 +128,7 @@ public static class ProfileSerializer
                     var others = events.OnUnknownElement;
                     events.OnUnknownElement = (sender, e) =>
                     {
-                        if (!marked.TryGetLine(e.Element.LocalName, out var line))
+                        if (!marked.TryGet(e.Element.LocalName, out var line, out var identity))
                             others?.Invoke(sender, e);
                         else if (e.ObjectBeingDeserialized is DisplayItem item && e.Element.InnerText is var value && !SensorTypeNames.Contains(value))
                         {
@@ -137,7 +138,7 @@ public static class ProfileSerializer
                             if (!values.TryGetValue(item, out var seen))
                             {
                                 values[item] = seen = [];
-                                unknownSensorTypes?.Add(new UnknownSensorType(item, seen, line));
+                                unknownSensorTypes?.Add(new UnknownSensorType(item, seen, line, identity.ChipName, identity.ChannelLabel));
                             }
                             if (!seen.Contains(value))
                                 seen.Add(value);
@@ -210,7 +211,9 @@ public static class ProfileSerializer
     /// Unbinds each item whose <c>SensorType</c> is outside the enum (another build's sensor source), which
     /// XmlSerializer would refuse, failing the whole list: its <c>SensorType</c> elements, a known value beside the
     /// unknown one included, are renamed to a marker, and its HWiNFO <c>Id</c>, <c>Instance</c> and <c>EntryId</c> set
-    /// to 0, so it reads as a 1.x item never bound does (HWiNFO, no sensor id). Everything else it has stays as stored;
+    /// to 0, so it reads as a 1.x item never bound does (HWiNFO, no sensor id). Everything else it has stays as stored
+    /// (a Linux build's id in <c>LibreSensorId</c> too), and its <c>HardwareSensorIdentity</c>'s chip and channel label are
+    /// kept with each marker;
     /// a table, which reads its plugin sensor whatever its sensor type, keeps its known value and stays bound. The
     /// marker names are numbered from a prefix no element of this document starts with, and each keeps the line of the
     /// element it replaced; returned (null when no item has an unknown value). Only item positions are looked at, as in
@@ -243,8 +246,10 @@ public static class ProfileSerializer
         var markers = new SensorTypeMarkers(prefix);
         foreach (var (item, sensorTypes) in unbind)
         {
+            var identity = item.Element("HardwareSensorIdentity");
+            var stored = (identity?.Element("ChipName")?.Value, identity?.Element("ChannelLabel")?.Value);
             foreach (var sensorType in sensorTypes)
-                sensorType.Name = markers.Add(SafeXml.LineOf(sensorType));
+                sensorType.Name = markers.Add(SafeXml.LineOf(sensorType), stored);
             foreach (var id in HwInfoIds.SelectMany(name => item.Elements(name)))
                 id.Value = "0";
         }
@@ -268,24 +273,30 @@ public static class ProfileSerializer
         }
     }
 
-    /// <summary>The names an unknown <c>SensorType</c> element is renamed to, each numbered, with the line it was on.</summary>
+    /// <summary>
+    /// The names an unknown <c>SensorType</c> element is renamed to, each numbered, with the line it was on and its
+    /// item's stored chip and channel label.
+    /// </summary>
     private sealed class SensorTypeMarkers(string prefix)
     {
-        private readonly List<int?> _lines = [];
+        private readonly List<(int? Line, (string? ChipName, string? ChannelLabel) Identity)> _markers = [];
 
-        public string Add(int? line)
+        public string Add(int? line, (string? ChipName, string? ChannelLabel) identity)
         {
-            _lines.Add(line);
-            return prefix + (_lines.Count - 1);
+            _markers.Add((line, identity));
+            return prefix + (_markers.Count - 1);
         }
 
-        /// <summary>Whether <paramref name="name"/> is one of the marker names, and the line of the element it replaced.</summary>
-        public bool TryGetLine(string name, out int? line)
+        /// <summary>
+        /// Whether <paramref name="name"/> is one of the marker names, the line of the element it replaced and its item's
+        /// stored chip and channel label.
+        /// </summary>
+        public bool TryGet(string name, out int? line, out (string? ChipName, string? ChannelLabel) identity)
         {
-            line = null;
-            if (!name.StartsWith(prefix, StringComparison.Ordinal) || !int.TryParse(name.AsSpan(prefix.Length), out var index) || index < 0 || index >= _lines.Count)
+            (line, identity) = (null, default);
+            if (!name.StartsWith(prefix, StringComparison.Ordinal) || !int.TryParse(name.AsSpan(prefix.Length), out var index) || index < 0 || index >= _markers.Count)
                 return false;
-            line = _lines[index];
+            (line, identity) = _markers[index];
             return true;
         }
     }

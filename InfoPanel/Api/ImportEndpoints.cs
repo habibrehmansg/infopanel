@@ -88,7 +88,7 @@ public static class ImportEndpoints
             {
                 try
                 {
-                    return Task.FromResult(folder.ReadProfile(id, new V1ReadContext(workspace, sensors, limits)) is { } envelope
+                    return Task.FromResult(folder.ReadProfile(id, new V1ReadContext(workspace, sensors, limits) { Cancellation = ct }) is { } envelope
                         ? Json(envelope)
                         : NoSuchProfile(v1Id));
                 }
@@ -100,7 +100,7 @@ public static class ImportEndpoints
         }).RequireScope(ApiScope.Edit);
 
         api.MapPost("/archive", (HttpRequest request, Workspace workspace, SensorHub sensors, ImportLimits limits, ImportGate gate, CancellationToken ct) =>
-            ReadArchiveBody(request, limits, gate, archive => Json(V1Reader.ReadArchive(archive, new V1ReadContext(workspace, sensors, limits))), ct))
+            ReadArchiveBody(request, limits, gate, archive => Json(V1Reader.ReadArchive(archive, new V1ReadContext(workspace, sensors, limits) { Cancellation = ct })), ct))
             .WithOwnBodyLimit().RequireScope(ApiScope.Edit);
 
         // A profile archive (spec/docs/archive.md): checked, its blobs stored, its document answered; a client creates
