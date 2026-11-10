@@ -53,7 +53,7 @@ public sealed class SeededEngineFactory : EngineFactory
         {
             ["source"] = JsonNode.Parse(SourceJson),
             ["layout"] = new JsonObject { ["w"] = 60, ["h"] = 10 },
-            ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = "plugin:/infopanel.mock/cpu/cpu-load" } },
+            ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = "infopanel:/mock/cpu/cpu-load" } },
         }));
         held["id"] = RefSource;
         Seed(RefSource, held.ToJsonString());
@@ -569,7 +569,7 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
 
         using var api = Api();
         var rotate = new JsonObject { ["op"] = "setPlacement", ["id"] = "held", ["placement"] = new JsonObject { ["x"] = 40, ["y"] = 30, ["rotation"] = 15 } };
-        foreach (var op in new[] { Place("held", 30, 30), rotate, Bind("held", "v", "plugin:/infopanel.mock/gpu/gpu-load"), Attrs("held", visible: false), Attrs("held", visible: true) })
+        foreach (var op in new[] { Place("held", 30, 30), rotate, Bind("held", "v", "infopanel:/mock/gpu/gpu-load"), Attrs("held", visible: false), Attrs("held", visible: true) })
             Assert.Equal(HttpStatusCode.OK, (await CommitAsync(api, id, Ct, op)).StatusCode);
 
         var document = (await Get($"/api/profiles/{id}")).GetProperty("document");

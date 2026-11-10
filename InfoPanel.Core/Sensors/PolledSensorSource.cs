@@ -30,7 +30,8 @@ public sealed class PolledSensorSourceOptions
 /// warning per key while it is listed: a key that returns after it was unlisted may warn again), and the last good table
 /// per table sensor, with its format and, as its text, its first row (as a plugin's table reads; no statistics, and no
 /// history: <see cref="SensorHistory"/> keeps numbers only).
-/// Keys are the source's <see cref="SensorKeySpace"/>'s (<c>plugin:{KeyPrefix}{definition id}</c> by default); the
+/// Keys are the source's <see cref="SensorKeySpace"/>'s (the plugin key <c>{KeyPrefix}{definition id}</c> by default,
+/// printed <c>infopanel:/{source}/{definition id}</c> for a built-in source); the
 /// source handles every key in it (unknown ones are unavailable). A sampler whose catalogue changes
 /// (<see cref="ISensorSampler.CatalogueVersion"/>) is discovered again after the round that changed it: keys that stay
 /// keep their state, keys that go are stale until they are unavailable, then unlisted, except keys the sampler withdrew on

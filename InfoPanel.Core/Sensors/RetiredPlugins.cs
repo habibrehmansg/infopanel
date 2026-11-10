@@ -99,19 +99,19 @@ public static class RetiredPlugins
     /// other key, and an entry no source has). The Clock plugin's eight keys go to the clock's; the Weather plugin's
     /// <c>/weather-plugin/weather/{entry}</c>, for 15 of its 19 entries, to the weather source's (<see cref="WeatherEntries"/>);
     /// the System Info plugin's 15, <c>/system-info-plugin/{uptime|processes}/{entry}</c>, to the system information
-    /// source's <c>plugin:/infopanel.system-info/{uptime|processes}/{entry}</c>, its tables too;
+    /// source's <c>infopanel:/system-info/{uptime|processes}/{entry}</c>, its tables too;
     /// the Drive Info plugin's
     /// <c>/drive-info-plugin/{drive}/{entry}</c>, for any drive id the plugin could make (<see cref="DriveSource.IsDriveId"/>)
-    /// and each of its entries, to the drives source's <c>plugin:/infopanel.drives/{drive}/{entry}</c>, whether or not
+    /// and each of its entries, to the drives source's <c>infopanel:/drives/{drive}/{entry}</c>, whether or not
     /// this computer has the drive. The Network Info plugin's public addresses,
-    /// <c>/network-info-plugin/public-ip/{ipv4|ipv6}</c>, go to the network source's <c>plugin:/infopanel.network/public/{ipv4|ipv6}</c>;
+    /// <c>/network-info-plugin/public-ip/{ipv4|ipv6}</c>, go to the network source's <c>infopanel:/network/public/{ipv4|ipv6}</c>;
     /// an interface's <c>/network-info-plugin/{interface}/{entry}</c>, for each of its entries
-    /// (<see cref="NetworkSource.EntryName"/>), to <c>plugin:/infopanel.network/{id}/{entry}</c>, where the id is the
+    /// (<see cref="NetworkSource.EntryName"/>), to <c>infopanel:/network/{id}/{entry}</c>, where the id is the
     /// SDK's id of the stored one (<see cref="NetworkSource.ContainerOf"/>), whether or not this computer has the
     /// interface; an interface whose id makes none, or makes the public addresses', isn't bound. The Volume Info
     /// plugin's default output device, <c>/volume-plugin/default/{entry}</c>, and a device's
     /// <c>/volume-plugin/{device}/{entry}</c>, for each of its entries (<see cref="VolumeSource.EntryName"/>), go to the
-    /// volume source's <c>plugin:/infopanel.volume/default/{entry}</c> and <c>plugin:/infopanel.volume/{id}/{entry}</c>,
+    /// volume source's <c>infopanel:/volume/default/{entry}</c> and <c>infopanel:/volume/{id}/{entry}</c>,
     /// where the id is the SDK's id of the stored one (the endpoint id, <see cref="VolumeSource.ContainerOf"/>), whether
     /// or not this computer has the device; a device whose id makes none, or makes the default device's, isn't bound.
     /// </summary>

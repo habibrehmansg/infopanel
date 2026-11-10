@@ -15,7 +15,7 @@ namespace InfoPanel.Core.Tests.Sensors.HwInfo.Gadget;
 /// </summary>
 public class HwInfoGadgetSamplerTests
 {
-    private const string Prefix = "plugin:/infopanel.hwinfo-gadget/";
+    private const string Prefix = "infopanel:/hwinfo-gadget/";
 
     private const string Cpu = "CPU [#0]: AMD Ryzen 7 8845HS: Enhanced";
 
@@ -188,7 +188,7 @@ public class HwInfoGadgetSamplerTests
                 "S/Fan%7E2",
             ],
             rig.Ids);
-        Assert.Equal("plugin:/infopanel.hwinfo-gadget/CPU [#0]: AMD Ryzen 7 8845HS: Enhanced/CPU (Tctl%2FTdie)", rig.Source.GetSensors()[0].Key.ToString());
+        Assert.Equal("infopanel:/hwinfo-gadget/CPU [#0]: AMD Ryzen 7 8845HS: Enhanced/CPU (Tctl%2FTdie)", rig.Source.GetSensors()[0].Key.ToString());
         Assert.Equal((1, 4), (rig.Read("S/Fan").ValueNow, rig.Read("S/Fan%7E2").ValueNow));
         Assert.Equal("Drive: Spaced", rig.Source.GetSensors()[2].Group);
         Assert.Equal("Temp", rig.Source.GetSensors()[2].Name);
@@ -199,7 +199,7 @@ public class HwInfoGadgetSamplerTests
     {
         var rig = new Rig();
         var a255 = new string('a', 255);
-        // The prefix is 32 characters: a 255-character sensor, '/' and 224 more make 512.
+        // The prefix is 25 characters: a 255-character sensor, '/' and 231 more make 512.
         rig.Registry.Create().Write(
             R("Kept", "One", "1"),
             R("   ", "Empty sensor", "2"),
@@ -207,13 +207,13 @@ public class HwInfoGadgetSamplerTests
             R("Control\u0001", "x", "4"),
             R("Long", new string('b', 256), "5"),
             R("Long", new string('c', 255), "6"),
-            R(a255, new string('d', 224), "7"),
-            R(a255, new string('e', 225), "8"),
-            R(a255, new string('f', 222) + "/", "9"));
+            R(a255, new string('d', 231), "7"),
+            R(a255, new string('e', 232), "8"),
+            R(a255, new string('f', 229) + "/", "9"));
         rig.Open();
         rig.Writing(3);
 
-        Assert.Equal(["Kept/One", "Long/" + new string('c', 255), a255 + "/" + new string('d', 224)], rig.Ids);
+        Assert.Equal(["Kept/One", "Long/" + new string('c', 255), a255 + "/" + new string('d', 231)], rig.Ids);
         Assert.All(rig.Source.GetSensors(), s => Assert.True(s.Key.ToString().Length <= 512));
         // Six readings skipped, each logged once over four rounds.
         Assert.Equal(6, rig.Logged(LogEventLevel.Warning, "skipped"));
@@ -953,7 +953,7 @@ public class HwInfoGadgetSamplerTests
         Assert.Equal("infopanel.hwinfo-gadget", source.Id);
         Assert.Equal(TimeSpan.FromSeconds(1), source.Options.Interval);
         var sensor = Assert.Single(source.GetSensors());
-        Assert.Equal("plugin:/infopanel.hwinfo-gadget/CPU/Temp", sensor.Key.ToString());
+        Assert.Equal("infopanel:/hwinfo-gadget/CPU/Temp", sensor.Key.ToString());
         Assert.Equal(sensor.Key, HwInfoGadgetSource.KeyOf("CPU/Temp"));
         Assert.Equal(42, source.TryRead(sensor.Key, out var reading) ? reading.ValueNow : double.NaN);
 

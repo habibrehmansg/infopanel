@@ -107,7 +107,7 @@ public sealed class V1ReaderWeatherTests : IAsyncLifetime
             else
             {
                 Assert.Equal($"/infopanel.weather/{to}", PropsKey(item));
-                Assert.Equal($"plugin:/infopanel.weather/{to}", item.Meta.Sensor!.Key);
+                Assert.Equal($"infopanel:/weather/{to}", item.Meta.Sensor!.Key);
                 Assert.Equal(SensorStatus.Live, item.Meta.Sensor.Status);
                 mapped.Add($"/items/{i}");
             }
@@ -131,7 +131,7 @@ public sealed class V1ReaderWeatherTests : IAsyncLifetime
         var translated = With(envelope, "import.sensor.translated");
         Assert.All(translated, d => Assert.Equal("DisplayItems.xml", d.File));
         Assert.Equal(
-            "'Weather temp' was bound to plugin:/weather-plugin/weather/temp, the 1.x Weather plugin's; bound to plugin:/infopanel.weather/temperature, 'Temperature' in 'Weather', which the engine reads itself.",
+            "'Weather temp' was bound to plugin:/weather-plugin/weather/temp, the 1.x Weather plugin's; bound to infopanel:/weather/temperature, 'Temperature' in 'Weather', which the engine reads itself.",
             translated.Single(d => d.Path == "/items/5").Message);
         Assert.Contains("'Pressure (sea level)' in 'Weather'", translated.Single(d => d.Path == "/items/9").Message);
         Assert.Contains("'High (next 24 h)' in 'Weather'", translated.Single(d => d.Path == "/items/6").Message);
@@ -163,8 +163,8 @@ public sealed class V1ReaderWeatherTests : IAsyncLifetime
             Group("Box", Group("Inner", Bound("SensorDisplayItem", "Description", Weather("weather_desc")), Bound("HttpImageDisplayItem", "Icon", Weather("weather_icon_url")))));
 
         var inner = envelope.Items[3].Children![0].Children!;
-        Assert.Equal(["plugin:/infopanel.weather/temperature", "plugin:/infopanel.weather/temperature", "plugin:/infopanel.weather/wind_direction",
-            "plugin:/infopanel.weather/condition", "plugin:/weather-plugin/weather/weather_icon_url"],
+        Assert.Equal(["infopanel:/weather/temperature", "infopanel:/weather/temperature", "infopanel:/weather/wind_direction",
+            "infopanel:/weather/condition", "plugin:/weather-plugin/weather/weather_icon_url"],
             envelope.Items.Take(3).Concat(inner).Select(n => n.Meta.Sensor!.Key));
         Assert.Equal(["/items/0", "/items/1", "/items/2", "/items/3/children/0/children/0"], With(envelope, "import.sensor.translated").Select(d => d.Path));
         Assert.Equal(["/items/3/children/0/children/1"], With(envelope, "import.sensor").Select(d => d.Path));

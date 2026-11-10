@@ -21,7 +21,7 @@ public enum VolumePlatform : byte
 /// The drives source, <c>infopanel.drives</c> ("Drives"): a <see cref="PolledSensorSource"/> over
 /// <see cref="DriveSampler"/>, polled every 2 s (the 1.x Drive Info plugin's interval), the volumes followed as they
 /// come and go. Each volume lists the 1.x plugin's entries (<see cref="Entries"/>) under
-/// <c>plugin:/infopanel.drives/{drive}/{entry}</c>, its drive id the 1.x plugin SDK's id of its name
+/// <c>infopanel:/drives/{drive}/{entry}</c>, its drive id the 1.x plugin SDK's id of its name
 /// (<see cref="ContainerOf"/>: <c>C:\</c> → <c>c</c>, <c>/</c> → empty, <c>/Volumes/My Disk</c> →
 /// <c>volumesmy-disk</c>), so a 1.x import binds the plugin's keys to these (<see cref="RetiredPlugins"/>). The engine
 /// never answers the plugin's keys.
@@ -53,7 +53,7 @@ public static partial class DriveSource
         ("used_space", "Used Space", SensorKind.Number),
     ];
 
-    /// <summary>The key of the entry <paramref name="entryId"/> of the drive <paramref name="drive"/>: <c>plugin:/infopanel.drives/{drive}/{entryId}</c>.</summary>
+    /// <summary>The key of the entry <paramref name="entryId"/> of the drive <paramref name="drive"/>: <c>infopanel:/drives/{drive}/{entryId}</c>.</summary>
     public static SensorKey KeyOf(string drive, string entryId) => Space.KeyOf(drive + "/" + entryId);
 
     /// <summary>The name of the entry <paramref name="entryId"/> (case as listed), or null when a volume has no such entry.</summary>

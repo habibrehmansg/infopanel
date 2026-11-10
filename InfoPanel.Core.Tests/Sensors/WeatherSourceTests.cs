@@ -274,7 +274,7 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         string[] ids = ["place", "condition", "symbol", "temperature", "feels_like", "high", "low", "dew_point", "humidity", "cloud_cover",
             "pressure", "wind_speed", "wind_gust", "wind_direction", "precipitation", "uv_index", "sunrise", "sunset", "attribution"];
         string[] units = ["", "", "", "°C", "°C", "°C", "°C", "°C", "%", "%", "hPa", "m/s", "m/s", "°", "mm", "", "", "", ""];
-        Assert.Equal(ids.Select(id => $"plugin:/infopanel.weather/{id}"), source.GetSensors().Select(s => s.Key.ToString()));
+        Assert.Equal(ids.Select(id => $"infopanel:/weather/{id}"), source.GetSensors().Select(s => s.Key.ToString()));
         Assert.Equal(units, source.GetSensors().Select(s => s.Unit));
         Assert.All(source.GetSensors(), s => Assert.Equal(("infopanel.weather", "Weather"), (s.SourceId, s.Group)));
         Assert.Equal(["Place", "Condition", "Symbol", "Temperature", "Feels like", "High (next 24 h)", "Low (next 24 h)", "Dew point", "Humidity",

@@ -38,7 +38,7 @@ public class ClockSensorSourceTests
     {
         var sensors = new ClockSensorSource(At(2026, 11, 1, 9, 0, 0)).GetSensors();
 
-        Assert.Equal(Ids.Select(id => $"plugin:/infopanel.clock/{id}"), sensors.Select(s => s.Key.ToString()));
+        Assert.Equal(Ids.Select(id => $"infopanel:/clock/{id}"), sensors.Select(s => s.Key.ToString()));
         Assert.Equal(["Day", "Month", "Year", "12 Hour", "24 Hour", "Minute", "Second", "PM"], sensors.Select(s => s.Name));
         Assert.All(sensors, s => Assert.Equal(("infopanel.clock", "Clock", ""), (s.SourceId, s.Group, s.Unit)));
         Assert.Equal("infopanel.clock", new ClockSensorSource(TimeProvider.System).Id);

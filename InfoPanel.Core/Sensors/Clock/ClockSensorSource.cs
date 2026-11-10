@@ -9,7 +9,7 @@ namespace InfoPanel.Sensors.Clock;
 /// <summary>
 /// The engine's clock as sensors, <c>infopanel.clock</c> ("Clock"): the day, month and year, the hour on a 12-hour clock
 /// (12 at midnight and noon) and a 24-hour one, the minute, the second, and PM (1 from noon, else 0), numbers with no
-/// unit under <c>plugin:/infopanel.clock/{entry}</c>, for gauges bound to a sensor and 1.x themes (the 1.x Clock plugin's
+/// unit under <c>infopanel:/clock/{entry}</c>, for gauges bound to a sensor and 1.x themes (the 1.x Clock plugin's
 /// entries, which a 1.x import binds to these: <see cref="RetiredPlugins"/>). Each read is computed from the time
 /// provider's local time, so nothing runs between reads: the engine's local zone, daylight saving by the zone's rules,
 /// Gregorian whatever the culture. Every entry is always live, its minimum, maximum and average the value now. A key
@@ -56,7 +56,7 @@ public sealed class ClockSensorSource : ISensorSource, ISensorStatusSource
         _sensors = sensors;
     }
 
-    /// <summary>The key of the entry <paramref name="entryId"/>: <c>plugin:/infopanel.clock/{entryId}</c>.</summary>
+    /// <summary>The key of the entry <paramref name="entryId"/>: <c>infopanel:/clock/{entryId}</c>.</summary>
     public static SensorKey KeyOf(string entryId) => Space.KeyOf(entryId);
 
     public string Id => SourceId;

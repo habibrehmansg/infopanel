@@ -350,6 +350,7 @@
   "commit/warning/paste-unsupported.json": {"warnings": [{"op": 0, "code": "unsupported"}]},
   "document/invalid/binding-name.json": {"code": "schema", "path": "/items/0/bindings/CPU Temp"},
   "document/invalid/bindings.json": {"code": "limit.bindings", "path": "/items/0/bindings", "limits": {"bindings": 1}},
+  "document/invalid/builtin-key-plugin-form.json": {"code": "key.pluginForm", "path": "/items/0/children/0/bindings/load/key"},
   "document/invalid/display-id.json": {"code": "schema", "path": "/profile/window/display/id"},
   "document/invalid/document-bytes.json": {"code": "limit.documentBytes", "path": "", "limits": {"documentBytes": 200}},
   "document/invalid/duplicate-id.json": {"code": "id.duplicate", "path": "/items/1/children/0/id"},

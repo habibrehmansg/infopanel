@@ -163,7 +163,7 @@ public sealed class SystemInfoSourceTests : IDisposable
         Open();
         var sensors = _source!.GetSensors();
 
-        Assert.Equal(Ids.Select(id => $"plugin:/infopanel.system-info/{id}"), sensors.Select(s => s.Key.ToString()));
+        Assert.Equal(Ids.Select(id => $"infopanel:/system-info/{id}"), sensors.Select(s => s.Key.ToString()));
         Assert.All(sensors, s => Assert.Equal("infopanel.system-info", s.SourceId));
         // Each id is the plugin SDK's id of the 1.x name, container and entry.
         Assert.All(sensors, s => Assert.Equal(DriveSource.Slug(s.Group) + "/" + DriveSource.Slug(s.Name), s.Key.Id["/infopanel.system-info/".Length..]));
@@ -683,7 +683,7 @@ public sealed class SystemInfoSourceTests : IDisposable
         var items = new[] { envelope.Items[0], envelope.Items[1].Children![0], envelope.Items[2] };
         Assert.Equal(["/infopanel.system-info/uptime/formatted", "/infopanel.system-info/processes/top-cpu-usage", "/infopanel.volume/default/volume"],
             items.Select(n => (string)n.Props["pluginSensorId"]!));
-        Assert.Equal(["plugin:/infopanel.system-info/uptime/formatted", "plugin:/infopanel.system-info/processes/top-cpu-usage", "plugin:/infopanel.volume/default/volume"],
+        Assert.Equal(["infopanel:/system-info/uptime/formatted", "infopanel:/system-info/processes/top-cpu-usage", "infopanel:/volume/default/volume"],
             items.Select(n => n.Meta.Sensor!.Key));
         // The source reads the uptime from its first round, its tables from the second; this hub has no volume source.
         Assert.Equal([SensorStatus.Live, SensorStatus.Unavailable, SensorStatus.Unavailable], items.Select(n => n.Meta.Sensor!.Status));
@@ -691,7 +691,7 @@ public sealed class SystemInfoSourceTests : IDisposable
         Assert.Equal("System Info", RetiredPlugins.SourceOf("system-info-plugin"));
         Assert.Equal("Volume", RetiredPlugins.SourceOf("volume-plugin"));
         Assert.All(new[] { "uptime/formatted", "processes/top-cpu-usage" }, path =>
-            Assert.Contains(source.GetSensors(), s => s.Key.ToString() == "plugin:/infopanel.system-info/" + path));
+            Assert.Contains(source.GetSensors(), s => s.Key.ToString() == "infopanel:/system-info/" + path));
     }
 
     // ---- The macOS reader's arithmetic, on a fake proc_listallpids ----

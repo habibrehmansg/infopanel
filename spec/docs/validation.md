@@ -16,9 +16,9 @@ Every reader checks what it receives in this order: first the read caps on the b
 6. The schema (`schema`).
 7. The rules and limits below.
 
-**Document**: it is UTF-8 JSON (`json`); the JSON-level pass; the same format steps for the document format; its size; its item count, groups' children included (`limit.items`); the schema with each scene checked only for being an object with a string `format`; ids, nesting and sizes; then each scene on its own (a bad scene makes a placeholder, not a bad document); then the aggregate budgets, in document order. A stored document is read before its folder's id replaces its own, and a create's or import's document before the request's id does.
+**Document**: it is UTF-8 JSON (`json`); the JSON-level pass; the same format steps for the document format; its size; its item count, groups' children included (`limit.items`); the schema with each scene checked only for being an object with a string `format`; ids, nesting, sizes and bindings' keys; then each scene on its own (a bad scene makes a placeholder, not a bad document); then the aggregate budgets, in document order. A stored document is read before its folder's id replaces its own, and a create's or import's document before the request's id does.
 
-**Commit**: its size (`limit.commitBytes`); the JSON-level pass; the op count (`limit.ops`) and each inserted item's count with its children (`limit.items`); the schema (scenes as for documents); each new scene and inserted item on its own (unsupported: a warning; invalid: an error); then, when it is applied, the checks in [commits](commit.md).
+**Commit**: its size (`limit.commitBytes`); the JSON-level pass; the op count (`limit.ops`) and each inserted item's count with its children (`limit.items`); the schema (scenes as for documents); each new scene and inserted item on its own, and each binding's key (unsupported: a warning; invalid: an error); then, when it is applied, the checks in [commits](commit.md).
 
 A request body is read the same way: the JSON-level pass on the whole body, then its schema. A create's `{id, document}` body is read as a whole, every repeated member included, with each member's nesting counted from that member (a `document` nested too deeply is `limit.jsonDepth` at `/document`).
 
@@ -63,6 +63,7 @@ Each code is reported at the value it is about ([versioning](versioning.md#error
 | `unsupported.capability` | A capability in `requires` this engine lacks. |
 | `requires.missing` | The scene uses a capability it doesn't list in `requires`. |
 | `id.duplicate` | Two nodes of a scene, or two items of a document (or of an inserted item), have the same id; or a frame header lists an item's bounds twice ([API](api.md#checks-beyond-the-schema)). |
+| `key.pluginForm` | A binding's `key` names one of the engine's own sources in the plugin form, `plugin:/infopanel.…` (`infopanel.` in any case), in a document or a commit, at that `key`: the engine's own sources' keys are `infopanel:/{source}/{path}` ([bindings](bindings.md#bindings)). |
 | `ref.input` | An expression or node reads an input the scene doesn't declare. |
 | `type.input` | An input is read as a type it isn't (a `series` of a text input, a `unit` of a table). |
 | `ref.value`, `ref.state` | A value or state cell the scene doesn't define. |

@@ -7,7 +7,7 @@
       "kind": "scene",
       "id": "a",
       "placement": {"x": 0, "y": 0},
-      "bindings": {"CPU Temp": {"key": "plugin:/infopanel.mock/cpu/cpu-temp"}},
+      "bindings": {"CPU Temp": {"key": "infopanel:/mock/cpu/cpu-temp"}},
       "scene": {
         "format": "infopanel.scene/1",
         "nodes": [{"kind": "text", "font": {"family": "Inter", "size": 24}, "fill": "#ffffff", "text": "Hello"}]

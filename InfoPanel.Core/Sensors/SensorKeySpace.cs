@@ -16,7 +16,10 @@ public abstract class SensorKeySpace
     /// <summary>The key of the sensor a sampler defines as <paramref name="definitionId"/>.</summary>
     public abstract SensorKey KeyOf(string definitionId);
 
-    /// <summary>The default: <c>plugin:/{sourceId}/{definition id}</c>, every key under the prefix.</summary>
+    /// <summary>
+    /// The default: a plugin key <c>/{sourceId}/{definition id}</c>, every key under the prefix; a built-in source's
+    /// (<c>infopanel.{source}</c>) prints as <c>infopanel:/{source}/{definition id}</c>.
+    /// </summary>
     public static SensorKeySpace Plugin(string sourceId)
     {
         ArgumentException.ThrowIfNullOrEmpty(sourceId);

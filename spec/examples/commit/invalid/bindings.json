@@ -7,8 +7,8 @@
       "op": "setBindings",
       "id": "a",
       "bindings": {
-        "a": {"key": "plugin:/infopanel.mock/cpu/cpu-temp"},
-        "b": {"key": "plugin:/infopanel.mock/cpu/cpu-load"}
+        "a": {"key": "infopanel:/mock/cpu/cpu-temp"},
+        "b": {"key": "infopanel:/mock/cpu/cpu-load"}
       }
     }
   ]

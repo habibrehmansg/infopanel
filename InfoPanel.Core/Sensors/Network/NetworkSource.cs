@@ -15,9 +15,9 @@ namespace InfoPanel.Sensors.Network;
 /// <see cref="NetworkSampler"/>, polled every 5 s (the 1.x Network Info plugin's interval), stale after 15 s, the
 /// interfaces and their addresses followed as they come and go. Each interface lists the 1.x plugin's entries
 /// (<see cref="Entries"/>, then <c>ipv4-{i}</c> and <c>ipv6-{i}</c> by position) under
-/// <c>plugin:/infopanel.network/{interface}/{entry}</c>, its interface id the 1.x plugin SDK's id of the system's
+/// <c>infopanel:/network/{interface}/{entry}</c>, its interface id the 1.x plugin SDK's id of the system's
 /// interface id (<see cref="ContainerOf"/>: <c>en0</c> → <c>en0</c>, a Windows adapter's GUID without its braces and
-/// dashes); with a lookup (none under <c>--offline</c>), the public addresses first, <c>plugin:/infopanel.network/public/ipv4</c>
+/// dashes); with a lookup (none under <c>--offline</c>), the public addresses first, <c>infopanel:/network/public/ipv4</c>
 /// and <c>…/ipv6</c>, from <see cref="PublicIpLookup"/>. A read of a public address (<see cref="ISensorReader.TryRead"/>
 /// or <see cref="ISensorStatusSource.ReadState"/>, as a shown profile's and a client's value reads are; a status alone
 /// isn't one, nor is a peek (<see cref="PeekState"/>, the sensors' listing), nor is the history's own sampling, which never reads a text: <see cref="SensorHistory"/>) puts it in use
@@ -80,10 +80,10 @@ public sealed class NetworkSource : ISensorSource, ISensorStatusSource, ISensorS
         ("ipv6", "IPv6"),
     ];
 
-    /// <summary>The key of the entry <paramref name="entryId"/> of the interface <paramref name="container"/>: <c>plugin:/infopanel.network/{container}/{entryId}</c>.</summary>
+    /// <summary>The key of the entry <paramref name="entryId"/> of the interface <paramref name="container"/>: <c>infopanel:/network/{container}/{entryId}</c>.</summary>
     public static SensorKey KeyOf(string container, string entryId) => Space.KeyOf(container + "/" + entryId);
 
-    /// <summary>The public address's key: <c>plugin:/infopanel.network/public/ipv4</c> or <c>…/ipv6</c>.</summary>
+    /// <summary>The public address's key: <c>infopanel:/network/public/ipv4</c> or <c>…/ipv6</c>.</summary>
     public static SensorKey PublicKeyOf(string entryId) => KeyOf(PublicContainer, entryId);
 
     /// <summary>

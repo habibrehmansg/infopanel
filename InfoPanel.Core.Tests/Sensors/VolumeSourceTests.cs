@@ -144,8 +144,8 @@ public sealed class VolumeSourceTests : IDisposable
         var source = Open();
 
         Assert.Equal(["default", Speakers, "00000000000ffffffff0000400080000123456789ab"], Containers());
-        Assert.Equal(Ids.Select(id => $"plugin:/infopanel.volume/default/{id}"), Listed().Take(5));
-        Assert.Equal(Ids.Select(id => $"plugin:/infopanel.volume/{Speakers}/{id}"), Listed().Skip(5).Take(5));
+        Assert.Equal(Ids.Select(id => $"infopanel:/volume/default/{id}"), Listed().Take(5));
+        Assert.Equal(Ids.Select(id => $"infopanel:/volume/{Speakers}/{id}"), Listed().Skip(5).Take(5));
         var first = source.GetSensors().Take(5).ToList();
         Assert.Equal(["Device Name", "Name", "Short Name", "Volume", "Mute"], first.Select(s => s.Name));
         Assert.Equal(["", "", "", "%", ""], first.Select(s => s.Unit));
@@ -269,7 +269,7 @@ public sealed class VolumeSourceTests : IDisposable
         Assert.Equal("LG UltraFine", Text("hdmi", "friendly_name"));
         Assert.Equal(SensorStatus.Live, Status("builtinspeakerdevice"));
         Assert.Equal(SensorStatus.Unavailable, Status("builtinspeakerdevice", "mute"));
-        Assert.Contains("plugin:/infopanel.volume/hdmi/volume", Listed());
+        Assert.Contains("infopanel:/volume/hdmi/volume", Listed());
 
         // A volume it gains reads at once.
         _lister.Devices[0].Level = 0.3f;

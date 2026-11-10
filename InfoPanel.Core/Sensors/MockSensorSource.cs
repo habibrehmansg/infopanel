@@ -93,7 +93,7 @@ public sealed class MockSensorSource : ISensorSource, ISensorBackfill, IDisposab
     /// <summary>Ticks taken since construction (the backfill is not counted).</summary>
     public long Ticks => _snapshot.Ticks;
 
-    /// <summary>Every key under <c>plugin:/infopanel.mock/</c>, known or not (unknown ones read as missing).</summary>
+    /// <summary>Every key under <c>infopanel:/mock/</c>, known or not (unknown ones read as missing).</summary>
     public bool Handles(SensorKey key) =>
         key.Type == Enums.SensorType.Plugin && key.Id.StartsWith(MockSensorCatalog.KeyPrefix, StringComparison.Ordinal);
 

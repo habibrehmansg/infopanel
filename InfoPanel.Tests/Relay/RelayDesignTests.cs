@@ -120,7 +120,7 @@ public sealed class RelayDesignTests
 
         var design = Design(IdOf(Package), IdOf(Second));
         var arguments = DesignCalls["add_item"]();
-        arguments["bindings"] = new JsonObject { ["v"] = "plugin:/infopanel.mock/cpu/cpu-load" };
+        arguments["bindings"] = new JsonObject { ["v"] = "infopanel:/mock/cpu/cpu-load" };
         await peer.SendAsync(DesignCall(rig, "d", "add_item", arguments, design, [Package, Second]));
         var (text, error) = await ResultAsync(peer);
         Assert.False(error, text);
@@ -136,7 +136,7 @@ public sealed class RelayDesignTests
         Assert.True(JsonNode.DeepEquals(design["origin"], stored["origin"]), stored["origin"]?.ToJsonString());
         Assert.True(JsonNode.DeepEquals(design["layout"], stored["layout"]), stored["layout"]?.ToJsonString());
         Assert.True(JsonNode.DeepEquals(design["scene"], JsonNode.Parse(item.Scene.GetRawText())), item.Scene.GetRawText());
-        Assert.Equal("plugin:/infopanel.mock/cpu/cpu-load", item.Bindings!["v"].Key);
+        Assert.Equal("infopanel:/mock/cpu/cpu-load", item.Bindings!["v"].Key);
 
         // Each file under its SHA-256, its bytes as sent.
         Assert.Equal(Package, Encoding.UTF8.GetString(workspace.Blobs.ReadVerified(IdOf(Package))!));

@@ -11,10 +11,10 @@ namespace InfoPanel.Sensors.Linux;
 
 /// <summary>
 /// The Linux sensor source: a <see cref="PolledSensorSource"/> over <see cref="LinuxSensorSampler"/>, polled once a
-/// second, its devices found again every 10 s. Keys are <c>plugin:/infopanel.linux/{id}</c>, the id the Linux fork of
+/// second, its devices found again every 10 s. Keys are <c>infopanel:/linux/{id}</c>, the id the Linux fork of
 /// InfoPanel 1.x gives the sensor (<see cref="LinuxSensorIds"/>), so its profiles' bindings name these keys:
-/// <c>plugin:/infopanel.linux/hwmon/v1/it8696/platform+it87.2624/fan1</c>,
-/// <c>plugin:/infopanel.linux/thermal/v1/type+acpitz~acpi+%5C_TZ_.TZ00/temp</c>. It reads sysfs as the normal user:
+/// <c>infopanel:/linux/hwmon/v1/it8696/platform+it87.2624/fan1</c>,
+/// <c>infopanel:/linux/thermal/v1/type+acpitz~acpi+%5C_TZ_.TZ00/temp</c>. It reads sysfs as the normal user:
 /// what the OS refuses reads as <see cref="SensorStatus.PermissionDenied"/>, what isn't there is not listed or reads as
 /// <see cref="SensorStatus.Unavailable"/>.
 /// <para>
@@ -50,7 +50,7 @@ public sealed class LinuxSensorSource : ISensorSource, ISensorStatusSource, ISen
         _polled = new PolledSensorSource(SourceId, () => new LinuxSensorSampler(sysfs, _demand, log), options, time, log: log);
     }
 
-    /// <summary>The key of a sensor by its id (<c>hwmon/v1/…</c> → <c>plugin:/infopanel.linux/hwmon/v1/…</c>).</summary>
+    /// <summary>The key of a sensor by its id (<c>hwmon/v1/…</c> → <c>infopanel:/linux/hwmon/v1/…</c>).</summary>
     public static SensorKey KeyOf(string id) => SensorKey.Plugin(KeyPrefix + id);
 
     /// <summary>A source over <paramref name="sysfs"/> (a test's tree, or <see cref="Sysfs.Disk"/>).</summary>

@@ -13,7 +13,7 @@ namespace InfoPanel.Sensors.SystemInfo;
 /// <summary>
 /// The system information source, <c>infopanel.system-info</c> ("System Info"): a <see cref="PolledSensorSource"/> over
 /// <see cref="SystemInfoSampler"/>, polled every second (the 1.x System Info plugin's interval). It lists the 1.x
-/// plugin's entries (<see cref="Entries"/>) under its container and entry ids, <c>plugin:/infopanel.system-info/{container}/{entry}</c>:
+/// plugin's entries (<see cref="Entries"/>) under its container and entry ids, <c>infopanel:/system-info/{container}/{entry}</c>:
 /// the uptime as five texts in the plugin's formats, the processes' counts, CPU and memory as numbers in its units, and
 /// three tables of processes (a row per process name, its instances summed) in its columns, cells and default format,
 /// the busiest first, leaving out the names the engine settings' <c>sources.systemInfo.excludedProcesses</c> lists (by
@@ -76,7 +76,7 @@ public static class SystemInfoSource
 
     private static readonly SensorKeySpace Space = SensorKeySpace.Plugin(SourceId);
 
-    /// <summary>The key of an entry: <c>plugin:/infopanel.system-info/{container}/{entry}</c>.</summary>
+    /// <summary>The key of an entry: <c>infopanel:/system-info/{container}/{entry}</c>.</summary>
     public static SensorKey KeyOf(string container, string entry) => Space.KeyOf(container + "/" + entry);
 
     /// <summary>

@@ -1029,11 +1029,15 @@ public sealed class V1ParityTests(ITestOutputHelper output)
 /// <summary>
 /// A reading for every key (the 1.x profile's keys are from several sensor sources): a number between 20 and 80 fixed by
 /// the key, a history around it, and the step-1 goldens' process table for table inputs. Text inputs read as unavailable,
-/// as a numeric sensor's do.
+/// as a numeric sensor's do. The number is fixed by the sensor (its type and id), not by the form its key is written in:
+/// the engine's own sources' keys moved from the plugin form to <c>infopanel:/…</c> without changing what this golden draws.
 /// </summary>
 internal sealed class EveryKeyInputs : ISceneInputSource
 {
-    private static double Level(string key) => 20 + key.Aggregate(0, (h, c) => (h * 31 + c) % 6007) % 61;
+    private static double Level(string key) => 20 + Identity(key).Aggregate(0, (h, c) => (h * 31 + c) % 6007) % 61;
+
+    private static string Identity(string key) =>
+        InfoPanel.Sensors.SensorKey.TryParse(key, out var parsed) ? $"{parsed.Type.ToString().ToLowerInvariant()}:{parsed.Id}" : key;
 
     public SceneReading Read(string key, string inputType) => inputType switch
     {

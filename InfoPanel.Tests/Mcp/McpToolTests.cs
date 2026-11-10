@@ -188,7 +188,7 @@ public sealed class McpToolTests
         Assert.Equal("group", group["kind"]!.GetValue<string>());
         var ring = group["children"]!.AsArray().First(c => c!["name"]!.GetValue<string>() == "LOAD ring")!;
         Assert.Equal(120, ring["w"]!.GetValue<double>());
-        Assert.Equal("plugin:/infopanel.mock/gpu/gpu-load", ring["bindings"]!["v"]!.GetValue<string>());
+        Assert.Equal("infopanel:/mock/gpu/gpu-load", ring["bindings"]!["v"]!.GetValue<string>());
         Assert.Equal("scene", ring["madeWith"]!.GetValue<string>());
         Assert.Null(profile["item"]);
 
@@ -198,7 +198,7 @@ public sealed class McpToolTests
         Assert.Equal("infopanel.scene/1", item["scene"]!["format"]!.GetValue<string>());
 
         var (sensors, _, _) = await Call(host, "list_sensors", """{"query":"gpu load"}""");
-        Assert.Contains("plugin:/infopanel.mock/gpu/gpu-load", sensors);
+        Assert.Contains("infopanel:/mock/gpu/gpu-load", sensors);
         Assert.Contains("\"status\":\"live\"", sensors);
         var (limited, _, _) = await Call(host, "list_sensors", """{"limit":2}""");
         Assert.StartsWith("2 of ", limited);

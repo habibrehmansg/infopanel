@@ -5954,7 +5954,7 @@
       },
       "bindings": {
         "v": {
-          "key": "plugin:/infopanel.mock/gpu/gpu-temp"
+          "key": "infopanel:/mock/gpu/gpu-temp"
         }
       },
       "scene": {
@@ -6892,7 +6892,7 @@
       },
       "bindings": {
         "t": {
-          "key": "plugin:/infopanel.mock/processes/top"
+          "key": "infopanel:/mock/processes/top"
         }
       },
       "scene": {
@@ -7214,10 +7214,10 @@
       },
       "bindings": {
         "v": {
-          "key": "plugin:/infopanel.mock/gpu/gpu-temp"
+          "key": "infopanel:/mock/gpu/gpu-temp"
         },
         "t": {
-          "key": "plugin:/infopanel.mock/gpu/gpu-temp"
+          "key": "infopanel:/mock/gpu/gpu-temp"
         }
       },
       "scene": {
@@ -7857,10 +7857,10 @@
       },
       "bindings": {
         "t": {
-          "key": "plugin:/infopanel.mock/media/cover-url"
+          "key": "infopanel:/mock/media/cover-url"
         },
         "v": {
-          "key": "plugin:/infopanel.mock/media/cover-url"
+          "key": "infopanel:/mock/media/cover-url"
         }
       },
       "scene": {

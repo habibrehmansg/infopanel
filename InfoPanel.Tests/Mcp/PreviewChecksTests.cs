@@ -214,7 +214,7 @@ public sealed class PreviewChecksTests
             {
                 ["name"] = "CPU busy ring",
                 ["layout"] = new JsonObject { ["w"] = 196, ["h"] = 196 },
-                ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = "plugin:/infopanel.macos/cpu/load" } },
+                ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = "infopanel:/macos/cpu/load" } },
             })));
         Assert.Equal("", LineAbout(checks, "CPU card"));
         Assert.Equal("", LineAbout(checks, "CPU busy ring"));

@@ -57,7 +57,7 @@
       "rev": 41,
       "name": "CPU temperature",
       "placement": {"x": 40, "y": 40},
-      "bindings": {"v": {"key": "plugin:/infopanel.mock/cpu/cpu-temp", "stat": "now"}},
+      "bindings": {"v": {"key": "infopanel:/mock/cpu/cpu-temp", "stat": "now"}},
       "source": {"format": "example.widget/1", "data": {"widget": "number", "decimals": 1}},
       "origin": {"kind": "local", "author": "me"},
       "scene": {
@@ -112,8 +112,8 @@
       "placement": {"x": 40, "y": 100, "rotation": 0},
       "layout": {"w": 240, "h": 20},
       "bindings": {
-        "v": {"key": "plugin:/infopanel.mock/cpu/cpu-load"},
-        "spare": {"key": "plugin:/infopanel.mock/cpu/cpu-temp", "stat": "max"}
+        "v": {"key": "infopanel:/mock/cpu/cpu-load"},
+        "spare": {"key": "infopanel:/mock/cpu/cpu-temp", "stat": "max"}
       },
       "source": {
         "format": "example.widget/1",
@@ -202,7 +202,7 @@
           "name": "Load",
           "placement": {"x": 0, "y": 0},
           "layout": {"w": 120, "h": 120},
-          "bindings": {"v": {"key": "plugin:/infopanel.mock/cpu/cpu-load"}},
+          "bindings": {"v": {"key": "infopanel:/mock/cpu/cpu-load"}},
           "scene": {
             "format": "infopanel.scene/1",
             "inputs": {"v": {"type": "number"}},
@@ -286,7 +286,7 @@
           "locked": true,
           "placement": {"x": 130, "y": 0},
           "layout": {"w": 128, "h": 128},
-          "bindings": {"v": {"key": "plugin:/infopanel.mock/cpu/cpu-temp", "stat": "avg"}},
+          "bindings": {"v": {"key": "infopanel:/mock/cpu/cpu-temp", "stat": "avg"}},
           "source": {"ref": "c1c2b7f0-opaque-reference", "data": null},
           "scene": {
             "format": "infopanel.scene/1",

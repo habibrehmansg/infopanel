@@ -175,7 +175,7 @@ public sealed class WinGadgetRegistryTests
         using var source = HwInfoGadgetSource.Create(WinGadgetRegistry.Reader(path));
         source.Open();
         Assert.Equal(
-            ["plugin:/infopanel.hwinfo-gadget/CPU [#0]: AMD Ryzen 7 8845HS: Enhanced/CPU (Tctl%2FTdie)", "plugin:/infopanel.hwinfo-gadget/GPU [#0]: AMD Radeon 780M/GPU Load"],
+            ["infopanel:/hwinfo-gadget/CPU [#0]: AMD Ryzen 7 8845HS: Enhanced/CPU (Tctl%2FTdie)", "infopanel:/hwinfo-gadget/GPU [#0]: AMD Radeon 780M/GPU Load"],
             source.GetSensors().Select(s => s.Key.ToString()));
         Assert.True(source.TryRead(source.GetSensors()[0].Key, out var cpu));
         Assert.Equal((45.1, "°C"), (cpu.ValueNow, cpu.Unit));

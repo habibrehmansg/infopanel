@@ -28,7 +28,7 @@
             "id": "new-graph",
             "placement": {"x": 0, "y": 40},
             "layout": {"w": 240, "h": 80},
-            "bindings": {"v": {"key": "plugin:/infopanel.mock/cpu/cpu-load"}},
+            "bindings": {"v": {"key": "infopanel:/mock/cpu/cpu-load"}},
             "scene": {
               "format": "infopanel.scene/1",
               "inputs": {"v": {"type": "number", "label": "Load"}},

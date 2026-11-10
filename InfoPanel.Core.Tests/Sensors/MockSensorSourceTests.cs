@@ -20,8 +20,8 @@ public class MockSensorSourceTests
         Assert.Equal(35, MockSensorCatalog.Sensors.Count);
         Assert.Equal(35, MockSensorCatalog.Sensors.Select(s => s.Key).Distinct().Count());
         Assert.Equal(7, MockSensorCatalog.Sensors.Select(s => s.Group).Distinct().Count());
-        Assert.Equal("plugin:/infopanel.mock/gpu/gpu-temp", MockSensorCatalog.KeyOf("gpu.temp").ToString());
-        Assert.Equal("plugin:/infopanel.mock/rtss/fps-low1", MockSensorCatalog.KeyOf("fps.low1").ToString());
+        Assert.Equal("infopanel:/mock/gpu/gpu-temp", MockSensorCatalog.KeyOf("gpu.temp").ToString());
+        Assert.Equal("infopanel:/mock/rtss/fps-low1", MockSensorCatalog.KeyOf("fps.low1").ToString());
         Assert.All(MockSensorCatalog.Sensors, s => Assert.InRange(s.Base, s.Min, s.Max));
     }
 

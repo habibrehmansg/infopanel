@@ -12,8 +12,8 @@ namespace InfoPanel.Sensors.Volume;
 /// The volume source, <c>infopanel.volume</c> ("Volume"): a <see cref="PolledSensorSource"/> over
 /// <see cref="VolumeSampler"/>, polled every 250 ms (the 1.x Volume Info plugin's interval), the devices followed as
 /// they come and go. It lists the 1.x plugin's entries (<see cref="Entries"/>) for the default output device, under
-/// <c>plugin:/infopanel.volume/default/{entry}</c> (following a change of default), and for each output device, under
-/// <c>plugin:/infopanel.volume/{device}/{entry}</c>, its device id the 1.x plugin SDK's id (<see cref="DriveSource.Slug"/>)
+/// <c>infopanel:/volume/default/{entry}</c> (following a change of default), and for each output device, under
+/// <c>infopanel:/volume/{device}/{entry}</c>, its device id the 1.x plugin SDK's id (<see cref="DriveSource.Slug"/>)
 /// of the system's device id (<see cref="ContainerOf"/>). The engine never answers the plugin's keys.
 /// </summary>
 public static class VolumeSource
@@ -45,7 +45,7 @@ public static class VolumeSource
         ("mute", "Mute", SensorKind.Text),
     ];
 
-    /// <summary>The key of the entry <paramref name="entryId"/> of the device <paramref name="container"/>: <c>plugin:/infopanel.volume/{container}/{entryId}</c>.</summary>
+    /// <summary>The key of the entry <paramref name="entryId"/> of the device <paramref name="container"/>: <c>infopanel:/volume/{container}/{entryId}</c>.</summary>
     public static SensorKey KeyOf(string container, string entryId) => Space.KeyOf(container + "/" + entryId);
 
     /// <summary>The name of the entry <paramref name="entryId"/> (case as listed), or null when a device has no such entry.</summary>

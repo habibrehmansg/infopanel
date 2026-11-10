@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using InfoPanel.Sensors;
 
 namespace InfoPanel.Spec;
 
@@ -162,6 +163,7 @@ public static class DocumentValidator
                 case SceneItem scene:
                     if ((scene.Bindings?.Count ?? 0) > limits.Bindings)
                         Errors.Add(Over(p + "/bindings", "bindings", scene.Bindings!.Count, limits.Bindings));
+                    CheckKeys(scene.Bindings, p + "/bindings", Errors);
                     CheckSource(scene.Source, p + "/source", limits, Errors);
                     var check = checkScene?.Invoke(scene.Scene) ?? SceneValidator.CheckRead(scene.Scene, limits, support);
                     if (check.Status == CheckStatus.Valid) Costs.Add((p, item.Id, check.Cost));
@@ -170,6 +172,20 @@ public static class DocumentValidator
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Each binding's key that names one of the engine's own sources in the plugin form (a plugin id starting
+    /// <c>infopanel.</c>, any case) instead of its own (<c>infopanel:/…</c>): <c>key.pluginForm</c> at the key
+    /// (spec/docs/bindings.md).
+    /// </summary>
+    internal static void CheckKeys(IReadOnlyDictionary<string, Binding>? bindings, string path, List<SpecError> errors)
+    {
+        if (bindings is null) return;
+        foreach (var (name, binding) in bindings)
+            if (SensorKey.IsBuiltInInPluginForm(binding.Key))
+                errors.Add(new SpecError($"{path}/{ValidationText.Escape(name)}/key", "key.pluginForm",
+                    "This key names one of the engine's own sources in the plugin form; its key is infopanel:/<source>/<path>."));
     }
 
     internal static void CheckSource(ItemSource? source, string path, SpecLimits limits, List<SpecError> errors)
@@ -252,8 +268,10 @@ public static class CommitValidator
                         errors.Add(DocumentValidator.Over(p + "/origin", "originBytes", originBytes, limits.OriginBytes));
                     Scene(design.Scene, p + "/scene", i, design.Id);
                     break;
-                case SetBindingsOp bindings when bindings.Bindings.Count > limits.Bindings:
-                    errors.Add(DocumentValidator.Over(p + "/bindings", "bindings", bindings.Bindings.Count, limits.Bindings));
+                case SetBindingsOp bindings:
+                    if (bindings.Bindings.Count > limits.Bindings)
+                        errors.Add(DocumentValidator.Over(p + "/bindings", "bindings", bindings.Bindings.Count, limits.Bindings));
+                    DocumentValidator.CheckKeys(bindings.Bindings, p + "/bindings", errors);
                     break;
                 case InsertOp insert:
                 {

@@ -4,7 +4,7 @@ using System.Text;
 namespace InfoPanel.Sensors.HwInfo.Gadget;
 
 /// <summary>
-/// The gadget source's keys: <c>plugin:/infopanel.hwinfo-gadget/{sensor}/{label}</c>, by HWiNFO's names, never its
+/// The gadget source's keys: <c>infopanel:/hwinfo-gadget/{sensor}/{label}</c>, by HWiNFO's names, never its
 /// index (which renumbers whenever a reading is ticked or unticked). Each name is HWiNFO's, trimmed, with <c>%</c>,
 /// <c>/</c> and <c>~</c> escaped (<c>%25</c>, <c>%2F</c>, <c>%7E</c>; <c>~</c> stays free for a later discriminator).
 /// Readings that share a sensor and label get no key (<see cref="HwInfoGadgetSampler"/> skips them): an ordinal
@@ -15,7 +15,7 @@ public static class GadgetKeys
     /// <summary>A sensor or label name longer than this (trimmed) skips its reading.</summary>
     public const int MaxNameLength = 255;
 
-    /// <summary>A key (its whole text, <c>plugin:/…</c>) longer than this skips its reading: keys are at most 512 characters.</summary>
+    /// <summary>A key (its whole text, <c>infopanel:/hwinfo-gadget/…</c>) longer than this skips its reading: keys are at most 512 characters.</summary>
     public const int MaxKeyLength = 512;
 
     /// <summary><paramref name="name"/> with <c>%</c>, <c>/</c> and <c>~</c> escaped.</summary>

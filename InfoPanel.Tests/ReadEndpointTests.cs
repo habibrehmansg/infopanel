@@ -425,7 +425,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         var sensors = MockOnly(all);
 
         Assert.Equal(37, sensors.Count);
-        var gpuTemp = sensors.Single(s => s.GetProperty("key").GetString() == "plugin:/infopanel.mock/gpu/gpu-temp");
+        var gpuTemp = sensors.Single(s => s.GetProperty("key").GetString() == "infopanel:/mock/gpu/gpu-temp");
         Assert.Equal("infopanel.mock", gpuTemp.GetProperty("source").GetString());
         Assert.Equal("GPU [#0]: NVIDIA GeForce RTX 4090", gpuTemp.GetProperty("group").GetString());
         Assert.Equal("GPU Temperature", gpuTemp.GetProperty("name").GetString());
@@ -443,9 +443,9 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         var sensors = MockOnly(all);
         var byKey = sensors.ToDictionary(s => s.GetProperty("key").GetString()!);
 
-        Assert.Equal("number", byKey["plugin:/infopanel.mock/gpu/gpu-temp"].GetProperty("type").GetString());
-        Assert.Equal("table", byKey["plugin:/infopanel.mock/system/top-processes"].GetProperty("type").GetString());
-        Assert.Equal("text", byKey["plugin:/infopanel.mock/system/now-playing"].GetProperty("type").GetString());
+        Assert.Equal("number", byKey["infopanel:/mock/gpu/gpu-temp"].GetProperty("type").GetString());
+        Assert.Equal("table", byKey["infopanel:/mock/system/top-processes"].GetProperty("type").GetString());
+        Assert.Equal("text", byKey["infopanel:/mock/system/now-playing"].GetProperty("type").GetString());
         Assert.Equal(35, sensors.Count(s => s.GetProperty("type").GetString() == "number"));
         // Every sensor's status is the one the hub gives it on its own: the type came with it, not instead of it.
         var hub = factory.Services.GetRequiredService<InfoPanel.Sensors.SensorHub>();
@@ -597,7 +597,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         var values = MockOnly(all);
 
         Assert.Equal(37, values.Count);
-        var cpuLoad = values.Single(v => v.GetProperty("key").GetString() == "plugin:/infopanel.mock/cpu/cpu-load");
+        var cpuLoad = values.Single(v => v.GetProperty("key").GetString() == "infopanel:/mock/cpu/cpu-load");
         var now = cpuLoad.GetProperty("now").GetDouble();
         Assert.InRange(now, 0, 100);
         Assert.True(cpuLoad.GetProperty("min").GetDouble() <= cpuLoad.GetProperty("avg").GetDouble());
@@ -607,11 +607,11 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal(60, cpuLoad.GetProperty("history").GetArrayLength());
         Assert.Equal("live", cpuLoad.GetProperty("status").GetString());
 
-        var table = values.Single(v => v.GetProperty("key").GetString() == "plugin:/infopanel.mock/system/top-processes");
+        var table = values.Single(v => v.GetProperty("key").GetString() == "infopanel:/mock/system/top-processes");
         Assert.False(string.IsNullOrEmpty(table.GetProperty("text").GetString()));
         Assert.False(table.TryGetProperty("history", out _));
 
-        var text = values.Single(v => v.GetProperty("key").GetString() == "plugin:/infopanel.mock/system/now-playing");
+        var text = values.Single(v => v.GetProperty("key").GetString() == "infopanel:/mock/system/now-playing");
         Assert.False(string.IsNullOrEmpty(text.GetProperty("text").GetString()));
     }
 
@@ -685,7 +685,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         var items = Flatten(document.GetProperty("items")).ToList();
         Assert.Equal(56, items.Count);
         Assert.All(items, item => Assert.Equal(1, item.GetProperty("rev").GetInt64()));
-        Assert.Contains(items, item => item.TryGetProperty("bindings", out var b) && b.ToString().Contains("plugin:/infopanel.mock/gpu/gpu-load"));
+        Assert.Contains(items, item => item.TryGetProperty("bindings", out var b) && b.ToString().Contains("infopanel:/mock/gpu/gpu-load"));
     }
 
     private static IEnumerable<JsonElement> Flatten(JsonElement nodes)

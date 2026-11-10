@@ -101,7 +101,7 @@ public sealed class V1ReaderNetworkInfoTests : IDisposable
 
         string[] expected = ["public/ipv4", "public/ipv6", .. entries.Select(id => $"en0/{id}")];
         Assert.Equal(expected.Select(k => $"/infopanel.network/{k}"), envelope.Items.Select(PropsKey));
-        Assert.Equal(expected.Select(k => $"plugin:/infopanel.network/{k}"), envelope.Items.Select(n => n.Meta.Sensor!.Key));
+        Assert.Equal(expected.Select(k => $"infopanel:/network/{k}"), envelope.Items.Select(n => n.Meta.Sensor!.Key));
         Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
         Assert.All(envelope.Items, n => Assert.Equal("Plugin", (string)n.Props["sensorType"]!));
 
@@ -109,7 +109,7 @@ public sealed class V1ReaderNetworkInfoTests : IDisposable
         Assert.Equal(expected.Select((_, i) => $"/items/{i}"), translated.Select(d => d.Path));
         Assert.All(translated, d => Assert.Equal(("info", "DisplayItems.xml"), (d.Severity, d.File)));
         Assert.Equal(
-            "'Public v4' was bound to plugin:/network-info-plugin/public-ip/ipv4, the 1.x Network Info plugin's; bound to plugin:/infopanel.network/public/ipv4, 'IPv4 of Public IP' in 'Network', which the engine reads itself.",
+            "'Public v4' was bound to plugin:/network-info-plugin/public-ip/ipv4, the 1.x Network Info plugin's; bound to infopanel:/network/public/ipv4, 'IPv4 of Public IP' in 'Network', which the engine reads itself.",
             translated[0].Message);
         Assert.Contains("'Speed of en0' in 'Network'", translated[6].Message);
         Assert.Contains("'IPv4 Address 2 of en0' in 'Network'", translated[8].Message);
@@ -128,7 +128,7 @@ public sealed class V1ReaderNetworkInfoTests : IDisposable
             Bound("SensorDisplayItem", "LAN", Net(Guid, "ipv4-0")),
             Bound("SensorDisplayItem", "Other LAN", Net(other, "ipv4-0")));
 
-        Assert.Equal([$"plugin:/infopanel.network/{GuidId}/ipv4-0", "plugin:/infopanel.network/11111111222233334444555555555555/ipv4-0"],
+        Assert.Equal([$"infopanel:/network/{GuidId}/ipv4-0", "infopanel:/network/11111111222233334444555555555555/ipv4-0"],
             envelope.Items.Select(n => n.Meta.Sensor!.Key));
         Assert.Equal([SensorStatus.Live, SensorStatus.Unavailable], envelope.Items.Select(n => n.Meta.Sensor!.Status));
         Assert.Contains($"'IPv4 Address 1 of {Guid}' in 'Network'", With(envelope, "import.sensor.translated")[0].Message);
@@ -150,8 +150,8 @@ public sealed class V1ReaderNetworkInfoTests : IDisposable
         var bound = envelope.Items.Take(4).Concat(inner).ToList();
         Assert.Equal(["sensor", "graph", "bar", "gauge", "sensor", "gauge"], bound.Select(n => n.Kind));
         Assert.Equal(
-            ["plugin:/infopanel.network/public/ipv4", "plugin:/infopanel.network/en0/speed", "plugin:/infopanel.network/en0/speed", "plugin:/infopanel.network/en0/speed",
-             "plugin:/infopanel.network/en0/ipv6-1", "plugin:/infopanel.clock/second"],
+            ["infopanel:/network/public/ipv4", "infopanel:/network/en0/speed", "infopanel:/network/en0/speed", "infopanel:/network/en0/speed",
+             "infopanel:/network/en0/ipv6-1", "infopanel:/clock/second"],
             bound.Select(n => n.Meta.Sensor!.Key));
         Assert.Equal(["/items/0", "/items/1", "/items/2", "/items/3", "/items/4/children/0/children/0", "/items/4/children/0/children/1"],
             With(envelope, "import.sensor.translated").Select(d => d.Path));
@@ -171,7 +171,7 @@ public sealed class V1ReaderNetworkInfoTests : IDisposable
         var envelope = new V1Folder(root).ReadProfile(System.Guid.Parse(desk), Context())!;
 
         Assert.Equal("folder", envelope.Source);
-        Assert.Equal(["plugin:/infopanel.network/public/ipv4", "plugin:/infopanel.network/en0/status", $"plugin:/infopanel.network/{GuidId}/name"],
+        Assert.Equal(["infopanel:/network/public/ipv4", "infopanel:/network/en0/status", $"infopanel:/network/{GuidId}/name"],
             envelope.Items.Select(n => n.Meta.Sensor!.Key));
         Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
         Assert.Equal(["/items/0", "/items/1", "/items/2"], With(envelope, "import.sensor.translated").Select(d => d.Path));

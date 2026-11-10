@@ -27,7 +27,7 @@ public interface IEngineProcess
 /// <summary>
 /// The engine's own usage, <c>infopanel.engine</c> ("InfoPanel engine"): a <see cref="PolledSensorSource"/> polled at
 /// System Info's interval, on every operating system and in mock mode and a replay too (it reads the engine's own
-/// process, not the computer's sensors), with two numbers under <c>plugin:/infopanel.engine/{entry}</c>: <c>cpu</c>, the
+/// process, not the computer's sensors), with two numbers under <c>infopanel:/engine/{entry}</c>: <c>cpu</c>, the
 /// process's CPU time since the last round as a share of every CPU's (the whole machine, 0–100 %, as System Info's
 /// Windows tables count it), averaged over the last <see cref="SystemInfoSource.CpuRounds"/> rounds as System Info's
 /// tables are, read from the second round; and <c>memory</c>, its resident memory in megabytes, in System Info's units.

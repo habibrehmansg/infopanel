@@ -27,7 +27,7 @@
       "type": "call",
       "id": "c2",
       "tool": "add_item",
-      "arguments": { "profile": "Overview", "x": 10, "y": 20, "name": "Gauge", "bindings": { "v": "plugin:/infopanel.mock/cpu/cpu-load" } },
+      "arguments": { "profile": "Overview", "x": 10, "y": 20, "name": "Gauge", "bindings": { "v": "infopanel:/mock/cpu/cpu-load" } },
       "sentAt": 1762214400000,
       "deadline": 1762214445000,
       "maxChars": 140000,
@@ -62,7 +62,7 @@
       "arguments": {
         "profile": "Overview",
         "items": [
-          { "x": 10, "y": 20, "name": "Gauge", "bindings": { "v": "plugin:/infopanel.mock/cpu/cpu-load" } },
+          { "x": 10, "y": 20, "name": "Gauge", "bindings": { "v": "infopanel:/mock/cpu/cpu-load" } },
           { "x": 10, "y": 70, "name": "Label", "scene": { "format": "infopanel.scene/1", "nodes": [{ "kind": "rect", "w": 120, "h": 2, "fill": "#ffffff" }] } }
         ]
       },
@@ -94,7 +94,7 @@
             "y": 20,
             "children": [
               { "name": "CPU card", "scene": { "format": "infopanel.scene/1", "nodes": [{ "kind": "rect", "w": 370, "h": 200, "fill": "#161b22" }] } },
-              { "name": "CPU temperature", "x": 16, "y": 48, "bindings": { "v": "plugin:/infopanel.mock/cpu/cpu-load" } }
+              { "name": "CPU temperature", "x": 16, "y": 48, "bindings": { "v": "infopanel:/mock/cpu/cpu-load" } }
             ]
           }
         ]

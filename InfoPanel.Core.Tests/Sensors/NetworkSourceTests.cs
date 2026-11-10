@@ -204,12 +204,12 @@ public sealed class NetworkSourceTests : IDisposable
 
         Assert.Equal(
         [
-            "plugin:/infopanel.network/public/ipv4", "plugin:/infopanel.network/public/ipv6",
-            "plugin:/infopanel.network/en0/id", "plugin:/infopanel.network/en0/name", "plugin:/infopanel.network/en0/description",
-            "plugin:/infopanel.network/en0/status", "plugin:/infopanel.network/en0/speed",
-            "plugin:/infopanel.network/en0/ipv4-0", "plugin:/infopanel.network/en0/ipv6-0", "plugin:/infopanel.network/en0/ipv6-1",
-            $"plugin:/infopanel.network/{GuidId}/id", $"plugin:/infopanel.network/{GuidId}/name", $"plugin:/infopanel.network/{GuidId}/description",
-            $"plugin:/infopanel.network/{GuidId}/status", $"plugin:/infopanel.network/{GuidId}/speed", $"plugin:/infopanel.network/{GuidId}/ipv4-0",
+            "infopanel:/network/public/ipv4", "infopanel:/network/public/ipv6",
+            "infopanel:/network/en0/id", "infopanel:/network/en0/name", "infopanel:/network/en0/description",
+            "infopanel:/network/en0/status", "infopanel:/network/en0/speed",
+            "infopanel:/network/en0/ipv4-0", "infopanel:/network/en0/ipv6-0", "infopanel:/network/en0/ipv6-1",
+            $"infopanel:/network/{GuidId}/id", $"infopanel:/network/{GuidId}/name", $"infopanel:/network/{GuidId}/description",
+            $"infopanel:/network/{GuidId}/status", $"infopanel:/network/{GuidId}/speed", $"infopanel:/network/{GuidId}/ipv4-0",
         ], Listed());
         var sensors = source.GetSensors();
         Assert.Equal(["IPv4", "IPv6", "Id", "Name", "Description", "Status", "Speed", "IPv4 Address", "IPv6 Address", "IPv6 Address"], sensors.Take(10).Select(s => s.Name));
@@ -774,7 +774,7 @@ public sealed class NetworkSourceTests : IDisposable
     [Fact]
     public void AnInterfaceWhoseKeysWouldPass512_IsLeftOut()
     {
-        Add(new string('a', 480), "Long");
+        Add(new string('a', 487), "Long");
         Add("en0", "en0");
         Open();
 
@@ -782,9 +782,9 @@ public sealed class NetworkSourceTests : IDisposable
     }
 
     [Theory]
-    [InlineData(473, true)]
-    [InlineData(474, true)]
-    [InlineData(475, false)]
+    [InlineData(480, true)]
+    [InlineData(481, true)]
+    [InlineData(482, false)]
     public void AnInterface_IsLeftOut_WhenItsLongestKey_TheDescriptions_WouldPass512(int length, bool listed)
     {
         var id = new string('a', length);
@@ -793,7 +793,7 @@ public sealed class NetworkSourceTests : IDisposable
         Open();
 
         // 511, 512 and 513 characters.
-        Assert.Equal(length + 38, Key(id, "description").ToString().Length);
+        Assert.Equal(length + 31, Key(id, "description").ToString().Length);
         Assert.Equal(listed, Containers().Contains(id));
         Assert.All(Listed(), k => Assert.True(k.Length <= NetworkSampler.MaxKeyChars, k));
         Assert.Equal(listed ? 0 : 1, Warnings("is left out"));

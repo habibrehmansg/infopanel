@@ -364,7 +364,7 @@ public sealed class RelayToolRulesTests
             ("update_item", new JsonObject { ["profile"] = "W", ["item"] = "box", ["scene"] = WebImageScene("https://example.com/a.png") }),
             ("update_item", new JsonObject { ["profile"] = "W", ["item"] = "cam", ["scene"] = WebImageScene("http://10.0.0.1/x.jpg") }),
             ("update_item", new JsonObject { ["profile"] = "W", ["item"] = "cam", ["width"] = 50 }),
-            ("update_item", new JsonObject { ["profile"] = "W", ["item"] = "cam", ["bindings"] = new JsonObject { ["v"] = "plugin:/infopanel.mock/cpu/cpu-load" } }),
+            ("update_item", new JsonObject { ["profile"] = "W", ["item"] = "cam", ["bindings"] = new JsonObject { ["v"] = "infopanel:/mock/cpu/cpu-load" } }),
         })
         {
             var (text, error) = await Call(tool, arguments);
@@ -405,7 +405,7 @@ public sealed class RelayToolRulesTests
         var named = JsonNode.Parse("""{"format":"infopanel.scene/1","inputs":{"provider":{"type":"number"},"ref":{"type":"number"}},"nodes":[{"kind":"rect","w":10,"h":10}]}""")!.AsObject();
         var added = await Call("add_item", new JsonObject { ["profile"] = "P", ["name"] = "named", ["scene"] = named });
         Assert.False(added.IsError, added.Text);
-        var bound = await Call("update_item", new JsonObject { ["profile"] = "P", ["item"] = "named", ["bindings"] = new JsonObject { ["provider"] = "plugin:/infopanel.mock/cpu/cpu-load" } });
+        var bound = await Call("update_item", new JsonObject { ["profile"] = "P", ["item"] = "named", ["bindings"] = new JsonObject { ["provider"] = "infopanel:/mock/cpu/cpu-load" } });
         Assert.False(bound.IsError, bound.Text);
 
         // A provider's source deep in groups is one.
@@ -443,7 +443,7 @@ public sealed class RelayToolRulesTests
             release.Wait(Limit, Ct);
         };
         await peer.SendAsync(rig.Call("bind", "update_item",
-            new JsonObject { ["profile"] = "W", ["item"] = "box", ["bindings"] = new JsonObject { ["v"] = "plugin:/infopanel.mock/cpu/cpu-load" } }));
+            new JsonObject { ["profile"] = "W", ["item"] = "box", ["bindings"] = new JsonObject { ["v"] = "infopanel:/mock/cpu/cpu-load" } }));
         await paused.Task.WaitAsync(Limit, Ct);
 
         // Meanwhile, on this computer, the item's design becomes a web image whose address the bindings could change.

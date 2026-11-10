@@ -176,10 +176,10 @@ public class ItemJsonTests
 
         // Sensor status: mock keys are live, Windows bindings simulated (mock mode), unknown mock keys unavailable.
         var statuses = all.Where(n => n.Meta.Sensor != null).ToLookup(n => n.Meta.Sensor!.Key, n => n.Meta.Sensor!.Status);
-        Assert.Equal(SensorStatus.Live, statuses["plugin:/infopanel.mock/gpu/gpu-temp"].First());
+        Assert.Equal(SensorStatus.Live, statuses["infopanel:/mock/gpu/gpu-temp"].First());
         Assert.Equal(SensorStatus.Simulated, statuses["libre:/amdcpu/0/load/0"].First());
         Assert.Equal(SensorStatus.Simulated, statuses["hwinfo:1:4026532608:1:16777221"].First());
-        Assert.Equal(SensorStatus.Unavailable, statuses["plugin:/infopanel.mock/processes/top"].First());
+        Assert.Equal(SensorStatus.Unavailable, statuses["infopanel:/mock/processes/top"].First());
     }
 
     [Fact]

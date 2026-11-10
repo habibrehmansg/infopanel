@@ -150,7 +150,7 @@ public sealed class DriveSourceTests : IDisposable
         Add(@"D:\", DriveType.Removable, format: "exFAT");
         var source = Open();
 
-        Assert.Equal([.. Ids.Select(id => $"plugin:/infopanel.drives/c/{id}"), .. Ids.Select(id => $"plugin:/infopanel.drives/d/{id}")], Listed());
+        Assert.Equal([.. Ids.Select(id => $"infopanel:/drives/c/{id}"), .. Ids.Select(id => $"infopanel:/drives/d/{id}")], Listed());
         var c = source.GetSensors().Take(8).ToList();
         Assert.Equal(["Name", "Type", "Volume Label", "Format", "Total Size", "Free Space", "Available Space", "Used Space"], c.Select(s => s.Name));
         Assert.Equal(["", "", "", "", "MB", "MB", "MB", "MB"], c.Select(s => s.Unit));
@@ -168,8 +168,8 @@ public sealed class DriveSourceTests : IDisposable
         Open(VolumePlatform.MacOS);
 
         Assert.Equal(["", "volumesmy-disk"], Drives());
-        Assert.Contains("plugin:/infopanel.drives//free_space", Listed());
-        Assert.Contains("plugin:/infopanel.drives/volumesmy-disk/free_space", Listed());
+        Assert.Contains("infopanel:/drives//free_space", Listed());
+        Assert.Contains("infopanel:/drives/volumesmy-disk/free_space", Listed());
         // A label that is only the mount point again isn't added to the group.
         Assert.Equal(["/", "/Volumes/My Disk"], _source!.GetSensors().Select(s => s.Group).Distinct());
         Assert.Equal("/Volumes/My Disk", Text("volumesmy-disk", "name"));

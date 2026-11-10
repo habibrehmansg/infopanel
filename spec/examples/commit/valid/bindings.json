@@ -7,7 +7,7 @@
       "op": "setBindings",
       "id": "cpu-bar",
       "baseRev": 42,
-      "bindings": {"v": {"key": "plugin:/infopanel.mock/cpu/cpu-temp", "stat": "max"}}
+      "bindings": {"v": {"key": "infopanel:/mock/cpu/cpu-temp", "stat": "max"}}
     }
   ]
 }

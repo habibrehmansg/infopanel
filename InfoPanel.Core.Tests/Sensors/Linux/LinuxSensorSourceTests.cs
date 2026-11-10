@@ -87,7 +87,7 @@ public sealed class LinuxSensorSourceTests : IDisposable
 
         Assert.Contains("hwmon/v1/it8696/platform+it87.2624/fan1", ids);
         Assert.Contains("hwmon/v1/wireview/platform+wireview_hwmon/curr1", ids);
-        Assert.Equal("plugin:/infopanel.linux/hwmon/v1/it8696/platform+it87.2624/fan1", Key("hwmon/v1/it8696/platform+it87.2624/fan1").ToString());
+        Assert.Equal("infopanel:/linux/hwmon/v1/it8696/platform+it87.2624/fan1", Key("hwmon/v1/it8696/platform+it87.2624/fan1").ToString());
         Assert.Equal(1250, Value("hwmon/v1/it8696/platform+it87.2624/fan1"));
         Assert.Equal(8.25, Value("hwmon/v1/wireview/platform+wireview_hwmon/curr1"));
         Assert.Equal(LinuxSensorSource.SourceId, Info("hwmon/v1/it8696/platform+it87.2624/fan1").SourceId);

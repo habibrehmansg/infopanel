@@ -91,7 +91,7 @@ public sealed class McpEditToolTests
             ["width"] = 120,
             ["height"] = 30,
             ["name"] = "CPU bar",
-            ["bindings"] = new JsonObject { ["v"] = "plugin:/infopanel.mock/cpu/cpu-load" },
+            ["bindings"] = new JsonObject { ["v"] = "infopanel:/mock/cpu/cpu-load" },
         });
         Assert.False(error, text);
         Assert.Contains("Saved", text);
@@ -103,7 +103,7 @@ public sealed class McpEditToolTests
         Assert.Contains(added.Id, text);
         Assert.Equal((20, 40.5), (added.Placement.X, added.Placement.Y));
         Assert.Equal((120.0, 30.0), (added.Layout!.W!.Value, added.Layout.H!.Value));
-        Assert.Equal("plugin:/infopanel.mock/cpu/cpu-load", added.Bindings!["v"].Key);
+        Assert.Equal("infopanel:/mock/cpu/cpu-load", added.Bindings!["v"].Key);
         Assert.Contains(SavedItems(document), i => i.Id == added.Id);
 
         // One undo step takes the whole call back.
@@ -142,7 +142,7 @@ public sealed class McpEditToolTests
             ["width"] = 50,
             ["height"] = 25,
             ["scene"] = TestDocs.InputScene(),
-            ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = "plugin:/infopanel.mock/cpu/cpu-load", ["stat"] = "max" } },
+            ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = "infopanel:/mock/cpu/cpu-load", ["stat"] = "max" } },
             ["name"] = "Load",
             ["visible"] = false,
         });
@@ -152,7 +152,7 @@ public sealed class McpEditToolTests
         Assert.Equal((33.0, 10.0, 15.0), (a.Placement.X, a.Placement.Y, a.Placement.Rotation!.Value)); // y kept
         Assert.Equal((50.0, 25.0), (a.Layout!.W!.Value, a.Layout.H!.Value));
         Assert.Equal("number", a.Scene.GetProperty("inputs").GetProperty("v").GetProperty("type").GetString());
-        Assert.Equal(("plugin:/infopanel.mock/cpu/cpu-load", "max"), (a.Bindings!["v"].Key, a.Bindings["v"].Stat));
+        Assert.Equal(("infopanel:/mock/cpu/cpu-load", "max"), (a.Bindings!["v"].Key, a.Bindings["v"].Stat));
         Assert.Equal(("Load", false), (a.Name, a.Visible));
 
         // By its new name; only the size: the scene stays.

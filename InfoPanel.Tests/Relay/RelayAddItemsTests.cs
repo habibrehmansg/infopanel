@@ -204,7 +204,7 @@ public sealed class RelayAddItemsTests
         [
             new JsonObject { ["name"] = "Item 0", ["x"] = 5, ["y"] = 6 },
             new JsonObject { ["name"] = "Item 1", ["scene"] = TestDocs.Rect() },
-            new JsonObject { ["name"] = "Item 2", ["x"] = 50, ["bindings"] = new JsonObject { ["v"] = "plugin:/infopanel.mock/cpu/cpu-load" } },
+            new JsonObject { ["name"] = "Item 2", ["x"] = 50, ["bindings"] = new JsonObject { ["v"] = "infopanel:/mock/cpu/cpu-load" } },
         ];
         var first = RelayDesignTests.Design(IdOf(Package));
         var third = RelayDesignTests.Design(IdOf(Package), IdOf(Second));
@@ -226,7 +226,7 @@ public sealed class RelayAddItemsTests
             Assert.True(JsonNode.DeepEquals(design["scene"], JsonNode.Parse(item.Scene.GetRawText())), $"{name}: {item.Scene.GetRawText()}");
         }
         Assert.Equal((5d, 6d), (all.Single(i => i.Name == "Item 0").Placement.X, all.Single(i => i.Name == "Item 0").Placement.Y));
-        Assert.Equal("plugin:/infopanel.mock/cpu/cpu-load", Assert.IsType<SceneItem>(all.Single(i => i.Name == "Item 2")).Bindings!["v"].Key);
+        Assert.Equal("infopanel:/mock/cpu/cpu-load", Assert.IsType<SceneItem>(all.Single(i => i.Name == "Item 2")).Bindings!["v"].Key);
         Assert.Null(Stored("Item 1")["source"]);
         var raw = Assert.IsType<SceneItem>(all.Single(i => i.Name == "Item 1"));
         Assert.True(JsonNode.DeepEquals(TestDocs.Rect(), JsonNode.Parse(raw.Scene.GetRawText())), raw.Scene.GetRawText());
@@ -261,7 +261,7 @@ public sealed class RelayAddItemsTests
                 ["children"] = new JsonArray(
                     new JsonObject { ["name"] = "Item 1.0", ["x"] = 1 },
                     new JsonObject { ["name"] = "Item 1.1", ["scene"] = TestDocs.Rect() },
-                    new JsonObject { ["name"] = "Item 1.2", ["x"] = 3, ["bindings"] = new JsonObject { ["v"] = "plugin:/infopanel.mock/cpu/cpu-load" } }),
+                    new JsonObject { ["name"] = "Item 1.2", ["x"] = 3, ["bindings"] = new JsonObject { ["v"] = "infopanel:/mock/cpu/cpu-load" } }),
             },
             new JsonObject { ["name"] = "Item 2" },
         ];
@@ -285,7 +285,7 @@ public sealed class RelayAddItemsTests
             Assert.True(JsonNode.DeepEquals(design["layout"], Stored(child)["layout"]), $"{child.Name}: {Stored(child)["layout"]?.ToJsonString()}");
         }
         Assert.Null(Stored(group.Children[1])["source"]);
-        Assert.Equal("plugin:/infopanel.mock/cpu/cpu-load", Assert.IsType<SceneItem>(group.Children[2]).Bindings!["v"].Key);
+        Assert.Equal("infopanel:/mock/cpu/cpu-load", Assert.IsType<SceneItem>(group.Children[2]).Bindings!["v"].Key);
         Assert.True(JsonNode.DeepEquals(last["layout"], Stored(document.Read().Document.Items.Single(i => i.Name == "Item 2"))["layout"]));
         Assert.True(workspace.Blobs.Exists(IdOf(Second)));
     }

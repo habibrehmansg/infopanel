@@ -8,7 +8,7 @@ namespace InfoPanel.Sensors.HwInfo.Gadget;
 /// <summary>
 /// The HWiNFO Gadget source: a <see cref="PolledSensorSource"/> with the id <c>infopanel.hwinfo-gadget</c> over
 /// <see cref="HwInfoGadgetSampler"/>, polled once a second, answering every key under
-/// <c>plugin:/infopanel.hwinfo-gadget/</c> (<c>{sensor}/{label}</c>, <see cref="GadgetKeys"/>). A key the registry
+/// <c>infopanel:/hwinfo-gadget/</c> (<c>{sensor}/{label}</c>, <see cref="GadgetKeys"/>). A key the registry
 /// doesn't have reads unavailable. Read as the normal user: a user reads their own hive.
 /// </summary>
 public static class HwInfoGadgetSource
@@ -28,7 +28,7 @@ public static class HwInfoGadgetSource
     /// <summary>Gadget readings stopped while HWiNFO runs: its reporting to gadgets was turned off, or nothing is ticked any more.</summary>
     public static readonly SourceReason Stopped = new("stopped", "HWiNFO stopped reporting to gadgets: check Enable reporting to Gadget");
 
-    /// <summary>The key of a reading by its id (<c>CPU/Temp</c> → <c>plugin:/infopanel.hwinfo-gadget/CPU/Temp</c>).</summary>
+    /// <summary>The key of a reading by its id (<c>CPU/Temp</c> → <c>infopanel:/hwinfo-gadget/CPU/Temp</c>).</summary>
     public static SensorKey KeyOf(string id) => SensorKey.Plugin(KeyPrefix + id);
 
     /// <summary>A source over <paramref name="createSampler"/>'s sampler (a test's).</summary>

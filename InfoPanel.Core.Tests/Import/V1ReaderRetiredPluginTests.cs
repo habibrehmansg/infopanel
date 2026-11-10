@@ -52,7 +52,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
             var item = envelope.Items[i];
             Assert.Equal($"/infopanel.clock/{Ids[i]}", PropsKey(item));
             Assert.Equal("Plugin", (string)item.Props["sensorType"]!);
-            Assert.Equal($"plugin:/infopanel.clock/{Ids[i]}", item.Meta.Sensor!.Key);
+            Assert.Equal($"infopanel:/clock/{Ids[i]}", item.Meta.Sensor!.Key);
             Assert.Equal(SensorStatus.Live, item.Meta.Sensor.Status);
         }
 
@@ -60,7 +60,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         Assert.Equal(Ids.Select((_, i) => $"/items/{i}"), translated.Select(d => d.Path));
         Assert.All(translated, d => Assert.Equal(("info", "DisplayItems.xml"), (d.Severity, d.File)));
         Assert.Equal(
-            "'Clock second' was bound to plugin:/clock-plugin/clock/second, the 1.x Clock plugin's; bound to plugin:/infopanel.clock/second, 'Second' in 'Clock', which the engine reads itself.",
+            "'Clock second' was bound to plugin:/clock-plugin/clock/second, the 1.x Clock plugin's; bound to infopanel:/clock/second, 'Second' in 'Clock', which the engine reads itself.",
             translated[6].Message);
         // Translated, they read: no import.sensor line.
         Assert.Empty(With(envelope, "import.sensor"));
@@ -81,7 +81,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
 
         var bound = envelope.Items.Take(7).Append(envelope.Items[7].Children![0].Children![0]).ToList();
         Assert.Equal(["sensor", "graph", "bar", "donut", "gauge", "sensorImage", "httpImage", "gauge"], bound.Select(n => n.Kind));
-        Assert.Equal([.. Enumerable.Repeat("plugin:/infopanel.clock/second", 7), "plugin:/infopanel.clock/minute"], bound.Select(n => n.Meta.Sensor!.Key));
+        Assert.Equal([.. Enumerable.Repeat("infopanel:/clock/second", 7), "infopanel:/clock/minute"], bound.Select(n => n.Meta.Sensor!.Key));
         Assert.Equal([.. Enumerable.Repeat("/infopanel.clock/second", 7), "/infopanel.clock/minute"], bound.Select(PropsKey));
         Assert.Equal(
             ["/items/0", "/items/1", "/items/2", "/items/3", "/items/4", "/items/5", "/items/6", "/items/7/children/0/children/0"],
@@ -102,7 +102,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         var envelope = new V1Folder(root).ReadProfile(Guid.Parse(desk), Context())!;
 
         Assert.Equal("folder", envelope.Source);
-        Assert.Equal(["plugin:/infopanel.clock/12-hour", "plugin:/infopanel.clock/minute", "plugin:/infopanel.clock/second"],
+        Assert.Equal(["infopanel:/clock/12-hour", "infopanel:/clock/minute", "infopanel:/clock/second"],
             envelope.Items.Select(n => n.Meta.Sensor!.Key));
         Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
         Assert.Equal(["/items/0", "/items/1", "/items/2"], With(envelope, "import.sensor.translated").Select(d => d.Path));
@@ -211,7 +211,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
 
         string[] expected = [.. VolumeIds.Select(id => $"default/{id}"), .. VolumeIds.Select(id => $"{EndpointId}/{id}")];
         Assert.Equal(expected.Select(k => $"/infopanel.volume/{k}"), envelope.Items.Select(PropsKey));
-        Assert.Equal(expected.Select(k => $"plugin:/infopanel.volume/{k}"), envelope.Items.Select(n => n.Meta.Sensor!.Key));
+        Assert.Equal(expected.Select(k => $"infopanel:/volume/{k}"), envelope.Items.Select(n => n.Meta.Sensor!.Key));
         Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
         Assert.All(envelope.Items, n => Assert.Equal("Plugin", (string)n.Props["sensorType"]!));
 
@@ -219,10 +219,10 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         Assert.Equal(expected.Select((_, i) => $"/items/{i}"), translated.Select(d => d.Path));
         Assert.All(translated, d => Assert.Equal(("info", "DisplayItems.xml"), (d.Severity, d.File)));
         Assert.Equal(
-            "'Default volume' was bound to plugin:/volume-plugin/default/volume, the 1.x Volume Info plugin's; bound to plugin:/infopanel.volume/default/volume, 'Volume of Default' in 'Volume', which the engine reads itself.",
+            "'Default volume' was bound to plugin:/volume-plugin/default/volume, the 1.x Volume Info plugin's; bound to infopanel:/volume/default/volume, 'Volume of Default' in 'Volume', which the engine reads itself.",
             translated[3].Message);
         Assert.Equal(
-            $"'Speakers mute' was bound to plugin:/volume-plugin/{Endpoint}/mute, the 1.x Volume Info plugin's; bound to plugin:/infopanel.volume/{EndpointId}/mute, 'Mute of {Endpoint}' in 'Volume', which the engine reads itself.",
+            $"'Speakers mute' was bound to plugin:/volume-plugin/{Endpoint}/mute, the 1.x Volume Info plugin's; bound to infopanel:/volume/{EndpointId}/mute, 'Mute of {Endpoint}' in 'Volume', which the engine reads itself.",
             translated[9].Message);
         Assert.Contains("'Device Name of Default' in 'Volume'", translated[0].Message);
         Assert.Contains($"'Short Name of {Endpoint}' in 'Volume'", translated[7].Message);
@@ -242,7 +242,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         var bound = envelope.Items.Take(3).Append(envelope.Items[3].Children![0]).ToList();
         Assert.Equal(["gauge", "bar", "sensor", "sensor"], bound.Select(n => n.Kind));
         Assert.Equal(
-            ["plugin:/infopanel.volume/default/volume", $"plugin:/infopanel.volume/{EndpointId}/volume", $"plugin:/infopanel.volume/{OtherEndpointId}/volume", "plugin:/infopanel.volume/default/mute"],
+            ["infopanel:/volume/default/volume", $"infopanel:/volume/{EndpointId}/volume", $"infopanel:/volume/{OtherEndpointId}/volume", "infopanel:/volume/default/mute"],
             bound.Select(n => n.Meta.Sensor!.Key));
         Assert.Equal([SensorStatus.Live, SensorStatus.Live, SensorStatus.Unavailable, SensorStatus.Live], bound.Select(n => n.Meta.Sensor!.Status));
         Assert.Equal(["/items/0", "/items/1", "/items/2", "/items/3/children/0"], With(envelope, "import.sensor.translated").Select(d => d.Path));
@@ -264,7 +264,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         var envelope = new V1Folder(root).ReadProfile(Guid.Parse(desk), VolumeContext(volume))!;
 
         Assert.Equal("folder", envelope.Source);
-        Assert.Equal(["plugin:/infopanel.volume/default/volume", $"plugin:/infopanel.volume/{EndpointId}/mute"], envelope.Items.Select(n => n.Meta.Sensor!.Key));
+        Assert.Equal(["infopanel:/volume/default/volume", $"infopanel:/volume/{EndpointId}/mute"], envelope.Items.Select(n => n.Meta.Sensor!.Key));
         Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
         Assert.Equal(["/items/0", "/items/1"], With(envelope, "import.sensor.translated").Select(d => d.Path));
         Assert.Empty(With(envelope, "import.sensor"));
@@ -368,7 +368,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
             SystemInfoContext(systemInfo));
 
         Assert.Equal(SystemInfoIds.Select(id => $"/infopanel.system-info/{id}"), envelope.Items.Select(PropsKey));
-        Assert.Equal(SystemInfoIds.Select(id => $"plugin:/infopanel.system-info/{id}"), envelope.Items.Select(n => n.Meta.Sensor!.Key));
+        Assert.Equal(SystemInfoIds.Select(id => $"infopanel:/system-info/{id}"), envelope.Items.Select(n => n.Meta.Sensor!.Key));
         Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
         Assert.All(envelope.Items, n => Assert.Equal("Plugin", (string)n.Props["sensorType"]!));
 
@@ -376,10 +376,10 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         Assert.Equal(SystemInfoIds.Select((_, i) => $"/items/{i}"), translated.Select(d => d.Path));
         Assert.All(translated, d => Assert.Equal(("info", "DisplayItems.xml"), (d.Severity, d.File)));
         Assert.Equal(
-            "'System uptime/formatted' was bound to plugin:/system-info-plugin/uptime/formatted, the 1.x System Info plugin's; bound to plugin:/infopanel.system-info/uptime/formatted, 'Formatted of Uptime' in 'System Info', which the engine reads itself.",
+            "'System uptime/formatted' was bound to plugin:/system-info-plugin/uptime/formatted, the 1.x System Info plugin's; bound to infopanel:/system-info/uptime/formatted, 'Formatted of Uptime' in 'System Info', which the engine reads itself.",
             translated[0].Message);
         Assert.Equal(
-            "'System processes/top-cpu-usage' was bound to plugin:/system-info-plugin/processes/top-cpu-usage, the 1.x System Info plugin's; bound to plugin:/infopanel.system-info/processes/top-cpu-usage, 'Top CPU Usage of Processes' in 'System Info', which the engine reads itself.",
+            "'System processes/top-cpu-usage' was bound to plugin:/system-info-plugin/processes/top-cpu-usage, the 1.x System Info plugin's; bound to infopanel:/system-info/processes/top-cpu-usage, 'Top CPU Usage of Processes' in 'System Info', which the engine reads itself.",
             translated[12].Message);
         Assert.Empty(With(envelope, "import.sensor"));
     }
@@ -396,7 +396,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         var bound = envelope.Items.Take(2).Append(envelope.Items[2].Children![0]).ToList();
         Assert.Equal(["sensor", "gauge", "table"], bound.Select(n => n.Kind));
         Assert.Equal(
-            ["plugin:/infopanel.system-info/uptime/formatted", "plugin:/infopanel.system-info/processes/cpu-usage", "plugin:/infopanel.system-info/processes/top-cpu-usage"],
+            ["infopanel:/system-info/uptime/formatted", "infopanel:/system-info/processes/cpu-usage", "infopanel:/system-info/processes/top-cpu-usage"],
             bound.Select(n => n.Meta.Sensor!.Key));
         Assert.All(bound, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
         Assert.Equal(["/items/0", "/items/1", "/items/2/children/0"], With(envelope, "import.sensor.translated").Select(d => d.Path));
@@ -417,7 +417,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         var envelope = new V1Folder(root).ReadProfile(Guid.Parse(desk), SystemInfoContext(systemInfo))!;
 
         Assert.Equal("folder", envelope.Source);
-        Assert.Equal(["plugin:/infopanel.system-info/uptime/formatted", "plugin:/infopanel.system-info/processes/top-cpu-usage"], envelope.Items.Select(n => n.Meta.Sensor!.Key));
+        Assert.Equal(["infopanel:/system-info/uptime/formatted", "infopanel:/system-info/processes/top-cpu-usage"], envelope.Items.Select(n => n.Meta.Sensor!.Key));
         Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
         Assert.Equal(["/items/0", "/items/1"], With(envelope, "import.sensor.translated").Select(d => d.Path));
         Assert.Empty(With(envelope, "import.sensor"));
@@ -462,7 +462,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         {
             var translation = RetiredPlugins.Translate(SensorKey.Plugin(Sys(id)));
             Assert.NotNull(translation);
-            Assert.Equal($"plugin:/infopanel.system-info/{id}", translation.Key.ToString());
+            Assert.Equal($"infopanel:/system-info/{id}", translation.Key.ToString());
             Assert.True(catalogue.TryGetValue(translation.Key, out var sensor), $"{translation.Key} isn't listed by the system information source");
             Assert.Equal(("System Info", "System Info"), (translation.Plugin, translation.Source));
             Assert.Equal($"{sensor!.Name} of {sensor.Group}", translation.Name);

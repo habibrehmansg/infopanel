@@ -70,7 +70,7 @@ public sealed class SensorTableValueTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private const string TopCpuUsage = "plugin:/infopanel.system-info/processes/top-cpu-usage";
+    private const string TopCpuUsage = "infopanel:/system-info/processes/top-cpu-usage";
 
     /// <summary>
     /// A system of <paramref name="count"/> processes, <c>app-01</c> on, each using CPU time and memory: 10 MB a number, so

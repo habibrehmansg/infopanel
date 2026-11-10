@@ -8,8 +8,8 @@
       "id": "a",
       "placement": {"x": 0, "y": 0},
       "bindings": {
-        "a": {"key": "plugin:/infopanel.mock/cpu/cpu-temp"},
-        "b": {"key": "plugin:/infopanel.mock/cpu/cpu-load"}
+        "a": {"key": "infopanel:/mock/cpu/cpu-temp"},
+        "b": {"key": "infopanel:/mock/cpu/cpu-load"}
       },
       "scene": {
         "format": "infopanel.scene/1",

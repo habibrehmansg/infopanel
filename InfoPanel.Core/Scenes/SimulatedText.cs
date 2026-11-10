@@ -87,7 +87,7 @@ internal static class SimulatedText
     private const string Clock = "infopanel.clock", SystemInfo = SystemInfoSource.SourceId, Network = "infopanel.network",
         Drives = "infopanel.drives", Volume = "infopanel.volume";
 
-    /// <summary>The engine's own sources' keys: <c>plugin:/infopanel.…</c>, a prefix no plugin may take.</summary>
+    /// <summary>The engine's own sources' keys (<c>infopanel:/…</c>): their ids start with the source id, <c>infopanel.…</c>, which no plugin may take.</summary>
     private const string OwnPrefix = "/infopanel.";
 
     private const RegexOptions Words = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
@@ -121,11 +121,11 @@ internal static class SimulatedText
         return names.SelectMany(n => new[] { n, n.Split('.')[0] }).Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     });
 
-    /// <summary>The engine's clock (<c>plugin:/infopanel.clock/…</c>), which stays real whatever its type: the only one.</summary>
+    /// <summary>The engine's clock (<c>infopanel:/clock/…</c>), which stays real whatever its type: the only one.</summary>
     public static bool IsRealTime(SensorKey key) => Family(key) is { Source: Clock };
 
     /// <summary>
-    /// A key of a source whose display names the engine writes itself: the engine's own sources (<c>plugin:/infopanel.…</c>:
+    /// A key of a source whose display names the engine writes itself: the engine's own sources (<c>infopanel:/…</c>:
     /// the network, drives, audio devices, weather, System Info, the clock and the platform's own) and the hardware
     /// monitors it reads (HWiNFO, LibreHardwareMonitor). A plugin's names are its own, as private as its values.
     /// </summary>
@@ -360,7 +360,7 @@ internal static class SimulatedText
     private static string Cycle(IReadOnlyList<string> samples, int index, string more) =>
         index < samples.Count ? samples[index] : string.Create(CultureInfo.InvariantCulture, $"{more} {index + 1}");
 
-    /// <summary>The source, container and entry of a key of one of the engine's own sources: <c>plugin:/{source}/{container}/{entry}</c>.</summary>
+    /// <summary>The source (by its id, <c>infopanel.network</c>), container and entry of a key of one of the engine's own sources: <c>infopanel:/{source}/{container}/{entry}</c>.</summary>
     private static (string Source, string Container, string Entry)? Family(SensorKey key)
     {
         if (key.Type != SensorType.Plugin || !key.Id.StartsWith(OwnPrefix, StringComparison.Ordinal))

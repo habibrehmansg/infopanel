@@ -33,7 +33,7 @@ public sealed class WeatherSourceOptions
 /// <see cref="WeatherFetcher"/> asks for on a task of its own (with the credential a client provides, through
 /// <see cref="ServiceClient"/>'s rules) and holds. A <see cref="PolledSensorSource"/> polls the held answer every
 /// second (<see cref="WeatherSampler"/>; no request): its readings (<see cref="Entries"/>, keys
-/// <c>plugin:/infopanel.weather/{id}</c>) are all listed from the start, unavailable until the first answer; live while
+/// <c>infopanel:/weather/{id}</c>) are all listed from the start, unavailable until the first answer; live while
 /// the answer is at most <see cref="LiveFor"/> old and the service didn't call it stale, then stale (the last values
 /// kept) until it is <see cref="KeepFor"/> old, then unavailable. An answer the service calls stale keeps the values
 /// shown and their age, and reads them stale; a first one is shown stale. A value the service doesn't give reads unavailable.
@@ -104,7 +104,7 @@ public sealed class WeatherSource : ISensorSource, ISensorStatusSource, ISensorS
 
     private static readonly HashSet<SensorKey> Keys = [.. Entries.Select(e => Space.KeyOf(e.Id))];
 
-    /// <summary>The key of the reading <paramref name="id"/>: <c>plugin:/infopanel.weather/{id}</c>.</summary>
+    /// <summary>The key of the reading <paramref name="id"/>: <c>infopanel:/weather/{id}</c>.</summary>
     public static SensorKey KeyOf(string id) => Space.KeyOf(id);
 
     /// <summary>The entry <paramref name="id"/>, or null.</summary>

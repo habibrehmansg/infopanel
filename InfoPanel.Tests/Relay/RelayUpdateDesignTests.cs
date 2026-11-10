@@ -368,7 +368,7 @@ public sealed class RelayUpdateDesignTests
         var design = RelayDesignTests.Design(IdOf(Newer));
         design.Remove("origin");
         design["basedOn"] = BasedOn(document, "a");
-        var bindings = new JsonObject { ["v"] = "plugin:/infopanel.mock/cpu/cpu-load" };
+        var bindings = new JsonObject { ["v"] = "infopanel:/mock/cpu/cpu-load" };
         await peer.SendAsync(Update(rig, "u", new JsonObject { ["profile"] = "P", ["item"] = "a", ["bindings"] = bindings }, design));
         var result = (await peer.ExpectAsync("result", Ct))["result"]!;
         Assert.True(result["isError"]!.GetValue<bool>(), result.ToJsonString());

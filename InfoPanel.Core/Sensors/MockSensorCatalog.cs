@@ -6,7 +6,7 @@ namespace InfoPanel.Sensors;
 /// <summary>
 /// One mock sensor: a row of <see cref="MockSensorCatalog"/> with its group, name, unit, range and walk parameters.
 /// <see cref="Id"/> is the short id (<c>gpu.temp</c>); <see cref="Key"/> is
-/// <c>plugin:/infopanel.mock/{GroupSlug}/{Id with '.' as '-'}</c>.
+/// <c>infopanel:/mock/{GroupSlug}/{Id with '.' as '-'}</c>.
 /// </summary>
 public sealed record MockSensorDef(
     string Id,
@@ -105,7 +105,7 @@ public static class MockSensorCatalog
     /// <summary>A sensor by its short id (<c>gpu.temp</c>), or null.</summary>
     public static MockSensorDef? ById(string id) => Sensors.FirstOrDefault(s => s.Id == id);
 
-    /// <summary>The key of a numeric sensor by its short id (<c>gpu.temp</c> → <c>plugin:/infopanel.mock/gpu/gpu-temp</c>).</summary>
+    /// <summary>The key of a numeric sensor by its short id (<c>gpu.temp</c> → <c>infopanel:/mock/gpu/gpu-temp</c>).</summary>
     public static SensorKey KeyOf(string id) =>
         ById(id)?.Key ?? throw new KeyNotFoundException($"No mock sensor '{id}'.");
 }

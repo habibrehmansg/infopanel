@@ -23,7 +23,7 @@ public sealed class ConcurrentEditingTests
     private const int Seed = 20261027;
     private const int TabRounds = 40;
     private const int ScriptRounds = 20;
-    private const string SensorKey = "plugin:/infopanel.mock/cpu/cpu-load";
+    private const string SensorKey = "infopanel:/mock/cpu/cpu-load";
 
     /// <summary>The group the tabs move items into and out of.</summary>
     private const string Folder = "g";

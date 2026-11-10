@@ -6,7 +6,7 @@ A scene says which **inputs** it reads; an item says which sensor feeds each one
 // in the scene
 "inputs": { "v": { "type": "number", "label": "Temperature" } }
 // in the item
-"bindings": { "v": { "key": "plugin:/infopanel.mock/cpu/cpu-temp", "stat": "now" } }
+"bindings": { "v": { "key": "infopanel:/mock/cpu/cpu-temp", "stat": "now" } }
 ```
 
 ## Inputs
@@ -23,7 +23,7 @@ Every input also has a `status` and `available` ([expressions](expressions.md)).
 
 `bindings` maps input names to `{ "key", "stat" }`:
 
-- `key` is a sensor key as the engine lists them (`GET /api/sensors`, [API](api.md#fonts-and-sensors)), up to 512 characters. Keys are opaque to the scene format; an engine documents its own (this engine's look like `plugin:/infopanel.mock/cpu/cpu-temp`).
+- `key` is a sensor key as the engine lists them (`GET /api/sensors`, [API](api.md#fonts-and-sensors)), up to 512 characters. Keys are opaque to the scene format; an engine documents its own (this engine's look like `infopanel:/mock/cpu/cpu-temp`; its four forms are in [API](api.md#fonts-and-sensors)). This engine refuses a key that names one of its own sources in the plugin form, `plugin:/infopanel.{source}/…` with `infopanel.` in any case (its own sources' keys are `infopanel:/{source}/…`, and no plugin may take an id starting `infopanel.`): a document's (created, imported in an archive, or stored) or a commit's binding with one is invalid, `key.pluginForm` at the binding's `key` ([validation](validation.md#codes)).
 - `stat` (`now`, `min`, `max`, `avg`; default `now`) is the statistic an input's `value` reads. `now`, `min`, `max` and `avg` can always be read explicitly too.
 
 A binding whose name the scene doesn't declare is kept and ignored, so an item can switch between scenes that share some inputs without losing the others. A declared input with no binding is **unbound**.

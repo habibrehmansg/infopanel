@@ -229,7 +229,7 @@ public sealed class RelayReadTests
         if (which is "bindings" or "both")
         {
             extra["bindings"] = new JsonObject([.. Enumerable.Range(0, 32).Select(i =>
-                KeyValuePair.Create($"in{i:00}{new string('x', 28)}", (JsonNode?)new JsonObject { ["key"] = $"plugin:/infopanel.mock/{new string('k', 485)}/{i:000}" }))]);
+                KeyValuePair.Create($"in{i:00}{new string('x', 28)}", (JsonNode?)new JsonObject { ["key"] = $"infopanel:/mock/{new string('k', 492)}/{i:000}" }))]);
         }
         JsonObject[] others = [.. Enumerable.Range(0, 50).Select(i => TestDocs.Scene($"other-{i:000}", i))];
         var id = TestDocs.Create(workspace, TestDocs.Doc(names ? new string('n', 256) : "Long", 400, 200, [TestDocs.Scene("long", 1, 2, extra: extra), .. others]));

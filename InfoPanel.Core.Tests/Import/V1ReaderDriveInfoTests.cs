@@ -81,7 +81,7 @@ public sealed class V1ReaderDriveInfoTests : IDisposable
             var item = envelope.Items[i];
             Assert.Equal($"/infopanel.drives/c/{Ids[i]}", PropsKey(item));
             Assert.Equal("Plugin", (string)item.Props["sensorType"]!);
-            Assert.Equal($"plugin:/infopanel.drives/c/{Ids[i]}", item.Meta.Sensor!.Key);
+            Assert.Equal($"infopanel:/drives/c/{Ids[i]}", item.Meta.Sensor!.Key);
             Assert.Equal(SensorStatus.Live, item.Meta.Sensor.Status);
         }
 
@@ -89,7 +89,7 @@ public sealed class V1ReaderDriveInfoTests : IDisposable
         Assert.Equal(Ids.Select((_, i) => $"/items/{i}"), translated.Select(d => d.Path));
         Assert.All(translated, d => Assert.Equal(("info", "DisplayItems.xml"), (d.Severity, d.File)));
         Assert.Equal(
-            "'C free_space' was bound to plugin:/drive-info-plugin/c/free_space, the 1.x Drive Info plugin's; bound to plugin:/infopanel.drives/c/free_space, 'Free Space of C:' in 'Drives', which the engine reads itself.",
+            "'C free_space' was bound to plugin:/drive-info-plugin/c/free_space, the 1.x Drive Info plugin's; bound to infopanel:/drives/c/free_space, 'Free Space of C:' in 'Drives', which the engine reads itself.",
             translated[5].Message);
         Assert.Empty(With(envelope, "import.sensor"));
     }
@@ -103,7 +103,7 @@ public sealed class V1ReaderDriveInfoTests : IDisposable
             Bound("BarDisplayItem", "E bar", Drive("e", "used_space")),
             Bound("SensorDisplayItem", "Share", Drive("servershare", "free_space")));
 
-        Assert.Equal(["plugin:/infopanel.drives/d/used_space", "plugin:/infopanel.drives/e/used_space", "plugin:/infopanel.drives/servershare/free_space"],
+        Assert.Equal(["infopanel:/drives/d/used_space", "infopanel:/drives/e/used_space", "infopanel:/drives/servershare/free_space"],
             envelope.Items.Select(n => n.Meta.Sensor!.Key));
         Assert.Equal([SensorStatus.Live, SensorStatus.Unavailable, SensorStatus.Unavailable], envelope.Items.Select(n => n.Meta.Sensor!.Status));
         Assert.Equal(["/items/0", "/items/1", "/items/2"], With(envelope, "import.sensor.translated").Select(d => d.Path));
@@ -130,8 +130,8 @@ public sealed class V1ReaderDriveInfoTests : IDisposable
         var bound = envelope.Items.Take(7).Concat(inner).ToList();
         Assert.Equal(["sensor", "graph", "bar", "donut", "gauge", "sensorImage", "httpImage", "sensor", "gauge"], bound.Select(n => n.Kind));
         Assert.Equal(
-            [.. new[] { "free_space", "free_space", "used_space", "used_space", "used_space", "free_space", "free_space" }.Select(id => $"plugin:/infopanel.drives/c/{id}"),
-             "plugin:/infopanel.drives/d/volume_label", "plugin:/infopanel.clock/second"],
+            [.. new[] { "free_space", "free_space", "used_space", "used_space", "used_space", "free_space", "free_space" }.Select(id => $"infopanel:/drives/c/{id}"),
+             "infopanel:/drives/d/volume_label", "infopanel:/clock/second"],
             bound.Select(n => n.Meta.Sensor!.Key));
         Assert.Equal(
             ["/items/0", "/items/1", "/items/2", "/items/3", "/items/4", "/items/5", "/items/6", "/items/7/children/0/children/0", "/items/7/children/0/children/1"],
@@ -152,7 +152,7 @@ public sealed class V1ReaderDriveInfoTests : IDisposable
         var envelope = new V1Folder(root).ReadProfile(Guid.Parse(desk), Context())!;
 
         Assert.Equal("folder", envelope.Source);
-        Assert.Equal(["plugin:/infopanel.drives/c/used_space", "plugin:/infopanel.drives/c/free_space", "plugin:/infopanel.drives/d/name"],
+        Assert.Equal(["infopanel:/drives/c/used_space", "infopanel:/drives/c/free_space", "infopanel:/drives/d/name"],
             envelope.Items.Select(n => n.Meta.Sensor!.Key));
         Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
         Assert.Equal(["/items/0", "/items/1", "/items/2"], With(envelope, "import.sensor.translated").Select(d => d.Path));

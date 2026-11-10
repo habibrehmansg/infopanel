@@ -124,7 +124,7 @@
       },
       "meta": {
         "sensor": {
-          "key": "plugin:/infopanel.mock/cpu/cpu-load",
+          "key": "infopanel:/mock/cpu/cpu-load",
           "status": "simulated"
         }
       }
@@ -237,7 +237,7 @@
       },
       "meta": {
         "sensor": {
-          "key": "plugin:/infopanel.mock/cpu/cpu-load",
+          "key": "infopanel:/mock/cpu/cpu-load",
           "status": "simulated"
         }
       }
@@ -280,7 +280,7 @@
       },
       "meta": {
         "sensor": {
-          "key": "plugin:/infopanel.mock/cpu/cpu-load",
+          "key": "infopanel:/mock/cpu/cpu-load",
           "status": "simulated"
         }
       }
@@ -321,7 +321,7 @@
       },
       "meta": {
         "sensor": {
-          "key": "plugin:/infopanel.mock/cpu/cpu-load",
+          "key": "infopanel:/mock/cpu/cpu-load",
           "status": "simulated"
         }
       }
@@ -440,7 +440,7 @@
       },
       "meta": {
         "sensor": {
-          "key": "plugin:/infopanel.mock/cpu/cpu-load",
+          "key": "infopanel:/mock/cpu/cpu-load",
           "status": "simulated"
         }
       }
@@ -483,7 +483,7 @@
       },
       "meta": {
         "sensor": {
-          "key": "plugin:/infopanel.mock/cpu/cpu-load",
+          "key": "infopanel:/mock/cpu/cpu-load",
           "status": "simulated"
         }
       }
@@ -524,7 +524,7 @@
       },
       "meta": {
         "sensor": {
-          "key": "plugin:/infopanel.mock/cpu/cpu-load",
+          "key": "infopanel:/mock/cpu/cpu-load",
           "status": "simulated"
         }
       }
