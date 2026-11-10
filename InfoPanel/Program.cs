@@ -387,6 +387,10 @@ try
     {
         builder.Services.AddSingleton<ISensorSource>(sp => MacSensorSource.Create(sp.GetRequiredService<TimeProvider>()));
     }
+    else if (OperatingSystem.IsLinux())
+    {
+        builder.Services.AddSingleton<ISensorSource>(sp => InfoPanel.Sensors.Linux.LinuxSensorSource.CreateSystem(sp.GetRequiredService<TimeProvider>()));
+    }
     else if (OperatingSystem.IsWindows())
     {
         builder.Services.AddSingleton<ISensorSource>(sp =>
