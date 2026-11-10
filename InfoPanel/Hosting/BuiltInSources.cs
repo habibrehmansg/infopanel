@@ -25,12 +25,20 @@ public static class BuiltInSourceServiceCollectionExtensions
     /// <see cref="SystemInfoSource"/>, its tables leaving out the settings' <c>sources.systemInfo.excludedProcesses</c>). Registered
     /// after the platform's sources and before the plugins'. Not in mock mode or while a recording is replayed (whose
     /// sessions say mock): there their keys are what any key no source handles is (simulated in mock mode, else
-    /// unavailable).
+    /// unavailable). Last, in every mode on every operating system, the engine's own usage (<c>infopanel.engine</c>, its
+    /// process's CPU and memory, <see cref="EngineSource"/>), which reads the engine itself, not the computer's sensors.
     /// </summary>
     public static IServiceCollection AddBuiltInSources(this IServiceCollection services, EngineOptions options)
     {
-        if (options.Mock || options.ReplaySensors is not null)
-            return services;
+        if (!options.Mock && options.ReplaySensors is null)
+            AddComputerSources(services, options);
+        services.AddSingleton<ISensorSource>(sp => EngineSource.CreateSystem(sp.GetRequiredService<TimeProvider>()));
+        return services;
+    }
+
+    /// <summary>The built-in sources that read this computer, in <see cref="AddBuiltInSources"/>'s order.</summary>
+    private static void AddComputerSources(IServiceCollection services, EngineOptions options)
+    {
         services.AddSingleton<ISensorSource>(sp => new ClockSensorSource(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<ISensorSource>(sp => DriveSource.CreateSystem(sp.GetRequiredService<TimeProvider>()));
         // The public address lookup follows the engine's settings (sources.network.publicIp) when it has them.
@@ -51,6 +59,5 @@ public static class BuiltInSourceServiceCollectionExtensions
                     ? SystemInfoSource.CreateSystem(sp.GetRequiredService<TimeProvider>(), sp.GetService<SettingsStore>())
                     : throw new PlatformNotSupportedException());
         }
-        return services;
     }
 }

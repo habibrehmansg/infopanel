@@ -3,6 +3,7 @@ using InfoPanel.Hosting;
 using InfoPanel.Persistence;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.Network;
+using InfoPanel.Sensors.SystemInfo;
 using InfoPanel.Sensors.Weather;
 using InfoPanel.Settings;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,9 +13,9 @@ namespace InfoPanel.Tests;
 
 // The engine's own sources (the clock, the drives, the network, the weather on every OS; the volume and the system
 // information on macOS and Windows, the system information on Linux too):
-// registered outside mock mode and a replay, none in either; the network's public address lookup is left out under
-// --offline, and follows the engine's settings (sources.network.publicIp) as they change; the weather follows
-// sources.weather.
+// registered outside mock mode and a replay, none in either; the engine's own usage on every OS, in both too; the
+// network's public address lookup is left out under --offline, and follows the engine's settings
+// (sources.network.publicIp) as they change; the weather follows sources.weather.
 public class BuiltInSourcesTests
 {
     [Theory]
@@ -32,7 +33,24 @@ public class BuiltInSourcesTests
             : OperatingSystem.IsMacOS() || OperatingSystem.IsWindows() ? [.. everywhere, "infopanel.volume", "infopanel.system-info"]
             : OperatingSystem.IsLinux() ? [.. everywhere, "infopanel.system-info"]
             : everywhere;
-        Assert.Equal(expected, provider.GetServices<ISensorSource>().Select(s => s.Id));
+        // The engine's own usage last, in every mode (its own test below).
+        Assert.Equal([.. expected, EngineSource.SourceId], provider.GetServices<ISensorSource>().Select(s => s.Id));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void The_engines_own_usage_is_registered_on_every_OS_in_mock_mode_and_a_replay_too(bool mock, bool replay)
+    {
+        var services = new ServiceCollection().AddSingleton(TimeProvider.System);
+        services.AddBuiltInSources(new EngineOptions { Mock = mock, ReplaySensors = replay ? "recording" : null });
+
+        using var provider = services.BuildServiceProvider();
+        var engine = Assert.IsType<PolledSensorSource>(provider.GetServices<ISensorSource>().Single(s => s.Id == "infopanel.engine"));
+
+        Assert.True(engine.Handles(EngineSource.KeyOf("cpu")));
+        Assert.True(engine.Handles(EngineSource.KeyOf("memory")));
     }
 
     [Theory]

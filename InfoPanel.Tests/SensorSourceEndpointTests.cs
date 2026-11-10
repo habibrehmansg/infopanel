@@ -46,14 +46,16 @@ public sealed class SensorSourceEndpointTests(EngineFactory factory) : IClassFix
         using var client = factory.CreateApiClient();
         var sources = await Sources(client);
 
-        Assert.Equal(["infopanel.mock", "plugins"], sources.Select(s => s.GetProperty("id").GetString()));
+        Assert.Equal(["infopanel.mock", "infopanel.engine", "plugins"], sources.Select(s => s.GetProperty("id").GetString()));
         Assert.Equal("running", sources[0].GetProperty("state").GetString());
         Assert.False(sources[0].TryGetProperty("reason", out _));
         Assert.Equal(37, sources[0].GetProperty("sensors").GetInt32());
         Assert.Equal(["id", "state", "sensors"], sources[0].EnumerateObject().Select(p => p.Name));
+        // The engine's own usage, in mock mode too: its process's CPU and memory.
+        Assert.Equal(("running", 2), (sources[1].GetProperty("state").GetString(), sources[1].GetProperty("sensors").GetInt32()));
         // The plugins' source runs no host here (--no-plugins): off, saying so, listed with none.
-        Assert.Equal(("off", "disabled", 0), (sources[1].GetProperty("state").GetString(), Reason(sources[1]), sources[1].GetProperty("sensors").GetInt32()));
-        Assert.Equal("Plugins are turned off for this engine", sources[1].GetProperty("reason").GetProperty("message").GetString());
+        Assert.Equal(("off", "disabled", 0), (sources[2].GetProperty("state").GetString(), Reason(sources[2]), sources[2].GetProperty("sensors").GetInt32()));
+        Assert.Equal("Plugins are turned off for this engine", sources[2].GetProperty("reason").GetProperty("message").GetString());
 
         var hub = factory.Services.GetRequiredService<SensorHub>();
         Assert.Equal(hub.Sources.Select(s => s.Id), sources.Select(s => s.GetProperty("id").GetString()));
@@ -114,7 +116,7 @@ public sealed class SensorSourceEndpointTests(EngineFactory factory) : IClassFix
         using var client = Client(replaying);
         var sources = await Sources(client);
 
-        Assert.Equal(["hwinfo", "infopanel.hwinfo-gadget", "plugins"], sources.Select(s => s.GetProperty("id").GetString()));
+        Assert.Equal(["hwinfo", "infopanel.hwinfo-gadget", "infopanel.engine", "plugins"], sources.Select(s => s.GetProperty("id").GetString()));
         Assert.Equal("running", sources[0].GetProperty("state").GetString());
         Assert.True(sources[0].GetProperty("sensors").GetInt32() > 100);
         Assert.Equal(("off", "notSetUp", 0), (sources[1].GetProperty("state").GetString(), Reason(sources[1]), sources[1].GetProperty("sensors").GetInt32()));
@@ -173,7 +175,7 @@ public sealed class SensorSourceEndpointTests(EngineFactory factory) : IClassFix
         var sources = await Sources(client);
 
         // The PC's sources in their start order: HWiNFO (not recorded: not running), its gadget values, then Libre.
-        Assert.Equal(["hwinfo", "infopanel.hwinfo-gadget", "libre", "plugins"], sources.Select(s => s.GetProperty("id").GetString()));
+        Assert.Equal(["hwinfo", "infopanel.hwinfo-gadget", "libre", "infopanel.engine", "plugins"], sources.Select(s => s.GetProperty("id").GetString()));
         Assert.Equal(("unavailable", "notRunning"), (sources[0].GetProperty("state").GetString(), Reason(sources[0])));
         // Recorded without the PawnIO driver: reading, limited.
         Assert.Equal(("limited", "noDriver", 199), (sources[2].GetProperty("state").GetString(), Reason(sources[2]), sources[2].GetProperty("sensors").GetInt32()));

@@ -142,7 +142,7 @@ public sealed class WinProcessSampler : IProcessSampler
     private IReadOnlyList<CategoryInstance> Category() => _read ??= _readCategory();
 
     /// <summary>Every processor group's active logical processors (<see cref="Environment.ProcessorCount"/>'s if it can't be read).</summary>
-    private static int MachineProcessors()
+    internal static int MachineProcessors()
     {
         var count = GetActiveProcessorCount(AllProcessorGroups);
         return count > 0 ? (int)count : Environment.ProcessorCount;

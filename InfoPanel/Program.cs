@@ -428,7 +428,8 @@ try
         builder.Services.AddSingleton(sp => new LibreElevation(LibreHelperProcess.DefaultPath, OperatingSystem.IsWindows() ? new WindowsLibreElevationSystem() : null, new ShellPawnIoLauncher(),
             () => sp.GetRequiredService<LibreSource>().HelperChanged(), sp.GetRequiredService<TimeProvider>()));
     }
-    // The engine's own sources on every OS (the clock, the drives, the network, the weather), outside mock mode and a replay.
+    // The engine's own sources on every OS (the clock, the drives, the network, the weather), outside mock mode and a replay;
+    // then its own usage (infopanel.engine) in every mode.
     builder.Services.AddBuiltInSources(options);
     // Plugin sensors, after the built-in sources; their hosts start once the engine listens.
     builder.Services.AddPlugins(options, paths, settings);

@@ -391,10 +391,38 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal(fonts.Count, fonts.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
+    /// <summary>
+    /// The entries of <paramref name="list"/> but the engine's own usage, which a mock engine lists too (its process's
+    /// CPU and memory, <c>BuiltInSourcesTests</c> and <c>EngineSourceTests</c>): the mock source's.
+    /// </summary>
+    private static List<JsonElement> MockOnly(JsonElement list)
+    {
+        HashSet<string> engine = [.. InfoPanel.Sensors.SystemInfo.EngineSource.Entries.Select(e => InfoPanel.Sensors.SystemInfo.EngineSource.KeyOf(e.Id).ToString())];
+        return list.EnumerateArray().Where(s => !engine.Contains(s.GetProperty("key").GetString()!)).ToList();
+    }
+
+    /// <summary>
+    /// The entries <see cref="MockOnly"/> leaves out of <paramref name="list"/> (<c>/api/sensors</c>'): the engine's own
+    /// usage, its two numbers, each listed once under its source and group, with its unit.
+    /// </summary>
+    private static void ListsTheEnginesUsage(JsonElement list)
+    {
+        foreach (var (id, name, unit) in InfoPanel.Sensors.SystemInfo.EngineSource.Entries)
+        {
+            var key = InfoPanel.Sensors.SystemInfo.EngineSource.KeyOf(id).ToString();
+            var entry = Assert.Single(list.EnumerateArray(), s => s.GetProperty("key").GetString() == key);
+            Assert.Equal(("infopanel.engine", "InfoPanel engine", name, unit, "number"),
+                (entry.GetProperty("source").GetString(), entry.GetProperty("group").GetString(), entry.GetProperty("name").GetString(),
+                    entry.GetProperty("unit").GetString(), entry.GetProperty("type").GetString()));
+        }
+    }
+
     [Fact]
     public async Task Sensors_ListMockSensorsByKey()
     {
-        var sensors = (await GetJson("/api/sensors")).EnumerateArray().ToList();
+        var all = await GetJson("/api/sensors");
+        ListsTheEnginesUsage(all);
+        var sensors = MockOnly(all);
 
         Assert.Equal(37, sensors.Count);
         var gpuTemp = sensors.Single(s => s.GetProperty("key").GetString() == "plugin:/infopanel.mock/gpu/gpu-temp");
@@ -410,7 +438,9 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     [Fact]
     public async Task Sensors_GiveEachSensorsType_AndTheStatusAsBefore()
     {
-        var sensors = (await GetJson("/api/sensors")).EnumerateArray().ToList();
+        var all = await GetJson("/api/sensors");
+        ListsTheEnginesUsage(all);
+        var sensors = MockOnly(all);
         var byKey = sensors.ToDictionary(s => s.GetProperty("key").GetString()!);
 
         Assert.Equal("number", byKey["plugin:/infopanel.mock/gpu/gpu-temp"].GetProperty("type").GetString());
@@ -553,7 +583,18 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     [Fact]
     public async Task SensorValues_WithHistory()
     {
-        var values = (await GetJson("/api/sensors/values?history=60")).EnumerateArray().ToList();
+        var all = await GetJson("/api/sensors/values?history=60");
+        // The engine's own usage, left out below: its memory reads from the first round (a positive resident size, in
+        // MB); its CPU from the second (listed once it reads, as a share of the machine).
+        var memoryKey = InfoPanel.Sensors.SystemInfo.EngineSource.KeyOf("memory").ToString();
+        var memory = Assert.Single(all.EnumerateArray(), v => v.GetProperty("key").GetString() == memoryKey);
+        Assert.True(memory.GetProperty("now").GetDouble() > 0);
+        Assert.Equal(" MB", memory.GetProperty("unit").GetString());
+        var cpuKey = InfoPanel.Sensors.SystemInfo.EngineSource.KeyOf("cpu").ToString();
+        var cpu = all.EnumerateArray().Where(v => v.GetProperty("key").GetString() == cpuKey).ToList();
+        Assert.True(cpu.Count <= 1);
+        Assert.All(cpu, c => Assert.InRange(c.GetProperty("now").GetDouble(), 0, 100));
+        var values = MockOnly(all);
 
         Assert.Equal(37, values.Count);
         var cpuLoad = values.Single(v => v.GetProperty("key").GetString() == "plugin:/infopanel.mock/cpu/cpu-load");
