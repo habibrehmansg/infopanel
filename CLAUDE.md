@@ -5,7 +5,7 @@ Guidance for Claude Code (claude.ai/code) in this repository, for branch **`2.0.
 ## Branch rules
 
 - Commit directly to `2.0.x`; no PRs until 2.0 is release-ready. No worktrees.
-- No CI on this branch: `.github/workflows/dotnet-desktop.yml` is 1.x's and doesn't trigger on `2.0.x`. Don't touch `.github/`. Run the checks below yourself.
+- CI on this branch: `.github/workflows/codeql.yml` scans pushes; `.github/workflows/release.yml` builds the installers on a version tag and on demand (docs/2.0/packaging.md, Releases). 1.x's release workflow lives on `1.4.x` only. Change `.github/` only in a task that asks for it.
 
 ## Projects (`InfoPanel.slnx`, Debug/Release, Any CPU)
 
