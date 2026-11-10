@@ -107,7 +107,7 @@ Both are done (the Persistence table above): the 1.x import reads guides from th
 | Global hotkeys | later | `InfoPanel/Services/GlobalHotkeyService.cs`, `InfoPanel/Models/HotkeyBinding.cs` |
 | Tray icon | the menu-bar item in the engine process (docs/2.0/desktop-shell.md): macOS done (status line, Open Editor, Quit with the unsaved-changes alert); Windows and Linux later | `InfoPanel/Views/Windows/MainWindow.xaml`, `InfoPanel/Views/Windows/MainWindow.xaml.cs` |
 | Autostart (Task Scheduler) | later | `InfoPanel/Models/ConfigModel.cs` |
-| UpdateChecker and toasts | later | `InfoPanel/Services/UpdateChecker.cs` |
+| UpdateChecker and toasts | the check: done, without the machine name 1.x sent (`InfoPanel.Core/Updates/`: GitHub's public releases 30 s after the menu-bar item shows and daily; the menu's Update Available and Check for Updates… lines, docs/2.0/desktop-shell.md "Updates"); the OS notification: later; the Updates page's download and run: not ported (not decided) | `InfoPanel/Services/UpdateChecker.cs` |
 | Sentry | later | `InfoPanel/App.xaml.cs` |
 | AIDA64 SensorPanel import | later | `InfoPanel/Models/SharedModel.SensorPanelImport.cs` |
 | ConfigModel / Settings (app settings) | the engine settings (`SettingsStore`, `GET`/`PATCH /api/settings`) hold the frame and graph rates, the log level, the sensor sources' settings and the others spec/docs/api.md lists ("Settings"); the devices', tray's, autostart's, hotkeys', autosave's and web server's settings later, each with its feature | `InfoPanel/Models/ConfigModel.cs`, `InfoPanel/Models/Settings.cs` |

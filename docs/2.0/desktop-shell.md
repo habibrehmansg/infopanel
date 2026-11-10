@@ -9,6 +9,9 @@ for light and dark menu bars. On Windows it is an icon in the notification area,
 Click the hexagon. The menu is built afresh from the engine's state each time it opens:
 
 1. The header, "InfoPanel" (bold, not greyed, not clickable), and under it "Running · 2.0.0" in the secondary colour.
+   Under that, the update line (below, "Updates"): **Update Available: InfoPanel 2.0.1…** while a newer version is
+   known, which opens its release page in the browser; otherwise **Check for Updates…**. A development build has
+   neither.
 2. — Who is signed in, one row: while the engine holds a credential for the configured service and knows its holder, a
    round initial (the first letter or digit of the name, else of the email, white on a grey disc; no picture is
    downloaded), the holder's name, and beneath it the email in the secondary colour; the email alone when the holder
@@ -82,6 +85,41 @@ name is null or empty, each without control characters; the name past 40 charact
   in" until a client provides another; the name and the email go together.
 - **Never** stored, logged (the log file, the recent entries, `/api/logs`) or copied by Copy Engine Details.
 
+## Updates
+
+The engine checks the engine repository's public releases on GitHub for a newer version (`UpdateCheck`, with the list
+read by `ReleaseFeed`, both in `InfoPanel.Core/Updates/`):
+
+- **What is sent, and to whom:** one `GET https://api.github.com/repos/habibrehmansg/infopanel/releases?per_page=30`,
+  with `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28` and `User-Agent: InfoPanel/{version}`,
+  and nothing else: no token, cookie, machine name, install id or trace header. GitHub sees the computer's address and
+  the engine's version, once a day. `If-None-Match` carries the last answer's `ETag` (kept in memory only); its 304
+  keeps that answer.
+- **How:** `https` only; no redirect followed (a moved list fails, and is logged); 15 s per request; the list read to
+  at most 1 MiB; the system's proxy as .NET reads it.
+- **When:** 30 s after the item shows, then once a day has passed since the last answer by the wall clock, looked at
+  every hour, so a computer asleep overnight checks within the hour it wakes; an hour after a failure; when GitHub
+  limits the address (403 or 429), at its `Retry-After` or `X-RateLimit-Reset`, between an hour and a day. One check at
+  a time; none while the item doesn't show (`--no-tray`, every test engine).
+- **Never** for a development build (a version whose pre-release starts with `dev`: `2.0.0-dev`, a source build;
+  `2.0.0-dev.ci.12`, a dry run's), nor for a version that isn't SemVer 2. With `--offline`, only a feed on this
+  computer. `INFOPANEL_UPDATE_FEED` replaces the address for development (an `https` URL, or `http` on this computer),
+  logged at start.
+- **What is offered:** the highest version above the engine's that its channel takes. The channel follows the
+  engine's own version, not GitHub's pre-release flag: a pre-release build (`2.0.0-beta.1`) takes pre-releases and
+  releases; a release build (`2.0.0`) only versions without a `-`. Drafts, tags that aren't SemVer 2 versions and 1.x's
+  versions are never offered. The release page is built from the tag
+  (`https://github.com/habibrehmansg/infopanel/releases/tag/{version}`), never taken from the list.
+- **The menu:** "Update Available: InfoPanel {version}…" while one is known (a version past 32 characters is shortened
+  in its middle on the line, never in the prompt); otherwise "Check for Updates…", which checks at once (at most once
+  every 10 s) and answers in an alert:
+  - "InfoPanel 2.0.1 is available", "You have InfoPanel 2.0.0. Download opens its release page.": **Download** (Return)
+    opens the release page, **Later** (Escape);
+  - "You're up to date", "InfoPanel 2.0.0 is the newest version.": **OK**;
+  - "Couldn't check for updates", "Check your connection, then try again.": **OK**.
+- **The log:** "InfoPanel {version} is available: {page}" once per version; a failure once a run as Information, then
+  at Debug; "Not checking for updates: {reason}" once when the item shows on an engine that doesn't check.
+
 ## Quit
 
 - No profile has unsaved changes: the engine stops at once (desktop windows close, sensors stop, `runtime.json` goes,
@@ -108,6 +146,7 @@ stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in star
 - **Right-click** it (or the menu key): the menu, built afresh each time, in Windows' sentence case (Windows menus stay
   light in dark mode):
   1. "InfoPanel · Running · 2.0.0", grey: the header and the status in one line (a Windows menu has no header);
+     under it **Update available: InfoPanel 2.0.1…** or **Check for updates…** (above, "Updates");
   2. — who is signed in, one line (a Windows menu line has no second line, nor an image here): "‹name› (‹email›)", the
      email alone when the holder has no name, or "Not signed in · Sign in…"; it opens the editor at its sign-in
      settings, as on macOS; none while the holder isn't known;
@@ -274,14 +313,21 @@ release build). A build from source carries none and behaves as before.
 ## Tests
 
 - `InfoPanel.Tests/Shell/`: the menu model (each state: signed in, not, unknown; no profiles, one, 20,
-  21; checks; desktop windows off; the lines' ids), Copy Engine Details' text (`EngineDetailsTests`) and the glyph;
+  21; checks; desktop windows off; the update line, its long version; the lines' ids), Copy Engine Details' text (`EngineDetailsTests`) and the glyph;
   `ShellService` on the engine host with a fake platform (`FakeShellPlatform`, which keeps what is copied), a fake
   desktop, the engine's recording folder opener and a recording browser launcher: when the icon comes and goes, Open
   Editor, Quit with and without unsaved profiles, the prompt's names, a system quit (`ShellServiceTests`); Show on
   Desktop's commit and save, the folders, More in the Editor and the details (`ShellActionTests`); the signed-in line
   from the service's answer on the engine host (`ShellSignedInTests`); when the engine asks, what it shows, the late
   answer, the 401, the failures and the bounds (`ServiceHolderTests`); the choice of what runs
-  (`DesktopHost.Choose`); the flag.
+  (`DesktopHost.Choose`); the flag. The update line on the engine host over a feed answered in memory: Check for
+  Updates…'s three answers, Download, Later, Update Available opening the release page, a development build with no
+  line (`ShellUpdateTests`).
+- `InfoPanel.Core.Tests/Updates/`: the list and the channel (`ReleaseFeedTests`: the channel table, drafts, 1.x, tags
+  that aren't SemVer 2, SemVer 2's order, the page from the tag, the 1 MiB bound) and the check (`UpdateCheckTests`,
+  over a fake handler or a loopback server, with a fake clock: the headers in memory and on the wire, no redirect, a
+  development build, `--offline`, 304 and the `ETag`, GitHub's limits, the hour after a failure, a day of wall-clock
+  time, a check asked for).
 - `InfoPanel.Tests/Hosting/`: the link the engine opens (`WebClientLinkTests`: the built-in origin, the link's choice,
   no browser at start, the logs), the launcher and the redirect files (`BrowserLauncherTests`: the file's mode,
   contents and removal, no token in any argument, Chrome and the fallback per OS), a second launch as a child process
@@ -293,7 +339,7 @@ release build). A build from source carries none and behaves as before.
 - `InfoPanel.Tests/Shell/Windows/` (any OS): the menu in Windows' words with its commands and default item, Show on
   desktop's submenu (its checks, none, 20 and more, a choice in it running the model's id), Start when
   I sign in (the Run value and Task Manager's switch, through a fake registry), a click, a double-click, a right click,
-  `TaskbarCreated`, the theme, Exit's dialog in Windows' words, prompts one at a time, the icon's removal
+  `TaskbarCreated`, the theme, Exit's dialog and the update lines and prompts in Windows' words, prompts one at a time, the icon's removal
   (`WinTrayTests`, through `FakeTrayNative`); the session's end, its hold over a scripted message queue (a second end
   dispatched inside it, one sent to it with a message queued behind, a hold that starts late, a queue that never
   empties) and a scale change (`WinTraySystemTests`); the glyph per

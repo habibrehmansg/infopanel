@@ -293,6 +293,50 @@ public sealed class ShellMenuTests
         Assert.False(ShellMenu.TryReadClickThroughItem(id, out _, out _));
     }
 
+    /// <summary>
+    /// The update line sits right under the version: "Update Available: InfoPanel {v}…" while a newer version is known,
+    /// else "Check for Updates…" when the engine checks; both clickable, before the separator.
+    /// </summary>
+    [Fact]
+    public void TheUpdateLine_SitsUnderTheVersion_UpdateAvailableWhileOneIsKnown_ElseCheckForUpdates()
+    {
+        var check = ShellMenu.Build(new ShellState("2.0.0-beta.1") { ChecksForUpdates = true }).Items;
+        var update = ShellMenu.Build(new ShellState("2.0.0-beta.1")
+        {
+            ChecksForUpdates = true,
+            Update = ("2.0.0-beta.2", "https://github.com/habibrehmansg/infopanel/releases/tag/2.0.0-beta.2"),
+        }).Items;
+
+        Assert.Equal((ShellMenu.CheckForUpdates, "Check for Updates…", ShellItemKind.Action), (check[2].Id, check[2].Label, check[2].Kind));
+        Assert.Equal((ShellMenu.UpdateAvailable, "Update Available: InfoPanel 2.0.0-beta.2…", ShellItemKind.Action), (update[2].Id, update[2].Label, update[2].Kind));
+        Assert.True(check[2].Enabled);
+        Assert.True(update[2].Enabled);
+        Assert.Equal(ShellItemKind.Separator, check[3].Kind);
+        Assert.Equal(ShellItemKind.Separator, update[3].Kind);
+        Assert.DoesNotContain(update, i => i.Id == ShellMenu.CheckForUpdates);
+    }
+
+    [Fact]
+    public void AnEngineThatDoesntCheck_ADevelopmentBuild_HasNoUpdateLine()
+    {
+        var items = ShellMenu.Build(new ShellState("2.0.0-dev")).Items;
+
+        Assert.DoesNotContain(items, i => i.Id is ShellMenu.CheckForUpdates or ShellMenu.UpdateAvailable);
+        Assert.Equal(ShellItemKind.Separator, items[2].Kind);
+    }
+
+    [Fact]
+    public void ALongVersion_IsShortenedInTheMiddle_OnTheUpdateLine()
+    {
+        var version = "2.0.0-" + string.Join(".", Enumerable.Repeat("rc", 19)) + ".x";
+        Assert.Equal(64, version.Length);
+
+        var line = ShellMenu.Build(new ShellState("2.0.0") { Update = (version, "https://example.test") }).Items[2];
+
+        Assert.Equal($"Update Available: InfoPanel {version[..15]}…{version[^16..]}…", line.Label);
+        Assert.Equal(ShellMenu.UpdateVersionLength, line.Label.Length - "Update Available: InfoPanel ".Length - 1);
+    }
+
     [Fact]
     public void TwoMenusBuiltFromTheSameState_AreEqual_ChildrenIncluded()
     {

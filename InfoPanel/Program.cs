@@ -563,6 +563,12 @@ try
         macShell.InstallDelegate();
     builder.Services.AddSingleton(desktop.Platform);
     builder.Services.AddSingleton(desktop.Shell);
+    // The update check behind the menu's update line (docs/2.0/desktop-shell.md, "Updates"): the engine's public releases
+    // on GitHub, never for a development build; with --offline only a feed on this computer (INFOPANEL_UPDATE_FEED).
+    var updateFeed = Environment.GetEnvironmentVariable(InfoPanel.Updates.UpdateCheck.FeedVariable);
+    builder.Services.AddSingleton(sp => new InfoPanel.Updates.UpdateCheck(ReadEndpoints.EngineVersion(),
+        string.IsNullOrEmpty(updateFeed) ? null : updateFeed, options.Offline, sp.GetRequiredService<TimeProvider>(),
+        engineLogger.ForContext<InfoPanel.Updates.UpdateCheck>()));
     builder.Services.AddHostedService<InfoPanel.Shell.ShellService>();
     builder.Services.AddSingleton<DisplayWindowManager>();
     builder.Services.AddSingleton<DisplayLister>();

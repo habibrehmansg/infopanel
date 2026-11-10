@@ -21,6 +21,7 @@ internal static class WinShellText
     /// </summary>
     private static readonly Dictionary<string, string> MenuLabels = new()
     {
+        [ShellMenu.CheckForUpdates] = "Check for updates…",
         [ShellMenu.OpenEditor] = "Open editor",
         [ShellMenu.EditFromAnotherComputer] = "Edit from another computer…",
         [ShellMenu.ShowOnDesktop] = "Show on desktop",
@@ -42,6 +43,9 @@ internal static class WinShellText
         ["Quit Without Saving"] = "Exit without saving",
     };
 
+    private const string UpdateAvailableModel = "Update Available:";
+    private const string UpdateAvailable = "Update available:";
+
     /// <summary>The icon's tooltip: "InfoPanel 2.0.0".</summary>
     public static string Tooltip(string version) => $"InfoPanel {version}";
 
@@ -50,10 +54,13 @@ internal static class WinShellText
 
     /// <summary>
     /// An item's label on Windows. Who is signed in is one line (a Win32 menu line has no second line): the name and the
-    /// email in brackets, "Ann Lee (ann@example.com)", or the email alone; signed out, "Not signed in · Sign in…".
+    /// email in brackets, "Ann Lee (ann@example.com)", or the email alone; signed out, "Not signed in · Sign in…". The
+    /// update line in sentence case: "Update available: InfoPanel 2.0.1…".
     /// </summary>
     public static string Label(ShellMenuItem item)
     {
+        if (item.Id == ShellMenu.UpdateAvailable && item.Label.StartsWith(UpdateAvailableModel, StringComparison.Ordinal))
+            return UpdateAvailable + item.Label[UpdateAvailableModel.Length..];
         if (item.Id == ShellMenu.SignedIn && item.Detail is { } detail)
             return detail == ShellMenu.SignIn ? $"{item.Label} · {SignIn}" : $"{item.Label} ({detail})";
         return MenuLabels.TryGetValue(item.Id, out var label) ? label : item.Label;

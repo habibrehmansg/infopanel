@@ -182,16 +182,46 @@ public sealed class WinTrayTests
         // The model's own lines (not a profile's name, nor who is signed in, above): only the ones already in sentence case
         // keep the model's words (the header and the status, made one line by the menu's lines).
         var same = new HashSet<string> { ShellMenu.Header, ShellMenu.Status };
-        var model = new[] { Full(profiles: 21), Full(profiles: 0), new ShellState("2.0.0") }
+        var model = new[]
+            {
+                Full(profiles: 21), Full(profiles: 0), new ShellState("2.0.0"), new ShellState("2.0.0") { ChecksForUpdates = true },
+                new ShellState("2.0.0") { Update = ("2.0.1", "https://example.test") },
+            }
             .SelectMany(s => ShellMenu.Build(s).Items)
             .SelectMany(i => new[] { i }.Concat(i.Children))
             .Where(i => i.Kind != ShellItemKind.Separator && i.Id != ShellMenu.SignedIn && !ShellMenu.TryReadDesktopItem(i.Id, out _, out _)
                 && !ShellMenu.TryReadClickThroughItem(i.Id, out _, out _))
             .ToList();
 
-        Assert.Equal(13, model.Select(i => i.Id).Distinct().Count());
+        Assert.Equal(15, model.Select(i => i.Id).Distinct().Count());
         Assert.All(model.Where(i => !same.Contains(i.Id)), i => Assert.NotEqual(i.Label, WinShellText.Label(i)));
         Assert.All(model.Where(i => same.Contains(i.Id)), i => Assert.Equal(i.Label, WinShellText.Label(i)));
+    }
+
+    [Fact]
+    public void TheUpdateLines_AreInSentenceCase_UnderTheStatus()
+    {
+        var check = WinTrayMenu.Lines(ShellMenu.Build(new ShellState("2.0.0") { ChecksForUpdates = true }), startAtSignIn: false);
+        var update = WinTrayMenu.Lines(ShellMenu.Build(new ShellState("2.0.0") { Update = ("2.0.1", "https://example.test") }), startAtSignIn: false);
+
+        Assert.Equal(["InfoPanel · Running · 2.0.0", "Check for updates…", ""], Labels(check).Take(3));
+        Assert.Equal(["InfoPanel · Running · 2.0.0", "Update available: InfoPanel 2.0.1…", ""], Labels(update).Take(3));
+        Assert.Equal(ShellMenu.UpdateAvailable, update[1].Id);
+        Assert.NotEqual(0u, update[1].Command);
+    }
+
+    [Fact]
+    public void TheUpdatePrompts_KeepTheirWords_WithOKOrLaterAsCancel()
+    {
+        var available = WinShellText.Prompt(ShellService.UpdatePrompt("2.0.1", "2.0.0"));
+        var upToDate = WinShellText.Prompt(ShellService.UpToDatePrompt("2.0.0"));
+        var failed = WinShellText.Prompt(ShellService.CheckFailedPrompt());
+
+        Assert.Equal(("InfoPanel 2.0.1 is available", 0, 1), (available.Title, available.DefaultAnswer, available.CancelAnswer));
+        Assert.Equal([(0, "Download"), (1, "Later")], available.Buttons.Select(b => (b.Answer, b.Label)));
+        Assert.Equal(("You're up to date", "InfoPanel 2.0.0 is the newest version."), (upToDate.Title, upToDate.Text));
+        Assert.Equal(("Couldn't check for updates", "Check your connection, then try again."), (failed.Title, failed.Text));
+        Assert.Equal([(0, "OK")], failed.Buttons.Select(b => (b.Answer, b.Label)));
     }
 
     [Fact]

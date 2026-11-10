@@ -9,6 +9,7 @@ using InfoPanel.Persistence;
 using InfoPanel.Service;
 using InfoPanel.Settings;
 using InfoPanel.Spec;
+using InfoPanel.Updates;
 
 namespace InfoPanel.Shell;
 
@@ -16,8 +17,12 @@ namespace InfoPanel.Shell;
 /// The menu-bar item's engine side (docs/2.0/desktop-shell.md): shows the icon once the server listens, so Open Editor
 /// always has a port, and removes it when the engine stops; builds the menu from the engine's state each time it opens
 /// (<see cref="ShellMenu.Build"/>) and runs what the user chooses in it. While the icon can show, it runs
-/// <see cref="ServiceHolder"/>, which asks the configured service who holds the credential, for the signed-in line.
+/// <see cref="ServiceHolder"/>, which asks the configured service who holds the credential, for the signed-in line, and
+/// <see cref="UpdateCheck"/>, for the update line.
 /// <list type="bullet">
+/// <item><b>Update Available: InfoPanel {version}…</b> opens the new version's release page in the browser; <b>Check for
+/// Updates…</b> checks now and answers in a prompt: the new version (Download, the default, opens its page; Later), up to
+/// date, or couldn't check.</item>
 /// <item><b>Open Editor</b> (and Show on Desktop's <b>More in the Editor…</b>) opens the editor through <see cref="EditorOpener"/>;
 /// <b>Edit from Another Computer…</b> and the row of who is signed in open it at its sign-in settings, where another
 /// computer is set up to edit this one (<see cref="EditorRoutes.AccountSettings"/>).</item>
@@ -50,6 +55,8 @@ public sealed class ShellService(
     DataPaths paths,
     IFolderOpener folders,
     DisplayWindowManager windows,
+    UpdateCheck updates,
+    BrowserLauncher browser,
     ILogger<ShellService> logger,
     IConfiguration? configuration = null,
     IHostEnvironment? environment = null) : IHostedService
@@ -111,6 +118,8 @@ public sealed class ShellService(
 
             if (environment?.IsEnvironment(TestEnvironment) == true && bool.TryParse(configuration?[TestPromptSetting], out var ask) && ask)
                 _ = AskTestPromptAsync();
+            // The update check, while the icon shows: its first check 30 s from now.
+            updates.Start();
         });
         _stopping = lifetime.ApplicationStopping.Register(platform.Remove);
         // Who holds the service credential, for the signed-in line: asked only while there is a menu to show it, and again
@@ -128,6 +137,7 @@ public sealed class ShellService(
         platform.ReopenRequested -= OnReopenRequested;
         NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
         await holder.StopAsync(cancellationToken).ConfigureAwait(false);
+        await updates.StopAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void OnNetworkChanged(object? sender, EventArgs e) => holder.NetworkChanged();
@@ -176,6 +186,8 @@ public sealed class ShellService(
             SignedInEmail = signedIn.Email,
             Profiles = profiles,
             DesktopWindows = desktop,
+            Update = updates.Latest is { } update ? (update.Version, update.Url) : null,
+            ChecksForUpdates = updates.Enabled,
         };
     }
 
@@ -243,6 +255,13 @@ public sealed class ShellService(
                         break;
                     case ShellMenu.Quit:
                         await QuitAsync().ConfigureAwait(false);
+                        break;
+                    case ShellMenu.UpdateAvailable:
+                        if (updates.Latest is { } update)
+                            OpenReleasePage(update.Url);
+                        break;
+                    case ShellMenu.CheckForUpdates:
+                        await CheckForUpdatesAsync().ConfigureAwait(false);
                         break;
                     default:
                         if (ShellMenu.TryReadDesktopItem(id, out var profile, out var show))
@@ -362,6 +381,51 @@ public sealed class ShellService(
                 break;
         }
     }
+
+    /// <summary>
+    /// Check for Updates…: checks now, then says what it found: a newer version (Download opens its release page), up to
+    /// date, or couldn't check. Off (a development build), it says nothing.
+    /// </summary>
+    private async Task CheckForUpdatesAsync()
+    {
+        var result = await updates.CheckNowAsync(lifetime.ApplicationStopping).ConfigureAwait(false);
+        logger.LogInformation("Check for Updates: {Result}", result);
+        var latest = updates.Latest;
+        var prompt = result switch
+        {
+            UpdateCheckResult.Available when latest is not null => UpdatePrompt(latest.Version, updates.Version),
+            UpdateCheckResult.UpToDate => UpToDatePrompt(updates.Version),
+            UpdateCheckResult.Failed => CheckFailedPrompt(),
+            _ => null,
+        };
+        if (prompt is null)
+            return;
+        if (await platform.ConfirmAsync(prompt).ConfigureAwait(false) == 0 && result == UpdateCheckResult.Available && latest is not null)
+            OpenReleasePage(latest.Url);
+    }
+
+    /// <summary>A release page, in the browser (the address built from the tag, never taken from the list).</summary>
+    private void OpenReleasePage(string url)
+    {
+        logger.LogInformation("Opening the release page of InfoPanel {Version}", updates.Latest?.Version);
+        browser.Open(new EditorLink(url, WebClient: false));
+    }
+
+    /// <summary>"InfoPanel {version} is available": Download (the default), Later.</summary>
+    public static ShellPrompt UpdatePrompt(string version, string current) => new(
+        $"InfoPanel {version} is available",
+        $"You have InfoPanel {current}. Download opens its release page.",
+        ["Download", "Later"],
+        DefaultButton: 0,
+        CancelButton: 1);
+
+    /// <summary>"You're up to date": OK.</summary>
+    public static ShellPrompt UpToDatePrompt(string current) =>
+        new("You're up to date", $"InfoPanel {current} is the newest version.", ["OK"], DefaultButton: 0, CancelButton: 0);
+
+    /// <summary>"Couldn't check for updates": OK.</summary>
+    public static ShellPrompt CheckFailedPrompt() =>
+        new("Couldn't check for updates", "Check your connection, then try again.", ["OK"], DefaultButton: 0, CancelButton: 0);
 
     /// <summary>"Quit InfoPanel?", naming up to <see cref="NamedProfiles"/> unsaved profiles, then how many more.</summary>
     public static ShellPrompt QuitPrompt(IReadOnlyList<string> unsaved)

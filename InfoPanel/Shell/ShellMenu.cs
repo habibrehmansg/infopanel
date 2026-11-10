@@ -65,10 +65,16 @@ public sealed record ShellProfile(string Id, string Name, bool Shown, bool Click
 /// name (else email), as the service last gave it for that same credential, ready to show (<c>ServiceHolder</c>), or null;
 /// <see cref="SignedInEmail"/>: the holder's email shown beneath that name, or null (no name, or none known);
 /// <see cref="Profiles"/>: the profiles that can be opened, in the library's order; <see cref="DesktopWindows"/>: this
-/// engine shows desktop windows (not <c>--no-windows</c>, and a platform that has them).
+/// engine shows desktop windows (not <c>--no-windows</c>, and a platform that has them); <see cref="Update"/>: a newer
+/// version the update check found, and its release page; <see cref="ChecksForUpdates"/>: this engine checks for updates
+/// (not a development build).
 /// </summary>
 public sealed record ShellState(string Version)
 {
+    public (string Version, string Url)? Update { get; init; }
+
+    public bool ChecksForUpdates { get; init; }
+
     public bool HasCredential { get; init; }
 
     public string? SignedInAs { get; init; }
@@ -89,6 +95,8 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
 {
     public const string Header = "header";
     public const string Status = "status";
+    public const string UpdateAvailable = "update-available";
+    public const string CheckForUpdates = "check-for-updates";
     public const string SignedIn = "signed-in";
     public const string OpenEditor = "open-editor";
     public const string EditFromAnotherComputer = "edit-from-another-computer";
@@ -102,6 +110,9 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
     public const string CopyEngineDetails = "copy-engine-details";
     public const string Quit = "quit";
 
+    /// <summary>The most characters of a version the update line shows; past it, its first and last ones around "…".</summary>
+    public const int UpdateVersionLength = 32;
+
     /// <summary>The most profiles Show on Desktop lists; past it, "More in the Editor…" opens the editor.</summary>
     public const int DesktopProfiles = 20;
 
@@ -112,7 +123,9 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
     public const string SignIn = "Sign In…";
 
     /// <summary>
-    /// The header "InfoPanel" and "Running · {version}"; who is signed in, one line that opens the editor at its sign-in
+    /// The header "InfoPanel" and "Running · {version}"; beneath it "Update Available: InfoPanel {version}…" while the
+    /// update check knows a newer version (its version shortened in the middle past <see cref="UpdateVersionLength"/>
+    /// characters), else "Check for Updates…" when this engine checks for updates; who is signed in, one line that opens the editor at its sign-in
     /// settings: the name with the email beneath and the name's initial while a credential is held and its holder known
     /// (the email alone without a name), "Not signed in" with "Sign In…" beneath without one or when the service refused it,
     /// none while the holder isn't known; Open Editor; Edit from Another Computer… (the editor at the same sign-in settings,
@@ -125,8 +138,12 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
         {
             new(Header, "InfoPanel", ShellItemKind.Header),
             new(Status, $"Running · {state.Version}", ShellItemKind.Status),
-            Separator(),
         };
+        if (state.Update is { } update)
+            items.Add(new(UpdateAvailable, $"Update Available: InfoPanel {MiddleShortened(update.Version, UpdateVersionLength)}…"));
+        else if (state.ChecksForUpdates)
+            items.Add(new(CheckForUpdates, "Check for Updates…"));
+        items.Add(Separator());
         if (!state.HasCredential)
             items.Add(new(SignedIn, "Not signed in") { Detail = SignIn, DetailIsAction = true });
         else if (state.SignedInAs is { } name)
@@ -210,6 +227,15 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
         }
 
         return null;
+    }
+
+    /// <summary><paramref name="text"/>, past <paramref name="length"/> characters its first ones, "…" and its last ones.</summary>
+    internal static string MiddleShortened(string text, int length)
+    {
+        if (text.Length <= length)
+            return text;
+        var head = (length - 1) / 2;
+        return text[..head] + "…" + text[^(length - 1 - head)..];
     }
 
     public bool Equals(ShellMenu? other) => other is not null && Items.SequenceEqual(other.Items);
