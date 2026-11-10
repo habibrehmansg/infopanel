@@ -44,6 +44,7 @@ namespace InfoPanel.Services
                     case TuringPanelModel.REV_5INCH_USB:
                     case TuringPanelModel.REV_16INCH_USB:
                     case TuringPanelModel.REV_21INCH_USB:
+                    case TuringPanelModel.REV_123INCH_USB:
                         deviceTask = new TuringPanelUsbDeviceTask(device);
                         break;
                     case TuringPanelModel.TURING_3_5:
@@ -177,6 +178,11 @@ namespace InfoPanel.Services
                     }
 
                     await Task.Delay(1000, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    // Avoid logging an error when cancellation is requested.
+                    break;
                 }
                 catch (Exception ex)
                 {

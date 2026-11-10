@@ -21,6 +21,7 @@
         REV_5INCH_USB,
         REV_16INCH_USB,
         REV_21INCH_USB,
+        REV_123INCH_USB,
 
     }
 }
