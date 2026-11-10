@@ -35,9 +35,21 @@ public static class ProfileNames
         if (!found.Found)
             throw new ToolFailure("notFound", $"There's no profile {given} (notFound). list_profiles names them.");
         if (found.Problem is { } problem)
-            throw new ToolFailure(problem.Code, $"{entry.Name ?? entry.Id} can't be opened: {problem.Code} ({problem.Problem.Message}).");
+            throw new ToolFailure(problem.Code, $"{entry.Name ?? entry.Id} can't be opened: {problem.Code} ({Told(problem.Problem)}).");
         return found.Document!;
     }
+
+    /// <summary>
+    /// A profile's problem as a tool's answer gives it: its message, except where that message is the stored file's own
+    /// error, which names the file's local path (io: it couldn't be read; limit.documentBytes: over the read cap); those
+    /// are said in words. The profile's id says which file it is; the engine's own API keeps the message.
+    /// </summary>
+    internal static string Told(ValidationErrorBody problem) => problem.Code switch
+    {
+        "io" => "its stored document couldn't be read",
+        "limit.documentBytes" => "its stored document is larger than InfoPanel opens",
+        _ => problem.Message,
+    };
 }
 
 /// <summary><c>list_profiles</c>: every profile with its size, status and whether it has unsaved changes.</summary>
@@ -62,7 +74,7 @@ public sealed class ListProfilesTool(Workspace workspace) : McpTool
             if (entry.Dirty is { } dirty)
                 profile["unsaved"] = dirty;
             if (entry.Problem is { } problem)
-                profile["problem"] = $"{problem.Code}: {problem.Message}";
+                profile["problem"] = $"{problem.Code}: {ProfileNames.Told(problem)}";
             profiles.Add(profile);
         }
 

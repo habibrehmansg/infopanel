@@ -234,8 +234,12 @@ internal sealed class VideoStream : IDisposable
         if (backends.NoneLeft)
             _fallback = Unavailable;
         // The engine's stop ends it and waits for its session's teardown; a stream begun as the engine stops ends at once.
+        // Its completion exists before the stop can see it (tracked), and its loop starts only after, so the loop's
+        // Untrack never comes before the Track.
+        var loop = new Task<Task>(RunAsync);
+        Completion = loop.Unwrap();
         var tracked = backends.Track(this);
-        Completion = Task.Run(RunAsync);
+        loop.Start(TaskScheduler.Default);
         if (!tracked)
             Dispose();
     }

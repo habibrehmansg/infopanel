@@ -147,14 +147,21 @@ public sealed class McpToolHost : IRelayToolHost
         {
             (answer, outcome) = Failed(ToolResult.Error(failure), context.MaxChars);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            (answer, outcome) = Failed(ToolResult.Error(new ToolFailure("io", $"InfoPanel couldn't read its data folder (io: {ex.Message}). Try again.")), context.MaxChars);
+            // Sent elsewhere: what failed, in words; the exception's text (which can name a local path) only in the log.
+            _logger.LogWarning(ex, "AI app read from elsewhere on {Profile} couldn't read the data folder", profile);
+            (answer, outcome) = Failed(ToolResult.Error(new ToolFailure("io", $"InfoPanel couldn't read its data folder (io: {DataFolderFailure(ex)}). Try again.")), context.MaxChars);
         }
 
         _logger.LogInformation("AI app read from elsewhere on {Profile}: {Outcome} in {Milliseconds} ms", profile, outcome, watch.ElapsedMilliseconds);
         return Task.FromResult(answer);
     }
+
+    /// <summary>What failed in the data folder, in words that name no file: for an answer sent elsewhere.</summary>
+    internal static string DataFolderFailure(Exception ex) => ex is UnauthorizedAccessException
+        ? "access to a file was denied"
+        : "a file couldn't be read or written, or is in use";
 
     /// <summary>A read's error result, held to <paramref name="maxChars"/> (<see cref="Fit"/>) as a call's is, and its outcome.</summary>
     private static (RelayToolAnswer, string) Failed(ToolResult result, int? maxChars)
@@ -220,9 +227,15 @@ public sealed class McpToolHost : IRelayToolHost
                 result = ToolResult.Error(new ToolFailure(Cancelled,
                     $"The change was stopped before it was made (cancelled: {cut.Reason}): nothing was changed."));
             }
-            catch (IOException ex)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                result = ToolResult.Error(new ToolFailure("io", $"InfoPanel couldn't read or write its data folder (io: {ex.Message}). Try again."));
+                // Access denied (Windows' ERROR_ACCESS_DENIED, antivirus or a sync client holding a file) is no IOException.
+                // A call from elsewhere is told what failed in words; the exception's text (which can name a local path)
+                // goes only to the log.
+                if (call.FromElsewhere)
+                    _logger.LogWarning(ex, "AI app tool {Tool} from elsewhere couldn't read or write the data folder", tool);
+                var what = call.FromElsewhere ? DataFolderFailure(ex) : ex.Message;
+                result = ToolResult.Error(new ToolFailure("io", $"InfoPanel couldn't read or write its data folder (io: {what}). Try again."));
             }
         }
 

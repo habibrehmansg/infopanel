@@ -470,6 +470,22 @@ public static class RelayFrames
         return frame;
     }
 
+    /// <summary>
+    /// The error result of a call or read (<paramref name="tool"/> <c>read</c>) whose tool host failed in a way it didn't
+    /// expect: what happened in words, nothing of the exception's text.
+    /// </summary>
+    public static JsonObject Failed(string tool) => new()
+    {
+        ["content"] = new JsonArray(new JsonObject
+        {
+            ["type"] = "text",
+            ["text"] = tool == "read"
+                ? "InfoPanel couldn't finish the read (internal): something went wrong on this computer. Try again."
+                : $"InfoPanel couldn't finish {tool} (internal): something went wrong on this computer, and it may or may not have changed something. Read the profile before trying again.",
+        }),
+        ["isError"] = true,
+    };
+
     /// <summary><c>{"type":"stale","id":…}</c>: the design's base no longer holds in the same document; nothing was changed.</summary>
     public static JsonObject Stale(string id) => new() { ["type"] = "stale", ["id"] = id };
 

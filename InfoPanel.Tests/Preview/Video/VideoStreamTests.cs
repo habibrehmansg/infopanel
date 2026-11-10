@@ -1876,4 +1876,66 @@ public class VideoStreamTests
         AssertCutOver(h);
         Assert.Equal(0, h.Backends.Quarantines(h.Hardware));
     }
+
+    /// <summary>A fake backend that counts the engine stop's reaps (where an ffmpeg backend kills and collects its processes).</summary>
+    private sealed class ReapCounting(FakeH264Backend inner) : IH264Backend
+    {
+        private int _reaps;
+
+        public int Reaps => Volatile.Read(ref _reaps);
+
+        public string Name => inner.Name;
+
+        public H264Kind Kind => inner.Kind;
+
+        public H264Probe Probe() => inner.Probe();
+
+        public IH264Session Start(H264Config config, Action<H264Outcome> output) => inner.Start(config, output);
+
+        public Task ReapAsync(TimeSpan bound, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _reaps);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// A stream started as the engine stops, tracked before its loop's task is set: the stop still ends it and then reaps
+    /// what the backends started, rather than failing on the stream's missing task before it gets there.
+    /// </summary>
+    [Fact]
+    public async Task AStreamStartedAsTheEngineStops_DoesntKeepTheStopFromReapingTheBackends()
+    {
+        var backend = new ReapCounting(new FakeH264Backend("Hardware"));
+        var backends = new H264Backends([backend], NullLogger.Instance);
+        using var tracked = new ManualResetEventSlim();
+        using var go = new ManualResetEventSlim();
+        backends.Tracked = _ =>
+        {
+            tracked.Set();
+            go.Wait(TestContext.Current.CancellationToken);
+        };
+        VideoStream? stream = null;
+        var starting = new Thread(() => stream = new VideoStream(backends, 30, () => { }, () => { }, new SkipCounter(), NullLogger.Instance, TimeProvider.System))
+        {
+            IsBackground = true,
+        };
+        starting.Start();
+        try
+        {
+            tracked.Wait(TestContext.Current.CancellationToken);
+            // The engine stops while the stream is tracked and its constructor hasn't gone on yet.
+            var stop = backends.StopAsync(TestContext.Current.CancellationToken);
+            go.Set();
+            starting.Join();
+            await stop;
+            Assert.Equal(1, backend.Reaps);
+        }
+        finally
+        {
+            go.Set();
+            starting.Join();
+            stream?.Dispose();
+        }
+    }
 }

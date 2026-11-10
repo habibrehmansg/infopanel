@@ -383,6 +383,31 @@ public sealed class RelayConnectionTests
         Assert.Equal(0, off.Relay.Requests + none.Relay.Requests);
     }
 
+    /// <summary>
+    /// A tool host that fails in a way it didn't expect (here access denied, or an exception the connection's own
+    /// failures share a type with) still answers the call: an error result, saying nothing of the exception's text
+    /// (which can name a local path), never silence that leaves the AI app to its own timeout.
+    /// </summary>
+    [Theory]
+    [InlineData("access denied")]
+    [InlineData("invalid operation")]
+    public async Task ACallWhoseToolHostThrows_IsAnsweredWithAnErrorResult_NamingNoPath(string failure)
+    {
+        const string path = "/Users/someone/Library/Application Support/InfoPanel/blobs/upload.tmp";
+        Exception thrown = failure == "access denied"
+            ? new UnauthorizedAccessException($"Access to the path '{path}' is denied.")
+            : new InvalidOperationException($"Something went wrong with '{path}'.");
+        var tools = new FakeToolHost { Throw = thrown };
+        await using var rig = await StartAsync(tools);
+        var peer = await rig.ConnectAsync();
+        await peer.SendAsync(rig.Call("c1", "add_asset"));
+        var result = await peer.ExpectAsync("result", Ct);
+        Assert.Equal("c1", result["id"]!.GetValue<string>());
+        Assert.True(result["result"]!["isError"]!.GetValue<bool>(), result.ToJsonString());
+        var text = result["result"]!["content"]![0]!["text"]!.GetValue<string>();
+        Assert.DoesNotContain("/Users/someone", text);
+    }
+
     [Fact]
     public async Task AtMost8CallsRunAtOnce_ANinthAnswersBusy()
     {

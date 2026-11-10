@@ -145,9 +145,14 @@ internal sealed class H264Backends
             if (_stopped)
                 return false;
             _streams.Add(stream);
-            return true;
         }
+
+        Tracked?.Invoke(stream);
+        return true;
     }
+
+    /// <summary>Tests: called on the stream's constructing thread once it is tracked, outside the lock.</summary>
+    internal Action<VideoStream>? Tracked;
 
     internal void Untrack(VideoStream stream)
     {

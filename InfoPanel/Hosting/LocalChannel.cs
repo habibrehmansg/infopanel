@@ -60,8 +60,11 @@ public static class LocalChannel
 {
     public const int Version = 2;
 
-    /// <summary>The longest line either side sends (a preview picture, base64, fits).</summary>
-    public const int MaxLineBytes = 32 * 1024 * 1024;
+    /// <summary>
+    /// The longest line either side sends after the hello: a launch's <c>{"id","op":"open-editor"}</c> and its answers
+    /// are under 100 bytes, so 4 KiB holds them with room, and 8 connections can't make the engine buffer more than 32 KiB.
+    /// </summary>
+    public const int MaxLineBytes = 4 * 1024;
 
     public const int MaxConnections = 8;
     public const int MaxHelloBytes = 1024;

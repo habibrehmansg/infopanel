@@ -9,6 +9,7 @@ using InfoPanel.Mcp.Tools;
 using InfoPanel.Security;
 using InfoPanel.Service;
 using InfoPanel.Settings;
+using InfoPanel.Spec;
 using InfoPanel.Tests.Mcp;
 using Microsoft.Extensions.DependencyInjection;
 using SkiaSharp;
@@ -170,6 +171,128 @@ public sealed class RelayToolRulesTests
     }
 
     public static TheoryData<string> EditToolNames() => [.. EditCalls.Keys];
+
+    /// <summary>
+    /// A write the data folder refuses (access denied, Windows' <c>ERROR_ACCESS_DENIED</c>, as antivirus or a sync client
+    /// holding a file gives; or a sharing violation, an <see cref="IOException"/>; thrown here at the write's step, where
+    /// the blob or the new profile is written) is answered as an <c>io</c> error, never left unanswered, and the answer
+    /// sent elsewhere names no local path (the exception's text does).
+    /// </summary>
+    [Theory]
+    [InlineData("add_asset", "denied")]
+    [InlineData("create_profile", "denied")]
+    [InlineData("add_asset", "sharing")]
+    [InlineData("create_profile", "sharing")]
+    public async Task AnEditTool_FromElsewhere_WhoseWriteFails_AnswersAnIoError_NamingNoPath(string tool, string failure)
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        var before = engine.Written();
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+        var denied = Path.Combine(factory.DataDir, "blobs", "upload.tmp");
+        engine.Host.StepHook = step =>
+        {
+            if (step == "write")
+            {
+                throw failure == "denied"
+                    ? new UnauthorizedAccessException($"Access to the path '{denied}' is denied.")
+                    : new IOException($"The process cannot access the file '{denied}' because it is being used by another process.");
+            }
+        };
+
+        await peer.SendAsync(rig.Call("edit", tool, EditCalls[tool]()));
+        var result = await peer.ExpectAsync("result", Ct);
+        Assert.True(result["result"]!["isError"]!.GetValue<bool>(), result.ToJsonString());
+        var text = result["result"]!["content"]![0]!["text"]!.GetValue<string>();
+        Assert.Contains("(io", text);
+        Assert.DoesNotContain(factory.DataDir, text);
+        Assert.Equal(before, engine.Written());
+    }
+
+    /// <summary>The id of the profile <see cref="SeedUnreadable"/> stores.</summary>
+    internal const string Unreadable = "0f000000-0000-4000-8000-00000000000f";
+
+    /// <summary>
+    /// Stores, before the engine starts, a profile <see cref="Unreadable"/> whose document can't be read, with the
+    /// problem's code: <c>limit.documentBytes</c> (one byte over the read cap) or, off Windows, <c>io</c> (no access to the
+    /// file). Either problem's own text names the file's path. Disposing gives the file its access back.
+    /// </summary>
+    internal static IDisposable SeedUnreadable(EngineFactory factory, string code)
+    {
+        var folder = Path.Combine(factory.DataDir, "profiles", Unreadable);
+        Directory.CreateDirectory(folder);
+        var file = Path.Combine(folder, "document.json");
+        if (code == "limit.documentBytes")
+        {
+            File.WriteAllBytes(file, new byte[DocumentStore.ReadCap(SpecLimits.Default) + 1]);
+            return new Restore(null);
+        }
+
+        if (OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("io is seeded by a file mode, off Windows only.");
+        File.WriteAllText(file, "{}");
+        File.SetUnixFileMode(file, UnixFileMode.None);
+        return new Restore(file);
+    }
+
+    private sealed class Restore(string? file) : IDisposable
+    {
+        public void Dispose()
+        {
+            if (file != null && !OperatingSystem.IsWindows() && File.Exists(file))
+                File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    /// <summary>The codes <see cref="SeedUnreadable"/> can store on this system.</summary>
+    internal static IEnumerable<string> UnreadableCodes() =>
+        OperatingSystem.IsWindows() ? ["limit.documentBytes"] : ["limit.documentBytes", "io"];
+
+    public static TheoryData<string, string> ToolsAndUnreadableCodes()
+    {
+        var data = new TheoryData<string, string>();
+        foreach (var tool in new[] { "list_profiles", "get_profile" })
+        {
+            foreach (var code in UnreadableCodes())
+                data.Add(tool, code);
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    /// A profile whose stored document can't be read is named to an AI app by its id and its problem's code, with the
+    /// problem in words: the stored problem's own text names the file's local path, which no tool answer carries.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ToolsAndUnreadableCodes))]
+    public async Task AProfileThatCantBeRead_IsNamedElsewhere_WithoutItsPath(string tool, string code)
+    {
+        using var factory = new EngineFactory();
+        using var seed = SeedUnreadable(factory, code);
+        var engine = new Engine(factory);
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        var arguments = tool == "get_profile" ? new JsonObject { ["profile"] = Unreadable } : null;
+        await peer.SendAsync(rig.Call("u", tool, arguments));
+        var result = (await peer.ExpectAsync("result", Ct))["result"]!;
+        var text = result["content"]![0]!["text"]!.GetValue<string>();
+        if (tool == "list_profiles")
+        {
+            Assert.False(result["isError"]!.GetValue<bool>(), text);
+            Assert.Contains(Unreadable, text);
+            Assert.Contains(code, text);
+        }
+        else
+        {
+            Assert.True(result["isError"]!.GetValue<bool>(), text);
+            Assert.Contains("can't be opened: unreadable", text);
+        }
+
+        Assert.DoesNotContain(factory.DataDir, text);
+    }
 
     [Fact]
     public async Task AddAsset_GivenData_FromElsewhere_NotCutOff_Writes()

@@ -81,6 +81,27 @@ public sealed class RelayReadTests
         Assert.Contains($"({code})", result["content"]![0]!["text"]!.GetValue<string>());
     }
 
+    public static TheoryData<string> UnreadableCodes() => [.. RelayToolRulesTests.UnreadableCodes()];
+
+    /// <summary>A read of a profile whose stored document can't be read is an error result that names no local path.</summary>
+    [Theory]
+    [MemberData(nameof(UnreadableCodes))]
+    public async Task AProfileThatCantBeRead_IsAnErrorResult_NamingNoPath(string code)
+    {
+        using var factory = new EngineFactory();
+        using var seed = RelayToolRulesTests.SeedUnreadable(factory, code);
+        var engine = new Engine(factory);
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        await peer.SendAsync(Read(rig, "r", RelayToolRulesTests.Unreadable, "a"));
+        var result = (await peer.ExpectAsync("result", Ct))["result"]!;
+        var text = result["content"]![0]!["text"]!.GetValue<string>();
+        Assert.True(result["isError"]!.GetValue<bool>(), text);
+        Assert.Contains("can't be opened: unreadable", text);
+        Assert.DoesNotContain(factory.DataDir, text);
+    }
+
     [Fact]
     public async Task TwoItemsOfTheName_AreAmbiguous_AnErrorResult()
     {

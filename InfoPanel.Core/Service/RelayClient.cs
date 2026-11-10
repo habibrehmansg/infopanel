@@ -972,12 +972,24 @@ public sealed class RelayClient : IAsyncDisposable
                     BasedOn = (call.Frame as RelayFrame.Call)?.BasedOn,
                     BasedOnList = (call.Frame as RelayFrame.Call)?.BasedOnList,
                 };
-                var answer = call.Frame switch
+                RelayToolAnswer answer;
+                try
                 {
-                    RelayFrame.ReadItem read => await _client._tools.ReadAsync(read.Profile, read.Item, read.Detail, context, _client._stop.Token).ConfigureAwait(false),
-                    RelayFrame.Call tool => await _client._tools.CallAsync(tool.Tool, tool.Arguments, context, _client._stop.Token).ConfigureAwait(false),
-                    _ => throw new InvalidOperationException("Only a call or a read is admitted."),
-                };
+                    answer = call.Frame switch
+                    {
+                        RelayFrame.ReadItem read => await _client._tools.ReadAsync(read.Profile, read.Item, read.Detail, context, _client._stop.Token).ConfigureAwait(false),
+                        RelayFrame.Call tool => await _client._tools.CallAsync(tool.Tool, tool.Arguments, context, _client._stop.Token).ConfigureAwait(false),
+                        _ => throw new InvalidOperationException("Only a call or a read is admitted."),
+                    };
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !_client._stop.IsCancellationRequested)
+                {
+                    // A tool host that failed in a way it didn't expect still answers, as an error result: never silence,
+                    // which leaves the AI app to its own timeout. The exception (its text can name a local path) is only
+                    // logged here; the connection's own failures, below, come from sending.
+                    logger.Error(ex, "AI app tool {Tool} from elsewhere failed", call.Tool);
+                    answer = new RelayToolAnswer(RelayFrames.Failed(call.Tool), Cancelled: false);
+                }
                 if (answer.Cancelled)
                 {
                     await SendAsync(RelayFrames.Cancelled(call.Id)).ConfigureAwait(false);

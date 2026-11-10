@@ -245,6 +245,39 @@ public sealed class LocalChannelTests : IDisposable
     }
 
     /// <summary>
+    /// After the hello the channel's one request, <c>{"id","op":"open-editor"}</c>, is under 100 bytes: with the default
+    /// limits a 64 KiB line closes the connection rather than being buffered and answered (8 connections may each send one).
+    /// </summary>
+    [Fact]
+    public async Task WithTheDefaultLimits_ALineOfAFewKiBAfterTheHello_ClosesTheConnection()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        var editor = new FakeEditor();
+        await using var server = Start(Data("a"), editor);
+        using var socket = await RawConnect(server);
+        await using var stream = new NetworkStream(socket);
+        await stream.WriteAsync(Encoding.UTF8.GetBytes("""{"channel":2,"client":"launch"}""" + "\n"), Ct);
+        var reader = new LineReader(stream, 1 << 20);
+        Assert.NotNull(await reader.ReadLineAsync(Ct)); // hello
+
+        var big = """{"id":1,"op":"open-editor","pad":""" + "\"" + new string('x', 64 * 1024) + "\"}\n";
+        try
+        {
+            await stream.WriteAsync(Encoding.UTF8.GetBytes(big), Ct);
+        }
+        catch (IOException)
+        {
+            // The engine may close before it reads everything.
+        }
+
+        var answer = await ReadOrEnd(reader);
+        Assert.True(answer == null, "a 64 KiB line was answered: " + (answer == null ? "" : Encoding.UTF8.GetString(answer)));
+        Assert.Equal(0, editor.Opened);
+    }
+
+    /// <summary>
     /// A launch's request within the cap whose answer is over it (the error echoes the op) gets a short error instead, which
     /// echoes nothing large, and the connection goes on: a line over the cap would make the client take the engine for gone.
     /// </summary>

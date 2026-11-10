@@ -288,7 +288,7 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
             var name = state.Document.Profile.Name;
             Step("committed");
             var changed = result.Rev != state.Generation.Rev;
-            return new ToolChange(document, name, result, changed, changed ? Save(document, name, result.Rev, wasClean) : "");
+            return new ToolChange(document, name, result, changed, changed ? Save(document, name, result.Rev, wasClean, call.FromElsewhere) : "");
         }
     }
 
@@ -320,7 +320,7 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
     }
 
     /// <summary>The save after a change: only when the profile was clean as the commit applied, and only at its revision.</summary>
-    private static string Save(ProfileDocument document, string name, long rev, bool wasClean)
+    private static string Save(ProfileDocument document, string name, long rev, bool wasClean, bool fromElsewhere)
     {
         if (!wasClean)
             return $"Not saved: {name} has unsaved changes from the editor; save there.";
@@ -338,7 +338,9 @@ public sealed partial class ProfileChanges(Workspace workspace, Func<Action<stri
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // The change applied: never an error, which would invite a retry and a second copy (Codex p2 #2).
-            return $"Changed, but not saved: saving failed ({ex.Message}). Save it in the editor.";
+            // Sent elsewhere, what failed in words: the exception's text can name a local path.
+            var what = fromElsewhere ? McpToolHost.DataFolderFailure(ex) : ex.Message;
+            return $"Changed, but not saved: saving failed ({what}). Save it in the editor.";
         }
     }
 

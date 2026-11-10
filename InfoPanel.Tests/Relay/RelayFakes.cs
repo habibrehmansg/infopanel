@@ -540,12 +540,17 @@ public sealed class FakeToolHost : IRelayToolHost
     /// <summary>Signalled each time a call starts.</summary>
     public Channel<string> Started { get; } = Channel.CreateUnbounded<string>();
 
+    /// <summary>When set, each call throws it (after any hold), as a tool host failing in a way it didn't expect.</summary>
+    public Exception? Throw { get; set; }
+
     public async Task<RelayToolAnswer> CallAsync(string tool, JsonElement arguments, RelayCallContext context, CancellationToken ct)
     {
         Calls.Enqueue((tool, arguments.GetRawText(), context));
         Started.Writer.TryWrite(context.Id);
         if (Hold is { } hold)
             await hold.Task.WaitAsync(ct);
+        if (Throw is { } thrown)
+            throw thrown;
         return new RelayToolAnswer(new JsonObject
         {
             ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = $"ran {tool}" }),
