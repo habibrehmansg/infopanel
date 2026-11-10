@@ -61,7 +61,16 @@ public sealed class ShellActionTests : IDisposable
 
     private async Task Shown() => await WaitUntil(() => _shell.Icon != null);
 
-    private ShellMenuItem Item(string id) => Assert.Single(_shell.OpenMenu().Items, i => i.Id == id);
+    /// <summary>
+    /// The item <paramref name="id"/> of the menu as it opens once the engine has read the changes made so far: the menu
+    /// shows the profiles as read off the UI thread after each change (as the file's other waits, at most 10 s).
+    /// </summary>
+    private ShellMenuItem Item(string id)
+    {
+        Assert.True(SpinWait.SpinUntil(() => Service.ProfilesVersion >= Workspace.Version, TimeSpan.FromSeconds(10)),
+            "the menu's profiles weren't read after the last change");
+        return Assert.Single(_shell.OpenMenu().Items, i => i.Id == id);
+    }
 
     private IReadOnlyList<ShellMenuItem> Desktop() => Item(ShellMenu.ShowOnDesktop).Children;
 
@@ -98,6 +107,127 @@ public sealed class ShellActionTests : IDisposable
         Assert.True(Assert.Single(listed, c => c.Label == "Desk overlay").Checked);
         Assert.Equal(ShellMenu.DesktopItem(off, show: true), Assert.Single(listed, c => c.Label == "Neon core").Id);
         Assert.False(Assert.Single(listed, c => c.Label == "Neon core").Checked);
+    }
+
+    /// <summary>
+    /// Opening the menu, on the platform's UI thread, never waits for the workspace or its stores, which a create, delete,
+    /// save or recovery checkpoint holds across its disk writes: while a create holds the workspace lock it opens at once
+    /// with the profiles last read, and the new profile is listed after the change is read.
+    /// </summary>
+    [Fact]
+    public async Task OpeningTheMenu_WhileAWriteHoldsTheWorkspace_DoesntWait_AndListsTheProfilesLastRead()
+    {
+        await Shown();
+        Profile("Desk overlay", shown: true);
+        await WaitUntil(() => Desktop().Any(c => c.Label == "Desk overlay"));
+
+        using var holding = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var opened = new TaskCompletionSource<ShellMenu>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var waited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The menu opens on a thread of its own, as on the UI thread; only its own wait for the lock is noted.
+        var ui = new Thread(() =>
+        {
+            try
+            {
+                opened.TrySetResult(_shell.OpenMenu());
+            }
+            catch (Exception ex)
+            {
+                opened.TrySetException(ex);
+            }
+        }) { IsBackground = true };
+        // The workspace's own test hooks (internal to the core library, so set by name).
+        SetHook(nameof(Workspace) + ".StoreChanged", (Action<string>)(_ =>
+        {
+            holding.Set();
+            release.Wait(Ct);
+        }));
+        SetHook(nameof(Workspace) + ".WaitingForLock", (Action)(() =>
+        {
+            if (Thread.CurrentThread == ui)
+                waited.TrySetResult();
+        }));
+        Task? create = null;
+        try
+        {
+            create = Task.Run(() => Profile("Neon core", shown: true), Ct);
+            holding.Wait(Ct); // the create holds the workspace lock, as across its writes
+            ui.Start();
+            var first = await Task.WhenAny(opened.Task, waited.Task).WaitAsync(TimeSpan.FromSeconds(10), Ct);
+            Assert.True(first == opened.Task, "opening the menu waited for the workspace lock a profile's write held");
+            var lines = Assert.Single((await opened.Task).Items, i => i.Id == ShellMenu.ShowOnDesktop).Children;
+            Assert.Contains(lines, c => c.Label == "Desk overlay");
+            Assert.DoesNotContain(lines, c => c.Label == "Neon core");
+        }
+        finally
+        {
+            release.Set();
+            SetHook(nameof(Workspace) + ".StoreChanged", null);
+            SetHook(nameof(Workspace) + ".WaitingForLock", null);
+            if (ui.ThreadState != ThreadState.Unstarted)
+                ui.Join();
+            if (create != null)
+                await create;
+        }
+
+        // The create's change is read off the UI thread: the next menu lists the new profile, its window on.
+        await WaitUntil(() => Desktop().Any(c => c.Label == "Neon core" && c.Checked));
+    }
+
+    /// <summary>
+    /// Changes while a write holds the workspace start no read of the menu's profiles beside the one under way: at most
+    /// one reads at a time, and once the write lets go the menu reads the last change.
+    /// </summary>
+    [Fact]
+    public async Task ChangesWhileAWriteHoldsTheWorkspace_RunOneMenuReadAtATime_AndTheLastChangeIsRead()
+    {
+        await Shown();
+        var id = Profile("Desk overlay", shown: true);
+        var doc = Doc(id);
+        await WaitUntil(() => Desktop().Any(c => c.Label == "Desk overlay"));
+
+        using var holding = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var reads = 0;
+        Service.ReadingProfiles = () => Interlocked.Increment(ref reads);
+        SetHook(nameof(Workspace) + ".StoreChanged", (Action<string>)(_ =>
+        {
+            holding.Set();
+            release.Wait(Ct);
+        }));
+        Task? create = null;
+        try
+        {
+            create = Task.Run(() => Profile("Neon core", shown: true), Ct);
+            holding.Wait(Ct); // the create holds the workspace lock, as across its writes
+            // Each change to the open profile asks for a read; the first one blocks on the held workspace.
+            for (var width = 120; width < 125; width++)
+                TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["width"] = width }));
+            SpinWait.SpinUntil(() => Volatile.Read(ref reads) > 1, TimeSpan.FromSeconds(2));
+            Assert.True(Volatile.Read(ref reads) <= 1, $"{reads} menu reads began while the workspace was held");
+        }
+        finally
+        {
+            release.Set();
+            SetHook(nameof(Workspace) + ".StoreChanged", null);
+            Service.ReadingProfiles = null;
+            if (create != null)
+                await create;
+        }
+
+        Assert.True(SpinWait.SpinUntil(() => Service.ProfilesVersion >= Workspace.Version, TimeSpan.FromSeconds(10)),
+            "the menu's profiles weren't read after the last change");
+        Assert.Contains(Desktop(), c => c.Label == "Neon core" && c.Checked);
+    }
+
+    /// <summary>Sets the workspace's test hook <paramref name="name"/> (<c>Workspace.{field}</c>), which must exist.</summary>
+    private void SetHook(string name, Delegate? hook)
+    {
+        var field = typeof(Workspace).GetField(name[(nameof(Workspace).Length + 1)..],
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.True(field != null, $"{name} isn't there");
+        field.SetValue(Workspace, hook);
     }
 
     [Fact]

@@ -16,7 +16,10 @@ namespace InfoPanel.Shell;
 /// <summary>
 /// The menu-bar item's engine side (docs/2.0/desktop-shell.md): shows the icon once the server listens, so Open Editor
 /// always has a port, and removes it when the engine stops; builds the menu from the engine's state each time it opens
-/// (<see cref="ShellMenu.Build"/>) and runs what the user chooses in it. While the icon can show, it runs
+/// (<see cref="ShellMenu.Build"/>) and runs what the user chooses in it. The menu opens on the platform's UI thread, so it
+/// never waits for the workspace or its stores (a save, a recovery checkpoint, a create or a delete holds them across
+/// its disk writes): its profile lines are read off that thread, at start and after every change of the profile list
+/// or of a listed profile, and the menu shows the lines last read. While the icon can show, it runs
 /// <see cref="ServiceHolder"/>, which asks the configured service who holds the credential, for the signed-in line, and
 /// <see cref="UpdateCheck"/>, for the update line and the notification of a new version (at most once a version, ever:
 /// <see cref="UpdateNotices"/>; a click opens its release page).
@@ -81,6 +84,22 @@ public sealed class ShellService(
     private CancellationTokenRegistration _started;
     private CancellationTokenRegistration _stopping;
 
+    // The menu's profile lines as last read off the UI thread (ReadProfiles), the workspace's version they were read at,
+    // whether a change asked for a read not yet begun, and whether the one reader runs. Only one begun at a later
+    // version replaces them.
+    private readonly Lock _read = new();
+    private volatile IReadOnlyList<ShellProfile> _profiles = [];
+    private long _profilesVersion = -1;
+    private int _readQueued;
+    private int _reading;
+    private volatile bool _readsStopped;
+
+    /// <summary>The workspace's <see cref="Workspace.Version"/> the menu's profile lines were read at (tests: -1 before the first read).</summary>
+    internal long ProfilesVersion => Interlocked.Read(ref _profilesVersion);
+
+    /// <summary>Tests: called as a read of the menu's profile lines begins, before it reads the workspace.</summary>
+    internal Action? ReadingProfiles;
+
     // The editor asked for before the server listens (the app opened again, or a link that started it, on macOS): opened
     // once, after the icon shows.
     private readonly Lock _early = new();
@@ -101,6 +120,9 @@ public sealed class ShellService(
 
         platform.TerminateRequested += OnTerminateRequested;
         platform.ReopenRequested += OnReopenRequested;
+        workspace.ProfilesChanged += OnProfilesChanged;
+        workspace.EntriesChanged += OnProfilesChanged;
+        QueueProfilesRead();
         _started = lifetime.ApplicationStarted.Register(() =>
         {
             platform.Show(new ShellIcon($"InfoPanel — {runtime.BaseUrl}"), Menu, InvokedAsync);
@@ -138,6 +160,9 @@ public sealed class ShellService(
         _stopping.Dispose();
         platform.TerminateRequested -= OnTerminateRequested;
         platform.ReopenRequested -= OnReopenRequested;
+        workspace.ProfilesChanged -= OnProfilesChanged;
+        workspace.EntriesChanged -= OnProfilesChanged;
+        _readsStopped = true;
         NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
         updates.Changed -= OnUpdateChanged;
         await holder.StopAsync(cancellationToken).ConfigureAwait(false);
@@ -145,6 +170,91 @@ public sealed class ShellService(
     }
 
     private void OnNetworkChanged(object? sender, EventArgs e) => holder.NetworkChanged();
+
+    /// <summary>
+    /// The profile list or a listed profile changed. Raised under any lock the change's caller holds (the workspace's
+    /// included), so it only queues a read on the thread pool.
+    /// </summary>
+    private void OnProfilesChanged(object? sender, ProfilesChangedEventArgs e) => QueueProfilesRead();
+
+    /// <summary>
+    /// Asks for a read of the menu's profile lines, which only desktop windows show. One reader runs at a time, on the
+    /// thread pool: a change while it reads is read again once its read is done, however many changes come meanwhile.
+    /// </summary>
+    private void QueueProfilesRead()
+    {
+        if (!windows.Enabled || _readsStopped)
+            return;
+        Volatile.Write(ref _readQueued, 1);
+        if (Interlocked.CompareExchange(ref _reading, 1, 0) == 0)
+            ThreadPool.QueueUserWorkItem(_ => ReadWhileAsked());
+    }
+
+    /// <summary>The one reader: reads until no change came during its last read, or the service or the workspace stops.</summary>
+    private void ReadWhileAsked()
+    {
+        while (true)
+        {
+            // Cleared before each read: a change from here on is read by the next.
+            while (!_readsStopped && Interlocked.Exchange(ref _readQueued, 0) == 1)
+            {
+                if (!ReadProfiles())
+                {
+                    _readsStopped = true;
+                    break;
+                }
+            }
+
+            Volatile.Write(ref _reading, 0);
+            // A change between the last look and the exit, which found the reader still running.
+            if (_readsStopped || Volatile.Read(ref _readQueued) == 0 || Interlocked.CompareExchange(ref _reading, 1, 0) != 0)
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Reads the profiles that can be opened, in the library's order (one past what the menu lists, so it knows there are
+    /// more), each with its window on or off and clicks passing through it or not, for the menus that open next. False
+    /// once the workspace is disposed.
+    /// </summary>
+    private bool ReadProfiles()
+    {
+        ReadingProfiles?.Invoke();
+        var version = workspace.Version;
+        try
+        {
+            var profiles = new List<ShellProfile>();
+            foreach (var entry in workspace.List())
+            {
+                if (profiles.Count > ShellMenu.DesktopProfiles)
+                    break;
+                if (entry.Status != "ok" || workspace.Open(entry.Id) is not { } doc)
+                    continue;
+                var window = doc.Current.Document.Profile.Window;
+                profiles.Add(new ShellProfile(entry.Id, entry.Name ?? entry.Id, window?.Enabled == true, window?.ClickThrough == true));
+            }
+
+            lock (_read)
+            {
+                if (version >= _profilesVersion)
+                {
+                    _profiles = profiles;
+                    Interlocked.Exchange(ref _profilesVersion, version);
+                }
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // The engine stops: the workspace is gone, and so is the menu.
+            return false;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "The menu couldn't read the profiles; it shows the ones read before");
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// The update check found another version (on its own thread; its checks run one at a time): a version above every
@@ -189,27 +299,13 @@ public sealed class ShellService(
     }
 
     /// <summary>
-    /// The engine's state for the menu: the credential and its holder's name and email, and, when desktop windows are on, the
-    /// profiles that can be opened in the library's order (one past what the menu lists, so it knows there are more),
-    /// each with its window on or off and clicks passing through it or not.
+    /// The engine's state for the menu: the credential and its holder's name and email, the update line, and, when desktop
+    /// windows are on, the profiles as last read (<see cref="ReadProfiles"/>). Reads nothing the workspace holds.
     /// </summary>
     private ShellState State()
     {
         var desktop = windows.Enabled;
-        var profiles = new List<ShellProfile>();
-        if (desktop)
-        {
-            foreach (var entry in workspace.List())
-            {
-                if (profiles.Count > ShellMenu.DesktopProfiles)
-                    break;
-                if (entry.Status != "ok" || workspace.Open(entry.Id) is not { } doc)
-                    continue;
-                var window = doc.Current.Document.Profile.Window;
-                profiles.Add(new ShellProfile(entry.Id, entry.Name ?? entry.Id, window?.Enabled == true, window?.ClickThrough == true));
-            }
-        }
-
+        var profiles = desktop ? _profiles : [];
         var signedIn = holder.Current;
         return new ShellState(ReadEndpoints.EngineVersion())
         {
