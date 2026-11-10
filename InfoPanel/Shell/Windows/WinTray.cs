@@ -14,6 +14,9 @@ internal interface IWinTrayNative
     /// <summary>Removes the icon.</summary>
     void DeleteIcon();
 
+    /// <summary>Shows <paramref name="balloon"/> on the icon (Windows 10 and 11 show it as a toast); false when Explorer refused.</summary>
+    bool ShowBalloon(WinBalloon balloon);
+
     /// <summary>Shows the menu at the point (physical pixels) until it closes; the command chosen, or 0.</summary>
     uint ShowMenu(IReadOnlyList<WinMenuEntry> entries, int x, int y);
 
@@ -35,6 +38,12 @@ internal interface IWinTrayNative
     /// </summary>
     void HoldUntilQuit(long deadline, Func<long> clock);
 }
+
+/// <summary>
+/// A balloon on the icon: its title (at most <see cref="WinTray.BalloonTitleLength"/> characters) and text (at most
+/// <see cref="WinTray.BalloonTextLength"/>), and its <c>NIIF_</c> flags.
+/// </summary>
+internal sealed record WinBalloon(string Title, string Text, uint Flags);
 
 /// <summary>What <see cref="IWinMessageSource.Take"/> found.</summary>
 internal enum WinMessageTaken
@@ -121,7 +130,9 @@ internal static class WinMessageHold
 /// asking) and holds the end until the host has stopped, at most <see cref="SessionEndWait"/> from the first end, however
 /// many come;</item>
 /// <item>prompts are asked one at a time, in Windows' words; the engine's stop closes the open one as Cancel and answers
-/// every waiting one with Cancel.</item>
+/// every waiting one with Cancel;</item>
+/// <item>a notification is a balloon on the icon (<see cref="Notify"/>), its title and text cut to what the structure
+/// holds; a click on it (<c>NIN_BALLOONUSERCLICK</c>) runs its callback.</item>
 /// </list>
 /// </summary>
 internal sealed class WinTray(IWinTrayNative native, WinStartup startup, uint taskbarCreated, Func<long> clock)
@@ -137,6 +148,19 @@ internal sealed class WinTray(IWinTrayNative native, WinStartup startup, uint ta
     public const uint WM_CONTEXTMENU = 0x007B;
     public const uint NIN_SELECT = 0x0400;
     public const uint NIN_KEYSELECT = 0x0401;
+    public const uint NIN_BALLOONUSERCLICK = 0x0405;
+
+    /// <summary><c>NIIF_USER</c>: the balloon shows the icon's own image.</summary>
+    public const uint NIIF_USER = 0x04;
+
+    /// <summary><c>NIIF_RESPECT_QUIET_TIME</c>: not shown in the user's first hour on a new install, as the guidelines ask.</summary>
+    public const uint NIIF_RESPECT_QUIET_TIME = 0x80;
+
+    /// <summary>The longest balloon title <c>szInfoTitle</c> holds (64 with its terminator).</summary>
+    public const int BalloonTitleLength = 63;
+
+    /// <summary>The longest balloon text <c>szInfo</c> holds (256 with its terminator).</summary>
+    public const int BalloonTextLength = 255;
 
     /// <summary>
     /// The longest a session's end waits for the host to stop: within the 5 s Windows gives an app before it offers to
@@ -155,6 +179,7 @@ internal sealed class WinTray(IWinTrayNative native, WinStartup startup, uint ta
     private bool _closed;
     private long? _lastSelect;
     private long? _sessionEndDeadline;
+    private Func<Task>? _balloonClicked;
 
     /// <summary>
     /// The session is ending (sign-out, shutdown, restart): raised once, on the UI thread, before it waits, at most
@@ -193,6 +218,39 @@ internal sealed class WinTray(IWinTrayNative native, WinStartup startup, uint ta
             Present = false;
             Logger.Information("Notification area icon removed");
         }
+    }
+
+    /// <summary>
+    /// Shows <paramref name="note"/> as a balloon on the icon; a click on it runs <paramref name="clicked"/>. Nothing
+    /// while the icon isn't there.
+    /// </summary>
+    public void Notify(ShellNotification note, Func<Task> clicked)
+    {
+        if (_closed || !Present)
+        {
+            Logger.Information("No notification area icon to show {Title} on", note.Title);
+            return;
+        }
+
+        var balloon = new WinBalloon(Cut(note.Title, BalloonTitleLength), Cut(note.Text, BalloonTextLength), NIIF_USER | NIIF_RESPECT_QUIET_TIME);
+        if (native.ShowBalloon(balloon))
+        {
+            _balloonClicked = clicked;
+            Logger.Information("Notification shown");
+        }
+        else
+            Logger.Warning("The notification couldn't be shown");
+    }
+
+    /// <summary><paramref name="text"/> in at most <paramref name="length"/> characters: cut with an ellipsis, never inside a surrogate pair.</summary>
+    private static string Cut(string text, int length)
+    {
+        if (text.Length <= length)
+            return text;
+        var keep = length - 1;
+        if (char.IsHighSurrogate(text[keep - 1]))
+            keep--;
+        return text[..keep] + "…";
     }
 
     /// <summary>The hidden window's messages: an answer for the icon's own, null for the rest (broadcasts go on).</summary>
@@ -324,6 +382,18 @@ internal sealed class WinTray(IWinTrayNative native, WinStartup startup, uint ta
                 break;
             case WM_CONTEXTMENU:
                 ShowMenu(x, y);
+                break;
+            case NIN_BALLOONUSERCLICK when _balloonClicked is { } clicked:
+                Logger.Information("The notification was clicked");
+                try
+                {
+                    _ = clicked();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "The notification's click failed");
+                }
+
                 break;
         }
     }

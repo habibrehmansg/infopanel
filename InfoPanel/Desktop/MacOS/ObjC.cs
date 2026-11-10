@@ -258,4 +258,49 @@ internal static unsafe class ObjC
     }
 
     private static byte[] Utf8(string value) => Encoding.UTF8.GetBytes(value + "\0");
+
+    /// <summary><c>BLOCK_IS_GLOBAL | BLOCK_HAS_SIGNATURE</c> (the Blocks ABI's flags).</summary>
+    private const int GlobalBlockFlags = (1 << 28) | (1 << 30);
+
+    /// <summary>The Blocks ABI's <c>struct Block_literal_1</c>, for a block that captures nothing.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BlockLiteral
+    {
+        public IntPtr Isa;
+        public int Flags;
+        public int Reserved;
+        public IntPtr Invoke;
+        public IntPtr Descriptor;
+    }
+
+    /// <summary>The Blocks ABI's descriptor of a block with a signature and no copy or dispose helpers.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BlockDescriptor
+    {
+        public nuint Reserved;
+        public nuint Size;
+        public IntPtr Signature;
+    }
+
+    /// <summary>
+    /// A global block (one that captures nothing, as a C block literal at file scope) that calls
+    /// <paramref name="invoke"/>, whose first argument is the block itself, then the block's own arguments;
+    /// <paramref name="signature"/> is the block's type encoding (<c>v@?B@</c>). Copying or releasing a global block does
+    /// nothing, so it lives for the process: make each one once and keep it.
+    /// </summary>
+    public static IntPtr GlobalBlock(IntPtr invoke, string signature)
+    {
+        var descriptor = (BlockDescriptor*)NativeMemory.AllocZeroed((nuint)sizeof(BlockDescriptor));
+        descriptor->Size = (nuint)sizeof(BlockLiteral);
+        descriptor->Signature = Marshal.StringToCoTaskMemUTF8(signature);
+        var block = (BlockLiteral*)NativeMemory.AllocZeroed((nuint)sizeof(BlockLiteral));
+        block->Isa = NativeLibrary.GetExport(LibSystemHandle, "_NSConcreteGlobalBlock");
+        block->Flags = GlobalBlockFlags;
+        block->Invoke = invoke;
+        block->Descriptor = (IntPtr)descriptor;
+        return (IntPtr)block;
+    }
+
+    /// <summary>The function a block calls (<c>invoke</c>, after <c>isa</c>, the flags and the reserved word).</summary>
+    public static IntPtr BlockInvoke(IntPtr block) => ((BlockLiteral*)block)->Invoke;
 }

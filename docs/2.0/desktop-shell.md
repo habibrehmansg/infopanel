@@ -352,3 +352,57 @@ release build). A build from source carries none and behaves as before.
   otherwise). On Windows, in a signed-in session, `…~WinShellPlatformTests` adds a real tray icon, adds it again on
   `TaskbarCreated` and removes it.
 - The menus and the alert or dialog themselves are checked by hand.
+
+## Notifications
+
+`IShellPlatform.Notify(ShellNotification, clicked)` shows a `ShellNotification` (a title and a text) through the
+system's own notifications; a click on it runs `clicked`. A platform without them keeps the default, which does
+nothing (`NullShellPlatform`, Linux). Each platform keeps only the newest notification's `clicked`: the next `Notify`
+replaces it. The update check calls it, at most once per version (below, "The update notification").
+
+- Windows: a balloon on the tray icon (`Shell_NotifyIconW` with `NIM_MODIFY` and `NIF_INFO`), which Windows 10 and 11
+  show as a toast with no package or AppUserModelID: `NIIF_USER` (the icon's own image) and `NIIF_RESPECT_QUIET_TIME`
+  (held in the user's first hour on a new install, and by Focus Assist), the title cut to 63 characters and the text to
+  255, with an ellipsis and never inside a surrogate pair. A click on it comes back as `NIN_BALLOONUSERCLICK` on the
+  icon's callback message and runs `clicked`. Nothing is shown while the icon isn't there. `WinTray.Notify` is the
+  logic (`WinTrayTests`, through `FakeTrayNative`); `WinTrayNative.ShowBalloon` the call.
+- macOS: `UNUserNotificationCenter` (`Shell/MacOS/MacNotifications.cs`, the framework loaded by path, through the same
+  libobjc binding). Only from the app bundle: without a bundle identifier (`dotnet run`, the tests) the centre raises
+  an Objective-C exception that ends the process, so it is never asked. Permission is asked the first time there is
+  something to show, never at launch: the system asks the user once, as a notification of its own, and later asks
+  answer at once (Allow and Don't Allow are then the user's switch in System Settings, Notifications). One
+  notification at a time, under one identifier, so a newer one replaces an older. Its delegate's
+  `didReceiveNotificationResponse` runs `clicked` off the centre's thread, and `willPresentNotification` shows it
+  while the app is active (an open prompt). The centre's calls take blocks: `ObjC.GlobalBlock` makes a block that
+  captures nothing (the Blocks ABI's global block, whose copy and release do nothing), each made once and kept for the
+  process; a block the system hands in is called through `ObjC.BlockInvoke`. The system refuses an app bundle that
+  runs from a temporary folder (`/private/tmp`: "Failed to find or validate client"), so a hand check runs the app
+  from anywhere else. A centre that can't be set up (the framework, a class or the delegate missing) is logged once as
+  a warning and never thrown out of `Notify`; it isn't tried again in that run, so nothing is shown (`CentreSetup`).
+  Once the engine stops (`Remove`, which calls `MacNotifications.Stop`), the notification waiting for permission is
+  dropped and none is asked for: a permission the system answers after the stop submits nothing.
+  Tests (`MacNotificationTests`): without a bundle the centre is never asked (with the check
+  removed, the test host ends with `bundleProxyForCurrentProcess is nil`), a centre whose setup fails is logged once
+  and not tried again, a permission answered after the stop submits nothing (the setup's seams standing in for the
+  centre), and Foundation calls a global block with its arguments. A real notification needs the bundle and the user's permission, so it is a hand check, not a test.
+
+### The update notification
+
+`ShellService` follows the update check while the icon shows (`UpdateCheck.Changed`, subscribed just before the check
+starts and dropped in `StopAsync`). When the version offered changes and is above every version notified before, by
+SemVer 2 precedence, it first records the version in `updates.json` ([data folder](data-folder.md#the-update-notified),
+`UpdateNotices`), then calls `Notify` with "InfoPanel {version} is available", "Click to see what's new and
+download it." only when that was written. So each version notifies at most once, ever, across restarts, and a lower
+version after it (a newer release withdrawn) never does. A failed write shows nothing for that version in that run, and
+a crash between the write and `Notify` loses that notice: the menu's update line still says it. The record means
+attempted, not seen: notifications turned off, or a toast Windows drops, still count. A development build, whose check
+is off, and an engine that is up to date notify nothing. Check for Updates… answers in its own prompt only: the version
+it finds is recorded, without a notification, so the daily check doesn't notify it later (the check's trigger,
+`UpdateTrigger.Menu`, comes with `Changed`). A click on the notification opens the release page of the version it
+named (the address captured when it was shown); as the platform keeps only the newest notification's click, that is
+the newest version notified. It runs off the platform's thread, through the same path as the menu's line, and does
+nothing else. Tests (`ShellUpdateTests`, through `FakeShellPlatform`, whose `Notify` records each notification and
+keeps only the newest click, as the platforms do): one notification per new version across a restart on the same data
+folder, none for a development build, none when up to date, none when `updates.json` can't be written, Check for
+Updates… answering in its prompt only while recording the version, and the click opening the newest notified
+version's page and nothing else.

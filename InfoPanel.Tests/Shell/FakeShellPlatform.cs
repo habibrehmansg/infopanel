@@ -5,7 +5,8 @@ namespace InfoPanel.Tests.Shell;
 
 /// <summary>
 /// The shell's platform for tests: records the icon, hands out menus as the OS would each time one opens, invokes items
-/// as a click does, answers prompts from a queue, and keeps what is copied. Nothing is drawn.
+/// as a click does, answers prompts from a queue, and keeps what is copied and the notifications shown (each clickable).
+/// Nothing is drawn.
 /// </summary>
 public sealed class FakeShellPlatform : IShellPlatform
 {
@@ -114,6 +115,41 @@ public sealed class FakeShellPlatform : IShellPlatform
             _prompts.Add(prompt);
             return Task.FromResult(_answers.Count > 0 ? _answers.Dequeue() : prompt.CancelButton);
         }
+    }
+
+    private readonly List<ShellNotification> _notifications = [];
+    private Func<Task>? _notificationClicked;
+
+    /// <summary>The notifications shown, in order.</summary>
+    public IReadOnlyList<ShellNotification> Notifications
+    {
+        get
+        {
+            lock (_lock)
+                return [.. _notifications];
+        }
+    }
+
+    /// <summary>
+    /// Records <paramref name="note"/>. As the platforms do (macOS's one identifier, Windows' one balloon), only the
+    /// newest notification's callback is kept: the next <c>Notify</c> overwrites it.
+    /// </summary>
+    public void Notify(ShellNotification note, Func<Task> clicked)
+    {
+        lock (_lock)
+        {
+            _notifications.Add(note);
+            _notificationClicked = clicked;
+        }
+    }
+
+    /// <summary>Clicks the notification on screen (the newest shown) and waits until the engine has handled it.</summary>
+    public Task ClickNotificationAsync()
+    {
+        Func<Task> clicked;
+        lock (_lock)
+            clicked = _notificationClicked ?? throw new InvalidOperationException("No notification is shown.");
+        return clicked();
     }
 
     /// <summary>The menu as it is built when the user opens it.</summary>

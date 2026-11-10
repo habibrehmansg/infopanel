@@ -58,6 +58,13 @@ internal sealed class WinShellPlatform : IShellPlatform
             Logger.Warning("The engine's details couldn't be put on the clipboard");
     });
 
+    /// <summary>Shows <paramref name="note"/> as a balloon on the icon, on the UI thread; nothing while there is no icon.</summary>
+    public void Notify(ShellNotification note, Func<Task> clicked)
+    {
+        if (_thread.Started)
+            _thread.Post(() => Tray?.Notify(note, clicked));
+    }
+
     public Task<int> ConfirmAsync(ShellPrompt prompt)
     {
         var answer = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);

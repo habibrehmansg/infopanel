@@ -15,7 +15,7 @@ namespace InfoPanel.Persistence;
 /// <c>blobs/{sha256 hex}</c>; the engine adds <c>store.json</c> (the folder's
 /// marker, <see cref="StoreMarker"/>), <c>tokens.json</c>, <c>pairings.json</c>, <c>settings.json</c> and the service credential's
 /// <c>service-credential</c> (or, on Windows, <c>service-credential.bin</c>), and the 1.x import its run-once record
-/// <c>import-v1.json</c>, and the panels their <c>devices.json</c>. <see cref="EngineFiles"/> and <see cref="EngineFolders"/> list them (docs/2.0/data-folder.md).
+/// <c>import-v1.json</c>, and the panels their <c>devices.json</c>, and the update notification its <c>updates.json</c>. <see cref="EngineFiles"/> and <see cref="EngineFolders"/> list them (docs/2.0/data-folder.md).
 /// </summary>
 public sealed class DataPaths
 {
@@ -48,6 +48,9 @@ public sealed class DataPaths
     /// <summary>Which plugins the user turned off, in the data folder.</summary>
     public const string PluginStateFileName = "plugin-state.json";
 
+    /// <summary>The newest version the engine has notified the user of (<c>InfoPanel.Updates.UpdateNotices</c>), in the data folder.</summary>
+    public const string UpdatesFileName = "updates.json";
+
     /// <summary>The USB panels the engine has identified and their settings (<c>InfoPanel.Panels.PanelStore</c>), in the data folder.</summary>
     public const string DevicesFileName = "devices.json";
 
@@ -66,17 +69,17 @@ public sealed class DataPaths
     /// <summary>
     /// The top-level files the engine writes in its data folder: the folder's marker, the 2.0 store's profile order, the
     /// integration tokens, the paired clients, the engine settings, the service credential (either store's file), the runtime file, the lock, step-1's profile list (which this engine leaves
-    /// alone), the 1.x migration's run-once record, the plugin state and the saved panels. The one list of them: <c>--fresh</c> wipes only a folder that holds
+    /// alone), the 1.x migration's run-once record, the plugin state, the saved panels and the update notified. The one list of them: <c>--fresh</c> wipes only a folder that holds
     /// nothing else, and the 1.x import keeps the 1.x folder clear of them.
     /// </summary>
     public static IReadOnlyList<string> EngineFiles { get; } =
-        [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, ServiceCredentialFileName, ServiceCredentialProtectedFileName, "runtime.json", "engine.lock", "profiles.xml", ImportRecordFileName, PluginStateFileName, DevicesFileName];
+        [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, ServiceCredentialFileName, ServiceCredentialProtectedFileName, "runtime.json", "engine.lock", "profiles.xml", ImportRecordFileName, PluginStateFileName, DevicesFileName, UpdatesFileName];
 
     /// <summary>The top-level folders the engine writes in its data folder (<c>assets</c> is step-1's).</summary>
     public static IReadOnlyList<string> EngineFolders { get; } = ["profiles", "blobs", "fonts", "logs", "assets", "plugins", "plugin-settings"];
 
     /// <summary>The engine files written by renaming a temp file (<c>{name}.{32 hex}.tmp</c>) over them.</summary>
-    private static readonly string[] ReplacedFiles = [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, ServiceCredentialFileName, ServiceCredentialProtectedFileName, "runtime.json", "profiles.xml", ImportRecordFileName, PluginStateFileName, DevicesFileName];
+    private static readonly string[] ReplacedFiles = [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, ServiceCredentialFileName, ServiceCredentialProtectedFileName, "runtime.json", "profiles.xml", ImportRecordFileName, PluginStateFileName, DevicesFileName, UpdatesFileName];
 
     private static readonly Regex EngineTempFile = new(
         $"\\A({string.Join('|', ReplacedFiles.Select(Regex.Escape))})\\.[0-9a-f]{{32}}\\.tmp\\z",
@@ -171,6 +174,9 @@ public sealed class DataPaths
 
     /// <summary>The engine settings: only the members someone set.</summary>
     public string SettingsFile => Path.Combine(Root, SettingsFileName);
+
+    /// <summary>The newest version the engine has notified the user of.</summary>
+    public string UpdatesFile => Path.Combine(Root, UpdatesFileName);
 
     /// <summary>Stored blobs, one file per content hash.</summary>
     public string BlobsDirectory => Path.Combine(Root, "blobs");

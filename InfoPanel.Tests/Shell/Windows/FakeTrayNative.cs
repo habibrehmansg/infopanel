@@ -62,6 +62,15 @@ internal sealed class FakeTrayNative : IWinTrayNative
 
     public void DeleteIcon() => Deletes++;
 
+    /// <summary>Each balloon shown, in order.</summary>
+    public List<WinBalloon> Balloons { get; } = [];
+
+    public bool ShowBalloon(WinBalloon balloon)
+    {
+        Balloons.Add(balloon);
+        return true;
+    }
+
     public uint ShowMenu(IReadOnlyList<WinMenuEntry> entries, int x, int y)
     {
         Menus.Add((entries, x, y));

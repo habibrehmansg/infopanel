@@ -494,4 +494,95 @@ public sealed class WinTrayTests
         Assert.Equal(1, _native.Dismissals);
         Assert.Single(_native.Prompts);
     }
+
+    [Fact]
+    public void Notify_ShowsABalloon_WithTheIconsImage_RespectingQuietTime()
+    {
+        var tray = Shown();
+
+        tray.Notify(new ShellNotification("InfoPanel 2.0.0-beta.1 is available", "Click to see what's new and download it."), () => Task.CompletedTask);
+
+        var balloon = Assert.Single(_native.Balloons);
+        Assert.Equal("InfoPanel 2.0.0-beta.1 is available", balloon.Title);
+        Assert.Equal("Click to see what's new and download it.", balloon.Text);
+        Assert.Equal(0x04u | 0x80u, balloon.Flags); // NIIF_USER | NIIF_RESPECT_QUIET_TIME
+    }
+
+    [Fact]
+    public void Notify_CutsTheTitleTo63Characters_AndTheTextTo255_WithAnEllipsis_NeverHalfASurrogatePair()
+    {
+        var tray = Shown();
+
+        tray.Notify(new ShellNotification(new string('T', 61) + "😀" + "more", new string('x', 300)), () => Task.CompletedTask);
+
+        var balloon = Assert.Single(_native.Balloons);
+        Assert.Equal(new string('T', 61) + "…", balloon.Title); // the emoji would end at 63, its second half past the cut
+        Assert.Equal(255, balloon.Text.Length);
+        Assert.Equal(new string('x', 254) + "…", balloon.Text);
+    }
+
+    [Fact]
+    public void Notify_KeepsWhatFits_AsItIs()
+    {
+        var tray = Shown();
+
+        tray.Notify(new ShellNotification(new string('T', 63), new string('x', 255)), () => Task.CompletedTask);
+
+        var balloon = Assert.Single(_native.Balloons);
+        Assert.Equal(new string('T', 63), balloon.Title);
+        Assert.Equal(new string('x', 255), balloon.Text);
+    }
+
+    [Fact]
+    public void ABalloonClick_RunsTheCallback_AndNothingElse()
+    {
+        var tray = Shown();
+        var clicks = 0;
+        tray.Notify(new ShellNotification("Title", "Text"), () =>
+        {
+            clicks++;
+            return Task.CompletedTask;
+        });
+
+        tray.OnMessage(WinTray.CallbackMessage, Anchor(10, 20), Event(WinTray.NIN_BALLOONUSERCLICK));
+
+        Assert.Equal(1, clicks);
+        Assert.Empty(_invoked);
+        Assert.Empty(_native.Menus);
+    }
+
+    [Fact]
+    public void ABalloonClick_WithNoBalloonShown_DoesNothing()
+    {
+        var tray = Shown();
+
+        tray.OnMessage(WinTray.CallbackMessage, 0, Event(WinTray.NIN_BALLOONUSERCLICK));
+
+        Assert.Empty(_invoked);
+        Assert.Empty(_native.Menus);
+    }
+
+    [Fact]
+    public void Notify_BeforeTheIconShows_OrOnceRemoved_ShowsNothing()
+    {
+        var tray = Tray();
+        tray.Notify(new ShellNotification("Title", "Text"), () => Task.CompletedTask);
+        Assert.Empty(_native.Balloons);
+
+        var shown = Shown();
+        shown.Remove();
+        shown.Notify(new ShellNotification("Title", "Text"), () => Task.CompletedTask);
+        Assert.Empty(_native.Balloons);
+    }
+
+    [Fact]
+    public void Notify_WhileExplorerHasNoIcon_ShowsNothing()
+    {
+        _native.AddSucceeds = false;
+        var tray = Shown();
+
+        tray.Notify(new ShellNotification("Title", "Text"), () => Task.CompletedTask);
+
+        Assert.Empty(_native.Balloons);
+    }
 }

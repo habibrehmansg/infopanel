@@ -10,6 +10,9 @@ public sealed record ShellIcon(string Tooltip);
 /// </summary>
 public sealed record ShellPrompt(string Title, string Text, IReadOnlyList<string> Buttons, int DefaultButton, int CancelButton);
 
+/// <summary>A notification the shell shows through the system's own (an update is available): its title and its text.</summary>
+public sealed record ShellNotification(string Title, string Text);
+
 /// <summary>
 /// The operating system's menu-bar item or tray icon, for <see cref="ShellService"/>. The platform calls back on its UI
 /// thread; the engine's handlers leave that thread before they do any work.
@@ -53,6 +56,15 @@ public interface IShellPlatform
     /// without a clipboard of its own keeps this default, which does nothing.
     /// </summary>
     void CopyText(string text)
+    {
+    }
+
+    /// <summary>
+    /// Shows <paramref name="note"/> as the system's notification (Windows: a balloon on the tray icon, shown as a toast;
+    /// macOS: the Notification Centre, only from the app bundle); a click on it calls <paramref name="clicked"/>. Any
+    /// thread. A platform without notifications keeps this default, which does nothing.
+    /// </summary>
+    void Notify(ShellNotification note, Func<Task> clicked)
     {
     }
 }

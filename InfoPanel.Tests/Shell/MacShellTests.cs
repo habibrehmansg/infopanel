@@ -273,3 +273,138 @@ public sealed unsafe class MacAppDelegateTests
         }
     }
 }
+
+/// <summary>
+/// The system's notifications on macOS (<see cref="InfoPanel.Shell.MacOS.MacNotifications"/>): outside an app bundle (this
+/// test host) the notification centre, which would end the process with an Objective-C exception, is never asked; and a
+/// block made by <see cref="ObjC.GlobalBlock"/> is called by Foundation with its arguments. A real notification needs
+/// the app bundle installed outside the temp folders (the system refuses a bundle there) and the user's permission, so
+/// it is the hand check in docs/2.0/desktop-shell.md, not a test.
+/// </summary>
+public sealed unsafe class MacNotificationTests
+{
+    private static readonly List<string?> Enumerated = [];
+
+    [Fact]
+    public void WithoutABundle_TheNotificationCentreIsNeverAsked()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Objective-C");
+        Assert.Null(InfoPanel.Shell.MacOS.MacNotifications.BundleIdentifier());
+        var before = InfoPanel.Shell.MacOS.MacNotifications.CentreRequests;
+        var clicked = 0;
+
+        var shown = InfoPanel.Shell.MacOS.MacNotifications.Show(new ShellNotification("InfoPanel 2.0.0-beta.1 is available", "Click to see what's new and download it."), () =>
+        {
+            clicked++;
+            return Task.CompletedTask;
+        });
+
+        Assert.False(shown);
+        Assert.Equal(before, InfoPanel.Shell.MacOS.MacNotifications.CentreRequests);
+        Assert.Equal(0, clicked);
+    }
+
+    /// <summary>
+    /// From a bundle, a centre that can't be set up (the framework or a class missing) is a notification not shown: logged
+    /// once, never thrown out of <c>Show</c>, and not tried again.
+    /// </summary>
+    [Fact]
+    public void ACentreThatCantBeSetUp_IsLoggedOnce_NeverThrown_AndNotTriedAgain()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Objective-C");
+        var log = new List<Serilog.Events.LogEvent>();
+        var logger = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new Collecting(log)).CreateLogger();
+        var attempts = 0;
+        var setup = new InfoPanel.Shell.MacOS.MacNotifications.CentreSetup(() =>
+        {
+            attempts++;
+            throw new DllNotFoundException("UserNotifications couldn't be loaded.");
+        }, logger);
+        var note = new ShellNotification("InfoPanel 2.0.0-beta.1 is available", "Click to see what's new and download it.");
+
+        Assert.False(InfoPanel.Shell.MacOS.MacNotifications.Show(note, () => Task.CompletedTask, "com.example.infopanel", setup));
+        Assert.False(InfoPanel.Shell.MacOS.MacNotifications.Show(note, () => Task.CompletedTask, "com.example.infopanel", setup));
+
+        Assert.Equal(1, attempts);
+        lock (log)
+        {
+            var warning = Assert.Single(log, e => e.Level >= Serilog.Events.LogEventLevel.Warning);
+            Assert.IsType<DllNotFoundException>(warning.Exception);
+        }
+    }
+
+    /// <summary>
+    /// The engine stops while the system still asks for permission: the answer that comes after submits nothing, and no
+    /// notification is asked for after the stop. The centre's calls are the setup's seams: nothing reaches the system.
+    /// </summary>
+    [Fact]
+    public void APermissionAnsweredAfterTheEngineStopped_SubmitsNothing()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Objective-C");
+        var logger = new Serilog.LoggerConfiguration().CreateLogger();
+        var asked = 0;
+        var submitted = new List<string>();
+        var setup = new InfoPanel.Shell.MacOS.MacNotifications.CentreSetup(() => 1, logger,
+            ask: _ => asked++,
+            submit: (_, note) =>
+            {
+                lock (submitted)
+                    submitted.Add(note.Title);
+            });
+
+        // Running: allowed, it is submitted.
+        Assert.True(InfoPanel.Shell.MacOS.MacNotifications.Show(new ShellNotification("InfoPanel 2.0.0-beta.1 is available", "…"), () => Task.CompletedTask, "com.example.infopanel", setup));
+        InfoPanel.Shell.MacOS.MacNotifications.Permission(granted: true, IntPtr.Zero);
+        // Stopped while the permission is asked: the late answer submits nothing.
+        Assert.True(InfoPanel.Shell.MacOS.MacNotifications.Show(new ShellNotification("InfoPanel 2.0.0-beta.2 is available", "…"), () => Task.CompletedTask, "com.example.infopanel", setup));
+        InfoPanel.Shell.MacOS.MacNotifications.Stop(setup);
+        InfoPanel.Shell.MacOS.MacNotifications.Permission(granted: true, IntPtr.Zero);
+        // After the stop: nothing is asked for.
+        Assert.False(InfoPanel.Shell.MacOS.MacNotifications.Show(new ShellNotification("InfoPanel 2.0.0-beta.3 is available", "…"), () => Task.CompletedTask, "com.example.infopanel", setup));
+
+        lock (submitted)
+            Assert.Equal(["InfoPanel 2.0.0-beta.1 is available"], submitted);
+        Assert.Equal(2, asked);
+    }
+
+    private sealed class Collecting(List<Serilog.Events.LogEvent> events) : Serilog.Core.ILogEventSink
+    {
+        public void Emit(Serilog.Events.LogEvent logEvent)
+        {
+            lock (events)
+                events.Add(logEvent);
+        }
+    }
+
+    [Fact]
+    public void AGlobalBlock_IsCalledByFoundation_WithItsArguments()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Objective-C");
+        var pool = ObjC.AutoreleasePoolPush();
+        try
+        {
+            // -[NSArray enumerateObjectsUsingBlock:] takes void (^)(id obj, NSUInteger index, BOOL *stop).
+            var block = ObjC.GlobalBlock((IntPtr)(delegate* unmanaged<IntPtr, IntPtr, nuint, byte*, void>)&Enumerate, "v@?@Q^B");
+            var array = ObjC.SendId(ObjC.NSString("a,b,c"), ObjC.Sel("componentsSeparatedByString:"), ObjC.NSString(","));
+            lock (Enumerated)
+                Enumerated.Clear();
+
+            ObjC.SendVoidId(array, ObjC.Sel("enumerateObjectsUsingBlock:"), block);
+
+            lock (Enumerated)
+                Assert.Equal(["a 0", "b 1", "c 2"], Enumerated);
+            Assert.Equal(ObjC.BlockInvoke(block), (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, nuint, byte*, void>)&Enumerate);
+        }
+        finally
+        {
+            ObjC.AutoreleasePoolPop(pool);
+        }
+    }
+
+    [UnmanagedCallersOnly]
+    private static void Enumerate(IntPtr block, IntPtr item, nuint index, byte* stop)
+    {
+        lock (Enumerated)
+            Enumerated.Add($"{ObjC.ToManagedString(item)} {index}");
+    }
+}

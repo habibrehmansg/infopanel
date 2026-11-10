@@ -74,6 +74,23 @@ internal sealed unsafe class WinTrayNative(nint hwnd) : IWinTrayNative, IWinMess
         _icon = 0;
     }
 
+    /// <summary>
+    /// <c>NIM_MODIFY</c> with <c>NIF_INFO</c>: the balloon's title and text (cut to what the structure holds, terminated)
+    /// and its flags; with <c>NIIF_USER</c> it shows the icon's image (<c>hIcon</c>, as <c>hBalloonIcon</c> is unset).
+    /// </summary>
+    public bool ShowBalloon(WinBalloon balloon)
+    {
+        var data = Data(NIF_INFO | NIF_SHOWTIP);
+        var title = Math.Min(balloon.Title.Length, WinTray.BalloonTitleLength);
+        for (var i = 0; i < title; i++)
+            data.SzInfoTitle[i] = balloon.Title[i];
+        var text = Math.Min(balloon.Text.Length, WinTray.BalloonTextLength);
+        for (var i = 0; i < text; i++)
+            data.SzInfo[i] = balloon.Text[i];
+        data.DwInfoFlags = balloon.Flags;
+        return Shell_NotifyIconW(NIM_MODIFY, &data) != 0;
+    }
+
     public uint ShowMenu(IReadOnlyList<WinMenuEntry> entries, int x, int y)
     {
         var menu = CreatePopupMenu();

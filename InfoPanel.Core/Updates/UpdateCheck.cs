@@ -30,6 +30,16 @@ public enum UpdateCheckResult
     Off,
 }
 
+/// <summary>What started a check, as <see cref="UpdateCheck.Changed"/> tells its followers.</summary>
+public enum UpdateTrigger
+{
+    /// <summary>The schedule, or a check asked for that doesn't answer the user itself.</summary>
+    Background,
+
+    /// <summary>The menu's Check for Updates…, which answers the user in its own prompt.</summary>
+    Menu,
+}
+
 /// <summary>
 /// Whether a newer engine is out (docs/2.0/desktop-shell.md, "Updates"): one <c>GET</c> of the engine's public releases on
 /// GitHub (<see cref="GitHubFeed"/>), read by <see cref="ReleaseFeed"/>. The request carries <c>Accept</c>, GitHub's
@@ -131,8 +141,11 @@ public sealed class UpdateCheck : IDisposable
     /// <summary>The newer version known, or null when none is (not checked yet, up to date, or off).</summary>
     public UpdateAvailable? Latest => _latest;
 
-    /// <summary>Raised when <see cref="Latest"/>'s version changes, on the check's thread: a handler returns at once.</summary>
-    public event Action? Changed;
+    /// <summary>
+    /// Raised when <see cref="Latest"/>'s version changes, on the check's thread and under its turn (checks run one at a
+    /// time), with what started that check: a handler returns at once.
+    /// </summary>
+    public event Action<UpdateTrigger>? Changed;
 
     /// <summary>The loop's wait still to run, or null while it isn't waiting. For tests.</summary>
     internal TimeSpan? Remaining
@@ -257,7 +270,7 @@ public sealed class UpdateCheck : IDisposable
                         _nextAt = now + Interval;
                     if (now >= _nextAt)
                     {
-                        await CheckAsync(ct).ConfigureAwait(false);
+                        await CheckAsync(UpdateTrigger.Background, ct).ConfigureAwait(false);
                         now = _time.GetUtcNow();
                     }
 
@@ -304,9 +317,9 @@ public sealed class UpdateCheck : IDisposable
     /// Checks now (the menu's Check for Updates…), unless off, or a check ended less than <see cref="ManualSpacing"/> ago
     /// (its result is the answer); waits for a check under way first. Under this component's lifetime as well as
     /// <paramref name="ct"/>: stopped (<see cref="StopAsync"/>) before or during it, it comes to
-    /// <see cref="UpdateCheckResult.Off"/>.
+    /// <see cref="UpdateCheckResult.Off"/>. <paramref name="trigger"/> is what <see cref="Changed"/> tells its followers.
     /// </summary>
-    public async Task<UpdateCheckResult> CheckNowAsync(CancellationToken ct)
+    public async Task<UpdateCheckResult> CheckNowAsync(CancellationToken ct, UpdateTrigger trigger = UpdateTrigger.Background)
     {
         if (!Enabled || _life.IsCancellationRequested)
             return UpdateCheckResult.Off;
@@ -326,7 +339,7 @@ public sealed class UpdateCheck : IDisposable
                 return UpdateCheckResult.Off;
             if (_lastEnd is { } end && _time.GetElapsedTime(end) < ManualSpacing)
                 return _lastResult;
-            return await CheckAsync(linked.Token).ConfigureAwait(false);
+            return await CheckAsync(trigger, linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_life.IsCancellationRequested && !ct.IsCancellationRequested)
         {
@@ -339,7 +352,7 @@ public sealed class UpdateCheck : IDisposable
     }
 
     /// <summary>One check, under <see cref="_gate"/>: the request, what it came to, and when the next is due.</summary>
-    private async Task<UpdateCheckResult> CheckAsync(CancellationToken ct)
+    private async Task<UpdateCheckResult> CheckAsync(UpdateTrigger trigger, CancellationToken ct)
     {
         UpdateCheckResult result;
         TimeSpan next;
@@ -349,7 +362,7 @@ public sealed class UpdateCheck : IDisposable
         {
             try
             {
-                (result, next, failure) = await RequestAsync(linked.Token).ConfigureAwait(false);
+                (result, next, failure) = await RequestAsync(trigger, linked.Token).ConfigureAwait(false);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
@@ -371,7 +384,7 @@ public sealed class UpdateCheck : IDisposable
         return result;
     }
 
-    private async Task<(UpdateCheckResult, TimeSpan, string?)> RequestAsync(CancellationToken ct)
+    private async Task<(UpdateCheckResult, TimeSpan, string?)> RequestAsync(UpdateTrigger trigger, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, _feed);
         request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
@@ -384,7 +397,7 @@ public sealed class UpdateCheck : IDisposable
         if (status == 304 && _etag is not null)
         {
             ct.ThrowIfCancellationRequested();
-            Answered(_latest is { } kept ? new UpdateOffer(kept.Version, kept.Url) : null);
+            Answered(_latest is { } kept ? new UpdateOffer(kept.Version, kept.Url) : null, trigger);
             return (_latest is null ? UpdateCheckResult.UpToDate : UpdateCheckResult.Available, Interval, null);
         }
 
@@ -401,12 +414,15 @@ public sealed class UpdateCheck : IDisposable
         var offer = ReleaseFeed.Choose(_version, releases);
         // Stopped while the list was read: nothing is published.
         ct.ThrowIfCancellationRequested();
-        Answered(offer);
+        Answered(offer, trigger);
         return (offer is null ? UpdateCheckResult.UpToDate : UpdateCheckResult.Available, Interval, null);
     }
 
-    /// <summary>An answer: <paramref name="offer"/> published, <see cref="Changed"/> raised when its version changed, a new one logged once.</summary>
-    private void Answered(UpdateOffer? offer)
+    /// <summary>
+    /// An answer: <paramref name="offer"/> published, <see cref="Changed"/> raised with <paramref name="trigger"/> when its
+    /// version changed, a new one logged once.
+    /// </summary>
+    private void Answered(UpdateOffer? offer, UpdateTrigger trigger)
     {
         var before = _latest;
         _latest = offer is null ? null : new UpdateAvailable(offer.Version, offer.Url, _time.GetUtcNow());
@@ -420,7 +436,7 @@ public sealed class UpdateCheck : IDisposable
             return;
         try
         {
-            Changed?.Invoke();
+            Changed?.Invoke(trigger);
         }
         catch (Exception ex)
         {

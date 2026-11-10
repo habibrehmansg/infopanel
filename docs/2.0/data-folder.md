@@ -26,6 +26,7 @@ The engine keeps everything it stores in one folder: `{LocalApplicationData}/Inf
 | `plugins/` | Plugins the user added, one `InfoPanel.{Name}` folder each ([plugins](plugins.md)); a package folder that is a link isn't followed |
 | `plugin-settings/{package}/{plugin id}.json` | Configurable plugins' settings, written by their hosts |
 | `plugin-state.json` | The plugin packages the user turned off, by folder name; written only when the user turns one on or off ([below](#the-plugin-state)) |
+| `updates.json` | The newest version the engine has shown an update notification for; written only when one is shown ([below](#the-update-notified)) |
 | `devices.json` | The USB panels the engine has identified and their settings; written when a panel is first found, moves to another port, or its settings change ([below](#the-panels)) |
 | `profiles.xml`, `profiles/{guid}.xml`, `assets/` | Step-1 data, left untouched and unread |
 
@@ -100,6 +101,10 @@ Changes that aren't saved yet live in the engine's memory; so that they survive 
 `plugin-state.json` is `{"format": "infopanel.plugin-state/1", "off": ["InfoPanel.X"]}`: the packages the user turned off, by folder name, compared ignoring case ([plugins](plugins.md#on-off-and-reload)). Only the user's choice is written, never a crash, a give-up, a refusal or a package that doesn't run on this operating system; a name with no package is kept. It is read when the engine starts, held to 1 MiB, and written through a temp file renamed over it, keeping every member it doesn't know as it was written. A file the engine can't hold whole (another format, over 1 MiB, a link, not JSON) is never rewritten: every package runs, and turning one on or off is refused for the run.
 
 The member `v1Migration`, `{"completed": "<UTC time>"}`, is reserved for the 1.x upgrade's plugin migration (a later part, on Windows): the engine keeps it as written and never writes it, and the file's presence never means that migration ran.
+
+## The update notified
+
+`updates.json` is `{"format": "infopanel.updates/1", "notified": "2.0.0-beta.2"}`: the highest SemVer 2 version the engine has attempted a system notification for (`Updates/UpdateNotices`); equal or lower versions aren't notified, so each version notifies at most once, ever, not at every start. Showing a notification doesn't confirm the user saw it. It is read when the engine opens it and written, through a temp file renamed over it, before a notification is shown, and when Check for Updates… finds a newer version (its prompt says it, so that version isn't notified). A failed write shows nothing for that version: it isn't notified in that run, and may be at a later start. A version is at most 256 characters. Members it doesn't know are ignored and not kept. A file it can't read (not a regular file, over 64 KiB, not JSON, text that isn't valid Unicode, another format, no valid SemVer 2 version) is logged as a warning and counts as none: the next version found notifies, and the file is then replaced.
 
 ## The panels
 

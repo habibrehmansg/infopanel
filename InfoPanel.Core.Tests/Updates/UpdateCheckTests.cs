@@ -130,7 +130,13 @@ public sealed class UpdateCheckTests : IAsyncDisposable
     {
         var check = await StartedAsync(Check());
         var changed = 0;
-        check.Changed += () => Interlocked.Increment(ref changed);
+        var triggers = new List<UpdateTrigger>();
+        check.Changed += trigger =>
+        {
+            Interlocked.Increment(ref changed);
+            lock (triggers)
+                triggers.Add(trigger);
+        };
 
         await PassAsync(check, TimeSpan.FromSeconds(30));
         await PassAsync(check, TimeSpan.FromHours(25));
@@ -138,6 +144,8 @@ public sealed class UpdateCheckTests : IAsyncDisposable
         Assert.Equal(2, _feed.Count);
         Assert.Equal(new UpdateAvailable("2.0.0-beta.1", Page + "2.0.0-beta.1", Start + TimeSpan.FromSeconds(30) + TimeSpan.FromHours(24)), check.Latest);
         Assert.Equal(1, changed);
+        lock (triggers)
+            Assert.Equal([UpdateTrigger.Background], triggers);
         Assert.Single(_events, e => e.RenderMessage() == $"InfoPanel \"2.0.0-beta.1\" is available: \"{Page}2.0.0-beta.1\"");
     }
 
@@ -253,7 +261,7 @@ public sealed class UpdateCheckTests : IAsyncDisposable
         };
         var check = Check();
         var changed = 0;
-        check.Changed += () => Interlocked.Increment(ref changed);
+        check.Changed += _ => Interlocked.Increment(ref changed);
         var manual = check.CheckNowAsync(Ct);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
 

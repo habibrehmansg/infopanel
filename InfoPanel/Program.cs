@@ -569,6 +569,8 @@ try
     builder.Services.AddSingleton(sp => new InfoPanel.Updates.UpdateCheck(ReadEndpoints.EngineVersion(),
         string.IsNullOrEmpty(updateFeed) ? null : updateFeed, options.Offline, sp.GetRequiredService<TimeProvider>(),
         engineLogger.ForContext<InfoPanel.Updates.UpdateCheck>()));
+    // The versions notified (updates.json): each new version notifies once, ever.
+    builder.Services.AddSingleton(_ => InfoPanel.Updates.UpdateNotices.Open(paths, engineLogger.ForContext<InfoPanel.Updates.UpdateNotices>()));
     builder.Services.AddHostedService<InfoPanel.Shell.ShellService>();
     builder.Services.AddSingleton<DisplayWindowManager>();
     builder.Services.AddSingleton<DisplayLister>();

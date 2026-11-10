@@ -110,7 +110,10 @@ public sealed class WinShellPlatformTests
         Assert.Equal(24, Offset<NOTIFYICONDATAW>(nameof(NOTIFYICONDATAW.UCallbackMessage)));
         Assert.Equal(32, Offset<NOTIFYICONDATAW>(nameof(NOTIFYICONDATAW.HIcon)));
         Assert.Equal(40, Offset<NOTIFYICONDATAW>(nameof(NOTIFYICONDATAW.SzTip)));
+        Assert.Equal(304, Offset<NOTIFYICONDATAW>(nameof(NOTIFYICONDATAW.SzInfo)));
         Assert.Equal(816, Offset<NOTIFYICONDATAW>(nameof(NOTIFYICONDATAW.UVersion)));
+        Assert.Equal(820, Offset<NOTIFYICONDATAW>(nameof(NOTIFYICONDATAW.SzInfoTitle)));
+        Assert.Equal(948, Offset<NOTIFYICONDATAW>(nameof(NOTIFYICONDATAW.DwInfoFlags)));
         Assert.Equal(968, Offset<NOTIFYICONDATAW>(nameof(NOTIFYICONDATAW.HBalloonIcon)));
 
         Assert.Equal(4, Offset<TASKDIALOGCONFIG>(nameof(TASKDIALOGCONFIG.HwndParent)));

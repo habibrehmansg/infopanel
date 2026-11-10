@@ -18,7 +18,8 @@ namespace InfoPanel.Shell;
 /// always has a port, and removes it when the engine stops; builds the menu from the engine's state each time it opens
 /// (<see cref="ShellMenu.Build"/>) and runs what the user chooses in it. While the icon can show, it runs
 /// <see cref="ServiceHolder"/>, which asks the configured service who holds the credential, for the signed-in line, and
-/// <see cref="UpdateCheck"/>, for the update line.
+/// <see cref="UpdateCheck"/>, for the update line and the notification of a new version (at most once a version, ever:
+/// <see cref="UpdateNotices"/>; a click opens its release page).
 /// <list type="bullet">
 /// <item><b>Update Available: InfoPanel {version}…</b> opens the new version's release page in the browser; <b>Check for
 /// Updates…</b> checks now and answers in a prompt: the new version (Download, the default, opens its page; Later), up to
@@ -56,6 +57,7 @@ public sealed class ShellService(
     IFolderOpener folders,
     DisplayWindowManager windows,
     UpdateCheck updates,
+    UpdateNotices notices,
     BrowserLauncher browser,
     ILogger<ShellService> logger,
     IConfiguration? configuration = null,
@@ -118,7 +120,8 @@ public sealed class ShellService(
 
             if (environment?.IsEnvironment(TestEnvironment) == true && bool.TryParse(configuration?[TestPromptSetting], out var ask) && ask)
                 _ = AskTestPromptAsync();
-            // The update check, while the icon shows: its first check 30 s from now.
+            // The update check, while the icon shows: its first check 30 s from now. A new version it finds is notified.
+            updates.Changed += OnUpdateChanged;
             updates.Start();
         });
         _stopping = lifetime.ApplicationStopping.Register(platform.Remove);
@@ -136,11 +139,40 @@ public sealed class ShellService(
         platform.TerminateRequested -= OnTerminateRequested;
         platform.ReopenRequested -= OnReopenRequested;
         NetworkChange.NetworkAddressChanged -= OnNetworkChanged;
+        updates.Changed -= OnUpdateChanged;
         await holder.StopAsync(cancellationToken).ConfigureAwait(false);
         await updates.StopAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void OnNetworkChanged(object? sender, EventArgs e) => holder.NetworkChanged();
+
+    /// <summary>
+    /// The update check found another version (on its own thread; its checks run one at a time): a version above every
+    /// one notified before (<see cref="UpdateNotices"/>, <c>updates.json</c>) is remembered first, then notified only when
+    /// that was written, so at most once, ever. Found by Check for Updates… (<see cref="UpdateTrigger.Menu"/>), it is
+    /// remembered but not notified: that check answers in its own prompt. The platform keeps only the newest
+    /// notification's click, which opens that version's release page, the address captured here.
+    /// </summary>
+    private void OnUpdateChanged(UpdateTrigger trigger)
+    {
+        if (updates.Latest is not { } update || !platform.IsSupported || !notices.ShouldNotify(update.Version))
+            return;
+        if (!notices.Remember(update.Version) || trigger == UpdateTrigger.Menu)
+            return;
+        logger.LogInformation("Notifying that InfoPanel {Version} is available", update.Version);
+        platform.Notify(new ShellNotification($"InfoPanel {update.Version} is available", "Click to see what's new and download it."),
+            () => Task.Run(() =>
+            {
+                try
+                {
+                    OpenReleasePage(update.Version, update.Url);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "The notification's click failed");
+                }
+            }));
+    }
 
     /// <summary>The menu as it opens, from the engine's state now; a state that can't be read leaves the lines that need none.</summary>
     private ShellMenu Menu()
@@ -258,7 +290,7 @@ public sealed class ShellService(
                         break;
                     case ShellMenu.UpdateAvailable:
                         if (updates.Latest is { } update)
-                            OpenReleasePage(update.Url);
+                            OpenReleasePage(update.Version, update.Url);
                         break;
                     case ShellMenu.CheckForUpdates:
                         await CheckForUpdatesAsync().ConfigureAwait(false);
@@ -384,11 +416,12 @@ public sealed class ShellService(
 
     /// <summary>
     /// Check for Updates…: checks now, then says what it found: a newer version (Download opens its release page), up to
-    /// date, or couldn't check. Off (a development build), it says nothing.
+    /// date, or couldn't check. Off (a development build), it says nothing. A newer version it finds is remembered as
+    /// notified, without a notification (<see cref="OnUpdateChanged"/>): the prompt says it.
     /// </summary>
     private async Task CheckForUpdatesAsync()
     {
-        var result = await updates.CheckNowAsync(lifetime.ApplicationStopping).ConfigureAwait(false);
+        var result = await updates.CheckNowAsync(lifetime.ApplicationStopping, UpdateTrigger.Menu).ConfigureAwait(false);
         logger.LogInformation("Check for Updates: {Result}", result);
         var latest = updates.Latest;
         var prompt = result switch
@@ -401,13 +434,13 @@ public sealed class ShellService(
         if (prompt is null)
             return;
         if (await platform.ConfirmAsync(prompt).ConfigureAwait(false) == 0 && result == UpdateCheckResult.Available && latest is not null)
-            OpenReleasePage(latest.Url);
+            OpenReleasePage(latest.Version, latest.Url);
     }
 
-    /// <summary>A release page, in the browser (the address built from the tag, never taken from the list).</summary>
-    private void OpenReleasePage(string url)
+    /// <summary>The release page of <paramref name="version"/>, in the browser (the address built from the tag, never taken from the list).</summary>
+    private void OpenReleasePage(string version, string url)
     {
-        logger.LogInformation("Opening the release page of InfoPanel {Version}", updates.Latest?.Version);
+        logger.LogInformation("Opening the release page of InfoPanel {Version}", version);
         browser.Open(new EditorLink(url, WebClient: false));
     }
 

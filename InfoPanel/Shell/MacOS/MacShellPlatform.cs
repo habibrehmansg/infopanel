@@ -181,7 +181,14 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
         Logger.Information("Menu bar item added");
     });
 
-    public void Remove() => loop.Post(() =>
+    public void Remove()
+    {
+        // The engine is stopping: no notification is shown after.
+        MacNotifications.Stop();
+        loop.Post(RemoveOnLoop);
+    }
+
+    private void RemoveOnLoop()
     {
         // The engine is stopping: no prompt waits for an answer any more.
         _closed = true;
@@ -202,7 +209,7 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
             _menu = IntPtr.Zero;
         }
         Logger.Information("Menu bar item removed");
-    });
+    }
 
     public Task<int> ConfirmAsync(ShellPrompt prompt)
     {
@@ -483,6 +490,9 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
         if (SendBoolIdId(board, ObjC.Sel("setString:forType:"), ObjC.NSString(text), ObjC.NSString(PlainTextType)) == 0)
             Logger.Warning("The engine's details couldn't be put on the clipboard");
     });
+
+    /// <summary>Shows <paramref name="note"/> in the Notification Centre (<see cref="MacNotifications"/>): only from the app bundle.</summary>
+    public void Notify(ShellNotification note, Func<Task> clicked) => MacNotifications.Show(note, clicked);
 
     [UnmanagedCallersOnly]
     private static void MenuNeedsUpdate(IntPtr self, IntPtr sel, IntPtr menu) => Guard(() => _current?.Rebuild(menu));
