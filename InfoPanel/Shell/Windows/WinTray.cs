@@ -124,8 +124,8 @@ internal static class WinMessageHold
 /// Start when I sign in read from the Run value then; the item chosen runs: the model's through the engine, Start when I
 /// sign in here;</item>
 /// <item>Explorer's <c>TaskbarCreated</c> (after it restarts, or once the taskbar exists at a sign-in start) adds the
-/// icon again while it is shown; a settings or display change that turns the taskbar light or dark, or changes the
-/// icon's size in pixels (the display's scale), redraws it;</item>
+/// icon again while it is shown; a settings or display change that changes the icon's size in pixels (the display's
+/// scale) redraws it (the taskbar's theme doesn't matter: the icon is the coloured logo on either);</item>
 /// <item>the session ending (sign-out, shutdown) raises <see cref="SessionEnding"/> once (the engine stops without
 /// asking) and holds the end until the host has stopped, at most <see cref="SessionEndWait"/> from the first end, however
 /// many come;</item>

@@ -31,7 +31,10 @@ Click the hexagon. The menu is built afresh from the engine's state each time it
    off as the editor's Show on desktop does: one `profile` commit of `window.enabled` (the rest of `window` as the
    document has it) at the revision it read, read again on a conflict, one undo step; saved at once at that revision
    when the profile had no unsaved changes, otherwise left unsaved with them. Each line asks for the state opposite the
-   check mark it showed, so a choice made after another client changed the window changes nothing.
+   check mark it showed, so a choice made after another client changed the window changes nothing. The profile lines
+   are the ones the engine last read, off the menu's thread, at start and after each change of the profile list or of
+   a listed profile, so opening the menu never waits for a save's disk writes; a change made a moment before can show
+   at the next opening.
    **Click-Through ▸**, right under it, while desktop windows are on: each profile Show on Desktop lists whose window
    is on, in the same order and by the same name, with a check mark while clicks pass through its window to whatever
    is beneath it (`window.clickThrough`); "No Windows Shown" (grey) when none is on. Choosing a line lets clicks
@@ -304,8 +307,8 @@ release build). A build from source carries none and behaves as before.
   Common Controls 6: the engine's application manifest (`InfoPanel/app.manifest`) asks for it, and the build copies it
   into `InfoPanel.exe`; under the `dotnet` host (`dotnet.exe` has its own manifest) `WinCommonControls` activates a
   context made from the same manifest, which the compiler embeds in `InfoPanel.dll`, around the dialog.
-  The menu's lines are `WinTrayMenu.Flatten` (ids, the default item, the platform's own Start when I sign in above
-  Exit); the Run value is `WinStartup` over a registry seam.
+  The menu's lines are `WinTrayMenu.Lines` (ids, the default item, the platform's own Start when I sign in above
+  Exit), and `WinTrayMenu.Find` the line a chosen command names; the Run value is `WinStartup` over a registry seam.
 - Threads: AppKit runs on the process main thread. `DesktopHost` starts its loop when desktop windows **or** the
   menu-bar item are on, and runs the host on a worker. Off the main thread (every test host) neither is created. On
   Windows both run on the engine's UI thread, whatever thread starts the engine; test engines pass `--no-tray`.
@@ -317,7 +320,8 @@ release build). A build from source carries none and behaves as before.
   `ShellService` on the engine host with a fake platform (`FakeShellPlatform`, which keeps what is copied), a fake
   desktop, the engine's recording folder opener and a recording browser launcher: when the icon comes and goes, Open
   Editor, Quit with and without unsaved profiles, the prompt's names, a system quit (`ShellServiceTests`); Show on
-  Desktop's commit and save, the folders, More in the Editor and the details (`ShellActionTests`); the signed-in line
+  Desktop's commit and save, the menu opening at once with the profiles last read while a write holds the workspace,
+  the folders, More in the Editor and the details (`ShellActionTests`); the signed-in line
   from the service's answer on the engine host (`ShellSignedInTests`); when the engine asks, what it shows, the late
   answer, the 401, the failures and the bounds (`ServiceHolderTests`); the choice of what runs
   (`DesktopHost.Choose`); the flag. The update line on the engine host over a feed answered in memory: Check for
@@ -339,11 +343,12 @@ release build). A build from source carries none and behaves as before.
 - `InfoPanel.Tests/Shell/Windows/` (any OS): the menu in Windows' words with its commands and default item, Show on
   desktop's submenu (its checks, none, 20 and more, a choice in it running the model's id), Start when
   I sign in (the Run value and Task Manager's switch, through a fake registry), a click, a double-click, a right click,
-  `TaskbarCreated`, the theme, Exit's dialog and the update lines and prompts in Windows' words, prompts one at a time, the icon's removal
-  (`WinTrayTests`, through `FakeTrayNative`); the session's end, its hold over a scripted message queue (a second end
+  `TaskbarCreated`, Exit's dialog and the update lines and prompts in Windows' words, prompts one at a time, the
+  icon's removal, the update notification's balloon (its cuts, its click, none without the icon) (`WinTrayTests`,
+  through `FakeTrayNative`); the session's end, its hold over a scripted message queue (a second end
   dispatched inside it, one sent to it with a message queued behind, a hold that starts late, a queue that never
-  empties) and a scale change (`WinTraySystemTests`); the glyph per
-  theme and the Win32 structures' sizes and offsets (`WinShellPlatformTests`, `WinCommonControlsTests`). On Windows the
+  empties) and a scale change (`WinTraySystemTests`); the icon, the coloured logo at each size whatever the theme,
+  and the Win32 structures' sizes and offsets (`WinShellPlatformTests`, `WinCommonControlsTests`). On Windows the
   registry itself, under a key of the test's own (`WinStartupTests`), and `TaskDialogIndirect` inside the engine's
   Common Controls 6 in the test host, whose manifest isn't the engine's (`WinCommonControlsTests`), and Copy engine
   details' clipboard outside a signed-in desktop (over SSH; skipped in one, whose clipboard is the user's).
