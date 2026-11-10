@@ -1,0 +1,302 @@
+name: Release
+
+# InfoPanel 2's installers (docs/2.0/packaging.md, "Releases"). A pushed tag that is a bare 2.x version (2.0.0-beta.1)
+# on a 2.0.x commit builds the macOS disk image and the Windows setup, smoke-runs each, and attaches both with
+# SHA256SUMS to a draft release for that tag, which is published by hand. A run started by hand, or a push to 2.0.x that
+# changes packaging, is a dry run: the same builds, kept as the run's artifacts only, stamped 2.0.0-dev.ci.<run number>
+# (or the version given). The web client's origin is the repository variable INFOPANEL_ALLOW_ORIGIN. Nothing here
+# creates a tag, signs or publishes.
+on:
+  push:
+    tags: ['2.*']
+    branches: [2.0.x]
+    # For branch pushes only: GitHub doesn't apply paths to tag pushes.
+    paths: ['.github/workflows/release.yml', '.github/scripts/release-version.sh', 'packaging/**', 'native/**']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to stamp (a 2.x SemVer such as 2.0.0-beta.1); empty: 2.0.0-dev.ci.<run number>'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      mode: ${{ steps.version.outputs.mode }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: version
+        name: Mode and version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+          COMMIT_SHA: ${{ github.sha }}
+          ALLOW_ORIGIN: ${{ vars.INFOPANEL_ALLOW_ORIGIN }}
+          RELEASE_BRANCH: origin/2.0.x
+        run: bash .github/scripts/release-version.sh
+      - name: Check the arguments the build scripts take
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ALLOW_ORIGIN: ${{ vars.INFOPANEL_ALLOW_ORIGIN }}
+        run: bash packaging/macos/build.sh --check-args --version "$VERSION" --allow-origin "$ALLOW_ORIGIN" --out unused
+
+  mac:
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      ALLOW_ORIGIN: ${{ vars.INFOPANEL_ALLOW_ORIGIN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Build the app and its disk image
+        # The output folder is outside the checkout, so the build isn't recorded as -dirty.
+        run: packaging/macos/build.sh --version "$VERSION" --allow-origin "$ALLOW_ORIGIN" --out "$RUNNER_TEMP/mac"
+      - name: Smoke run
+        run: |
+          set -euo pipefail
+          expected_build="$(git rev-parse --short=7 HEAD)"
+          token="$(openssl rand -hex 32)"
+          echo "::add-mask::$token"
+          smoke="$RUNNER_TEMP/smoke-mac"
+          mkdir -p "$smoke/data" "$smoke/v1"
+          pid=""
+          # Stops the engine on every way out of this step, an early exit or a cancel too: TERM, up to 15 s, then KILL.
+          stop_engine() {
+            [ -n "$pid" ] || return 0
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -TERM "$pid" 2>/dev/null || true
+              for _ in $(seq 1 15); do
+                kill -0 "$pid" 2>/dev/null || break
+                sleep 1
+              done
+              if kill -0 "$pid" 2>/dev/null; then
+                echo "::warning::The engine didn't stop within 15 s of TERM: killed"
+                kill -KILL "$pid" 2>/dev/null || true
+              fi
+            fi
+            stopped=0
+            wait "$pid" 2>/dev/null || stopped=$?
+            pid=""
+            echo "Engine stopped with exit code $stopped"
+          }
+          trap stop_engine EXIT
+          "$RUNNER_TEMP/mac/dmg/InfoPanel.app/Contents/MacOS/InfoPanel" --port 5390 --token "$token" \
+            --data-dir "$smoke/data" --v1-dir "$smoke/v1" \
+            --offline --no-tray --no-windows --no-browser --no-plugins --no-panels > "$smoke/engine.log" 2>&1 &
+          pid=$!
+          session=""
+          for _ in $(seq 1 60); do
+            if session="$(curl -fsS --max-time 5 -H "Authorization: Bearer $token" http://127.0.0.1:5390/api/session 2>/dev/null)"; then
+              break
+            fi
+            session=""
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          stop_engine
+          if [ -z "$session" ]; then
+            cat "$smoke/engine.log"
+            echo "::error::The engine didn't answer GET /api/session within 60 s"
+            exit 1
+          fi
+          version="$(jq -r .engineVersion <<< "$session")"
+          build="$(jq -r .engineBuild <<< "$session")"
+          echo "Smoke: engineVersion $version (expected $VERSION)"
+          echo "Smoke: engineBuild $build (expected $expected_build)"
+          [ "$version" = "$VERSION" ] || { echo "::error::engineVersion is $version, not $VERSION"; exit 1; }
+          [ "$build" = "$expected_build" ] || { echo "::error::engineBuild is $build, not $expected_build (a -dirty build, or another commit)"; exit 1; }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mac
+          path: ${{ runner.temp }}/mac/InfoPanel-${{ needs.prepare.outputs.version }}-mac-arm64.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    needs: prepare
+    # Pinned: its image carries Inno Setup 6 (installed below when it doesn't).
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      ALLOW_ORIGIN: ${{ vars.INFOPANEL_ALLOW_ORIGIN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Inno Setup 6
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $iscc)) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "choco install innosetup exited $LASTEXITCODE." }
+          }
+          if (-not (Test-Path -LiteralPath $iscc)) { throw "Inno Setup 6's compiler isn't at $iscc." }
+          Write-Host "Inno Setup: $iscc"
+      - name: Build the setup
+        # The output folder is outside the checkout, so the build isn't recorded as -dirty.
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1 `
+            -Version $env:VERSION -AllowOrigin $env:ALLOW_ORIGIN -Out "$env:RUNNER_TEMP\win"
+          if ($LASTEXITCODE -ne 0) { throw "build.ps1 exited $LASTEXITCODE." }
+      - name: Smoke run
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedBuild = (git rev-parse --short=7 HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "git rev-parse exited $LASTEXITCODE." }
+          $bytes = [byte[]]::new(32)
+          [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+          $token = [Convert]::ToHexString($bytes).ToLowerInvariant()
+          Write-Host "::add-mask::$token"
+          $smoke = Join-Path $env:RUNNER_TEMP 'smoke-win'
+          New-Item -ItemType Directory -Force -Path (Join-Path $smoke 'data'), (Join-Path $smoke 'v1') | Out-Null
+          $exe = Join-Path $env:RUNNER_TEMP 'win\publish\InfoPanel.exe'
+          # Start-Process joins its arguments into one command line: each path is quoted, so a space can't split it.
+          $data = Join-Path $smoke 'data'
+          $v1 = Join-Path $smoke 'v1'
+          $engineArgs = @('--port', '5390', '--token', $token, '--data-dir', "`"$data`"", '--v1-dir', "`"$v1`"",
+            '--offline', '--no-tray', '--no-windows', '--no-browser', '--no-plugins', '--no-panels')
+          $engine = $null
+          $session = $null
+          try {
+            $engine = Start-Process -FilePath $exe -ArgumentList $engineArgs -PassThru -NoNewWindow `
+              -RedirectStandardOutput (Join-Path $smoke 'engine.log') -RedirectStandardError (Join-Path $smoke 'engine.err.log')
+            for ($i = 0; $i -lt 60 -and -not $session; $i++) {
+              try {
+                $session = Invoke-RestMethod -Uri 'http://127.0.0.1:5390/api/session' -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5
+              } catch {
+                if ($engine.HasExited) { break }
+                Start-Sleep -Seconds 1
+              }
+            }
+          } finally {
+            # On every way out of the loop, a failure too: stop the engine and wait for it, at most 15 s.
+            if ($engine -and -not $engine.HasExited) {
+              Stop-Process -Id $engine.Id -Force -ErrorAction SilentlyContinue
+              if (-not $engine.WaitForExit(15000)) { Write-Host "::warning::The engine didn't stop within 15 s" }
+            }
+          }
+          if (-not $session) {
+            Get-Content (Join-Path $smoke 'engine.log'), (Join-Path $smoke 'engine.err.log') -ErrorAction SilentlyContinue
+            Write-Host "::error::The engine didn't answer GET /api/session within 60 s"
+            exit 1
+          }
+          Write-Host "Smoke: engineVersion $($session.engineVersion) (expected $env:VERSION)"
+          Write-Host "Smoke: engineBuild $($session.engineBuild) (expected $expectedBuild)"
+          if ($session.engineVersion -cne $env:VERSION) { Write-Host "::error::engineVersion is $($session.engineVersion), not $env:VERSION"; exit 1 }
+          if ($session.engineBuild -cne $expectedBuild) { Write-Host "::error::engineBuild is $($session.engineBuild), not $expectedBuild (a -dirty build, or another commit)"; exit 1 }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: ${{ runner.temp }}\win\InfoPanel-${{ needs.prepare.outputs.version }}-win-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: [prepare, mac, windows]
+    if: needs.prepare.outputs.mode == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.version }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      COMMIT_SHA: ${{ github.sha }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: mac
+          path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows
+          path: dist
+      - name: Draft release
+        run: |
+          set -euo pipefail
+          dmg="InfoPanel-$TAG-mac-arm64.dmg"
+          setup="InfoPanel-$TAG-win-x64-setup.exe"
+          [ -f "dist/$dmg" ] && [ -f "dist/$setup" ] || { echo "::error::dist lacks $dmg or $setup"; ls -l dist; exit 1; }
+          (cd dist && sha256sum "$dmg" "$setup" > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+          # A release is never reused: if one exists for this tag, a draft or a published one, this run writes nothing.
+          existing="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" | jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | if .draft then "draft" else "published" end')"
+          if grep -qx published <<< "$existing"; then
+            echo "::error::A published release for $TAG already exists: this run changes nothing. A new build needs a new version and tag."
+            exit 1
+          fi
+          if [ -n "$existing" ]; then
+            echo "::error::A release for $TAG already exists. Delete the draft on the Releases page, then re-run this job."
+            exit 1
+          fi
+
+          # The tag must still point at the commit prepare checked and the jobs built: its peeled commit (an annotated
+          # tag), else the commit a lightweight tag names.
+          [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::The built commit isn't a commit id"; exit 1; }
+          remote_tags="$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
+          tagged="$(awk -v ref="refs/tags/$TAG^{}" '$2 == ref { print $1 }' <<< "$remote_tags")"
+          [ -n "$tagged" ] || tagged="$(awk -v ref="refs/tags/$TAG" '$2 == ref { print $1 }' <<< "$remote_tags")"
+          if [ -z "$tagged" ]; then
+            echo "::error::The tag $TAG isn't on the repository any more: nothing is released."
+            exit 1
+          fi
+          if [ "$tagged" != "$COMMIT_SHA" ]; then
+            echo "::error::The tag $TAG now points at $tagged, not at $COMMIT_SHA, which this run built: nothing is released. Push the tag again to build it."
+            exit 1
+          fi
+
+          # The draft and its files in one call: no upload to an existing release, nothing replaced.
+          flags=(--draft --verify-tag --title "InfoPanel $TAG" --notes-file packaging/release-notes.md)
+          [ "$PRERELEASE" != "true" ] || flags+=(--prerelease)
+          gh release create "$TAG" "${flags[@]}" "dist/$dmg" "dist/$setup" dist/SHA256SUMS
+
+          {
+            echo "### InfoPanel $TAG"
+            echo ""
+            echo "Built from \`$COMMIT_SHA\`."
+            echo ""
+            echo "| File | SHA-256 |"
+            echo "|---|---|"
+            while read -r sum file; do echo "| \`$file\` | \`$sum\` |"; done < dist/SHA256SUMS
+            echo ""
+            echo "A new draft release: publish it on the Releases page. To rebuild it, delete the draft, then re-run this job."
+          } >> "$GITHUB_STEP_SUMMARY"

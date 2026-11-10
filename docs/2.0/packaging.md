@@ -224,3 +224,62 @@ The uninstaller (Settings › Apps, or Uninstall InfoPanel 2 in the Start menu):
 
 The beta's installer isn't signed: SmartScreen says "Windows protected your PC" (More info › Run anyway) and UAC shows
 "Publisher: Unknown". Signing comes before the public release.
+
+## Releases
+
+GitHub Actions builds the downloads with the two scripts above: `.github/workflows/release.yml`, on GitHub's runners,
+from this repository alone. Nothing is signed beyond the Mac's ad hoc signature, and nothing is published by itself.
+
+**Versions.** A version is a SemVer 2 version with major 2. A build from source is `2.0.0-dev` (the `<Version>` in
+`InfoPanel/InfoPanel.csproj`); a release passes its version to the scripts, which stamp it everywhere: the engine
+(`GET /api/session`'s `engineVersion`), the app's `Info.plist`, the installer and the file names. Each release is a
+tag of the bare version, with no `v` and no `+build`: `2.0.0-beta.1`, `2.0.0`. A `-dev` version is never a release's.
+The engine also reports the commit it was built from (`engineBuild`), with `-dirty` when the checkout had changes.
+
+**The web client's origin** (built in as `--allow-origin`'s default) is the repository variable
+`INFOPANEL_ALLOW_ORIGIN` (Settings › Secrets and variables › Actions › Variables), never written in this repository.
+Every run needs it: without it the first job fails with "Set the repository variable INFOPANEL_ALLOW_ORIGIN to the web
+client's origin".
+
+**The jobs.**
+
+1. `prepare` (Linux) decides the mode and the version (`.github/scripts/release-version.sh`) and checks the arguments
+   with `build.sh --check-args`. A pushed tag is a **release**: refused unless it is a bare 2.x version, not `-dev`,
+   on a commit of `2.0.x`. Anything else is a **dry run**, stamped with the version given or
+   `2.0.0-dev.ci.<run number>`.
+2. `mac` (`macos-15`, Apple silicon) runs `packaging/macos/build.sh` into the runner's temporary folder, outside the
+   checkout, so the build isn't `-dirty`. `windows` (`windows-2022`, with Inno Setup 6, installed when the image lacks
+   it) runs `packaging\windows\build.ps1` the same way.
+3. Each smoke-runs what it built: the engine on a temporary data folder with `--offline --no-tray --no-windows
+   --no-browser --no-plugins --no-panels`, then `GET /api/session` must report the version as `engineVersion` and the
+   checked-out commit, without `-dirty`, as `engineBuild`. Each keeps its file as the run's artifact (`mac`,
+   `windows`) for 14 days.
+4. `release` runs for a release only, and is the only job that may write to the repository. It writes `SHA256SUMS`
+   for the two files. It never reuses a release: if one exists for the tag, a draft or a published one, it fails and
+   writes nothing. It also fails unless the tag on GitHub still points at the commit the run built. Otherwise it makes
+   a **draft** pre-release from the existing tag, with the disk image, the setup and `SHA256SUMS` attached in the same
+   call (`gh release create --draft --verify-tag`: it never makes a tag) and `packaging/release-notes.md` as its notes.
+
+Every 2.x release is marked pre-release on GitHub for now, `2.0.0` included: 1.x's update check offers every release
+that isn't one, so a 2.x release marked otherwise would be offered to 1.x users.
+
+**A dry run** starts by itself on each push to `2.0.x` that changes the workflow, `packaging/` or `native/`, or by hand
+with `gh workflow run`, which works once the workflow has run on `2.0.x`. The Actions page's Run workflow button may
+not show while the repository's default branch is `1.4.x`, which has no such workflow:
+
+```bash
+gh workflow run release.yml --ref 2.0.x                          # stamped 2.0.0-dev.ci.<run number>
+gh workflow run release.yml --ref 2.0.x -f version=2.0.0-beta.1  # a release-like build to try; not a release
+gh run download <run id> --dir <a new folder>                    # its artifacts: the disk image and the setup
+```
+
+**A release:**
+
+1. Tag the `2.0.x` commit to release with its version and push the tag: `git tag -s 2.0.0-beta.1 -m "InfoPanel
+   2.0.0-beta.1"`, then `git push origin 2.0.0-beta.1`.
+2. The run for the tag builds both downloads and makes the draft release "InfoPanel 2.0.0-beta.1".
+3. On the Releases page, edit the draft's notes (replace `<version>` in them), try its files, then publish it.
+
+A tag the workflow refuses makes no release: delete the tag, fix what the run's first job says and tag again. To rebuild
+a draft, delete the draft on the Releases page, then re-run the tag's workflow; while any release for the tag exists, a
+run changes nothing. A published release is never rebuilt: release a new version instead.
