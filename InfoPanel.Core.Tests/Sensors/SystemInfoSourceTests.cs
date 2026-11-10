@@ -1,8 +1,10 @@
 using System.Data;
+using System.Text.Json;
 using InfoPanel.Plugins;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.Drives;
 using InfoPanel.Sensors.SystemInfo;
+using InfoPanel.Settings;
 using Serilog.Events;
 using Xunit;
 
@@ -78,17 +80,35 @@ public sealed class SystemInfoSourceTests : IDisposable
     private readonly FakeSystem _system = new();
     private readonly TimerTimeProvider _time = new(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero));
     private readonly List<LogEvent> _events = [];
+    private readonly Persistence.TempDirectory _temp = new();
     private PolledSensorSource? _source;
 
-    public void Dispose() => _source?.Dispose();
+    public void Dispose()
+    {
+        _source?.Dispose();
+        _temp.Dispose();
+    }
 
-    /// <summary>The source over the fake system, discovered and polled once.</summary>
-    private PolledSensorSource Open()
+    /// <summary>The source over the fake system, discovered and polled once; with <paramref name="settings"/>, following them.</summary>
+    private PolledSensorSource Open(SettingsStore? settings = null)
     {
         var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(_events)).CreateLogger();
-        _source = SystemInfoSource.Create(_system, _time, log: log);
+        _source = SystemInfoSource.Create(_system, _time, log: log, settings: settings);
         _source.Open();
         return _source;
+    }
+
+    /// <summary>The engine's settings, in a folder of the test's own.</summary>
+    private SettingsStore Settings() => SettingsStore.Open(_temp.Combine("settings.json"), _temp.Path, Serilog.Core.Logger.None, faults: null);
+
+    private static void Exclude(SettingsStore settings, string excluded) =>
+        settings.Apply(JsonDocument.Parse("""{"sources":{"systemInfo":{"excludedProcesses":""" + excluded + "}}}").RootElement);
+
+    /// <summary>Every process runs a little more, so each is in the tables at the next round.</summary>
+    private void RunAll()
+    {
+        foreach (var p in _system.List.ToArray())
+            _system.Run(p.Pid, 0.1);
     }
 
     /// <summary>One poll, a second after the last (the source's interval).</summary>
@@ -347,6 +367,62 @@ public sealed class SystemInfoSourceTests : IDisposable
         Assert.Equal(excluded, SystemInfoSource.DefaultExcluded);
         foreach (var id in Ids[12..])
             Assert.Equal(kept.Order(StringComparer.Ordinal), Names(Table(id)));
+    }
+
+    // ---- The setting: sources.systemInfo.excludedProcesses ----
+
+    [Fact]
+    public void Tables_LeaveOutTheSettingsNames_AChangeAppliedFromTheNextRound()
+    {
+        _system.Usage = new([null, 50]);
+        AddProcess(10, "svchost");
+        AddProcess(11, "InfoPanel");
+        AddProcess(12, "node");
+        var settings = Settings();
+        Open(settings);
+        RunAll();
+        Round();
+        // The default: 1.x's nine.
+        Assert.All(Ids[12..], id => Assert.Equal(["InfoPanel", "node"], Names(Table(id)).Order(StringComparer.Ordinal)));
+
+        Exclude(settings, """["InfoPanel"]""");
+        // The round before the change is as it was; the next round leaves out the new list's names, and only them.
+        Assert.Equal(["InfoPanel", "node"], Names(Table("processes/top-cpu-usage")).Order(StringComparer.Ordinal));
+        RunAll();
+        Round();
+        Assert.All(Ids[12..], id => Assert.Equal(["node", "svchost"], Names(Table(id)).Order(StringComparer.Ordinal)));
+
+        Exclude(settings, "[]");
+        RunAll();
+        Round();
+        Assert.All(Ids[12..], id => Assert.Equal(["InfoPanel", "node", "svchost"], Names(Table(id)).Order(StringComparer.Ordinal)));
+
+        Exclude(settings, "null");
+        RunAll();
+        Round();
+        Assert.All(Ids[12..], id => Assert.Equal(["InfoPanel", "node"], Names(Table(id)).Order(StringComparer.Ordinal)));
+    }
+
+    [Fact]
+    public void Tables_MatchTheSettingsNamesExactly_ANameWithATrailingSpaceOrInAnotherCase_LeavesNothingOut()
+    {
+        _system.Usage = new([null, 50]);
+        AddProcess(10, "InfoPanel");
+        AddProcess(11, "node");
+        AddProcess(12, "Google Chrome");
+        var settings = Settings();
+        Exclude(settings, """["InfoPanel ", "NODE", " Google Chrome", "google chrome"]""");
+        Open(settings);
+        RunAll();
+        Round();
+
+        Assert.All(Ids[12..], id => Assert.Equal(["Google Chrome", "InfoPanel", "node"], Names(Table(id)).Order(StringComparer.Ordinal)));
+
+        Exclude(settings, """["InfoPanel", "node", "Google Chrome"]""");
+        RunAll();
+        Round();
+
+        Assert.All(Ids[12..], id => Assert.Empty(Names(Table(id))));
     }
 
     [Fact]
@@ -744,5 +820,23 @@ public sealed class SystemInfoSourceTests : IDisposable
         Assert.True(self.MemoryBytes > 0);
         // launchd (pid 1) is root's: not read unprivileged.
         Assert.DoesNotContain(processes, p => p.Pid == 1);
+    }
+
+    [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+    public void Real_ThisMac_TheSourceFollowsTheEnginesSettings_ThisProcessLeftOutFromTheNextRound()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The macOS reader.");
+        var self = new MacProcessSampler().Processes().Single(p => p.Pid == Environment.ProcessId).Name;
+        var settings = Settings();
+        _source = SystemInfoSource.CreateSystem(_time, settings);
+        _source.Open();
+        Round();
+        Assert.Contains(self, Names(Table("processes/top-memory-usage")));
+
+        Exclude(settings, JsonSerializer.Serialize(new[] { self }));
+        Round();
+
+        Assert.DoesNotContain(self, Names(Table("processes/top-memory-usage")));
     }
 }

@@ -4,7 +4,7 @@
   "frameRate": 30,
   "graphRate": 250,
   "logLevel": "debug",
-  "sources": {"libre": {"enabled": true, "storage": false, "storageInterval": 300}, "network": {"publicIp": false}, "weather": {"enabled": false, "units": "imperial", "place": "Oslo"}},
+  "sources": {"libre": {"enabled": true, "storage": false, "storageInterval": 300}, "network": {"publicIp": false}, "weather": {"enabled": false, "units": "imperial", "place": "Oslo"}, "systemInfo": {"excludedProcesses": ["InfoPanel", "node"]}},
   "media": {"localNetwork": false}, "service": {"address": "https://service.example", "aiApps": true, "pairing": true}, "proxy": {"hosts": ["pc.tailnet.example"]},
   "clients": {
     "web-client": {"theme": "dark", "grid": {"show": true, "spacing": 20}},

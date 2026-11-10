@@ -128,6 +128,8 @@ public class SettingsSchemaTests
         var weather = example["sources"]!["weather"]!;
         Assert.Equal(defaults.Weather, new WeatherSettings(weather["enabled"]!.GetValue<bool>(),
             WeatherSettings.UnitsNamed(weather["units"]!.GetValue<string>())!.Value, weather["place"]?.GetValue<string>()));
+        Assert.Equal(defaults.SystemInfo.ExcludedProcesses,
+            example["sources"]!["systemInfo"]!["excludedProcesses"]!.AsArray().Select(n => n!.GetValue<string>()));
         Assert.Empty(example["clients"]!.AsObject());
     }
 

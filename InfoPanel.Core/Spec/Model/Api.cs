@@ -953,6 +953,15 @@ public sealed record SettingsSources
     public required LibreSettingsBody Libre { get; init; }
     public required NetworkSettingsBody Network { get; init; }
     public required WeatherSettingsBody Weather { get; init; }
+    public required SystemInfoSettingsBody SystemInfo { get; init; }
+}
+
+/// <summary>The system information source's settings (<c>systemInfoSettings</c>, engineSettings' <c>sources.systemInfo</c>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/systemInfoSettings")]
+public sealed record SystemInfoSettingsBody
+{
+    /// <summary>The process names its tables leave out, each matched exactly: at most 64 of 1 to 64 characters.</summary>
+    public required IReadOnlyList<string> ExcludedProcesses { get; init; }
 }
 
 /// <summary>The network source's settings (<c>networkSettings</c>, engineSettings' <c>sources.network</c>).</summary>
@@ -1016,6 +1025,17 @@ public sealed record SettingsChangeSources
     public LibreSettingsChange? Libre { get; init; }
     public NetworkSettingsChange? Network { get; init; }
     public WeatherSettingsChange? Weather { get; init; }
+    public SystemInfoSettingsChange? SystemInfo { get; init; }
+}
+
+/// <summary>The system information source's process names to set, whole; <c>null</c> goes back to the default (<see cref="IRemovesMembers"/>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/sources/properties/systemInfo")]
+public sealed record SystemInfoSettingsChange : IRemovesMembers
+{
+    public IReadOnlyList<string>? ExcludedProcesses { get; init; }
+    /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 /// <summary>The network source's settings to change; one given as <c>null</c> goes back to its default (<see cref="IRemovesMembers"/>).</summary>

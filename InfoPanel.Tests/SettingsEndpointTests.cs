@@ -87,8 +87,37 @@ public sealed class SettingsEndpointTests
         Assert.True(settings.GetProperty("sources").GetProperty("network").GetProperty("publicIp").GetBoolean());
         var weather = settings.GetProperty("sources").GetProperty("weather");
         Assert.Equal((true, "auto", JsonValueKind.Null), (weather.GetProperty("enabled").GetBoolean(), weather.GetProperty("units").GetString(), weather.GetProperty("place").ValueKind));
+        Assert.Equal(["_Total", "Idle", "dwm", "csrss", "svchost", "lsass", "system", "spoolsv", "Memory Compression"],
+            ExcludedProcesses(settings));
         Assert.Empty(settings.GetProperty("clients").EnumerateObject());
         Assert.False(File.Exists(Settings(factory)));
+    }
+
+    private static string[] ExcludedProcesses(JsonElement settings) =>
+        [.. settings.GetProperty("sources").GetProperty("systemInfo").GetProperty("excludedProcesses").EnumerateArray().Select(n => n.GetString()!)];
+
+    [Fact]
+    public async Task TheExcludedProcesses_AreSetWhole_KeptExactly_StoredAndReadBack_AndNullSetsThe1xDefaultBack()
+    {
+        using var factory = new EngineFactory();
+        using var api = factory.CreateApiClient();
+        await Patch(api, """{"sources":{"network":{"publicIp":false}}}""");
+
+        var set = await Patch(api, """{"sources":{"systemInfo":{"excludedProcesses":["InfoPanel","node ","Google Chrome"]}}}""");
+
+        Assert.Equal(2, set.GetProperty("version").GetInt64());
+        Assert.Equal(["InfoPanel", "node ", "Google Chrome"], ExcludedProcesses(set));
+        Assert.False(set.GetProperty("sources").GetProperty("network").GetProperty("publicIp").GetBoolean());
+        Assert.True(JsonElement.DeepEquals(set, await Get(api)));
+        Assert.Equal(["InfoPanel", "node ", "Google Chrome"],
+            JsonNode.Parse(File.ReadAllText(Settings(factory)))!["sources"]!["systemInfo"]!["excludedProcesses"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.Equal(["InfoPanel", "node ", "Google Chrome"], factory.Services.GetRequiredService<SettingsStore>().Current.Settings.SystemInfo.ExcludedProcesses);
+
+        var reset = await Patch(api, """{"sources":{"systemInfo":{"excludedProcesses":null}}}""");
+
+        Assert.Equal(3, reset.GetProperty("version").GetInt64());
+        Assert.Equal(SystemInfoSettings.Default.ExcludedProcesses, ExcludedProcesses(reset));
+        Assert.False(JsonNode.Parse(File.ReadAllText(Settings(factory)))!["sources"]!.AsObject().ContainsKey("systemInfo"));
     }
 
     [Fact]
@@ -266,6 +295,12 @@ public sealed class SettingsEndpointTests
         { """{"sources":{"weather":{"units":"kelvin"}}}""", "/sources/weather/units", "schema" },
         { """{"sources":{"weather":{"place":""}}}""", "/sources/weather/place", "schema" },
         { """{"sources":{"weather":{"enabled":1}}}""", "/sources/weather/enabled", "schema" },
+        { """{"sources":{"systemInfo":{"excludedProcesses":""" + JsonSerializer.Serialize(Enumerable.Range(0, 65).Select(i => $"p{i}")) + "}}}", "/sources/systemInfo/excludedProcesses", "schema" },
+        { """{"sources":{"systemInfo":{"excludedProcesses":["ok",""" + JsonSerializer.Serialize(new string('x', 65)) + "]}}}", "/sources/systemInfo/excludedProcesses/1", "schema" },
+        { """{"sources":{"systemInfo":{"excludedProcesses":[""]}}}""", "/sources/systemInfo/excludedProcesses/0", "schema" },
+        { """{"sources":{"systemInfo":{"excludedProcesses":"InfoPanel"}}}""", "/sources/systemInfo/excludedProcesses", "schema" },
+        { """{"sources":{"systemInfo":{"excluded":[]}}}""", "/sources/systemInfo/excluded", "schema" },
+        { """{"sources":{"systemInfo":null}}""", "/sources/systemInfo", "schema" },
         { """{"clients":{"my client":{}}}""", "/clients/my client", "schema" },
         { """{"clients":null}""", "/clients", "schema" },
         { "[]", "", "schema" },

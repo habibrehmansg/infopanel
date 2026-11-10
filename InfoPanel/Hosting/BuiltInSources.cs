@@ -21,7 +21,8 @@ public static class BuiltInSourceServiceCollectionExtensions
     /// from the configured service through its <see cref="ServiceClient"/>, following the settings' <c>sources.weather</c>,
     /// <see cref="WeatherSource"/>; without a service client registered, it has no service), in that order; then, on
     /// macOS and Windows, the volume (<c>infopanel.volume</c>, its output devices through Core Audio, <see cref="VolumeSource"/>)
-    /// and the system information (<c>infopanel.system-info</c>, the uptime and processes, <see cref="SystemInfoSource"/>). Registered
+    /// and the system information (<c>infopanel.system-info</c>, the uptime and processes, <see cref="SystemInfoSource"/>,
+    /// its tables leaving out the settings' <c>sources.systemInfo.excludedProcesses</c>). Registered
     /// after the platform's sources and before the plugins'. Not in mock mode or while a recording is replayed (whose
     /// sessions say mock): there their keys are what any key no source handles is (simulated in mock mode, else
     /// unavailable).
@@ -42,7 +43,7 @@ public static class BuiltInSourceServiceCollectionExtensions
                 ? VolumeSource.CreateSystem(sp.GetRequiredService<TimeProvider>())
                 : throw new PlatformNotSupportedException());
             services.AddSingleton<ISensorSource>(sp => OperatingSystem.IsMacOS() || OperatingSystem.IsWindows()
-                ? SystemInfoSource.CreateSystem(sp.GetRequiredService<TimeProvider>())
+                ? SystemInfoSource.CreateSystem(sp.GetRequiredService<TimeProvider>(), sp.GetService<SettingsStore>())
                 : throw new PlatformNotSupportedException());
         }
         return services;

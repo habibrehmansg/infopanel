@@ -158,6 +158,10 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "GET", "/api/settings", 200);
         await Send(session, "PATCH", "/api/settings", 200, Body("""{"frameRate":20}"""));
         await Send(session, "PATCH", "/api/settings", 422, Body("""{"frameRate":0}"""));
+        // The system information's process names: a list set, one over 64 characters refused, the default set back.
+        await Send(session, "PATCH", "/api/settings", 200, Body("""{"sources":{"systemInfo":{"excludedProcesses":["InfoPanel","node"]}}}"""));
+        await Send(session, "PATCH", "/api/settings", 422, Body("{\"sources\":{\"systemInfo\":{\"excludedProcesses\":[\"" + new string('x', 65) + "\"]}}}"));
+        await Send(session, "PATCH", "/api/settings", 200, Body("""{"sources":{"systemInfo":{"excludedProcesses":null}}}"""));
         var unreadable = Path.Combine(factory.Root, "settings-unreadable");
         Directory.CreateDirectory(unreadable);
         File.WriteAllText(Path.Combine(unreadable, "settings.json"), "{ not json");

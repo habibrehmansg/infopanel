@@ -202,6 +202,27 @@ public sealed record WeatherSettings(bool Enabled, WeatherUnits Units, string? P
 }
 
 /// <summary>
+/// The system information source's settings (<c>sources.systemInfo</c>; <c>InfoPanel.Sensors.SystemInfo.SystemInfoSource</c>):
+/// the process names its tables leave out, each compared with a process's name exactly (in its case, no white space
+/// trimmed), as the 1.x System Info plugin compared them. By default the plugin's nine; an empty list leaves out none.
+/// </summary>
+public sealed record SystemInfoSettings(IReadOnlyList<string> ExcludedProcesses)
+{
+    /// <summary>The 1.x System Info plugin's list.</summary>
+    public static SystemInfoSettings Default { get; } =
+        new(ImmutableArray.Create("_Total", "Idle", "dwm", "csrss", "svchost", "lsass", "system", "spoolsv", "Memory Compression"));
+
+    /// <summary>The most names the list holds.</summary>
+    public const int MaxNames = 64;
+
+    /// <summary>The longest name, in characters (Unicode code points, as the schema counts a string's length).</summary>
+    public const int NameLength = 64;
+
+    /// <summary>Whether <paramref name="name"/> may be in the list: 1 to <see cref="NameLength"/> characters, kept as given.</summary>
+    public static bool IsName(string name) => Spec.Schema.Json.CodePoints(name) is >= 1 and <= NameLength;
+}
+
+/// <summary>
 /// The media providers' settings: whether they may connect to this computer and the local network (spec/docs/providers.md).
 /// </summary>
 public sealed record MediaSettings(bool LocalNetwork)
@@ -241,6 +262,7 @@ public sealed record EngineSettings(
     LibreSettings Libre,
     NetworkSettings Network,
     WeatherSettings Weather,
+    SystemInfoSettings SystemInfo,
     MediaSettings Media,
     ServiceSettings Service,
     ProxySettings Proxy,
@@ -253,6 +275,7 @@ public sealed record EngineSettings(
         LibreSettings.Default,
         NetworkSettings.Default,
         WeatherSettings.Default,
+        SystemInfoSettings.Default,
         MediaSettings.Default,
         ServiceSettings.Default,
         ProxySettings.Default,

@@ -90,6 +90,7 @@ public static class SettingsEndpoints
                     Units = WeatherSettings.NameOf(settings.Weather.Units),
                     Place = settings.Weather.Place,
                 },
+                SystemInfo = new SystemInfoSettingsBody { ExcludedProcesses = settings.SystemInfo.ExcludedProcesses },
             },
             Media = new MediaSettingsBody { LocalNetwork = settings.Media.LocalNetwork },
             Service = new ServiceSettingsBody { Address = settings.Service.Address ?? defaultServiceAddress, AiApps = settings.Service.AiApps, Pairing = settings.Service.Pairing },

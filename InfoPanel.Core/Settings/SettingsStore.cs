@@ -157,8 +157,8 @@ public sealed class SettingsStore
 
     /// <summary>
     /// Merges <paramref name="change"/> into the settings and writes them: a member's value sets it, <c>null</c> removes it
-    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>sources.weather</c>, <c>media</c>, <c>service</c>, <c>proxy</c> and <c>clients</c> merge member by member, and each
-    /// <c>clients</c> member and <c>proxy.hosts</c> is set or removed whole. Unknown members are refused.
+    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>sources.weather</c>, <c>sources.systemInfo</c>, <c>media</c>, <c>service</c>, <c>proxy</c> and <c>clients</c> merge member by member, and each
+    /// <c>clients</c> member, <c>proxy.hosts</c> and <c>sources.systemInfo.excludedProcesses</c> is set or removed whole. Unknown members are refused.
     /// </summary>
     /// <returns>The settings in effect afterwards (the same version when nothing changed).</returns>
     /// <exception cref="SettingsUnavailableException">The file couldn't be read at start-up (checked first).</exception>
@@ -450,6 +450,9 @@ public sealed class SettingsStore
                 Check(weather, "units", "/sources/weather/units", UnitsProblem);
                 Check(weather, "place", "/sources/weather/place", PlaceProblem);
             }
+
+            if (Container(sources, "systemInfo", "/sources/systemInfo") is { } systemInfo)
+                Check(systemInfo, "excludedProcesses", "/sources/systemInfo/excludedProcesses", ExcludedProcessesProblem);
         }
 
         if (Container(tree, "media", "/media") is { } media)
@@ -495,6 +498,7 @@ public sealed class SettingsStore
         var libre = (tree["sources"] as JsonObject)?["libre"] as JsonObject;
         var network = (tree["sources"] as JsonObject)?["network"] as JsonObject;
         var weather = (tree["sources"] as JsonObject)?["weather"] as JsonObject;
+        var systemInfo = (tree["sources"] as JsonObject)?["systemInfo"] as JsonObject;
         var media = tree["media"] as JsonObject;
         var service = tree["service"] as JsonObject;
         var proxy = tree["proxy"] as JsonObject;
@@ -518,6 +522,9 @@ public sealed class SettingsStore
                 Bool(weather?["enabled"]) ?? WeatherSettings.Default.Enabled,
                 weather?["units"] is { } units ? WeatherSettings.UnitsNamed(ElementOf(units).GetString())!.Value : WeatherSettings.Default.Units,
                 weather?["place"] is { } place ? ElementOf(place).GetString() : WeatherSettings.Default.Place),
+            systemInfo?["excludedProcesses"] is JsonArray excluded
+                ? new SystemInfoSettings(ImmutableArray.CreateRange(excluded.Select(n => ElementOf(n).GetString()!)))
+                : SystemInfoSettings.Default,
             new MediaSettings(Bool(media?["localNetwork"]) ?? MediaSettings.Default.LocalNetwork),
             new ServiceSettings(
                 service?["address"] is { } address && ServiceAddress.TryNormalize(ElementOf(address).GetString(), out var normal) ? normal : null,
@@ -605,7 +612,7 @@ public sealed class SettingsStore
                     foreach (var source in member.Value.EnumerateObject())
                     {
                         var sourcePointer = pointer + "/" + Escape(source.Name);
-                        if (source.Name is not ("libre" or "network" or "weather"))
+                        if (source.Name is not ("libre" or "network" or "weather" or "systemInfo"))
                         {
                             Unknown(sourcePointer);
                             continue;
@@ -629,6 +636,9 @@ public sealed class SettingsStore
                                     break;
                                 case ("libre", "storageInterval"):
                                     Leaf(setting.Value, settingPointer, e => IntProblem(e, SettingsLimits.StorageInterval));
+                                    break;
+                                case ("systemInfo", "excludedProcesses"):
+                                    ExcludedProcessesErrors(setting.Value, settingPointer, errors);
                                     break;
                                 default:
                                     Unknown(settingPointer);
@@ -728,6 +738,9 @@ public sealed class SettingsStore
                         {
                             if (setting.Name == "storageInterval")
                                 Set(settings, setting.Name, setting.Value, e => JsonValue.Create(SpecJson.ReadInt32(e)));
+                            else if (setting.Name == "excludedProcesses")
+                                // The list is set whole, its names exactly as given.
+                                Set(settings, setting.Name, setting.Value, e => new JsonArray([.. e.EnumerateArray().Select(n => (JsonNode?)JsonValue.Create(n.GetString()))]));
                             else if (setting.Name is "units" or "place")
                                 Set(settings, setting.Name, setting.Value, e => JsonValue.Create(e.GetString()));
                             else
@@ -877,6 +890,43 @@ public sealed class SettingsStore
 
         if (twice)
             errors.Add(new SpecError(pointer, "schema", "The list names a host twice."));
+    }
+
+    /// <summary>
+    /// <c>sources.systemInfo.excludedProcesses</c> in the file: a list of at most 64 names, each 1 to 64 characters
+    /// (<see cref="SystemInfoSettings.IsName"/>); a list with any other is dropped whole.
+    /// </summary>
+    private static string? ExcludedProcessesProblem(JsonElement e) =>
+        e.ValueKind == JsonValueKind.Array && e.GetArrayLength() <= SystemInfoSettings.MaxNames
+            && e.EnumerateArray().All(n => n.ValueKind == JsonValueKind.String && SystemInfoSettings.IsName(n.GetString()!))
+            ? null
+            : $"isn't a list of at most {SystemInfoSettings.MaxNames} process names of 1 to {SystemInfoSettings.NameLength} characters";
+
+    /// <summary>
+    /// A change's <c>sources.systemInfo.excludedProcesses</c> (<c>null</c> sets it back to the default), as the schema's
+    /// <c>settingsChange</c> checks it: a list (else at the list), at most 64 names (at the list), each a string of 1 to 64
+    /// characters (at the name). A name is kept as given: any case, white space and all; one given twice is allowed.
+    /// </summary>
+    private static void ExcludedProcessesErrors(JsonElement value, string pointer, List<SpecError> errors)
+    {
+        if (value.ValueKind == JsonValueKind.Null)
+            return;
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            errors.Add(new SpecError(pointer, "schema", "The value isn't a list of process names."));
+            return;
+        }
+
+        if (value.GetArrayLength() > SystemInfoSettings.MaxNames)
+            errors.Add(new SpecError(pointer, "schema", $"The list has {value.GetArrayLength()} names; at most {SystemInfoSettings.MaxNames} are kept."));
+
+        var i = 0;
+        foreach (var name in value.EnumerateArray())
+        {
+            if (name.ValueKind != JsonValueKind.String || !SystemInfoSettings.IsName(name.GetString()!))
+                errors.Add(new SpecError($"{pointer}/{i}", "schema", $"The value isn't a process name of 1 to {SystemInfoSettings.NameLength} characters."));
+            i++;
+        }
     }
 
     private static string? LogLevelProblem(JsonElement e) =>

@@ -1,4 +1,5 @@
 using InfoPanel.Plugins;
+using InfoPanel.Settings;
 using Serilog;
 using System;
 using System.Collections.Generic;
@@ -15,7 +16,8 @@ namespace InfoPanel.Sensors.SystemInfo;
 /// plugin's entries (<see cref="Entries"/>) under its container and entry ids, <c>plugin:/infopanel.system-info/{container}/{entry}</c>:
 /// the uptime as five texts in the plugin's formats, the processes' counts, CPU and memory as numbers in its units, and
 /// three tables of processes (a row per process name, its instances summed) in its columns, cells and default format,
-/// the busiest first, leaving out the plugin's default list of names (<see cref="DefaultExcluded"/>) and cut at
+/// the busiest first, leaving out the names the engine settings' <c>sources.systemInfo.excludedProcesses</c> lists (by
+/// default the plugin's, <see cref="DefaultExcluded"/>; a change applies from the next round) and cut at
 /// <see cref="MaxRows"/> rows. The engine never answers the plugin's keys.
 /// </summary>
 public static class SystemInfoSource
@@ -46,9 +48,11 @@ public static class SystemInfoSource
 
     public static readonly TimeSpan Interval = TimeSpan.FromSeconds(1);
 
-    /// <summary>The names the tables leave out, compared exactly (case too), as the 1.x plugin's default list.</summary>
-    public static IReadOnlyList<string> DefaultExcluded { get; } =
-        ["_Total", "Idle", "dwm", "csrss", "svchost", "lsass", "system", "spoolsv", "Memory Compression"];
+    /// <summary>
+    /// The names the tables leave out unless the settings say otherwise (<c>sources.systemInfo.excludedProcesses</c>),
+    /// compared exactly (case too), as the 1.x plugin's default list.
+    /// </summary>
+    public static IReadOnlyList<string> DefaultExcluded => SystemInfoSettings.Default.ExcludedProcesses;
 
     /// <summary>The entries in the order the source lists them (the 1.x plugin's): id (<c>{container}/{entry}</c>), group, name, kind and unit.</summary>
     public static IReadOnlyList<(string Id, string Group, string Name, SensorKind Kind, string Unit)> Entries { get; } =
@@ -88,15 +92,19 @@ public static class SystemInfoSource
             uptime.Days.ToString("D2", c), uptime.Hours.ToString("D2", c), uptime.Minutes.ToString("D2", c), uptime.Seconds.ToString("D2", c));
     }
 
-    /// <summary>A source over <paramref name="processes"/> (a test's).</summary>
-    public static PolledSensorSource Create(IProcessSampler processes, TimeProvider? time = null, PolledSensorSourceOptions? options = null, ILogger? log = null) =>
-        new(SourceId, () => new SystemInfoSampler(processes, log), options ?? new PolledSensorSourceOptions { Interval = Interval }, time, log: log);
+    /// <summary>
+    /// A source over <paramref name="processes"/> (a test's). With <paramref name="settings"/>, its tables leave out their
+    /// <c>sources.systemInfo.excludedProcesses</c>, read at each round, so a change applies from the next; without, the default.
+    /// </summary>
+    public static PolledSensorSource Create(IProcessSampler processes, TimeProvider? time = null, PolledSensorSourceOptions? options = null, ILogger? log = null,
+        SettingsStore? settings = null) =>
+        new(SourceId, () => new SystemInfoSampler(processes, log, settings), options ?? new PolledSensorSourceOptions { Interval = Interval }, time, log: log);
 
-    /// <summary>The source over this computer: <see cref="MacProcessSampler"/> on macOS, <see cref="WinProcessSampler"/> on Windows.</summary>
+    /// <summary>The source over this computer: <see cref="MacProcessSampler"/> on macOS, <see cref="WinProcessSampler"/> on Windows; with <paramref name="settings"/>, following them.</summary>
     [SupportedOSPlatform("macos")]
     [SupportedOSPlatform("windows")]
-    public static PolledSensorSource CreateSystem(TimeProvider? time = null) =>
-        Create(OperatingSystem.IsWindows() ? new WinProcessSampler() : new MacProcessSampler(), time);
+    public static PolledSensorSource CreateSystem(TimeProvider? time = null, SettingsStore? settings = null) =>
+        Create(OperatingSystem.IsWindows() ? new WinProcessSampler() : new MacProcessSampler(), time, settings: settings);
 }
 
 /// <summary>
@@ -123,7 +131,10 @@ public sealed class SystemInfoSampler : ISensorSampler
 
     private readonly IProcessSampler _system;
     private readonly ILogger _log;
-    private readonly HashSet<string> _excluded = new(SystemInfoSource.DefaultExcluded, StringComparer.Ordinal);
+    private readonly SettingsStore? _settings;
+    // The names the tables leave out, and the settings' list they were made from (a new list at each change).
+    private IReadOnlyList<string> _excludedFrom = SystemInfoSource.DefaultExcluded;
+    private HashSet<string> _excluded = new(SystemInfoSource.DefaultExcluded, StringComparer.Ordinal);
     private readonly HashSet<Part> _failing = [];
     private readonly string[] _uptime = ["", "", "", "", ""];
     // The processes' CPU time at the last round, by pid, with their start.
@@ -132,11 +143,25 @@ public sealed class SystemInfoSampler : ISensorSampler
     private readonly Queue<Dictionary<string, (double Usage, double Utility)>> _recent = new();
     private bool _listed;
 
-    public SystemInfoSampler(IProcessSampler system, ILogger? log = null)
+    public SystemInfoSampler(IProcessSampler system, ILogger? log = null, SettingsStore? settings = null)
     {
         ArgumentNullException.ThrowIfNull(system);
         _system = system;
         _log = (log ?? Log.Logger).ForContext<SystemInfoSampler>();
+        _settings = settings;
+    }
+
+    /// <summary>The names the tables leave out this round: the settings' list as it is now, matched exactly (ordinal).</summary>
+    private HashSet<string> Excluded()
+    {
+        var list = _settings?.Current.Settings.SystemInfo.ExcludedProcesses ?? SystemInfoSource.DefaultExcluded;
+        if (!ReferenceEquals(list, _excludedFrom))
+        {
+            _excluded = new HashSet<string>(list, StringComparer.Ordinal);
+            _excludedFrom = list;
+        }
+
+        return _excluded;
     }
 
     public IReadOnlyList<SensorDefinition> Discover() =>
@@ -250,7 +275,8 @@ public sealed class SystemInfoSampler : ISensorSampler
             row.Utility = figures.Average(f => f.Utility);
         }
 
-        var all = rows.Values.Where(r => !_excluded.Contains(r.Name)).ToList();
+        var excluded = Excluded();
+        var all = rows.Values.Where(r => !excluded.Contains(r.Name)).ToList();
         tables[0].SetTable(Table(all.OrderByDescending(r => r.Usage).ThenBy(r => r.Name, StringComparer.Ordinal)), SystemInfoSource.TableFormat);
         tables[1].SetTable(Table(all.OrderByDescending(r => r.Utility).ThenBy(r => r.Name, StringComparer.Ordinal)), SystemInfoSource.TableFormat);
         tables[2].SetTable(Table(all.OrderByDescending(r => r.Memory).ThenBy(r => r.Name, StringComparer.Ordinal)), SystemInfoSource.TableFormat);

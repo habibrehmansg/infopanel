@@ -1423,7 +1423,19 @@ export interface SettingsSources {
   libre: LibreSettings;
   network: NetworkSettings;
   weather: WeatherSettings;
+  systemInfo: SystemInfoSettings;
 }
+
+/** The settings of the system information sensor source (`infopanel.system-info`, on macOS and Windows): the processes its tables leave out (docs/api.md#settings). An engine keeps them whether or not it has the source. */
+export interface SystemInfoSettings {
+  excludedProcesses: ExcludedProcesses;
+}
+
+/**
+ * The process names the source's top-process tables (Top CPU Usage, Top CPU Utility, Top Memory Usage) leave out, from its next reading on. A name leaves out the processes of exactly that name: the same case, no white space trimmed, so `node ` or `Node` leaves out no `node`. At most 64 names, each 1 to 64 characters; a name may come twice. By default `_Total`, `Idle`, `dwm`, `csrss`, `svchost`, `lsass`, `system`, `spoolsv` and `Memory Compression`; empty, the tables leave out none.
+ * Items: ≤ 64.
+ */
+export type ExcludedProcesses = string[];
 
 /** The settings of the LibreHardwareMonitor sensor source (on Windows): whether it reads sensors, whether it reads storage drives, and how often. An engine keeps them whether or not it has the source. */
 export interface LibreSettings {
@@ -1494,7 +1506,7 @@ export type LogLevel = "debug" | "information" | "warning" | "error";
  */
 export type ClientName = string;
 
-/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `media`, `service`, `proxy` and `clients` are merged member by member, each client's preferences and `proxy.hosts` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
+/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `sources.systemInfo`, `media`, `service`, `proxy` and `clients` are merged member by member, each client's preferences, `proxy.hosts` and `sources.systemInfo.excludedProcesses` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
 export interface SettingsChange {
   /**
    * Frames a second, 1 to 60 (engineSettings).
@@ -1526,6 +1538,13 @@ export interface SettingsChange {
       enabled?: boolean | null;
       units?: WeatherUnits | null;
       place?: WeatherPlace;
+    };
+    systemInfo?: {
+      /**
+       * systemInfoSettings: the process names the tables leave out, set whole; `null` sets them back to the default.
+       * Items: ≤ 64.
+       */
+      excludedProcesses?: string[] | null;
     };
   };
   media?: {
