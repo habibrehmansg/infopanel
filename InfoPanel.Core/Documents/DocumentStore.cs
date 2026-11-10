@@ -315,7 +315,8 @@ public sealed partial class DocumentStore
     /// The write failed (the previous saved document is unchanged), or the document was replaced but its folder could
     /// not be flushed to disk.
     /// </exception>
-    public void Save(string id, ReadOnlyMemory<byte> document)
+    /// <param name="replaced">Called once the document is replaced, before its folder is flushed (which may still fail).</param>
+    public void Save(string id, ReadOnlyMemory<byte> document, Action? replaced = null)
     {
         lock (_lock)
         {
@@ -325,8 +326,23 @@ public sealed partial class DocumentStore
             if (!Directory.Exists(folder))
                 throw new KeyNotFoundException($"Profile {id} has no folder.");
             TryKeepVersion(id, document);
-            AtomicFile.Write(Path.Combine(folder, DocumentFileName), document, Paths.Root, _faults);
+            AtomicFile.Write(Path.Combine(folder, DocumentFileName), document, Paths.Root, _faults, replaced);
             TryDropVersions(id);
+        }
+    }
+
+    /// <summary>
+    /// Flushes a profile's folder to disk, so a replacement in it whose flush failed is on disk before this returns.
+    /// Nothing to do for a profile that isn't listed (its folder went with it).
+    /// </summary>
+    /// <exception cref="IOException">The folder couldn't be flushed.</exception>
+    public void FlushProfileFolder(string id)
+    {
+        lock (_lock)
+        {
+            if (!IsValidId(id) || !Order.Contains(id))
+                return;
+            AtomicFile.SyncFolder(Paths.ProfileFolder(id), _faults);
         }
     }
 
@@ -335,7 +351,10 @@ public sealed partial class DocumentStore
     /// null when there is none.
     /// </summary>
     /// <exception cref="KeyNotFoundException">No profile has this id.</exception>
-    /// <exception cref="IOException">It can't be read (a FIFO or another file that isn't a regular one included).</exception>
+    /// <exception cref="NotARegularFileException">A folder, FIFO, socket or device is there; it wasn't read.</exception>
+    /// <exception cref="UnresolvedLinkException">A link is there whose target can't be reached: what it holds is unknown, so it is read again later, as a file that fails to read is.</exception>
+    /// <exception cref="IOException">It couldn't be read this time.</exception>
+    /// <exception cref="UnauthorizedAccessException">It may not be read.</exception>
     /// <exception cref="InvalidDataException">It is larger than <see cref="MaxBytes"/>.</exception>
     public byte[]? ReadRecovery(string id)
     {
@@ -343,7 +362,13 @@ public sealed partial class DocumentStore
         {
             RequireListed(id);
             var path = Paths.RecoveryFile(id);
-            return RegularFile.StateOf(path) == PathState.Absent ? null : ReadAtMost(path, MaxBytes);
+            return RegularFile.StateOf(path) switch
+            {
+                PathState.Absent => null,
+                // Told apart from a file that may not be read, which is read again later.
+                PathState.Folder => throw new NotARegularFileException(path, "a folder"),
+                _ => ReadAtMost(path, MaxBytes),
+            };
         }
     }
 
@@ -844,7 +869,8 @@ public sealed partial class DocumentStore
 
     /// <summary>
     /// Removes what interrupted operations left; an entry that can't be removed is logged and left. <c>profiles/</c> is
-    /// listed first, so a folder that can't be listed stops the open before anything is removed.
+    /// listed first, so a folder that can't be listed stops the open before anything is removed; a profile's folder that
+    /// can't be listed is logged, keeps its leftovers, and the others are still cleaned.
     /// </summary>
     private void RemoveLeftovers()
     {
@@ -883,10 +909,18 @@ public sealed partial class DocumentStore
             }
             else if (IsValidId(entry.Name) && entry is DirectoryInfo && entry.LinkTarget == null)
             {
-                foreach (var file in RegularFile.List(entry.FullName, new ListingBudget(RegularFile.MaxListing, $"Listing {entry.FullName}")))
+                try
                 {
-                    if (file is FileInfo && AtomicFile.IsTempFile(file.Name, name => name is DocumentFileName or RecoveryFileName))
-                        TryDeleteTree(file.FullName);
+                    foreach (var file in RegularFile.List(entry.FullName, new ListingBudget(RegularFile.MaxListing, $"Listing {entry.FullName}")))
+                    {
+                        if (file is FileInfo && AtomicFile.IsTempFile(file.Name, name => name is DocumentFileName or RecoveryFileName))
+                            TryDeleteTree(file.FullName);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // One profile's folder that can't be listed keeps its leftovers; the others are still cleaned.
+                    Logger.Warning(ex, "Could not remove what interrupted writes left in {Folder}; it is removed at a later start", entry.FullName);
                 }
 
                 RemoveVersionLeftovers(Path.Combine(entry.FullName, VersionsFolderName));

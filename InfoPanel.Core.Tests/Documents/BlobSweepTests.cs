@@ -164,6 +164,51 @@ public class BlobSweepTests
         Assert.True(stores.Blobs.Exists(kept));
     }
 
+    /// <summary>
+    /// A profile folder that can't be listed at start-up keeps its leftovers, and the start goes on: both profiles are
+    /// listed, another profile's leftover is removed, and the sweep still deletes nothing that run.
+    /// </summary>
+    [Fact]
+    public void AProfileFolderThatCantBeListedKeepsItsLeftoversAndTheStartGoesOn()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // Unix permissions
+
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        stores.Documents.Create(A, Document(A, "a"));
+        stores.Documents.Create(B, Document(B, "b"));
+        var old = Put(stores, "old", Now.AddDays(-30));
+        var denied = paths.ProfileFolder(A);
+        File.WriteAllText(Path.Combine(denied, $"document.json.{AtomicFile.NewRandom()}{AtomicFile.TempSuffix}"), "left");
+        var otherLeftover = Path.Combine(paths.ProfileFolder(B), $"recovery.json.{AtomicFile.NewRandom()}{AtomicFile.TempSuffix}");
+        File.WriteAllText(otherLeftover, "left");
+        var before = Directory.GetFileSystemEntries(denied).Order(StringComparer.Ordinal).ToArray();
+
+        File.SetUnixFileMode(denied, UnixFileMode.None);
+        try
+        {
+            if (CanList(denied))
+                return; // running with privileges that ignore the mode
+
+            var next = stores.Reopen();
+
+            Assert.Equal(new[] { A, B }, next.Documents.List().Order(StringComparer.Ordinal));
+            Assert.False(File.Exists(otherLeftover));
+            var result = BlobSweep.Run(next.Documents, next.Blobs, Now);
+            Assert.NotNull(result.SkippedBecause);
+            Assert.Equal(0, result.Deleted);
+        }
+        finally
+        {
+            File.SetUnixFileMode(denied, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        Assert.Equal(before, Directory.GetFileSystemEntries(denied).Order(StringComparer.Ordinal));
+        Assert.True(stores.Blobs.Exists(old));
+    }
+
     [Fact]
     public void AnOversizedDocumentSkipsTheWholeSweep()
     {

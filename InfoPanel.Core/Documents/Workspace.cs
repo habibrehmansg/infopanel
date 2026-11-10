@@ -115,7 +115,9 @@ public sealed record StoredBlob(BlobInfo Info, bool Created);
 /// opened under the folder's id (logged), and saved with it.</item>
 /// <item><b>Opening.</b> A document is opened the first time anything reads it (the profile list included) and stays
 /// open until it is deleted or the workspace is disposed, which disposes it. A profile that can't be opened
-/// (<c>unsupported</c>, <c>unreadable</c>) is checked once per run and never rewritten.</item>
+/// (<c>unsupported</c>, <c>unreadable</c>) is checked once per run and never rewritten; one whose document or recovery
+/// file failed to read (<c>io</c>) is so for that lookup only, and read again at a lookup <see cref="ReadAgainAfter"/>
+/// later, raising <see cref="ProfilesChanged"/> when its status changes.</item>
 /// <item><b>Tags.</b> Every profile gets a new lifetime tag (<see cref="DocumentTag"/>, its entries' and its document's
 /// <c>instance</c>) when it is created or first read in a run, one that can't be opened too, and keeps it until it is
 /// deleted. Its changes and its delete name it, so a request built on a profile that was deleted and created again
@@ -167,6 +169,9 @@ public sealed class Workspace : IDisposable
     private long _version;
     private bool _disposed;
 
+    /// <summary>1 once a profile read again got another status, until <see cref="RaiseIfStatusChanged"/> raises it.</summary>
+    private int _statusChanged;
+
     public Workspace(DocumentStore documents, BlobStore blobs, WorkspaceOptions? options = null)
     {
         Documents = documents;
@@ -195,7 +200,8 @@ public sealed class Workspace : IDisposable
     public long Version => Interlocked.Read(ref _version);
 
     /// <summary>
-    /// Raised after a profile is created, duplicated or deleted. The engine's own followers of the list (render loops,
+    /// Raised after a profile is created, duplicated or deleted, and when one read again after an <c>io</c> failure changes
+    /// status (outside the workspace lock, by the lookup that read it). The engine's own followers of the list (render loops,
     /// desktop windows, panels) listen to this one only.
     /// </summary>
     public event EventHandler<ProfilesChangedEventArgs>? ProfilesChanged;
@@ -444,16 +450,23 @@ public sealed class Workspace : IDisposable
     public (byte[]? Document, ProfileStatusProblem? Problem) Export(string id)
     {
         ProfileDocument? doc;
-        // The profile is found in one step, so a profile deleted and created again meanwhile is answered as the one found.
-        using (EnterLock())
+        try
         {
-            var found = Find(id);
-            if (!found.Found)
-                return (null, null);
-            ExportFound?.Invoke(id);
-            doc = found.Document;
-            if (doc is null)
-                return (null, found.Problem);
+            // The profile is found in one step, so a profile deleted and created again meanwhile is answered as the one found.
+            using (EnterLock())
+            {
+                var found = Find(id);
+                if (!found.Found)
+                    return (null, null);
+                ExportFound?.Invoke(id);
+                doc = found.Document;
+                if (doc is null)
+                    return (null, found.Problem);
+            }
+        }
+        finally
+        {
+            RaiseIfStatusChanged();
         }
         return (Serialize(doc.Current), null);
     }
@@ -462,22 +475,39 @@ public sealed class Workspace : IDisposable
     {
         if (!DocumentStore.IsValidId(id))
             return null;
+        Slot? slot;
         using (EnterLock())
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_slots.TryGetValue(id, out var slot))
-                return slot;
+            if (_slots.TryGetValue(id, out var held) && !(held.ReadAgainAt is { } due && _options.Time.GetUtcNow() >= due))
+                return held;
             if (!Documents.Contains(id))
                 return null;
-            slot = Load(id);
-            if (slot is not null)
-                _slots[id] = slot;
-            return slot;
+            // Read once in a run, unless the read failed for I/O reasons: then again at a lookup past ReadAgainAt, under
+            // the tag the profile got first in the run.
+            slot = Load(id, held?.Entry!.Instance ?? DocumentTag.New(), again: held is not null);
+            if (slot is null)
+            {
+                _slots.Remove(id);
+                return null;
+            }
+            _slots[id] = slot;
+            if (held is not null && (slot.Entry?.Status, slot.Entry?.Problem?.Code) != (held.Entry!.Status, held.Entry.Problem?.Code))
+                Interlocked.Exchange(ref _statusChanged, 1);
         }
+        RaiseIfStatusChanged();
+        return slot;
     }
 
-    /// <summary>Reads and checks a stored document: open when it can be, else its status entry. Under the lock.</summary>
-    private Slot? Load(string id)
+    /// <summary>How long a profile whose files couldn't be read (<c>io</c>) answers so before a lookup reads them again.</summary>
+    internal static readonly TimeSpan ReadAgainAfter = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Reads and checks a stored document: open when it can be, else its status entry, under <paramref name="tag"/>.
+    /// A document or recovery file that can't be read for I/O reasons gives an <c>io</c> entry that is read again
+    /// (<see cref="Slot.ReadAgainAt"/>), logged when it wasn't already (<paramref name="again"/>). Under the lock.
+    /// </summary>
+    private Slot? Load(string id, string tag, bool again)
     {
         byte[] bytes;
         try
@@ -490,12 +520,13 @@ public sealed class Workspace : IDisposable
         }
         catch (InvalidDataException ex)
         {
-            return Unreadable(id, "", "limit.documentBytes", ex.Message);
+            return Unreadable(id, tag, "", "limit.documentBytes", ex.Message);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Logger.Warning(ex, "Could not read the document of profile {ProfileId}", id);
-            return Unreadable(id, "", "io", ex.Message);
+            if (!again)
+                Logger.Warning(ex, "Could not read the document of profile {ProfileId}; it is read again at a later lookup", id);
+            return ReadAgain(id, tag, ex.Message);
         }
 
         JsonDocument json;
@@ -505,7 +536,7 @@ public sealed class Workspace : IDisposable
         }
         catch (JsonException ex)
         {
-            return Unreadable(id, "", "json", $"The stored document isn't JSON: {ex.Message}");
+            return Unreadable(id, tag, "", "json", $"The stored document isn't JSON: {ex.Message}");
         }
 
         using (json)
@@ -516,7 +547,7 @@ public sealed class Workspace : IDisposable
             {
                 var error = ValidationText.Cap(invalidJson)[0];
                 Logger.Warning("Profile {ProfileId} can't be opened ({Code} at {Path}: {Message})", id, error.Code, error.Path, error.Message);
-                return Unreadable(id, error.Path, error.Code, error.Message);
+                return Unreadable(id, tag, error.Path, error.Code, error.Message);
             }
             JsonDocument? renamed = null;
             if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("id", out var ownId) && ownId.ValueKind == JsonValueKind.String
@@ -533,11 +564,31 @@ public sealed class Workspace : IDisposable
                 var load = Generation.Load(root, 1, Limits, Support, null, jsonChecked: true);
                 if (load.Generation is { } generation)
                 {
+                    // The kept changes are read before the document opens: a file that fails to read this time isn't
+                    // taken for one that can't be used, so the profile doesn't open as saved and nothing replaces it.
+                    byte[]? kept = null;
+                    string? unusable = null;
+                    try
+                    {
+                        kept = Documents.ReadRecovery(id);
+                    }
+                    // A link whose target can't be reached isn't content: what it stands for is unknown, so it is read again.
+                    catch (Exception ex) when (ex is InvalidDataException or NotARegularFileException)
+                    {
+                        unusable = ex.Message;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        if (!again)
+                            Logger.Warning(ex, "Could not read the unsaved changes kept for profile {ProfileId}; it isn't opened until they can be read, and the file is left as it is", id);
+                        return ReadAgain(id, tag, $"Its unsaved changes can't be read: {ex.Message}");
+                    }
+
                     if (load.Check.Items.Count > 0)
                         Logger.Warning("Profile {ProfileId} has {Count} item(s) drawn as placeholders (first: {ItemId}, {Problem})",
                             id, load.Check.Items.Count, load.Check.Items[0].Id, load.Check.Items[0].Problem);
-                    var doc = OpenDocument(id, generation, bytes);
-                    Recover(id, doc, bytes);
+                    var doc = OpenDocument(id, generation, bytes, tag);
+                    Recover(id, doc, bytes, kept, unusable);
                     var watch = new DocumentWatch(this, doc);
                     if (doc.RemovalPending)
                         _recovery.Note(doc);
@@ -549,17 +600,21 @@ public sealed class Workspace : IDisposable
                 if (load.Check.Status == CheckStatus.Unsupported)
                 {
                     Logger.Information("Profile {ProfileId} needs what this engine doesn't read ({Code} at {Path}); it is listed but not opened", id, first.Code, first.Path);
-                    return new Slot(null, new ProfileEntry { Id = id, Status = "unsupported", Instance = DocumentTag.New(), Name = NameOf(root), Problem = problem });
+                    return new Slot(null, new ProfileEntry { Id = id, Status = "unsupported", Instance = tag, Name = NameOf(root), Problem = problem });
                 }
 
                 Logger.Warning("Profile {ProfileId} can't be opened ({Code} at {Path}: {Message})", id, first.Code, first.Path, first.Message);
-                return new Slot(null, new ProfileEntry { Id = id, Status = "unreadable", Instance = DocumentTag.New(), Problem = problem });
+                return new Slot(null, new ProfileEntry { Id = id, Status = "unreadable", Instance = tag, Problem = problem });
             }
         }
     }
 
-    private static Slot Unreadable(string id, string path, string code, string message) =>
-        new(null, new ProfileEntry { Id = id, Status = "unreadable", Instance = DocumentTag.New(), Problem = new ValidationErrorBody { Path = path, Code = code, Message = message } });
+    private static Slot Unreadable(string id, string tag, string path, string code, string message) =>
+        new(null, new ProfileEntry { Id = id, Status = "unreadable", Instance = tag, Problem = new ValidationErrorBody { Path = path, Code = code, Message = message } });
+
+    /// <summary>An <c>io</c> entry for this lookup: the profile's files are read again at a lookup <see cref="ReadAgainAfter"/> from now.</summary>
+    private Slot ReadAgain(string id, string tag, string message) =>
+        Unreadable(id, tag, "", "io", message) with { ReadAgainAt = _options.Time.GetUtcNow() + ReadAgainAfter };
 
     /// <summary>The document's <c>profile.name</c> when it is a string of 1–256 characters (an unsupported profile's entry).</summary>
     private static string? NameOf(JsonElement root) =>
@@ -568,12 +623,12 @@ public sealed class Workspace : IDisposable
             ? name
             : null;
 
-    /// <summary>An open document over <paramref name="generation"/>, saved as <paramref name="saved"/>, whose changes are kept from now on.</summary>
-    private ProfileDocument OpenDocument(string id, Generation generation, byte[] saved)
+    /// <summary>An open document over <paramref name="generation"/>, saved as <paramref name="saved"/>, tagged <paramref name="tag"/>, whose changes are kept from now on.</summary>
+    private ProfileDocument OpenDocument(string id, Generation generation, byte[] saved, string tag)
     {
         var doc = new ProfileDocument(generation, new ProfileDocumentOptions
         {
-            Instance = DocumentTag.New(),
+            Instance = tag,
             Time = _options.Time,
             HistoryBudget = _options.HistoryBudget,
             Persistence = new StorePersistence(this, id, saved),
@@ -585,22 +640,19 @@ public sealed class Workspace : IDisposable
     }
 
     /// <summary>
-    /// Applies the unsaved changes kept in the profile's recovery file to <paramref name="doc"/>, just opened from
-    /// <paramref name="saved"/> (<see cref="ProfileDocument.Restore"/>), when the file can be used: a regular file within
-    /// the read cap, <c>infopanel.recovery/1</c>, made against exactly these saved bytes, with a document that opens as a
-    /// stored one (its scenes that can't be drawn as placeholders, its own id replaced by the folder's). Otherwise it is
-    /// logged once and left where it is, and the profile opens as saved. Under the workspace lock.
+    /// Applies the unsaved changes kept in the profile's recovery file (<paramref name="bytes"/>, read by
+    /// <see cref="Load"/>; null when there is none) to <paramref name="doc"/>, just opened from <paramref name="saved"/>
+    /// (<see cref="ProfileDocument.Restore"/>), when the file can be used: a regular file within the read cap
+    /// (<paramref name="unusable"/> says why it isn't), <c>infopanel.recovery/1</c>, made against exactly these saved
+    /// bytes, with a document that opens as a stored one (its scenes that can't be drawn as placeholders, its own id
+    /// replaced by the folder's). Otherwise it is logged once and left where it is, and the profile opens as saved. Under
+    /// the workspace lock.
     /// </summary>
-    private void Recover(string id, ProfileDocument doc, byte[] saved)
+    private void Recover(string id, ProfileDocument doc, byte[] saved, byte[]? bytes, string? unusable)
     {
-        byte[]? bytes;
-        try
+        if (unusable is not null)
         {
-            bytes = Documents.ReadRecovery(id);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
-        {
-            NotRecovered(id, doc, ex.Message);
+            NotRecovered(id, doc, unusable);
             return;
         }
         if (bytes is null)
@@ -826,7 +878,7 @@ public sealed class Workspace : IDisposable
             }
 
             StoreChanged?.Invoke(id);
-            doc = OpenDocument(id, generation, bytes);
+            doc = OpenDocument(id, generation, bytes, DocumentTag.New());
             _slots[id] = new Slot(doc, null, new DocumentWatch(this, doc));
         }
 
@@ -892,6 +944,7 @@ public sealed class Workspace : IDisposable
                 Logger.Information("Deleted profile {ProfileId}", id);
                 RaiseProfilesChanged();
             }
+            RaiseIfStatusChanged();
         }
 
         return new DeleteOutcome(true, null);
@@ -965,6 +1018,16 @@ public sealed class Workspace : IDisposable
         // Counted whether or not anything listens: Version is how many times the list changed.
         var version = Interlocked.Increment(ref _version);
         ProfilesChanged?.Invoke(this, new ProfilesChangedEventArgs(version));
+    }
+
+    /// <summary>
+    /// <see cref="ProfilesChanged"/> once a profile read again changed status (an <c>io</c> one that opens now, say),
+    /// outside the workspace lock: a lookup made under it is raised by the caller that holds it, once it lets go.
+    /// </summary>
+    private void RaiseIfStatusChanged()
+    {
+        if (!_lock.IsHeldByCurrentThread && Interlocked.Exchange(ref _statusChanged, 0) != 0)
+            RaiseProfilesChanged();
     }
 
     /// <summary>An open document's change: <see cref="EntriesChanged"/>, unless only its history changed (nothing listed did).</summary>
@@ -1111,8 +1174,11 @@ public sealed class Workspace : IDisposable
         Exists = new ExistsProblem { Title = "Profile exists", Detail = $"A profile with the id '{id}' already exists.", Status = 409, Code = "exists" },
     };
 
-    /// <summary>A profile as the workspace holds it: its open document and the workspace's watch on it, or its status entry.</summary>
-    private sealed record Slot(ProfileDocument? Document, ProfileEntry? Entry, DocumentWatch? Watch = null);
+    /// <summary>
+    /// A profile as the workspace holds it: its open document and the workspace's watch on it, or its status entry; held
+    /// for the run, except an <c>io</c> entry, whose files a lookup from <see cref="ReadAgainAt"/> on reads again.
+    /// </summary>
+    private sealed record Slot(ProfileDocument? Document, ProfileEntry? Entry, DocumentWatch? Watch = null, DateTimeOffset? ReadAgainAt = null);
 
     /// <summary>
     /// The workspace's handler on one open document's <see cref="ProfileDocument.Changed"/>, from its open until it leaves
@@ -1157,23 +1223,41 @@ public sealed class Workspace : IDisposable
         /// <summary>The <c>base</c> of a recovery now: the saved bytes' hash; null when they aren't known (a save failed and they can't be read).</summary>
         private string? _base = RecoveryFile.BaseOf(saved);
 
+        /// <summary>
+        /// A save replaced the document but its folder's flush failed, so the replacement may not be on disk: the
+        /// recovery file is neither removed nor replaced until a flush of the folder succeeds.
+        /// </summary>
+        private bool _unflushed;
+
         private DocumentStore Store => workspace.Documents;
 
         public void Save(Generation generation)
         {
             var bytes = Serialize(generation);
             workspace.Saving?.Invoke(id);
+            var replaced = false;
             try
             {
-                Store.Save(id, bytes);
+                Store.Save(id, bytes, () => replaced = true);
                 _base = RecoveryFile.BaseOf(bytes);
+                _unflushed = false;
             }
-            catch
+            catch (Exception ex) when (replaced)
             {
-                // The file is the old bytes, or the new ones when only its flush failed: whichever it holds.
-                _base = SavedBase();
-                throw;
+                // The file holds the new bytes, but they may not be on disk yet.
+                _base = RecoveryFile.BaseOf(bytes);
+                _unflushed = true;
+                throw new SavedNotFlushedException($"The document of profile {id} holds the new version, but the save didn't finish: {ex.Message}", ex);
             }
+        }
+
+        /// <summary>After a save whose flush failed, flushes the profile's folder before what is kept changes; a failure throws, and nothing changed.</summary>
+        private void FlushFirst()
+        {
+            if (!_unflushed)
+                return;
+            Store.FlushProfileFolder(id);
+            _unflushed = false;
         }
 
         private string? SavedBase()
@@ -1196,6 +1280,7 @@ public sealed class Workspace : IDisposable
             workspace.CheckpointWriting?.Invoke(id);
             try
             {
+                FlushFirst();
                 Store.WriteRecovery(id, bytes);
             }
             catch (KeyNotFoundException)
@@ -1207,6 +1292,7 @@ public sealed class Workspace : IDisposable
         public void ClearCheckpoint()
         {
             workspace.CheckpointRemoving?.Invoke(id);
+            FlushFirst();
             Store.RemoveRecovery(id);
         }
     }

@@ -347,6 +347,62 @@ public sealed class WorkspaceTests : IDisposable
         Assert.False(workspace.Find("../x").Found);
     }
 
+    /// <summary>
+    /// A document that fails to read (an I/O failure) is unreadable (<c>io</c>) for that lookup only: a lookup a few
+    /// seconds later reads it again, opens it under the tag the profile got first in the run, and the list's change is
+    /// raised. A content status stays as it was found for the run.
+    /// </summary>
+    [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public void ADocumentThatFailsToRead_IsReadAgainLater_UnderItsTag()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes");
+        const string C = "0c000000-0000-4000-8000-000000000000";
+        var time = new InfoPanel.Core.Tests.Sensors.TimerTimeProvider(Start);
+        var workspace = With(time, (A, DocJson(A, Scene("a"))), (C, "{ not json"));
+        var path = Paths.DocumentFile(A);
+        var before = File.ReadAllBytes(path);
+        File.SetUnixFileMode(path, UnixFileMode.None);
+        try
+        {
+            var readable = true;
+            try
+            {
+                File.ReadAllBytes(path);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                readable = false;
+            }
+            Assert.SkipWhen(readable, "Running with rights that ignore the file's mode");
+
+            var changes = new List<long>();
+            workspace.ProfilesChanged += (_, e) => changes.Add(e.Version);
+            var first = workspace.Entry(A)!;
+            Assert.Equal(("unreadable", "io"), (first.Status, first.Problem!.Code));
+            Assert.Equal((409, "unreadable", "io"), (workspace.Find(A).Problem!.Status, workspace.Find(A).Problem!.Code, workspace.Find(A).Problem!.Problem!.Code));
+            Assert.Equal(("unreadable", "json"), (workspace.Entry(C)!.Status, workspace.Entry(C)!.Problem!.Code));
+
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.WriteAllText(Paths.DocumentFile(C), DocJson(C, Scene("a")));
+            // Not read again at once: a lookup a few seconds later does.
+            Assert.Equal("unreadable", workspace.Entry(A)!.Status);
+            Assert.Empty(changes);
+            time.Advance(TimeSpan.FromSeconds(5));
+
+            var entries = workspace.List().ToDictionary(e => e.Id);
+            Assert.Equal(("ok", first.Instance), (entries[A].Status, entries[A].Instance));
+            Assert.Equal(first.Instance, workspace.Open(A)!.Instance);
+            Assert.Single(changes);
+            Assert.Equal(before, File.ReadAllBytes(path));
+            Assert.Equal(("unreadable", "json"), (entries[C].Status, entries[C].Problem!.Code));
+        }
+        finally
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
     [Fact]
     public void AnUnsupportedProfile_IsNotExported_AndNeverRewritten()
     {

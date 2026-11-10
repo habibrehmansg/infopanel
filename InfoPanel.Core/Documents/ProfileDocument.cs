@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
@@ -13,7 +14,11 @@ namespace InfoPanel.Documents;
 /// <summary>Where a document's saved generation goes: the engine's document store, or memory in tests.</summary>
 public interface IDocumentPersistence
 {
-    /// <summary>Writes <paramref name="generation"/> as the document's saved version. Throws when it can't; the document then stays dirty.</summary>
+    /// <summary>
+    /// Writes <paramref name="generation"/> as the document's saved version. Throws when it can't; the document then stays
+    /// dirty. Throws <see cref="SavedNotFlushedException"/> when the stored document is the new version but the save
+    /// didn't finish: the document then takes it as saved, and the save still fails.
+    /// </summary>
     void Save(Generation generation);
 
     /// <summary>
@@ -25,6 +30,13 @@ public interface IDocumentPersistence
     /// <summary>Removes what <see cref="Checkpoint"/> kept, when anything is; on disk before it returns. Throws when it can't.</summary>
     void ClearCheckpoint();
 }
+
+/// <summary>
+/// A save that failed after the stored document was replaced with the new version (its folder couldn't be flushed to
+/// disk, say): the file holds the version saved, so the document takes it as its saved one before the failure is
+/// answered, and a change back to the version it replaced is a change, kept.
+/// </summary>
+public sealed class SavedNotFlushedException(string message, Exception inner) : IOException(message, inner);
 
 /// <summary>
 /// A document's lifetime tag, <c>instance</c> (spec/docs/api.md, "A document's tag"; commit.md): opaque, compared for
@@ -731,7 +743,9 @@ public sealed class ProfileDocument : IDisposable
     /// hands the current generation to the persistence seam and makes it the saved one. Always writes, even when clean.
     /// The write runs outside the document's lock (commits go on meanwhile, and aren't part of what it saves); saves
     /// are serialised, and with disposal too: a disposed document never saves. The answer is the state once the write
-    /// is done: the current revision, and dirty when the document changed during the write.
+    /// is done: the current revision, and dirty when the document changed during the write. A write that fails once the
+    /// stored document is the new version (<see cref="SavedNotFlushedException"/>) still makes it the saved one, as a
+    /// save that succeeds does, and then throws.
     /// </summary>
     public CommitResult Save() => SaveCore(null).Result!;
 
@@ -753,6 +767,7 @@ public sealed class ProfileDocument : IDisposable
         var persistence = _options.Persistence ?? throw new InvalidOperationException("This document has nowhere to save to.");
         CommitResult result;
         Generation generation;
+        ExceptionDispatchInfo? notFlushed = null;
         lock (_saveLock)
         {
             lock (_lock)
@@ -768,7 +783,15 @@ public sealed class ProfileDocument : IDisposable
                         return Conflict(generation.Rev, ChangedAfter(generation, guard.BaseRev), $"The document changed after revision {guard.BaseRev}.");
                 }
             }
-            persistence.Save(generation);
+            try
+            {
+                persistence.Save(generation);
+            }
+            catch (SavedNotFlushedException ex)
+            {
+                // The stored document is this version: it is the saved one from now on, and the save still fails.
+                notFlushed = ExceptionDispatchInfo.Capture(ex);
+            }
             Generation current;
             bool clear;
             lock (_lock)
@@ -809,6 +832,7 @@ public sealed class ProfileDocument : IDisposable
             }
         }
         Raise(generation, DocumentChange.Saved);
+        notFlushed?.Throw();
         return new CommitOutcome { Result = result };
     }
 

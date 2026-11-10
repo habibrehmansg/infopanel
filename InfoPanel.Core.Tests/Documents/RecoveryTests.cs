@@ -936,6 +936,307 @@ public sealed class RecoveryTests : IDisposable
         Assert.Equal(before, File.ReadAllBytes(RecoveryPath()));
     }
 
+    /// <summary>
+    /// A recovery file that fails to read (an I/O failure, not its content) doesn't open the profile as saved: it is
+    /// unreadable (<c>io</c>) for that lookup, nothing writes over the file, the orderly stop included, and it is read
+    /// again at a lookup a few seconds later, which restores the changes under the profile's tag of the run.
+    /// </summary>
+    [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public void AFileThatFailsToReadIsLeftAndRestoredOnceItReads()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes");
+        KeepAMove();
+        var path = RecoveryPath();
+        var before = File.ReadAllBytes(path);
+        File.SetUnixFileMode(path, UnixFileMode.None);
+        try
+        {
+            Assert.SkipWhen(CanRead(path), "Running with rights that ignore the file's mode");
+
+            var first = StartWorkspace();
+            var entry = first.Entry(A)!;
+            Assert.Equal(("unreadable", "io"), (entry.Status, entry.Problem?.Code));
+            Assert.Null(first.Open(A));
+            Assert.Equal((409, "unreadable", "io"), (first.Find(A).Problem!.Status, first.Find(A).Problem!.Code, first.Find(A).Problem!.Problem!.Code));
+            Advance(60_000);
+            first.Dispose();
+            AssertUnchanged();
+
+            var workspace = StartWorkspace();
+            var changes = new List<long>();
+            workspace.ProfilesChanged += (_, e) => changes.Add(e.Version);
+            var unreadable = workspace.Entry(A)!;
+            Assert.Equal(("unreadable", "io"), (unreadable.Status, unreadable.Problem?.Code));
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            // Not read again at once: a lookup a few seconds later does.
+            Assert.Equal("unreadable", workspace.Entry(A)!.Status);
+            Advance(5000);
+            var restored = workspace.Entry(A)!;
+            Assert.Equal(("ok", true, unreadable.Instance), (restored.Status, restored.Dirty, restored.Instance));
+            Assert.Single(changes);
+            var doc = workspace.Open(A)!;
+            Assert.Equal(unreadable.Instance, doc.Instance);
+            Assert.Equal(20, X(doc.Current));
+            Assert.Equal(10, X(doc.Saved));
+            Assert.Equal(Start.AddSeconds(2), doc.Recovered);
+            Assert.Equal(before, File.ReadAllBytes(path));
+        }
+        finally
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+
+        void AssertUnchanged()
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            Assert.Equal(before, File.ReadAllBytes(path));
+            File.SetUnixFileMode(path, UnixFileMode.None);
+        }
+    }
+
+    private static bool CanRead(string path)
+    {
+        try
+        {
+            File.ReadAllBytes(path);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// A save whose document is replaced but whose folder can't be flushed still fails, but the document takes the new
+    /// version as saved: an Undo back to the version it replaced is a change against it, kept, and after a restart the
+    /// profile opens as the new version with the Undo restored as unsaved changes.
+    /// </summary>
+    [Fact]
+    public void ASaveReplacedButNotFlushedTakesTheNewVersionAsSaved()
+    {
+        var documentFile = Paths.DocumentFile(A);
+        var folder = Paths.ProfileFolder(A);
+        var armed = false;
+        var replaced = false;
+        var faults = new MatchFaults
+        {
+            Fail = (step, path) =>
+            {
+                if (!armed)
+                    return false;
+                if (step == StorageStep.ReplaceFile && path == documentFile)
+                    replaced = true;
+                else if (replaced && step == StorageStep.SyncFolder && path == folder)
+                {
+                    armed = false;
+                    return true;
+                }
+                return false;
+            },
+        };
+        var workspace = StartWorkspace(faults);
+        var doc = Create(workspace);
+        Move(doc, 20);
+        Advance(2000);
+        Assert.True(HasRecovery());
+
+        armed = true;
+        Assert.ThrowsAny<IOException>(() => doc.Save());
+        Assert.True(replaced);
+        Assert.Equal(SavedHash(), Hash(Workspace.Serialize(doc.Current)));
+
+        var undone = doc.UndoOwn();
+        Assert.Equal(10, X(doc.Current));
+        Assert.True(undone.Dirty);
+        Assert.True(doc.Dirty);
+        Assert.Equal(20, X(doc.Saved));
+        Advance(2000);
+        Assert.True(HasRecovery());
+        Assert.Equal((SavedHash(), 10d), (ReadRecovery().Base, ReadRecovery().A));
+
+        workspace.Dispose();
+        var reopened = StartWorkspace().Open(A)!;
+        Assert.Equal(20, X(reopened.Saved));
+        Assert.True(reopened.Dirty);
+        Assert.Equal(10, X(reopened.Current));
+    }
+
+    /// <summary>
+    /// A save whose document is replaced while every flush of its folder fails leaves the recovery file as it was, after
+    /// the save and after the scheduler's retries, since the replacement may not be on disk; once a flush succeeds, the
+    /// retry removes it, and a restart opens the new version clean.
+    /// </summary>
+    [Fact]
+    public void ASaveReplacedButNotFlushedKeepsTheRecoveryUntilItsFolderIsFlushed()
+    {
+        var folder = Paths.ProfileFolder(A);
+        var failing = false;
+        var faults = new MatchFaults { Fail = (step, path) => failing && step == StorageStep.SyncFolder && path == folder };
+        var workspace = StartWorkspace(faults);
+        var doc = Create(workspace);
+        Move(doc, 20);
+        Advance(2000);
+        Assert.True(HasRecovery());
+        var kept = File.ReadAllBytes(RecoveryPath());
+
+        failing = true;
+        Assert.ThrowsAny<IOException>(() => doc.Save());
+        Assert.False(doc.Dirty);
+        Assert.Equal(SavedHash(), Hash(Workspace.Serialize(doc.Current)));
+        Assert.True(HasRecovery(), "The recovery file was removed while the save's replacement may not be on disk");
+        Assert.Equal(kept, File.ReadAllBytes(RecoveryPath()));
+        Advance(10_000);
+        Assert.True(HasRecovery(), "The retry removed the recovery file while the folder can't be flushed");
+        Assert.Equal(kept, File.ReadAllBytes(RecoveryPath()));
+
+        failing = false;
+        Advance(10_000);
+        Assert.False(HasRecovery());
+        workspace.Dispose();
+        var reopened = StartWorkspace().Open(A)!;
+        Assert.False(reopened.Dirty);
+        Assert.Equal(20, X(reopened.Current));
+    }
+
+    /// <summary>
+    /// The same with an edit landing during the save: while the folder can't be flushed, the recovery file isn't
+    /// rewritten against the new version; once a flush succeeds, the edit is kept against it.
+    /// </summary>
+    [Fact]
+    public void AnEditDuringASaveReplacedButNotFlushedIsKeptAgainstItOnlyOnceTheFolderIsFlushed()
+    {
+        var folder = Paths.ProfileFolder(A);
+        var failing = false;
+        var faults = new MatchFaults { Fail = (step, path) => failing && step == StorageStep.SyncFolder && path == folder };
+        var workspace = StartWorkspace(faults);
+        var doc = Create(workspace);
+        Move(doc, 20);
+        Advance(2000);
+        Assert.True(HasRecovery());
+        var kept = File.ReadAllBytes(RecoveryPath());
+
+        failing = true;
+        workspace.Saving = _ =>
+        {
+            workspace.Saving = null;
+            Move(doc, 30, "b");
+        };
+        Assert.ThrowsAny<IOException>(() => doc.Save());
+        Assert.True(doc.Dirty);
+        Assert.Equal(20, X(doc.Saved));
+        Assert.Equal(kept, File.ReadAllBytes(RecoveryPath()));
+        Advance(10_000);
+        Assert.Equal(kept, File.ReadAllBytes(RecoveryPath()));
+
+        failing = false;
+        Advance(10_000);
+        var recovery = ReadRecovery();
+        Assert.Equal((SavedHash(), 20d, 30d), (recovery.Base, recovery.A, recovery.B));
+        workspace.Dispose();
+        var reopened = StartWorkspace().Open(A)!;
+        Assert.Equal((20d, 50d), (X(reopened.Saved), X(reopened.Saved, "b")));
+        Assert.True(reopened.Dirty);
+        Assert.Equal(30, X(reopened.Current, "b"));
+    }
+
+    /// <summary>
+    /// A save whose document is replaced, whose folder flush fails, and whose document can't be read back after it:
+    /// the store's word that the replacement landed makes the new version the saved one, so an Undo back to the one it
+    /// replaced answers dirty and is kept.
+    /// </summary>
+    [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public void ASaveReplacedButNotFlushedTakesTheNewVersionAsSavedWhenItCantBeReadBack()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes");
+        var documentFile = Paths.DocumentFile(A);
+        var folder = Paths.ProfileFolder(A);
+        var armed = false;
+        var replaced = false;
+        var faults = new MatchFaults
+        {
+            Fail = (step, path) =>
+            {
+                if (!armed)
+                    return false;
+                if (step == StorageStep.ReplaceFile && path == documentFile)
+                    replaced = true;
+                else if (replaced && step == StorageStep.SyncFolder && path == folder)
+                {
+                    armed = false;
+                    File.SetUnixFileMode(documentFile, UnixFileMode.None);
+                    return true;
+                }
+                return false;
+            },
+        };
+        var workspace = StartWorkspace(faults);
+        var doc = Create(workspace);
+        Move(doc, 20);
+        Advance(2000);
+        Assert.True(HasRecovery());
+
+        armed = true;
+        try
+        {
+            Assert.ThrowsAny<IOException>(() => doc.Save());
+            Assert.True(replaced);
+            Assert.SkipWhen(CanRead(documentFile), "Running with rights that ignore the file's mode");
+        }
+        finally
+        {
+            File.SetUnixFileMode(documentFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+
+        var undone = doc.UndoOwn();
+        Assert.Equal(10, X(doc.Current));
+        Assert.True(undone.Dirty);
+        Assert.Equal(20, X(doc.Saved));
+        Advance(2000);
+        Assert.Equal((SavedHash(), 10d), (ReadRecovery().Base, ReadRecovery().A));
+    }
+
+    /// <summary>
+    /// A recovery file that is a link whose target can't be reached doesn't open the profile as saved: it is unreadable
+    /// (<c>io</c>), the link is left, and once its target holds a recovery against the saved bytes, a lookup a few seconds
+    /// later restores it.
+    /// </summary>
+    [Fact]
+    public void ARecoveryLinkToNothingIsReadAgainAndRestoredOnceItsTargetIsThere()
+    {
+        KeepAMove();
+        var path = RecoveryPath();
+        var kept = File.ReadAllBytes(path);
+        using var outside = new TempDirectory();
+        var target = Path.Combine(outside.Path, "later", "recovery.json");
+        File.Delete(path);
+        try
+        {
+            File.CreateSymbolicLink(path, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"No symbolic link can be made here: {ex.Message}");
+        }
+
+        var workspace = StartWorkspace();
+        var entry = workspace.Entry(A)!;
+        Assert.Equal(("unreadable", "io"), (entry.Status, entry.Problem?.Code));
+        Assert.Null(workspace.Open(A));
+        Assert.Equal(target, new FileInfo(path).LinkTarget);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.WriteAllBytes(target, kept);
+        Advance(5000);
+        var restored = workspace.Entry(A)!;
+        Assert.Equal(("ok", true), (restored.Status, restored.Dirty));
+        var doc = workspace.Open(A)!;
+        Assert.Equal(20, X(doc.Current));
+        Assert.Equal(10, X(doc.Saved));
+    }
+
     [Fact]
     public void AStoredDocumentWhoseIdIsAnotherKeepsItsFolderIdWhenRestored()
     {
