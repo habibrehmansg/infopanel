@@ -1,71 +1,86 @@
 <p align="center">
-  <a href="https://www.infopanel.net"><img src="Images/logo.png" width="60" alt="InfoPanel"></a>
+  <a href="https://www.infopanel.net"><img src="Images/logo.png" width="80" alt="InfoPanel"></a>
 </p>
 
 <h1 align="center">InfoPanel</h1>
 
-<p align="center">InfoPanel turns your computer's sensors into panels you design, on the desktop, a second display and (later in 2.0) USB LCD panels.</p>
+<p align="center">Your computer's live readings on a USB screen or a desktop window, laid out the way you want.</p>
 
-> [!NOTE]
-> **This is the `2.0.x` branch: InfoPanel 2.0, in development and not released.** InfoPanel 1.x, the Windows app, is the current release: get it from [Releases][release] or the [Microsoft Store][msstore]; its code and README are on branch [`1.4.x`][1.4.x]. If you use 1.x, keep using it for now. 2.0 reads your 1.x profiles and settings and never changes them, and USB panels aren't in 2.0 yet.
+InfoPanel reads your computer's sensors (CPU and GPU temperatures, load, fan speeds, memory, drives, network) and draws them on a small USB panel or in a window on your desktop. **Open Editor** opens [app.infopanel.net][editor], where you design your panels in the browser. The preview there is drawn by InfoPanel itself, so what you see is what the panel shows.
 
-2.0 is one engine for Windows and macOS. It reads the sensors, draws every panel with Skia, and listens on this computer only (127.0.0.1) for the editor in your browser; what you edit is the engine's own picture of the panel, so the preview is what the panel shows.
+**[Download](#download) · [Documentation](docs/2.0/README.md) · [Discord][discord] · [Reddit][reddit]**
 
-## What works today (as of 2026-11-05)
+## Download
 
-| | macOS | Windows |
-|---|---|---|
-| Sensors | The Mac's own (CPU, GPU, memory, temperatures, fans, power, battery, disks, network), without administrator rights | [HWiNFO][hwinfo] (with Shared Memory Support on), HWiNFO's gadget values, LibreHardwareMonitor (with the PawnIO driver; every sensor once [set up to read them all](#windows-sensors-from-source)) |
-| Clock, drives, network (the public address too) | Yes | Yes |
-| Weather | Yes, from the configured service¹ | Yes, from the configured service¹ |
-| 1.x plugins (sensors, texts, tables) | Yes² | Yes |
-| Panels on the desktop | Yes | Yes |
-| Menu-bar item | Yes | Later (a tray icon) |
-| USB LCD panels | Later | Later |
-| 1.x profiles and settings | Read, never changed | Read, never changed |
+InfoPanel 2.0 is in beta: try it, and [tell us what breaks][issues]. Builds are on the [Releases page][releases] as pre-releases; until one is there, [build from source](#build-from-source).
 
-¹ A build from source has no configured service by default, so its weather stays off. ² A plugin built on a Windows-only library runs on Windows only. Linux isn't supported yet: the code has Linux paths (the clock, drives and network; the preview's video through ffmpeg), but no Linux build is tested, and it reads no hardware sensors and opens no desktop windows.
+- **Mac** (Apple silicon, macOS 15 or later): `InfoPanel-<version>-mac-arm64.dmg`
+- **Windows** (x64, Windows 10 or later): `InfoPanel-<version>-win-x64-setup.exe`
 
-**[Documentation](docs/2.0/README.md) · [Run from source](#run-from-source) · [Website][website] · [Discord][discord] · [Reddit][reddit]**
+Each release lists the files' SHA-256 in `SHA256SUMS`.
 
-## Run from source
+**On a Mac**, open the disk image and drag InfoPanel to Applications. The app isn't notarised yet, so the first time you open it macOS says it can't verify it: choose **Done**, then System Settings › Privacy & Security › **Open Anyway**. InfoPanel lives in the menu bar, with no Dock icon.
 
-Install the [.NET 10 SDK](https://dotnet.microsoft.com/download), then from the repository's root:
+**On Windows**, run the setup. It isn't signed yet, so SmartScreen may say "Windows protected your PC": choose **More info**, then **Run anyway**. It installs as InfoPanel 2 in `C:\Program Files\InfoPanel 2` and sits in the notification area by the clock. **Start when I sign in**, in its menu, starts it with Windows.
+
+Then choose **Open Editor** in the menu (on Windows, a click on the icon does the same). Starting InfoPanel again while it runs opens the editor too. InfoPanel includes an example profile to start from.
+
+**Updates.** Once a day InfoPanel checks GitHub for a newer release. When there is one, its menu says **Update Available** and you get one notification; both open the release page. **Check for Updates…** checks straight away.
+
+## Where it shows
+
+**USB panels.** All 21 BeadaPanel models, from 320 × 480 up to the 1920 × 480 bars. InfoPanel finds a panel you plug in and saves it switched off; give it a profile and turn it on, and it shows that profile live, rotated as you set it and scaled to fit ([USB panels](docs/2.0/panels.md)). The BeadaPanel 8 and its 1920 × 480 relatives get JPEG frames, about twice as many a second as raw ones. A panel another program is using is left alone.
+
+**Desktop windows** (macOS and Windows). Any profile can have a window of its own on your desktop; **Show on Desktop** in the menu turns each one on or off. **Click-Through** lets clicks pass to whatever is underneath.
+
+## What it reads
+
+- **On a Mac:** the Mac's own sensors (CPU and GPU, temperatures, fans, power, memory, battery, disk and network throughput), with no administrator rights.
+- **On Windows:** [HWiNFO][hwinfo], with Shared Memory Support turned on in its settings (the free version stops sharing after 12 hours; readings ticked "Report value in Gadget" come through too), and LibreHardwareMonitor, built in. LibreHardwareMonitor needs the PawnIO driver for the CPU's temperatures and the board's fans and voltages: the setup carries PawnIO's installer, and InfoPanel runs it when you choose **Install PawnIO**. Some sensors need administrator rights as well: **Read all sensors** sets up a task that reads them as SYSTEM. InfoPanel never elevates itself.
+- **On Linux:** the hwmon and thermal-zone sensors in `/sys`.
+- **Everywhere:** the clock, your drives, network interfaces and public address, uptime and the busiest processes, and the weather, which needs the configured weather service. Volume on macOS and Windows.
+- **Plugins:** .NET plugins add sensors, texts and tables of their own. Add the plugin package to the data folder's `plugins` folder and restart InfoPanel; each package runs in its own process ([plugins](docs/2.0/plugins.md), [writing one](PLUGINS.md), [community plugins](PLUGIN-REGISTRY.md)).
+
+A profile can hold text and live values, graphs, tables, images and SVG, image-sequence gauges, web images and cameras. Video files and RTSP cameras need FFmpeg's libraries, which the downloads don't include; MJPEG cameras work without them ([video](docs/2.0/video.md)).
+
+## Platforms
+
+| | macOS | Windows | Linux |
+|---|---|---|---|
+| Download | Disk image | Setup | None: build from source |
+| Hardware sensors | The Mac's own | HWiNFO, LibreHardwareMonitor | hwmon, thermal zones |
+| Clock, drives, network, system info | Yes | Yes | Yes |
+| Weather¹ | Yes | Yes | Yes |
+| Volume | Yes | Yes | No |
+| USB panels | Yes | Yes | With the system's libusb; build from source |
+| Desktop windows | Yes | Yes | No |
+| Menu | Menu bar | Notification area | No |
+| Plugins | Yes² | Yes | Yes² |
+
+¹ Needs the configured weather service. ² Plugins using Windows-only libraries run only on Windows.
+
+InfoPanel keeps your profiles, media, settings and logs in `~/Library/Application Support/InfoPanel/v2` on macOS and `%LOCALAPPDATA%\InfoPanel\v2` on Windows ([the data folder](docs/2.0/data-folder.md)). Uninstalling on Windows keeps it.
+
+## Build from source
+
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) (`global.json` pins the version). From the repository's root:
 
 ```bash
-dotnet run --project InfoPanel -c Release                          # the API and the live preview
-dotnet run --project InfoPanel -c Release -- --web-root <folder>   # also serves a built web client from <folder>
-dotnet run --project InfoPanel -- --help                           # every flag
+dotnet build InfoPanel.slnx
+dotnet test InfoPanel.slnx
+dotnet run --project InfoPanel -c Release        # the engine, on your real sensors
+dotnet run --project InfoPanel -- --help         # every flag
 ```
 
-This repository builds the engine, not a web client. Without `--web-root` (or a `wwwroot` folder with an `index.html` next to the engine) it serves the API and the live preview only, for a client of your own: [`spec/`](spec/README.md) has the formats and the API. With a web client, the engine prints a sign-in link to the console; it never opens a browser by itself. The menu-bar item's **Open Editor** (macOS) opens the editor, and so does starting InfoPanel again while it runs ([the desktop shell](docs/2.0/desktop-shell.md)).
+A build from source has no editor built in, so on its own it serves the engine's API and live preview; `--help` explains `--web-root` and `--allow-origin`. On Windows, LibreHardwareMonitor runs in a sensor helper that only a publish includes: `dotnet publish InfoPanel -c Release -r win-x64`, then run the engine from the publish folder; a source build doesn't carry PawnIO's installer, and reading every sensor needs the engine under Program Files ([the PawnIO driver](spec/docs/api.md#the-pawnio-driver), [reading all sensors](spec/docs/api.md#reading-all-sensors)). On macOS, USB panels need `brew install libusb`.
 
-The engine keeps its profiles, media, settings and logs in `~/Library/Application Support/InfoPanel/v2` on macOS and `%LOCALAPPDATA%\InfoPanel\v2` on Windows, or the folder `--data-dir` names ([the data folder](docs/2.0/data-folder.md)). It reads 1.x's data folder (`%LOCALAPPDATA%\InfoPanel`, or `--v1-dir <folder>`) but never writes to it ([1.x import](spec/docs/import.md)).
+`packaging/macos/build.sh` and `packaging\windows\build.ps1` build the disk image and the setup ([packaging](docs/2.0/packaging.md)).
 
-Video files and RTSP cameras in a panel need FFmpeg's libraries, which a build from source doesn't include (HTTP MJPEG cameras work without them); the preview as video uses the computer's hardware encoder, or ffmpeg on macOS ([video](docs/2.0/video.md)).
+The documentation starts at [docs/2.0](docs/2.0/README.md). The profile formats and the engine's API, for anyone writing a client, are in [`spec/`](spec/README.md). [`CLAUDE.md`](CLAUDE.md) is the guide to the code.
 
-### Windows sensors from source
+## Contributing
 
-- **HWiNFO:** turn on Shared Memory Support in HWiNFO's settings (the free version's shared memory stops after 12 hours). Readings ticked "Report value in Gadget" in HWiNFO are read too.
-- **LibreHardwareMonitor** runs in the engine's sensor helper, which only a Windows publish includes: `dotnet publish InfoPanel -c Release -r win-x64`, then run the engine from the publish folder (`dotnet run` and a plain build have no `sensor-helper` folder).
-- **PawnIO** is the driver LibreHardwareMonitor needs for the CPU's temperatures, clocks and power and the board's fans and voltages. A build from source doesn't include its installer, so the engine doesn't offer to install it: install it from [pawnio.eu](https://pawnio.eu).
-- **Every sensor:** some need administrator rights even with PawnIO. The engine never elevates itself; it can set up a task that runs its sensor helper as SYSTEM, which needs the engine installed under Program Files ([reading all sensors](spec/docs/api.md#reading-all-sensors)).
-
-## Documentation
-
-[The documentation index](docs/2.0/README.md) lists every page: the data folder, the desktop shell, plugins, video, weather, AI apps; then the formats and the engine API in [`spec/`](spec/README.md), for client authors; then the pages for contributors.
-
-## Plugins
-
-2.0 runs 1.x plugins: the SDK is the same, and the engine reads their sensors, texts and tables, so a 1.x profile bound to a plugin reads it live. How the engine finds and runs them: [plugins](docs/2.0/plugins.md). Writing one: [the plugin guide](PLUGINS.md) and [its architecture](PLUGIN-ARCHITECTURE.md). Community plugins: [the plugin registry](PLUGIN-REGISTRY.md).
-
-## InfoPanel 1.x
-
-InfoPanel 1.x is the Windows app released today, with USB LCD panels (BeadaPanel, Turing Smart Screen/Turzx and others). Its features, supported hardware and [display panels guide][panels] are on branch [`1.4.x`][1.4.x]. Get it from [Releases][release] or the [Microsoft Store][msstore]; it has a thread on the [HWiNFO forum][forum].
-
-## Contributing and security
-
-Issues are welcome; 2.0 takes no pull requests until its first release ([contributing](CONTRIBUTING.md)). To report a vulnerability, see [security](SECURITY.md).
+Issues are welcome: a bug, a sensor that reads wrong, a page of the docs that's out of date. Pull requests open after 2.0's first release ([contributing](CONTRIBUTING.md)). To report a vulnerability, see [security](SECURITY.md). Questions and ideas go to [Discord][discord] or [Reddit][reddit].
 
 ## Licence
 
@@ -73,25 +88,16 @@ InfoPanel is licensed under GPL 3.0 - see the [license file][license] for detail
 
 The formats and the API contract in `spec/` (its schemas, documentation and generated types) are under the MIT licence, [`spec/LICENSE`](spec/LICENSE), so anyone can build a client on them.
 
-Third-party components: [LICENSES.md](LICENSES.md).
-
 Contributions need the contributor agreement, [`CLA.md`](CLA.md): you keep the copyright in your contribution and give Habib Rehman a broad licence to use and license it, including under other terms.
 
----
+Third-party components are listed in [LICENSES.md](LICENSES.md).
 
 InfoPanel is not affiliated with HWiNFO. HWiNFO is a registered trademark of its respective owners.
 
-<!--
-References
--->
-
-[reddit]: https://www.reddit.com/r/InfoPanel/
-[website]: https://www.infopanel.net
-[forum]: https://www.hwinfo.com/forum/threads/infopanel-desktop-visualisation-software.8673/
+[editor]: https://app.infopanel.net
+[releases]: https://github.com/habibrehmansg/infopanel/releases
+[issues]: https://github.com/habibrehmansg/infopanel/issues
 [discord]: https://discord.gg/aNGeJxjE7Q
-[msstore]: https://apps.microsoft.com/store/detail/XPFP7C8H5446ZD
-[release]: https://github.com/habibrehmansg/infopanel/releases
-[1.4.x]: https://github.com/habibrehmansg/infopanel/tree/1.4.x
-[panels]: https://github.com/habibrehmansg/infopanel/blob/1.4.x/PANELS.md
+[reddit]: https://www.reddit.com/r/InfoPanel/
 [hwinfo]: https://www.hwinfo.com
 [license]: LICENSE
