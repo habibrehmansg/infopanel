@@ -679,7 +679,7 @@ namespace InfoPanel.Drawing
             if (isLive)
             {
                 // Draw LIVE indicator
-                using var liveFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI Symbol", SKFontStyle.Bold), 12f);
+                using var liveFont = new SKFont(FontRegistry.MatchSystem("Segoe UI Symbol", SKFontStyle.Bold), 12f);
                 using var livePaint = new SKPaint { Color = SKColor.Parse("#FF0000"), IsAntialias = true };
 
                 var liveText = playerStatus == MediaPlaybackStatus.Playing ? "LIVE" : "CONNECTING..";
@@ -689,7 +689,7 @@ namespace InfoPanel.Drawing
                 var liveTextWidth = liveFont.MeasureText(liveText);
 
                 // Draw volume icon to the right of LIVE
-                using var iconFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI Emoji", SKFontStyle.Normal), 14f);
+                using var iconFont = new SKFont(FontRegistry.MatchSystem("Segoe UI Emoji", SKFontStyle.Normal), 14f);
                 using var iconPaint = new SKPaint { Color = SKColor.Parse("#FFFF00"), IsAntialias = true }; // Yellow color
                 overlayCanvas.DrawText(icon, progressBarLeft + liveTextWidth + 10f, overlayHeight - 8f, iconFont, iconPaint);
             }
@@ -697,7 +697,7 @@ namespace InfoPanel.Drawing
             {
                 // Draw time display for non-live content
                 var timeDisplay = $"{currentTime:hh\\:mm\\:ss\\.fff} / {duration:hh\\:mm\\:ss\\.fff}";
-                using var timeFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal), 12f);
+                using var timeFont = new SKFont(FontRegistry.MatchSystem("Segoe UI", SKFontStyle.Normal), 12f);
                 using var timePaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
                 overlayCanvas.DrawText(timeDisplay, progressBarLeft, overlayHeight - 8f, timeFont, timePaint);
 
@@ -705,7 +705,7 @@ namespace InfoPanel.Drawing
                 var timeTextWidth = timeFont.MeasureText(timeDisplay);
 
                 // Draw volume icon to the right of time
-                using var iconFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI Emoji", SKFontStyle.Normal), 14f);
+                using var iconFont = new SKFont(FontRegistry.MatchSystem("Segoe UI Emoji", SKFontStyle.Normal), 14f);
                 using var iconPaint = new SKPaint { Color = SKColor.Parse("#FFFFFF"), IsAntialias = true }; // White color
                 overlayCanvas.DrawText(icon, progressBarLeft + timeTextWidth + 10f, overlayHeight - 8f, iconFont, iconPaint);
             }
@@ -715,7 +715,7 @@ namespace InfoPanel.Drawing
             var frameRateText = $"{frameRate:F0} FPS";
             var rightDisplayText = $"{frameRateText}";
 
-            using var rightFont = new SKFont(SKTypeface.FromFamilyName("Segoe UI Symbol", SKFontStyle.Normal), 11f);
+            using var rightFont = new SKFont(FontRegistry.MatchSystem("Segoe UI Symbol", SKFontStyle.Normal), 11f);
             using var rightPaint = new SKPaint { Color = SKColor.Parse("#CCFFFFFF"), IsAntialias = true };
             var rightTextWidth = rightFont.MeasureText(rightDisplayText);
             overlayCanvas.DrawText(rightDisplayText, progressBarLeft + progressBarWidth - rightTextWidth, overlayHeight - 8f, rightFont, rightPaint);

@@ -18,6 +18,9 @@
     <PackageReference Include="SkiaSharp" />
     <!-- Linux's native at SkiaSharp's version (Directory.Packages.props); Windows' and macOS's come with SkiaSharp itself. -->
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
+    <!-- Topten.RichTextKit's HarfBuzz glue at SkiaSharp's version, and Linux's HarfBuzz native at its HarfBuzzSharp's (Directory.Packages.props). -->
+    <PackageReference Include="SkiaSharp.HarfBuzz" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" />
     <!-- The system information source's Windows reader (WinProcessSampler) reads Windows' performance counters. -->
     <PackageReference Include="System.Diagnostics.PerformanceCounter" />
     <!-- RenderLoop hashes rendered frames with XxHash3. -->

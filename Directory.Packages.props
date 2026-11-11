@@ -11,7 +11,7 @@
     <PackageVersion Include="Serilog" Version="4.3.1" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageVersion Include="SkiaSharp" Version="3.119.2" />
+    <PackageVersion Include="SkiaSharp" Version="4.155.0" />
     <PackageVersion Include="StreamJsonRpc" Version="2.24.84" />
     <PackageVersion Include="System.CommandLine" Version="2.0.6" />
     <PackageVersion Include="System.Threading.Tasks.Extensions" Version="4.6.3" />
@@ -22,15 +22,17 @@
   <ItemGroup>
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.6" />
-    <!-- Linux's Skia native, in SkiaSharp's own release line: SkiaSharp loads only a native of its major.minor (119), and
-         Topten.RichTextKit alone would pull 2.88's, which can't load. 3.119.4, not SkiaSharp's 3.119.2: 3.119.2's
-         linux-arm64 native leaves libuuid's and FreeType's symbols unresolved, 3.119.4's links fontconfig and FreeType
-         itself. Move it with SkiaSharp, to the same version once SkiaSharp is at 3.119.4 or later. -->
-    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
-    <PackageVersion Include="Svg.Skia" Version="4.3.0" />
+    <!-- Linux's Skia native, at SkiaSharp's own version: SkiaSharp loads only a native of its major.minor (155), and
+         Topten.RichTextKit alone would pull an older one, which can't load. Move it with SkiaSharp. -->
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="4.155.0" />
+    <!-- HarfBuzz's Skia glue at SkiaSharp's own version, and Linux's HarfBuzz native at the HarfBuzzSharp it brings
+         (Topten.RichTextKit alone would pull older ones). Move them with SkiaSharp. -->
+    <PackageVersion Include="SkiaSharp.HarfBuzz" Version="4.155.0" />
+    <PackageVersion Include="HarfBuzzSharp.NativeAssets.Linux" Version="14.4.0" />
+    <PackageVersion Include="Svg.Skia" Version="5.2.3" />
     <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="10.0.6" />
     <PackageVersion Include="System.IO.Hashing" Version="10.0.14" />
-    <PackageVersion Include="Topten.RichTextKit" Version="0.4.167" />
+    <PackageVersion Include="Topten.RichTextKit" Version="0.6.170" />
   </ItemGroup>
 
   <!-- InfoPanel (engine host) -->

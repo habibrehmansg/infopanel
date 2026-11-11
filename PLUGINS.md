@@ -9,6 +9,7 @@
   - [Plugin Containers](#plugin-containers)
   - [Plugin Data Types](#plugin-data-types)
 - [Image Providers](#image-providers)
+  - [SkiaSharp 4](#skiasharp-4)
 - [Plugin Actions](#plugin-actions)
 - [Plugin Configuration](#plugin-configuration)
   - [Automatic Config Persistence](#automatic-config-persistence)
@@ -272,13 +273,13 @@ public override Task UpdateAsync(CancellationToken cancellationToken)
     using var canvas = new SKCanvas(_writer.Bitmap);
     canvas.Clear(SKColors.Black);
 
+    using var font = new SKFont(SKTypeface.Default, 24);
     using var paint = new SKPaint
     {
         Color = SKColors.White,
-        TextSize = 24,
         IsAntialias = true
     };
-    canvas.DrawText("Hello from plugin!", 10, 40, paint);
+    canvas.DrawText("Hello from plugin!", 10, 40, SKTextAlign.Left, font, paint);
 
     _writer.Invalidate(); // Publish the frame
 
@@ -297,6 +298,16 @@ public override Task UpdateAsync(CancellationToken cancellationToken)
 | `void Resize(int width, int height)` | Request a new image size (recreates the backing buffer) |
 
 > **Note:** Images are backed by memory-mapped files with double buffering. `Invalidate()` atomically swaps the active buffer, so drawing and reading never conflict.
+
+### SkiaSharp 4
+
+The 2.0 engine provides SkiaSharp **4.155.0** to its plugins. The plugin host always loads the engine's SkiaSharp (a copy in your plugin's folder is ignored), so `IPluginImageWriter.Bitmap` is the same `SKBitmap` type on both sides. A plugin that draws must be rebuilt against SkiaSharp 4.155.0:
+
+- A plugin compiled against SkiaSharp 3 still loads, but a call to an API that SkiaSharp 4 removed or made private fails when that code runs, with `MissingMethodException` or `MethodAccessException`. For example, an `SKBitmap` subclass that sets `IgnorePublicDispose` (protected in 3.x, private in 4.x) throws `MethodAccessException`.
+- `SKPaint`'s text members (`TextSize`, `Typeface`, `DrawText` with only a paint) are obsolete: draw text with an `SKFont` that names its typeface, as in the example above (a new `SKFont`'s default typeface is empty in SkiaSharp 4).
+- `SKTypeface.FromFamilyName` for a family that isn't installed returns `SKTypeface.Default` in its regular style, not the default family in the weight and slant asked for.
+
+SkiaSharp's [4.x release notes](https://mono.github.io/SkiaSharp/docs/releases/4.148.0.html) and [API diff](https://mono.github.io/SkiaSharp/docs/releases/4.148.0/SkiaSharp/SkiaSharp.html) list every change.
 
 ## Plugin Actions
 

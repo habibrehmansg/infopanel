@@ -340,7 +340,7 @@ namespace InfoPanel.Drawing
                 {
                     if (fontStyles.GetStyleName(i).Equals(fontStyle))
                     {
-                        result = SKTypeface.FromFamilyName(fontName, fontStyles[i]);
+                        result = FontRegistry.MatchSystem(fontName, fontStyles[i]);
                         break;
                     }
                 }
@@ -387,12 +387,12 @@ namespace InfoPanel.Drawing
 
             // Fallback to default
             Logger.Warning("Font '{FontName}' not found, using fallback", fontName);
-            return SKTypeface.FromFamilyName("Arial", fontStyle);
+            return FontRegistry.MatchSystem("Arial", fontStyle);
         }
 
         private static SKTypeface? TryLoadTypeface(string familyName, SKFontStyle fontStyle)
         {
-            var typeface = SKTypeface.FromFamilyName(familyName, fontStyle);
+            var typeface = FontRegistry.MatchSystem(familyName, fontStyle);
 
             // Check if we actually got the requested font or a fallback
             if (typeface != null &&
@@ -444,7 +444,7 @@ namespace InfoPanel.Drawing
                 // Check if family contains any of our search terms
                 if (searchTerms.Any(term => family.Contains(term, StringComparison.OrdinalIgnoreCase)))
                 {
-                    var typeface = SKTypeface.FromFamilyName(family, fontStyle);
+                    var typeface = FontRegistry.MatchSystem(family, fontStyle);
                     if (typeface != null && !typeface.FamilyName.Equals("Segoe UI", StringComparison.OrdinalIgnoreCase))
                     {
                         Logger.Information("Using similar font: '{Family}' for requested '{RequestedFont}'", family, requestedFont);

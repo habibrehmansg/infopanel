@@ -171,6 +171,20 @@ namespace InfoPanel.Drawing
             }
         }
 
+        /// <summary>
+        /// The installed face of <paramref name="family"/> nearest <paramref name="style"/>; for a family that isn't
+        /// installed, the system's default family in that weight, width and slant, never its plain default face.
+        /// (SkiaSharp 3's <see cref="SKTypeface.FromFamilyName(string, SKFontStyle)"/> kept the style; SkiaSharp 4's
+        /// answers <see cref="SKTypeface.Default"/>, regular and upright, for a family it doesn't find.)
+        /// </summary>
+        public static SKTypeface MatchSystem(string? family, SKFontStyle style)
+        {
+            var manager = SKFontManager.Default;
+            return (string.IsNullOrEmpty(family) ? null : manager.MatchFamily(family, style))
+                ?? manager.MatchFamily(SKTypeface.Default.FamilyName, style)
+                ?? SKTypeface.Default;
+        }
+
         /// <summary>The registered family names, sorted (ordinal, case-insensitive).</summary>
         public static IReadOnlyList<string> GetFamilies()
         {

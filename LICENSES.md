@@ -23,22 +23,22 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Copyright**: none stated in the package (authors: Tyler Brinks)
 - **Project**: https://github.com/TylerBrinks/ExCSS
 
-### HarfBuzzSharp 7.3.0.3
+### HarfBuzzSharp 14.4.0
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/mono/SkiaSharp
 
-### HarfBuzzSharp.NativeAssets.Linux 7.3.0.3 (native libraries for Linux)
+### HarfBuzzSharp.NativeAssets.Linux 14.4.0 (native libraries for Linux)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/mono/SkiaSharp
 
-### HarfBuzzSharp.NativeAssets.macOS 7.3.0.3 (native libraries for macOS)
+### HarfBuzzSharp.NativeAssets.macOS 14.4.0 (native libraries for macOS)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/mono/SkiaSharp
 
-### HarfBuzzSharp.NativeAssets.Win32 7.3.0.3 (native libraries for Windows)
+### HarfBuzzSharp.NativeAssets.Win32 14.4.0 (native libraries for Windows)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/mono/SkiaSharp
@@ -143,32 +143,32 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Copyright**: none stated in the package (authors: Serilog Contributors)
 - **Project**: https://github.com/serilog/serilog-sinks-file
 
-### ShimSkiaSharp 4.3.0
+### ShimSkiaSharp 5.2.3
 - **Licence**: MIT
 - **Copyright**: Copyright © Wiesław Šoltés 2026
 - **Project**: https://github.com/wieslawsoltes/Svg.Skia
 
-### SkiaSharp 3.119.2
+### SkiaSharp 4.155.0
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/mono/SkiaSharp
 
-### SkiaSharp.HarfBuzz 2.88.7
-- **Licence**: by address, https://go.microsoft.com/fwlink/?linkid=868514
-- **Copyright**: © Microsoft Corporation. All rights reserved.
-- **Project**: https://github.com/mono/SkiaSharp
-
-### SkiaSharp.NativeAssets.Linux 3.119.4 (native libraries for Linux)
+### SkiaSharp.HarfBuzz 4.155.0
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/mono/SkiaSharp
 
-### SkiaSharp.NativeAssets.macOS 3.119.2 (native libraries for macOS)
+### SkiaSharp.NativeAssets.Linux 4.155.0 (native libraries for Linux)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/mono/SkiaSharp
 
-### SkiaSharp.NativeAssets.Win32 3.119.2 (native libraries for Windows)
+### SkiaSharp.NativeAssets.macOS 4.155.0 (native libraries for macOS)
+- **Licence**: MIT
+- **Copyright**: © Microsoft Corporation. All rights reserved.
+- **Project**: https://github.com/mono/SkiaSharp
+
+### SkiaSharp.NativeAssets.Win32 4.155.0 (native libraries for Windows)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/mono/SkiaSharp
@@ -178,27 +178,27 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://microsoft.github.io/vs-streamjsonrpc/
 
-### Svg.Animation 4.3.0
+### Svg.Animation 5.2.3
 - **Licence**: MIT
 - **Copyright**: Copyright © Wiesław Šoltés 2026
 - **Project**: https://github.com/wieslawsoltes/Svg.Skia
 
-### Svg.Custom 4.3.0
+### Svg.Custom 5.2.3
 - **Licence**: MS-PL
 - **Copyright**: Copyright © Wiesław Šoltés 2026
 - **Project**: https://github.com/wieslawsoltes/Svg.Skia
 
-### Svg.Model 4.3.0
+### Svg.Model 5.2.3
 - **Licence**: MIT
 - **Copyright**: Copyright © Wiesław Šoltés 2026
 - **Project**: https://github.com/wieslawsoltes/Svg.Skia
 
-### Svg.SceneGraph 4.3.0
+### Svg.SceneGraph 5.2.3
 - **Licence**: MIT
 - **Copyright**: Copyright © Wiesław Šoltés 2026
 - **Project**: https://github.com/wieslawsoltes/Svg.Skia
 
-### Svg.Skia 4.3.0
+### Svg.Skia 5.2.3
 - **Licence**: MIT
 - **Copyright**: Copyright © Wiesław Šoltés 2026
 - **Project**: https://github.com/wieslawsoltes/Svg.Skia
@@ -228,7 +228,7 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### Topten.RichTextKit 0.4.167
+### Topten.RichTextKit 0.6.170
 - **Licence**: Apache-2.0
 - **Copyright**: none stated in the package (authors: Topten Software)
 - **Project**: https://github.com/toptensoftware/richtextkit

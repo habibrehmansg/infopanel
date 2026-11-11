@@ -126,6 +126,29 @@ public sealed class V1ParityTests(ITestOutputHelper output)
         ["http-image-placeholder"] = new(0.597, Placeholder, Areas: Box(10, 10, 100, 100)),
     };
 
+    /// <summary>
+    /// Linux-only bounds for accepted cases, replacing <see cref="Deviation.MaxFraction"/> there. SkiaSharp 4's FreeType
+    /// honours the step-1 renderer's "Hinting = Normal" (its glyph stems snap to whole pixels), which SkiaSharp 3 left
+    /// unhinted on Linux; the scene's glyphs stay unhinted, so these cases differ from the Linux golden on more pixels
+    /// than on macOS, where the step-1 text is hinted by CoreText as before. Measured on SkiaSharp 4.155.0 in the Linux
+    /// test image.
+    /// </summary>
+    private static readonly Dictionary<string, double> LinuxMaxFractions = new()
+    {
+        ["calendar"] = 0.090,
+        ["clock"] = 0.093,
+        ["sensor-thresholds-precision-unit"] = 0.049,
+        ["text-center-box"] = 0.073,
+        ["text-left"] = 0.080,
+        ["text-marquee-t0"] = 0.060,
+        ["text-right-auto"] = 0.099,
+        ["table"] = 0.167,
+        ["table-missing-column"] = 0.124,
+        ["table-rows-0"] = 0.081,
+        ["table-single-line-no-ellipsis"] = 0.103,
+        ["table-wrap-off"] = 0.141,
+    };
+
     private static IEnumerable<string> Cases() => Directory.EnumerateFiles(ReferenceDir, "*.document.json")
         .Select(f => Path.GetFileName(f)[..^".document.json".Length])
         .Where(n => n != "all-kinds")
@@ -244,8 +267,9 @@ public sealed class V1ParityTests(ITestOutputHelper output)
             return problems;
         }
         if (accepted.MaxFraction is null) return DecorationBandProblems(name, frame);
-        if (golden.Fraction > accepted.MaxFraction)
-            problems.Add($"{name}: {golden}; at most {accepted.MaxFraction * 100:0.###}% may ({accepted.Reason}).");
+        var max = OperatingSystem.IsLinux() && LinuxMaxFractions.TryGetValue(name, out var onLinux) ? onLinux : accepted.MaxFraction;
+        if (golden.Fraction > max)
+            problems.Add($"{name}: {golden}; at most {max * 100:0.###}% may ({accepted.Reason}).");
         if (rest!.Value.Fraction > GoldenImage.DifferingPixelFraction)
             problems.Add($"{name} outside its accepted areas, against {(accepted.Unhinted ? "the step-1 renderer with unhinted glyphs" : "the golden")}: {rest}; "
                 + $"at most {GoldenImage.DifferingPixelFraction * 100}% may.");

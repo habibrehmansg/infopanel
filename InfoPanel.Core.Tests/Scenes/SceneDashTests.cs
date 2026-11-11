@@ -39,9 +39,11 @@ public sealed class SceneDashTests
         {
             var width = paint.StrokeWidth;
             paint.StrokeWidth = 0; // the path effect's output itself, one contour per dash
-            using var dashes = new SKPath();
-            paint.GetFillPath(path, dashes, new SKRect(-1e9f, -1e9f, 1e9f, 1e9f), matrix);
+            // Into a builder: SkiaSharp 4's SKPath overload leaves its target empty when Skia answers false (a hairline).
+            using var builder = new SKPathBuilder();
+            paint.GetFillPath(path, builder, new SKRect(-1e9f, -1e9f, 1e9f, 1e9f), matrix);
             paint.StrokeWidth = width;
+            using var dashes = builder.Detach();
             long moves = 0;
             using (var it = dashes.CreateRawIterator())
             {

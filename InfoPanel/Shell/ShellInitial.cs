@@ -1,3 +1,4 @@
+using InfoPanel.Drawing;
 using SkiaSharp;
 
 namespace InfoPanel.Shell;
@@ -21,7 +22,7 @@ public static class ShellInitial
         using var disc = new SKPaint { Color = Disc, IsAntialias = true, Style = SKPaintStyle.Fill };
         canvas.DrawCircle(pixels / 2f, pixels / 2f, pixels / 2f, disc);
 
-        using var typeface = SKTypeface.FromFamilyName("Helvetica Neue", SKFontStyle.Bold) ?? SKTypeface.Default;
+        using var typeface = FontRegistry.MatchSystem("Helvetica Neue", SKFontStyle.Bold);
         using var font = new SKFont(typeface, pixels * 0.5f) { Subpixel = true, Edging = SKFontEdging.Antialias };
         using var ink = new SKPaint { Color = SKColors.White, IsAntialias = true };
         font.MeasureText(letter, out var bounds, ink);
