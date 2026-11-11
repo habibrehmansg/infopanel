@@ -44,7 +44,7 @@ namespace InfoPanel.Services
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
                 var rotation = _device.Rotation;
-                using var bitmap = PanelDrawTask.RenderSK(profile, false);
+                using var bitmap = PanelDrawTask.RenderSK(profile, false, targetFps: _device.TargetFrameRate);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
@@ -163,6 +163,9 @@ namespace InfoPanel.Services
                     var renderCts = CancellationTokenSource.CreateLinkedTokenSource(token);
                     var renderToken = renderCts.Token;
 
+                    // Last sent render version; -1 ensures the initial frame is generated.
+                    long sentVersion = -1;
+
                     var renderTask = Task.Run(async () =>
                     {
                         Thread.CurrentThread.Name ??= $"TuringPanel-Render-{_device.DeviceId}";
@@ -171,14 +174,20 @@ namespace InfoPanel.Services
                         while (!renderToken.IsCancellationRequested)
                         {
                             stopwatch1.Restart();
-                            var frame = GenerateLcdBuffer();
 
-                            if (frame != null)
+                            // If UpdateOnChange is true, a new frame is generated and sent whenever the profile version changes.
+                            var currentVersion = ScreenRenderManager.GetProfileVersion(_device.ProfileGuid);
+                            if (_device.UpdateOnChange != true || sentVersion != currentVersion)
                             {
-                                var oldFrame = Interlocked.Exchange(ref _latestFrame, frame);
-                                _frameAvailable.Set();
-                            }
+                                var frame = GenerateLcdBuffer();
 
+                                if (frame != null)
+                                {
+                                    var oldFrame = Interlocked.Exchange(ref _latestFrame, frame);
+                                    _frameAvailable.Set();
+                                    sentVersion = currentVersion;
+                                }
+                            }
                             var targetFrameTime = 1000 / Math.Max(1, _device.TargetFrameRate);
                             var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime), targetFrameTime);
                             var adaptiveFrameTime = 0;

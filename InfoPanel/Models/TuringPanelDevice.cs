@@ -73,6 +73,9 @@ namespace InfoPanel.Models
         [property: System.Xml.Serialization.XmlIgnore]
         private TuringPanelDeviceRuntimeProperties _runtimeProperties;
 
+        [ObservableProperty]
+        private bool _updateOnChange = false;
+
         public TuringPanelDevice()
         {
             _runtimeProperties = new();

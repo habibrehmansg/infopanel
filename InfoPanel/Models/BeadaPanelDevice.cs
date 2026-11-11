@@ -2,8 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using InfoPanel.BeadaPanel;
 using InfoPanel.ViewModels;
 using Org.BouncyCastle.Bcpg.OpenPgp;
-using System;
 using Serilog;
+using System;
 using System.Linq;
 using System.Windows.Threading;
 
@@ -42,6 +42,9 @@ namespace InfoPanel.Models
         [ObservableProperty]
         private int _brightness = 100;
 
+        [ObservableProperty]
+        private int _targetFrameRate = 15;
+
         // Runtime properties
         [ObservableProperty]
         [property: System.Xml.Serialization.XmlIgnore]
@@ -50,6 +53,9 @@ namespace InfoPanel.Models
         [ObservableProperty]
         [property: System.Xml.Serialization.XmlIgnore]
         private BeadaPanelDeviceRuntimeProperties _runtimeProperties;
+
+        [ObservableProperty]
+        private bool _updateOnChange = false;
 
         public BeadaPanelDevice()
         {

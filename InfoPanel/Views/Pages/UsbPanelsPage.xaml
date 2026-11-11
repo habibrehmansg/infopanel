@@ -204,6 +204,32 @@
                                                                 Text="{Binding Brightness}" />
                                                         </Grid>
                                                     </StackPanel>
+                                                    <!--  Target FPS  -->
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <Slider
+                                                            IsSnapToTickEnabled="True"
+                                                            Maximum="60"
+                                                            Minimum="1"
+                                                            TickFrequency="1"
+                                                            Value="{Binding TargetFrameRate}" />
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="Target FPS" />
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="{Binding TargetFrameRate}" />
+                                                        </Grid>
+                                                    </StackPanel>
                                                 </StackPanel>
                                             </Border>
                                         </Popup>
@@ -452,9 +478,8 @@
                                                                 Text="{Binding Brightness}" />
                                                         </Grid>
                                                     </StackPanel>
-                                                    <!--  Target FPS (USB devices only)  -->
-                                                    <StackPanel Margin="0,10,0,0"
-                                                                Visibility="{Binding ModelInfo.IsUsbDevice, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <!--  Target FPS  -->
+                                                    <StackPanel Margin="0,10,0,0">
                                                         <Slider
                                                             IsSnapToTickEnabled="True"
                                                             Maximum="60"
@@ -504,6 +529,24 @@
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
                                                                 Text="{Binding JpegQuality}" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                    <!--  Update On Change -->
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <Grid Margin="0,10,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="12"
+                                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                        Text="Update on Change"
+                                                                        ToolTip="Refresh the display when profile content changes." />
+                                                            <ui:ToggleSwitch
+                                                                        Grid.Column="1"
+                                                                        IsChecked="{Binding UpdateOnChange}" />
                                                         </Grid>
                                                     </StackPanel>
                                                 </StackPanel>
@@ -799,6 +842,24 @@
                                                                 Text="{Binding JpegQuality}" />
                                                         </Grid>
                                                     </StackPanel>
+                                                    <!--  Update On Change -->
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <Grid Margin="0,10,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="12"
+                                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                        Text="Update on Change"
+                                                                        ToolTip="Refresh the display when profile content changes." />
+                                                            <ui:ToggleSwitch
+                                                                        Grid.Column="1"
+                                                                        IsChecked="{Binding UpdateOnChange}" />
+                                                        </Grid>
+                                                    </StackPanel>
                                                 </StackPanel>
                                             </Border>
                                         </Popup>
@@ -1050,101 +1111,117 @@
                                                     </StackPanel>
                                                     <!--  Target FPS  -->
                                                     <StackPanel Margin="0,10,0,0">
-                                                            <Slider
-                                                                IsSnapToTickEnabled="True"
-                                                                Maximum="30"
-                                                                Minimum="1"
-                                                                TickFrequency="1"
-                                                                Value="{Binding TargetFrameRate}" />
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock
-                                                                    Margin="5,0,0,0"
-                                                                    FontSize="12"
-                                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="Target FPS" />
-                                                                <TextBlock
-                                                                    Grid.Column="1"
-                                                                    Margin="5,0,0,0"
-                                                                    FontSize="12"
-                                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="{Binding TargetFrameRate}" />
-                                                            </Grid>
-                                                        </StackPanel>
-                                                        <!--  JPEG Quality (hidden for RGB565-only panels)  -->
-                                                        <StackPanel Margin="0,10,0,0"
-                                                                    Visibility="{Binding IsJpegQualityConfigurable, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                            <Slider
-                                                                IsSnapToTickEnabled="True"
-                                                                Maximum="100"
-                                                                Minimum="50"
-                                                                TickFrequency="5"
-                                                                Value="{Binding JpegQuality}" />
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock
-                                                                    Margin="5,0,0,0"
-                                                                    FontSize="12"
-                                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="JPEG Quality" />
-                                                                <TextBlock
-                                                                    Grid.Column="1"
-                                                                    Margin="5,0,0,0"
-                                                                    FontSize="12"
-                                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="{Binding JpegQuality}" />
-                                                            </Grid>
-                                                        </StackPanel>
-                                                        <!--  Flicker Fix (TrofeoBulk 5408: crop JPEG to 462 rows)  -->
-                                                        <Grid Margin="0,10,0,0"
-                                                              Visibility="{Binding HasFlickerFix, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Slider
+                                                            IsSnapToTickEnabled="True"
+                                                            Maximum="30"
+                                                            Minimum="1"
+                                                            TickFrequency="1"
+                                                            Value="{Binding TargetFrameRate}" />
+                                                        <Grid>
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*" />
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
                                                             <TextBlock
-                                                                VerticalAlignment="Center"
+                                                                Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="Flicker Fix" />
-                                                            <ui:ToggleSwitch
-                                                                Grid.Column="1"
-                                                                IsChecked="{Binding FlickerFix}" />
-                                                        </Grid>
-                                                        <!--  Display Mask (Wonder/Rainbow Vision 360 punch-hole cover)  -->
-                                                        <Grid Margin="0,10,0,0"
-                                                              Visibility="{Binding HasDisplayMask, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="*" />
-                                                                <ColumnDefinition Width="Auto" />
-                                                            </Grid.ColumnDefinitions>
+                                                                Text="Target FPS" />
                                                             <TextBlock
-                                                                VerticalAlignment="Center"
+                                                                Grid.Column="1"
+                                                                Margin="5,0,0,0"
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                Text="Mask" />
-                                                            <ComboBox
-                                                                Grid.Column="1"
-                                                                Width="150"
-                                                                ItemsSource="{Binding Path=ViewModel.DisplayMaskValues, RelativeSource={RelativeSource AncestorType=pages:UsbPanelsPage}}"
-                                                                SelectedItem="{Binding DisplayMask}">
-                                                                <ComboBox.ItemTemplate>
-                                                                    <DataTemplate>
-                                                                        <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
-                                                                    </DataTemplate>
-                                                                </ComboBox.ItemTemplate>
-                                                            </ComboBox>
+                                                                Text="{Binding TargetFrameRate}" />
                                                         </Grid>
                                                     </StackPanel>
-                                                </Border>
-                                            </Popup>
-                                        </StackPanel>
+                                                    <!--  JPEG Quality (hidden for RGB565-only panels)  -->
+                                                    <StackPanel Margin="0,10,0,0"
+                                                                Visibility="{Binding IsJpegQualityConfigurable, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Slider
+                                                            IsSnapToTickEnabled="True"
+                                                            Maximum="100"
+                                                            Minimum="50"
+                                                            TickFrequency="5"
+                                                            Value="{Binding JpegQuality}" />
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="JPEG Quality" />
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="{Binding JpegQuality}" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                    <!--  Flicker Fix (TrofeoBulk 5408: crop JPEG to 462 rows)  -->
+                                                    <Grid Margin="0,10,0,0"
+                                                            Visibility="{Binding HasFlickerFix, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock
+                                                            VerticalAlignment="Center"
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                            Text="Flicker Fix" />
+                                                        <ui:ToggleSwitch
+                                                            Grid.Column="1"
+                                                            IsChecked="{Binding FlickerFix}" />
+                                                    </Grid>
+                                                    <!--  Display Mask (Wonder/Rainbow Vision 360 punch-hole cover)  -->
+                                                    <Grid Margin="0,10,0,0"
+                                                            Visibility="{Binding HasDisplayMask, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock
+                                                            VerticalAlignment="Center"
+                                                            FontSize="12"
+                                                            Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                            Text="Mask" />
+                                                        <ComboBox
+                                                            Grid.Column="1"
+                                                            Width="150"
+                                                            ItemsSource="{Binding Path=ViewModel.DisplayMaskValues, RelativeSource={RelativeSource AncestorType=pages:UsbPanelsPage}}"
+                                                            SelectedItem="{Binding DisplayMask}">
+                                                            <ComboBox.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <TextBlock Text="{Binding Converter={StaticResource EnumToDescriptionConverter}}" />
+                                                                </DataTemplate>
+                                                            </ComboBox.ItemTemplate>
+                                                        </ComboBox>
+                                                    </Grid>
+                                                    <!--  Update On Change -->
+                                                    <Grid Margin="0,10,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="12"
+                                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                        Text="Update on Change"
+                                                                        ToolTip="Refresh the display when profile content changes." />
+                                                        <ui:ToggleSwitch
+                                                                        Grid.Column="1"
+                                                                        IsChecked="{Binding UpdateOnChange}" />
+                                                    </Grid>
+                                                </StackPanel>
+                                            </Border>
+                                        </Popup>
+                                     </StackPanel>
                                     <StackPanel Margin="10,0,0,0">
                                         <!--  Profile selection  -->
                                         <ComboBox
@@ -1390,56 +1467,74 @@
                                                     </StackPanel>
                                                     <!--  Target FPS  -->
                                                     <StackPanel Margin="0,10,0,0">
-                                                            <Slider
-                                                                IsSnapToTickEnabled="True"
-                                                                Maximum="30"
-                                                                Minimum="1"
-                                                                TickFrequency="1"
-                                                                Value="{Binding TargetFrameRate}" />
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock
-                                                                    Margin="5,0,0,0"
-                                                                    FontSize="12"
-                                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="Target FPS" />
-                                                                <TextBlock
-                                                                    Grid.Column="1"
-                                                                    Margin="5,0,0,0"
-                                                                    FontSize="12"
-                                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="{Binding TargetFrameRate}" />
-                                                            </Grid>
-                                                        </StackPanel>
-                                                        <!--  JPEG Quality  -->
-                                                        <StackPanel Margin="0,10,0,0">
-                                                            <Slider
-                                                                IsSnapToTickEnabled="True"
-                                                                Maximum="100"
-                                                                Minimum="50"
-                                                                TickFrequency="5"
-                                                                Value="{Binding JpegQuality}" />
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock
-                                                                    Margin="5,0,0,0"
-                                                                    FontSize="12"
-                                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="JPEG Quality" />
-                                                                <TextBlock
-                                                                    Grid.Column="1"
-                                                                    Margin="5,0,0,0"
-                                                                    FontSize="12"
-                                                                    Foreground="{DynamicResource TextFillColorDisabledBrush}"
-                                                                    Text="{Binding JpegQuality}" />
-                                                            </Grid>
-                                                        </StackPanel>
+                                                        <Slider
+                                                            IsSnapToTickEnabled="True"
+                                                            Maximum="30"
+                                                            Minimum="1"
+                                                            TickFrequency="1"
+                                                            Value="{Binding TargetFrameRate}" />
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="Target FPS" />
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="{Binding TargetFrameRate}" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                    <!--  JPEG Quality  -->
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <Slider
+                                                            IsSnapToTickEnabled="True"
+                                                            Maximum="100"
+                                                            Minimum="50"
+                                                            TickFrequency="5"
+                                                            Value="{Binding JpegQuality}" />
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="JPEG Quality" />
+                                                            <TextBlock
+                                                                Grid.Column="1"
+                                                                Margin="5,0,0,0"
+                                                                FontSize="12"
+                                                                Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                Text="{Binding JpegQuality}" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                    <!--  Update On Change -->
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <Grid Margin="0,10,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="12"
+                                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                        Text="Update on Change"
+                                                                        ToolTip="Refresh the display when profile content changes." />
+                                                            <ui:ToggleSwitch
+                                                                        Grid.Column="1"
+                                                                        IsChecked="{Binding UpdateOnChange}" />
+                                                        </Grid>
+                                                    </StackPanel>
                                                 </StackPanel>
                                             </Border>
                                         </Popup>
@@ -1731,6 +1826,24 @@
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
                                                                 Text="{Binding JpegQuality}" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                    <!--  Update On Change -->
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <Grid Margin="0,10,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="12"
+                                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                        Text="Update on Change"
+                                                                        ToolTip="Refresh the display when profile content changes." />
+                                                            <ui:ToggleSwitch
+                                                                        Grid.Column="1"
+                                                                        IsChecked="{Binding UpdateOnChange}" />
                                                         </Grid>
                                                     </StackPanel>
                                                 </StackPanel>
@@ -2026,6 +2139,24 @@
                                                                 Text="{Binding JpegQuality}" />
                                                         </Grid>
                                                     </StackPanel>
+                                                    <!--  Update On Change -->
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <Grid Margin="0,10,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="12"
+                                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                        Text="Update on Change"
+                                                                        ToolTip="Refresh the display when profile content changes." />
+                                                            <ui:ToggleSwitch
+                                                                        Grid.Column="1"
+                                                                        IsChecked="{Binding UpdateOnChange}" />
+                                                        </Grid>
+                                                    </StackPanel>
                                                 </StackPanel>
                                             </Border>
                                         </Popup>
@@ -2299,6 +2430,24 @@
                                                                 FontSize="12"
                                                                 Foreground="{DynamicResource TextFillColorDisabledBrush}"
                                                                 Text="{Binding JpegQuality}" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                    <!--  Update On Change -->
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <Grid Margin="0,10,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="12"
+                                                                        Foreground="{DynamicResource TextFillColorDisabledBrush}"
+                                                                        Text="Update on Change"
+                                                                        ToolTip="Refresh the display when profile content changes." />
+                                                            <ui:ToggleSwitch
+                                                                        Grid.Column="1"
+                                                                        IsChecked="{Binding UpdateOnChange}" />
                                                         </Grid>
                                                     </StackPanel>
                                                 </StackPanel>

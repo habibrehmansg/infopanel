@@ -478,7 +478,7 @@ namespace InfoPanel.Views.Common
                 canvas.Clear();
 
                 SkiaGraphics skiaGraphics = new(canvas, Profile.FontScale);
-                PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter);
+                PanelDraw.Run(Profile, skiaGraphics, cacheHint: $"DISPLAY-{Profile.Guid}", fpsCounter: FpsCounter, targetFps: ConfigModel.Instance.Settings.TargetFrameRate);
             }
             catch (Exception ex)
             {

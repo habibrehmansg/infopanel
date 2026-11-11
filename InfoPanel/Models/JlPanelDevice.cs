@@ -55,6 +55,9 @@ namespace InfoPanel.Models
         [property: System.Xml.Serialization.XmlIgnore]
         private JlPanelDeviceRuntimeProperties _runtimeProperties;
 
+        [ObservableProperty]
+        private bool _updateOnChange = false;
+
         public JlPanelDevice()
         {
             _runtimeProperties = new();

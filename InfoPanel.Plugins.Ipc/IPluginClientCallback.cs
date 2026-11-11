@@ -7,5 +7,6 @@ namespace InfoPanel.Plugins.Ipc
         void OnPluginError(string pluginId, string errorMessage);
         void OnPerformanceUpdate(List<PluginPerformanceDto> performances);
         void OnImageResize(string pluginId, ImageDescriptorDto descriptor);
+        void OnImageUpdate(string pluginId, string imageId);
     }
 }

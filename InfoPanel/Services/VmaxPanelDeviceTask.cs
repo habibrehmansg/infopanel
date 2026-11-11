@@ -92,22 +92,39 @@ namespace InfoPanel.Services
                 FullMode = BoundedChannelFullMode.Wait
             });
 
+            // Last sent render version; -1 ensures the initial frame is generated.
+            long sentVersion = -1;
+
             var renderTask = Task.Run(async () =>
             {
                 try
                 {
                     while (!renderToken.IsCancellationRequested)
                     {
-                        var frame = GenerateBgr888Frame();
-                        try
+                        var stopwatch = Stopwatch.StartNew();
+                        // Generate and display a new frame when the profile version changes.
+                        var currentVersion = ScreenRenderManager.GetProfileVersion(_device.ProfileGuid);
+                        if (_device.UpdateOnChange != true || sentVersion != currentVersion)
                         {
-                            await frames.Writer.WriteAsync(frame, renderToken);
+                            var frame = GenerateBgr888Frame();
+                            try
+                            {
+                                await frames.Writer.WriteAsync(frame, renderToken);
+                                sentVersion = currentVersion;
+                            }
+                            catch
+                            {
+                                ReturnFrame(frame);
+                                throw;
+                            }
                         }
-                        catch
-                        {
-                            ReturnFrame(frame);
-                            throw;
-                        }
+                        // Added the following delay to prevent a busy loop.
+                        // Vmax's RefreshRate setting ranges from 1 to 30, so use the same timing as the rendering process.
+                        var targetFrameTime = 1000 / (Math.Max(1, Math.Min(_device.TargetFrameRate, 30)));
+                        var delay = targetFrameTime - (int)stopwatch.ElapsedMilliseconds;
+
+                        if (delay > 0)
+                            await Task.Delay(delay, renderToken);
                     }
                 }
                 catch (OperationCanceledException)
@@ -180,7 +197,8 @@ namespace InfoPanel.Services
             {
                 using var bitmap = PanelDrawTask.RenderSK(profile, false,
                     colorType: SKColorType.Rgba8888,
-                    alphaType: SKAlphaType.Opaque);
+                    alphaType: SKAlphaType.Opaque,
+                    targetFps: _device.TargetFrameRate);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, _device.Rotation);
 

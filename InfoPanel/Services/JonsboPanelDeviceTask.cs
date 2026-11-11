@@ -126,6 +126,9 @@ namespace InfoPanel.Services
 
             _device.UpdateRuntimeProperties(isRunning: true, errorMessage: string.Empty);
 
+            // Last sent render version; -1 ensures the initial frame is generated.
+            long sentVersion = -1;
+
             // Render thread: produce JPEG frames at the target frame rate.
             var renderTask = Task.Run(async () =>
             {
@@ -137,9 +140,15 @@ namespace InfoPanel.Services
                     {
                         stopwatch.Restart();
 
-                        var frame = GenerateJpegBuffer();
-                        Interlocked.Exchange(ref latestFrame, frame);
-                        frameAvailable.Set();
+                        // If UpdateOnChange is true, a new frame is generated and sent whenever the profile version changes.
+                        var currentVersion = ScreenRenderManager.GetProfileVersion(_device.ProfileGuid);
+                        if (_device.UpdateOnChange != true || sentVersion != currentVersion)
+                        {
+                            var frame = GenerateJpegBuffer();
+                            Interlocked.Exchange(ref latestFrame, frame);
+                            frameAvailable.Set();
+                            sentVersion = currentVersion;
+                        }
 
                         var targetFrameTime = 1000 / Math.Max(1, _device.TargetFrameRate);
                         var elapsedMs = (int)stopwatch.ElapsedMilliseconds;
@@ -218,7 +227,8 @@ namespace InfoPanel.Services
 
                 using var bitmap = PanelDrawTask.RenderSK(profile, false,
                     colorType: SKColorType.Rgba8888,
-                    alphaType: SKAlphaType.Opaque);
+                    alphaType: SKAlphaType.Opaque,
+                    targetFps: _device.TargetFrameRate);
 
                 // The JPEG must be in the panel's native portrait orientation; the rotation
                 // setting maps the (usually landscape) profile onto it.
@@ -418,7 +428,8 @@ namespace InfoPanel.Services
                 {
                     using var bitmap = PanelDrawTask.RenderSK(profile, false,
                         colorType: SKColorType.Rgba8888,
-                        alphaType: SKAlphaType.Opaque);
+                        alphaType: SKAlphaType.Opaque,
+                        targetFps: _device.TargetFrameRate);
                     rendered = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, _device.Rotation);
                 }
                 else

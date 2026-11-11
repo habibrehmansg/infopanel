@@ -55,6 +55,7 @@ namespace InfoPanel
                 _dirtyPerProfile[p.Guid] = true;
                 OnPropertyChanged(nameof(IsDirty));
                 DirtyChanged?.Invoke();
+                ScreenRenderManager.SetProfilesOrSettingsDirty();
             }
         }
         public void ClearDirty()
@@ -174,6 +175,8 @@ namespace InfoPanel
                 foreach (var child in coll)
                     SubscribeDisplayItemForUndo(child, profile);
             }
+            // DisplayItem の追加により、ScreenRenderManager の内部情報再構築フラグを立てる
+            ScreenRenderManager.SetProfilesOrSettingsDirty();
         }
 
         private void UnsubscribeDisplayItemForUndo(DisplayItem? item)
@@ -188,6 +191,8 @@ namespace InfoPanel
                 foreach (var child in coll.ToList())
                     UnsubscribeDisplayItemForUndo(child);
             }
+            // DisplayItem の削除により、ScreenRenderManager の内部情報再構築フラグを立てる
+            ScreenRenderManager.SetProfilesOrSettingsDirty();
         }
 
         private void DisplayItem_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -247,6 +252,7 @@ namespace InfoPanel
             OnPropertyChanged(nameof(CanUndo));
             OnPropertyChanged(nameof(CanRedo));
             CommandManager.InvalidateRequerySuggested();
+            ScreenRenderManager.SetProfilesOrSettingsDirty();
         }
 
         public async Task ReloadDisplayItems()

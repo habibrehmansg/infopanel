@@ -9,7 +9,7 @@ namespace InfoPanel
 {
     public sealed class PanelDrawTask
     {
-        public static SKBitmap RenderSK(Profile profile, bool preview = false, float scale = 1, bool cache = true, SKColorType colorType = SKColorType.Bgra8888, SKAlphaType alphaType = SKAlphaType.Premul)
+        public static SKBitmap RenderSK(Profile profile, bool preview = false, float scale = 1, bool cache = true, SKColorType colorType = SKColorType.Bgra8888, SKAlphaType alphaType = SKAlphaType.Premul, int? targetFps = null)
         {
             var bitmap = new SKBitmap(profile.Width, profile.Height, colorType, alphaType);
             

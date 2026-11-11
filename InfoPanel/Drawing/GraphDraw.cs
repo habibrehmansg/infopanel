@@ -126,7 +126,7 @@ namespace InfoPanel.Drawing
             return result;
         }
 
-        public static void Run(ChartDisplayItem chartDisplayItem, SkiaGraphics g, bool preview = false)
+        public static void Run(ChartDisplayItem chartDisplayItem, SkiaGraphics g, bool preview = false, int? targetFps = null)
         {
             var elapsedMilliseconds = Stopwatch.ElapsedMilliseconds;
 
@@ -397,8 +397,12 @@ namespace InfoPanel.Drawing
                             value = value * Math.Max(frameRect.Width, frameRect.Height);
                             value = Math.Round(value, 0, MidpointRounding.AwayFromZero);
 
-                            GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = preview ? value : InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
+                            // Apply gradual value transitions when animation is enabled
+                            if (chartDisplayItem.Animation)
+                            {
+                                GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
+                                value = preview ? value : InterpolateWithCycles(lastValue, value, (targetFps ?? ConfigModel.Instance.Settings.TargetFrameRate) * 3);
+                            }
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             // Inset fill/background when the frame is drawn so the 1px AA stroke
@@ -493,8 +497,12 @@ namespace InfoPanel.Drawing
                             value = Math.Clamp(value, 0, 1);
                             value = value * 100;
 
-                            GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
-                            value = preview ? value : InterpolateWithCycles(lastValue, value, ConfigModel.Instance.Settings.TargetFrameRate * 3);
+                            // Apply gradual value transitions when animation is enabled
+                            if (chartDisplayItem.Animation)
+                            {
+                                GraphDataSmoothCache.TryGetValue(chartDisplayItem.Guid, out double lastValue);
+                                value = preview ? value : InterpolateWithCycles(lastValue, value, (targetFps ?? ConfigModel.Instance.Settings.TargetFrameRate) * 3);
+                            }
                             GraphDataSmoothCache.Set(chartDisplayItem.Guid, value, TimeSpan.FromSeconds(5));
 
                             var offset = 1;

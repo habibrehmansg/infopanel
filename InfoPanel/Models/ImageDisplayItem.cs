@@ -221,6 +221,10 @@ namespace InfoPanel.Models
             }
         }
 
+        // 静止画だけでなく、アニメーション(gif, webp)・動画(mkv, mp4, mov, avi)にも対応するため TargetFps を追加する
+        // 基本は MinFps(0 FPS) で静止画として扱うが、アニメーションや動画の場合は個別に TargetFps を設定する。
+        public int TargetFps { get; set; } = ScreenRenderManager.MinFps;
+
         //for serialisation only
         public ImageDisplayItem()
         { }

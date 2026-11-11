@@ -82,7 +82,7 @@ namespace InfoPanel
             if (ConfigModel.Instance.GetProfile(_device.ProfileGuid) is Profile profile)
             {
                 var rotation = _device.Rotation;
-                var bitmap = PanelDrawTask.RenderSK(profile, false);
+                var bitmap = PanelDrawTask.RenderSK(profile, false, targetFps: _device.TargetFrameRate);
 
                 var ensuredBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
@@ -117,6 +117,9 @@ namespace InfoPanel
                 screen.SetBrightness((byte)brightness);
 
                 SKBitmap? sentBitmap = null;
+                
+                // Last sent render version; -1 ensures the initial frame is generated.
+                long sentVersion = -1;
 
                 try
                 {
@@ -134,45 +137,50 @@ namespace InfoPanel
                             screen.SetBrightness((byte)brightness);
                         }
 
-                        var bitmap = GenerateLcdBitmap();
-
-                        if (bitmap != null)
+                        // If UpdateOnChange is true, a new frame is generated and sent whenever the profile version changes.
+                        var currentVersion = ScreenRenderManager.GetProfileVersion(_device.ProfileGuid);
+                        if (_device.UpdateOnChange != true || sentVersion != currentVersion)
                         {
-                            if (sentBitmap == null || !canDisplayPartialBitmap)
-                            {
-                                sentBitmap = bitmap;
+                            var bitmap = GenerateLcdBitmap();
 
-                                canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(sentBitmap));
-                                //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
-                            }
-                            else
+                            if (bitmap != null)
                             {
-                                var sectors = SKBitmapComparison.GetChangedSectors(sentBitmap, bitmap, _sectorWidth, _sectorHeight, _maxSectorWidth, _maxSectorHeight);
-                                //Trace.WriteLine($"Sector detect: {sectors.Count} sectors {stopwatch.ElapsedMilliseconds}ms");
-
-                                if (sectors.Count > _maxSectors)
+                                if (sentBitmap == null || !canDisplayPartialBitmap)
                                 {
                                     canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
                                     //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
                                 }
                                 else
                                 {
-                                    foreach (var sector in sectors)
-                                    {
-                                        canDisplayPartialBitmap = screen.DisplayBuffer(sector.Left, sector.Top, screen.CreateBufferFrom(bitmap, sector.Left, sector.Top, sector.Width, sector.Height));
-                                    }
+                                    var sectors = SKBitmapComparison.GetChangedSectors(sentBitmap, bitmap, _sectorWidth, _sectorHeight, _maxSectorWidth, _maxSectorHeight);
+                                    //Trace.WriteLine($"Sector detect: {sectors.Count} sectors {stopwatch.ElapsedMilliseconds}ms");
 
-                                    //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
+                                    if (sectors.Count > _maxSectors)
+                                    {
+                                        canDisplayPartialBitmap = screen.DisplayBuffer(screen.CreateBufferFrom(bitmap));
+                                        //Trace.WriteLine($"Full sector update: {stopwatch.ElapsedMilliseconds}ms");
+                                    }
+                                    else
+                                    {
+                                        foreach (var sector in sectors)
+                                        {
+                                            canDisplayPartialBitmap = screen.DisplayBuffer(sector.Left, sector.Top, screen.CreateBufferFrom(bitmap, sector.Left, sector.Top, sector.Width, sector.Height));
+                                        }
+                                        //Trace.WriteLine($"Sector update: {stopwatch.ElapsedMilliseconds}ms");
+                                    }
                                 }
+
+                                // Release the previous bitmap to prevent a memory leak, then keep the current bitmap for the next comparison.
                                 sentBitmap?.Dispose();
                                 sentBitmap = bitmap;
+                                sentVersion = currentVersion;
                             }
+
+                            fpsCounter.Update(stopwatch.ElapsedMilliseconds);
+                            _device.UpdateRuntimeProperties(frameRate: fpsCounter.FramesPerSecond, frameTime: fpsCounter.FrameTime);
                         }
 
-                        fpsCounter.Update(stopwatch.ElapsedMilliseconds);
-                        _device.UpdateRuntimeProperties(frameRate: fpsCounter.FramesPerSecond, frameTime: fpsCounter.FrameTime);
-
-                        var targetFrameTime = 1000.0 / ConfigModel.Instance.Settings.TargetFrameRate;
+                        var targetFrameTime = 1000.0 / Math.Max(1, _device.TargetFrameRate);
                         if (stopwatch.ElapsedMilliseconds < targetFrameTime)
                         {
                             var sleep = (int)(targetFrameTime - stopwatch.ElapsedMilliseconds);
