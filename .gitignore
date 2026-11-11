@@ -190,6 +190,8 @@ git_stats/*
 StyleCop.Cache
 bin
 obj
+# The media helper's vendored script (native/mediaremote-adapter/pins.txt) is source, not a build output.
+!/native/mediaremote-adapter/bin/
 
 InfoPanel/Bin/*
 InfoPanel/obj/*

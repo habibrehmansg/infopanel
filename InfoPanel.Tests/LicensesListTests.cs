@@ -33,8 +33,8 @@ public class LicensesListTests
 
     private const string OtherSection = "## Not from the restore graphs";
 
-    /// <summary>The entries the last section holds: the .NET runtime, the video libraries, the USB library, the driver's installer, the fonts.</summary>
-    private static readonly string[] NotFromTheGraphs = [".NET", "FFmpeg", "dav1d", "libusb", "PawnIO", "Inter", "DSEG7"];
+    /// <summary>The entries the last section holds: the .NET runtime, the video libraries, the USB library, the media helper, the driver's installer, the fonts.</summary>
+    private static readonly string[] NotFromTheGraphs = [".NET", "FFmpeg", "dav1d", "libusb", "mediaremote-adapter", "PawnIO", "Inter", "DSEG7"];
 
     [Theory]
     [MemberData(nameof(Builds))]

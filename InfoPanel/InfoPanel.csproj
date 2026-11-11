@@ -84,6 +84,49 @@
     </ItemGroup>
   </Target>
 
+  <!-- The Now Playing source's media helper on macOS (mediaremote-adapter, vendored in native/mediaremote-adapter/):
+       built by its build.sh with clang into the intermediate folder when its sources or pins change, and put in
+       mediaremote-adapter/ beside the engine (build and publish), where MacNowPlayingReader finds it. Only on a macOS
+       host building for macOS (no runtime, or an osx one). Without Xcode's command line tools (or when build.sh refuses)
+       the build warns and goes on: the source then reads helperMissing. -->
+  <PropertyGroup>
+    <_BuildsMediaHelper Condition="$([MSBuild]::IsOSPlatform('OSX')) And ('$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('osx')))">true</_BuildsMediaHelper>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_BuildsMediaHelper)' == 'true'">
+    <_MediaHelperSource Include="..\native\mediaremote-adapter\**\*" />
+  </ItemGroup>
+
+  <Target Name="BuildMediaHelper" BeforeTargets="CopyFilesToOutputDirectory" Condition="'$(_BuildsMediaHelper)' == 'true'"
+          Inputs="@(_MediaHelperSource)" Outputs="$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'mediaremote-adapter'))MediaRemoteAdapter.framework/MediaRemoteAdapter">
+    <Exec Command="&quot;$(MSBuildProjectDirectory)/../native/mediaremote-adapter/build.sh&quot; --out &quot;$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'mediaremote-adapter'))&quot;"
+          IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_MediaHelperExit" />
+    </Exec>
+    <Warning Condition="'$(_MediaHelperExit)' != '0'"
+             Text="The media helper (native/mediaremote-adapter/build.sh) wasn't built (exit $(_MediaHelperExit)): the Now Playing source will read helperMissing. Install Xcode's command line tools (xcode-select --install) and build again." />
+  </Target>
+
+  <Target Name="CopyMediaHelper" AfterTargets="CopyFilesToOutputDirectory" Condition="'$(_BuildsMediaHelper)' == 'true'">
+    <PropertyGroup>
+      <_MediaHelperDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'mediaremote-adapter'))</_MediaHelperDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_MediaHelperFile Include="$(_MediaHelperDir)**/*" Exclude="$(_MediaHelperDir)**/*.new" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_MediaHelperFile)" DestinationFiles="@(_MediaHelperFile->'$(OutDir)mediaremote-adapter/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="PublishMediaHelper" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(_BuildsMediaHelper)' == 'true'">
+    <PropertyGroup>
+      <_MediaHelperDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'mediaremote-adapter'))</_MediaHelperDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_MediaHelperPublished Include="$(_MediaHelperDir)**/*" Exclude="$(_MediaHelperDir)**/*.new" />
+      <ResolvedFileToPublish Include="@(_MediaHelperPublished)" RelativePath="mediaremote-adapter/%(_MediaHelperPublished.RecursiveDir)%(_MediaHelperPublished.Filename)%(_MediaHelperPublished.Extension)" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
   <!-- The engine's build, which GET /api/session reports (engineBuild): EngineBuild.targets records it. -->
   <Import Project="EngineBuild.targets" />
 

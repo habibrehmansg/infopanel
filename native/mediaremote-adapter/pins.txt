@@ -1,0 +1,33 @@
+# The media helper the macOS engine runs for the Now Playing source: mediaremote-adapter
+# (https://github.com/ungive/mediaremote-adapter, its licence in LICENSE beside this file), vendored unmodified at the
+# commit below. build.sh reads this file: key=value, '#' lines are comments; each file= line is "<SHA-256>  <path>"
+# under this folder, and build.sh refuses to build when a file's SHA-256 differs or a source it builds isn't listed.
+# The upstream files not vendored: the CMake and editor files, the README, the test client (src/test/) and the test
+# command (src/adapter/test.m), which fakes a now-playing entry: the engine never runs it. Update only by changing this
+# file with the files.
+commit=0e82bf1c44ec39554fbfc402ec88a48c6ae2a0fd
+file=d97802e46db9535e2549e178c105ebf417a0254b3929fc32f08ecfd14d49a85f  bin/mediaremote-adapter.pl
+file=c0339a1f1ec71ff28df51fb239cd1e46580ebcafbdef4b2f32c8f49409da2b49  include/MediaRemoteAdapter.h
+file=a489c16a6be195584fa0b35e28fca54abc8492eb0cc05d851dd24f522f4900a2  LICENSE
+file=7bc8c96974cba1eefe4e4cf24bb6fbc9c46bbf76912d7acbf701cc9d93bebfdd  src/adapter/env.h
+file=96b79b32180c473dcf98c2c97fb086257d031594d3086f8a0b3ca5045ee62d3c  src/adapter/env.m
+file=393d385a1a72017ef735368f949dba7c4e72f8afa6e4badccb6d5e904184b903  src/adapter/get.h
+file=8663a55f9299f0f48fe251ae57843917ddb2fde40ce43ec6d9f845ec4df91770  src/adapter/get.m
+file=cda3a3a2653fa669be50124723529ecb2611e0525ec651975c853895b7296c78  src/adapter/globals.h
+file=31455fb7c5b51663837dcfe037cc01505a1f5d294bfdc29c1c1676fafea321e7  src/adapter/globals.m
+file=f2d657da143b11509993d95922f8fcf1ae018c3c06d5ba516a19e08108201f86  src/adapter/keys.h
+file=c14ff8fdf1a5f82bde9e1c45b8e6c59847130e0491df658d103a93cbc5bbce49  src/adapter/keys.m
+file=4483c088f3c03f3e35257ef715c45a2a3c67df90736d3cdff501db5be470a26c  src/adapter/now_playing.h
+file=7d53073adac8934576d8efb137c0e529caa882efadcd6506e2514bed7c997314  src/adapter/now_playing.m
+file=dc12c7364e71bda67d4736b0885bd59f567a59133edb636664b19a896f9e3394  src/adapter/repeat.m
+file=89e0a182c0ab51b48a629c4809b282dd211d126f5467426627f27107c6862600  src/adapter/seek.m
+file=b1cd333df5207a0ba1a3688724963ead68b028523a4bdc348cb680202b1143ed  src/adapter/send.m
+file=f8c6764a50737f9ee33e43f42d02fe339c6c0721e931d16271c3665f0060ba83  src/adapter/shuffle.m
+file=e4995a2d3b9082cc8c9a923551da2c1e0adcb6e1c4bf529df384cfad9145a5f8  src/adapter/speed.m
+file=de865d907a38ec8b92597db7c63e5ba0acdead51054546ad4cea784ef62d7c00  src/adapter/stream.m
+file=14651fcfb560cee9553f7dd2a8f805b91b3d03b9de386abc37d73a629d83ef03  src/private/MediaRemote.h
+file=10dbaa1fcfbf14e57d3140e294d005267d51c7d624e67c90638467c70a29cca5  src/private/MediaRemote.m
+file=9bfaa2a9e9598257707944b67c55caef31709f5d2ca7e31a33765cd4f84133b6  src/utility/Debounce.h
+file=e11684ce10be056aad37f6f7b16b67801ab7b3b54437707420d2edc85010d1bf  src/utility/Debounce.m
+file=ed9b94dddb4458b34de2867c83624fe7be9fc9a9ac000b5ca413a80f5539202c  src/utility/helpers.h
+file=0b61db6dd408487554aba5d17f077fba3770c03bad92036d78bac7b26eb84290  src/utility/helpers.m

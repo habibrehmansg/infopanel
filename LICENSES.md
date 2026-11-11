@@ -313,6 +313,12 @@ Only in a publish for Windows (`dotnet publish InfoPanel -r win-x64`), in its ow
 - **Copyright**: © the libusb contributors
 - **Project**: https://libusb.info/ (https://github.com/libusb/libusb)
 
+### mediaremote-adapter 0e82bf1c (Now Playing on macOS)
+- **Use**: the Now Playing source's media helper on macOS: its Objective-C framework, built unmodified by `native/mediaremote-adapter/build.sh` from the sources vendored in `native/mediaremote-adapter/` (upstream commit `0e82bf1c44ec39554fbfc402ec88a48c6ae2a0fd`, each file's SHA-256 pinned in `native/mediaremote-adapter/pins.txt`; its test client and test command left out), and its Perl script, unmodified. A build on a Mac puts both, with the licence, in `mediaremote-adapter/` beside the engine, where the engine runs the script with macOS's own `/usr/bin/perl` as a child process (`InfoPanel.Core/Sensors/NowPlaying/MacNowPlayingReader.cs`); the engine doesn't link it.
+- **Licence**: BSD-3-Clause. Its full text, the upstream `LICENSE`, is in `native/mediaremote-adapter/LICENSE` and comes with the helper as `mediaremote-adapter/LICENSE`.
+- **Copyright**: © 2025 Jonas van den Berg and contributors
+- **Project**: https://github.com/ungive/mediaremote-adapter
+
 ### PawnIO installer 2.2.0 (Windows)
 - **Use**: a Windows package carries PawnIO 2.2.0's `PawnIO_setup.exe`, unmodified, in `pawnio/` beside the engine, its SHA-256 pinned (`InfoPanel.Core/Sensors/Libre/PawnIoInstaller.cs`); the engine runs it only when a client asks it to install the driver. Not in this repository.
 - **Licence**: as the installer and PawnIO's repository state

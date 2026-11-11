@@ -1152,7 +1152,7 @@ export interface LibreElevationChange {
 /** Why a source is in its state (docs/api.md#sensor-sources); absent when there is nothing to say. */
 export interface SensorSourceReason {
   /**
-   * The reason for programs, an open code the source names: HWiNFO's `notRunning`, `sharedMemoryOff` and `stopped`; HWiNFO Gadget's `notSetUp`, `notRunning` and `stopped`; Libre's `disabled`, `noDriver`, `driverOutdated`, `driverNotLoaded`, `notElevated` and `helperFailed`; the plugins source's `disabled` (docs/api.md#sensor-sources). A client shows `message` for a code it doesn't know.
+   * The reason for programs, an open code the source names: HWiNFO's `notRunning`, `sharedMemoryOff` and `stopped`; HWiNFO Gadget's `notSetUp`, `notRunning` and `stopped`; Libre's `disabled`, `noDriver`, `driverOutdated`, `driverNotLoaded`, `notElevated` and `helperFailed`; the now-playing source's `helperMissing`, `helperFailed`, `notSupported` and `noSessionBus`; the plugins source's `disabled` (docs/api.md#sensor-sources). A client shows `message` for a code it doesn't know.
    * Pattern: `^[a-z][A-Za-z0-9]{0,63}$`.
    */
   code: string;

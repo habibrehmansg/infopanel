@@ -10,6 +10,7 @@ using InfoPanel.Scenes;
 using InfoPanel.Sensors;
 using InfoPanel.Sensors.Drives;
 using InfoPanel.Sensors.Network;
+using InfoPanel.Sensors.NowPlaying;
 using InfoPanel.Sensors.SystemInfo;
 using InfoPanel.Sensors.Volume;
 using InfoPanel.Spec;
@@ -194,6 +195,25 @@ public class SimulatedTextTests
         Assert.Equal("Status", Read(simulated, status));
         // A key this computer has no text for reads as live: unavailable.
         Assert.Equal(SceneInputStatus.Unavailable, simulated.Read(SensorKey.Plugin("/acme.tools/none").ToString(), "text").Status);
+    }
+
+    [Fact]
+    public void Now_playings_texts_show_their_labels_never_what_plays()
+    {
+        string[][] texts = [["title", "Title", "A Secret Song"], ["artist", "Artist", "Secret Band"], ["album", "Album", "Secret Album"], ["genre", "Genre", "Secret Genre"], ["state", "State", "Playing"]];
+        var keys = texts.Select(t => Text(t[0], t[1], t[2], NowPlayingSource.SourceId)).ToList();
+        var app = Text("app", "App", "Secret Player", NowPlayingSource.SourceId);
+        var (live, simulated) = Inputs();
+
+        for (var i = 0; i < texts.Length; i++)
+        {
+            Assert.Equal(NowPlayingSource.KeyOf(texts[i][0]), keys[i]);
+            Assert.Equal(texts[i][2], Read(live, keys[i]));
+            Assert.Equal(texts[i][1], Read(simulated, keys[i]));
+        }
+        // The app's name reads as an app's: a made-up one, never the one playing.
+        Assert.Equal("Secret Player", Read(live, app));
+        Assert.DoesNotContain("Secret", Read(simulated, app), StringComparison.Ordinal);
     }
 
     [Fact]
