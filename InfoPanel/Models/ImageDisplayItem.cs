@@ -67,8 +67,8 @@ namespace InfoPanel.Models
             set
             {
                 var previousValue = _rtspUrl;
-                if (string.IsNullOrEmpty(value) 
-                    || value.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) 
+                if (string.IsNullOrEmpty(value)
+                    || value.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
                     || value.StartsWith("rtsps://"))
                 {
                     SetProperty(ref _rtspUrl, value);
@@ -221,8 +221,8 @@ namespace InfoPanel.Models
             }
         }
 
-        // 静止画だけでなく、アニメーション(gif, webp)・動画(mkv, mp4, mov, avi)にも対応するため TargetFps を追加する
-        // 基本は MinFps(0 FPS) で静止画として扱うが、アニメーションや動画の場合は個別に TargetFps を設定する。
+        // Add TargetFps to support animations (GIF, WebP) and videos (MKV, MP4, MOV, AVI) in addition to still images.
+        // By default, use MinFps (0 FPS) and treat the image as static; set TargetFps separately for animations and videos.
         public int TargetFps { get; set; } = ScreenRenderManager.MinFps;
 
         //for serialisation only

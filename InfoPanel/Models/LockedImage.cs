@@ -23,7 +23,7 @@ namespace InfoPanel.Models
     public partial class LockedImage : IDisposable
     {
         private static readonly ILogger Logger = Log.ForContext<LockedImage>();
-        
+
         public enum ImageType
         {
             SK, SVG, FFMPEG, PLUGIN
@@ -129,10 +129,10 @@ namespace InfoPanel.Models
 
         // Consider sharing HttpClient instances to improve connection reuse and reduce TCP connection overhead.
         private static readonly HttpClient HttpClient = new(
-            // HTTP接続の管理
+            // Manage HTTP connections.
             new SocketsHttpHandler
             {
-                // 接続を最大1分間再利用する
+                // Reuse the connection for up to one minute.
                 PooledConnectionLifetime = TimeSpan.FromMinutes(1)
             })
         {
@@ -192,7 +192,7 @@ namespace InfoPanel.Models
                         _config = new Config();
                         _config.Player.AutoPlay = true;
 
-                        if(ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) || ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
+                        if (ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) || ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
                         {
                             _config.Player.MaxLatency = TimeSpan.FromMilliseconds(100).Ticks; //100ms latency
                         }
@@ -234,7 +234,7 @@ namespace InfoPanel.Models
                             _backgroundVideoPlayer.Renderer.VideoProcessor,
                             _backgroundVideoPlayer.Renderer.SwapChain.CanPresent);
 
-                        // sourceImageDisplayItem の目標FPSを設定する
+                        // Set the target FPS for sourceImageDisplayItem.
                         if (sourceImageDisplayItem is not null)
                         {
                             // FPS is handled by Flyleaf, which falls back to 25 FPS when frame rate information is unavailable.
@@ -331,7 +331,7 @@ namespace InfoPanel.Models
 
                     if (Frames > 1)
                     {
-                        // フレーム遅延の初期値を 10000ms とし、ループ内で最小フレーム遅延を求める
+                        // Initialize the frame delay to 10000 ms and find the minimum frame delay in the loop.
                         int minDelay = 10000;
                         for (int i = 0; i < Frames; i++)
                         {
@@ -350,7 +350,7 @@ namespace InfoPanel.Models
                                 minDelay = frameDelay;
                             }
                         }
-                        // sourceImageDisplayItem の目標FPSを設定する
+                        // Set the target FPS for sourceImageDisplayItem.
                         if (sourceImageDisplayItem is not null)
                         {
                             sourceImageDisplayItem.TargetFps = (int)Math.Ceiling(1000.0 / minDelay);
@@ -897,9 +897,9 @@ namespace InfoPanel.Models
                 {
                     if (image.IsTextureBacked)
                     {
-                        if(DisplayWindowManager.Instance.Dispatcher is Dispatcher dispatcher)
+                        if (DisplayWindowManager.Instance.Dispatcher is Dispatcher dispatcher)
                         {
-                            if(dispatcher.CheckAccess())
+                            if (dispatcher.CheckAccess())
                             {
                                 image.Dispose();
                             }

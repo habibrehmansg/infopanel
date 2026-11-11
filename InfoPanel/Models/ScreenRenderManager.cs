@@ -16,30 +16,30 @@ namespace InfoPanel.Models
     {
         private static readonly ILogger Logger = Log.ForContext("SourceContext", nameof(ScreenRenderManager));
 
-        // プロファイルに関する最大目標FPS、バージョンを管理する内部クラス
+        // Internal class for managing the maximum target FPS and version for a profile.
         private class ProfileInfo
         {
-            // プロファイルに紐づくバージョン情報を管理
+            // Manage version information associated with the profile.
             private long _version;
-            // プロファイルのバージョンの最終更新時間
+            // Time when the profile version was last updated.
             private long _lastUpdateTimeFrequency = Stopwatch.GetTimestamp();
-            // プロファイルのバージョンの更新間隔
-            private long _updateIntervalFrequency = Stopwatch.Frequency; // 初期値は 1FPS とする
-            // 更新間隔（_updateIntervalFrequency）の読み書きを保護するロックオブジェクト
+            // Profile version update interval. Default to 1 FPS.
+            private long _updateIntervalFrequency = Stopwatch.Frequency;
+            // Lock object protecting reads and writes to the update interval (_updateIntervalFrequency).
             private readonly object _fpsLock = new();
 
-            // プロファイルに紐づくバージョン情報を更新する
+            // Update version information associated with the profile.
             public void IncVersion()
             {
                 Interlocked.Increment(ref _version);
             }
-            // プロファイルに紐づくバージョン情報を取得する
+            // Get version information associated with the profile.
             public long GetVersion()
             {
                 return Interlocked.Read(ref _version);
             }
-            // 更新間隔(最大FPS)に基づきバージョンの更新が必要な場合は、バージョンを更新する
-            // 更新の有無にかかわらず、次回バージョン更新までの残り時間（Stopwatch ティック数）を返す。CPU 負荷軽減のため DateTime を使わず long 値で計算する。
+            // Update the version when needed based on the update interval (maximum FPS).
+            // Return the time remaining until the next version update in Stopwatch ticks, whether or not an update occurred. Use long values instead of DateTime to reduce CPU load.
             public long UpdateVersionIfNeeded()
             {
                 var currentTimeFrequency = Stopwatch.GetTimestamp();
@@ -55,7 +55,7 @@ namespace InfoPanel.Models
                 {
                     return interval == long.MaxValue ? long.MaxValue : _lastUpdateTimeFrequency - currentTimeFrequency + interval;
                 }
-            }            // 指定された目標FPSから更新間隔（Stopwatch ティック数）を計算して設定する
+            }            // Calculate and set the update interval in Stopwatch ticks from the specified target FPS.
             public void UpdateMaxFps(int targetFps)
             {
                 lock (_fpsLock)
@@ -66,65 +66,65 @@ namespace InfoPanel.Models
             }
         }
 
-        // HWiNFO のセンサー値の読み取り頻度(ms)
+        // HWiNFO sensor reading interval (ms).
         public static int HWPoolIntervalMilliseconds { get; } = 500;
-        // LibreHardwareMonitor のセンサー値の読み取り頻度(ms)
+        // Libre Hardware Monitor sensor reading interval (ms).
         public static int LibrePoolIntervalMilliseconds { get; } = 2000;
-        // InfoPanel の最小、最大目標FPS
-        // 0 FPS 静的なアイテムを表示する際に利用する
-        // 60 FPS を超えるパネルの定義は無いため、60 FPS を最大値とする。パネルの種類が増えた際には、最大FPSを変更する必要があるかもしれない。
+        // Minimum and maximum target FPS for InfoPanel.
+        // 0 FPS is used when displaying static items.
+        // No panels are defined with a rate above 60 FPS, so use 60 FPS as the maximum. This may need to change if more panel types are added.
         public const int MinFps = 0;
         public const int MaxFps = 60;
-        // グラフの更新間隔の最低間隔値、最長間隔値
+        // Minimum and maximum graph update intervals.
         public const int MinTargetGraphUpdateRate = 100;
         public const int MaxTargetGraphUpdateRate = 3000;
-        // パネルに関する情報を取得する際に基底クラスがないためリフレクションで取得するためのベンダ名定義
+        // Vendor names used for reflection because there is no base class for retrieving panel information.
         private static string[] PanelVendors { get; } = ["Beada", "Jl", "Jonsbo", "LianLi", "Thermalright", "Thermaltake", "Turing", "Vmax"];
 
-        // プロファイルの一覧
+        // List of profiles.
         private static ObservableCollection<Profile> Profiles { get; } = ConfigModel.Instance.Profiles;
-        // アプリケーションの設定
+        // Application settings.
         private static Settings Settings { get; } = ConfigModel.Instance.Settings;
-        // 有効となっているパネルに関連づいているプロファイルの一覧
-        // 無効および関連づいていないプロファイルは管理しない。パネル設定を変更すると本情報も更新される
+        // Profiles associated with enabled panels.
+        // Disabled or unassociated profiles are not managed. This information is updated when panel settings change.
         private static ConcurrentDictionary<Guid, Profile> EnabledProfiles { get; set; } = new();
-        // パネルに基づき関連づいているプロファイルの最大FPSを管理するディクショナリ
+        // Dictionary of maximum FPS values for profiles associated with panels.
         private static ConcurrentDictionary<Guid, int> MaxTargetFrameRateProfileByPanel { get; set; } = new();
-        // DisplayItem に基づき関連づいているプロファイルの最大FPSを管理するディクショナリ
+        // Dictionary of maximum FPS values for profiles associated with DisplayItems.
         private static ConcurrentDictionary<Guid, int> MaxTargetFrameRateProfileByDisplayItem { get; set; } = new();
-        // 管理対象のディスプレイアイテムを格納するディクショナリ
+        // Dictionary of managed DisplayItems.
         private static ConcurrentDictionary<Guid, DisplayItem> DisplayItems { get; set; } = new();
-        // DisplayItem と SensorID を関連づけるディクショナリ
+        // Dictionary mapping DisplayItems to SensorIDs.
         private static ConcurrentDictionary<Guid, string> DisplayItemIdToSensorId { get; set; } = new();
-        // センサーID に紐づいている対象ディスプレイアイテムを管理するディクショナリ
-        // 一つのセンサーが複数のディスプレイアイテムに利用されているかを把握するために使う
+        // Dictionary of DisplayItems associated with each sensor ID.
+        // Used to determine whether a sensor is used by multiple DisplayItems.
         private readonly static ConcurrentDictionary<string, ConcurrentDictionary<Guid, DisplayItem>> SensorIdToDisplayItems = new();
 
-        // 低頻度の更新が想定されるディスプレイアイテムのGUIDとそのディスプレイアイテムを格納するディクショナリ
+        // Dictionary of GUIDs and DisplayItems expected to update infrequently.
         private static ConcurrentDictionary<Guid, DisplayItem> LowUpdateFrequencyDisplayItemIds { get; set; } = new();
-        // 低頻度更新ディスプレイアイテムの最終取得値(string)を管理するためのディクショナリ
+        // Dictionary of the last retrieved string values for infrequently updated DisplayItems.
         private static ConcurrentDictionary<Guid, string> LowUpdateFrequencyDisplayItemStringValues { get; set; } = new();
-        // 低頻度更新ディスプレイアイテムの最終取得値(long)を管理するためのディクショナリ
+        // Dictionary of the last retrieved long values for infrequently updated DisplayItems.
         private static ConcurrentDictionary<Guid, long> LowUpdateFrequencyDisplayItemLongValues { get; set; } = new();
-        // 低頻度更新ディスプレイアイテムの最終取得値を取得した時刻
+        // Time when the last value was retrieved for an infrequently updated DisplayItem.
         static long LastLowUpdateFrequencyCheckTime { get; set; } = Stopwatch.GetTimestamp();
-        // プロファイルのバージョンや必要なFPSを管理するためのディクショナリ
+        // Dictionary for managing profile versions and required FPS values.
         private static ConcurrentDictionary<Guid, ProfileInfo> ProfileInfos { get; set; } = new();
-        // 起動時やユーザの操作に伴いパネルやディスプレイアイテムの変更を検出するためのフラグ
+        // Flag indicating that panel or DisplayItem changes need to be detected at startup or after user actions.
         private static int _profilesDirty;
 
-        // 各プロファイルのバージョンを目標FPSに従い更新する (このクラスのメイン処理、InfoPanel 起動時に呼び出される)
+        // Update each profile version according to its target FPS (the main process of this class, called when InfoPanel starts).
         public static async Task UpdateProfilesVersions(CancellationToken cancellationToken)
         {
             CheckUpdate();
             while (!cancellationToken.IsCancellationRequested)
             {
                 CheckProfilesOrSettingsDirty();
-                // 次回ループまでの待機時間（Stopwatch ティック数）を格納する。
+                // Store the wait duration until the next loop in Stopwatch ticks.
                 long nextUpdateFrequency = long.MaxValue;
                 var currentTimeFrequency = Stopwatch.GetTimestamp();
 
-                // 低頻度更新ディスプレイアイテムを評価し、値が変化すれば対象プロファイルのバージョンをインクリメントする（1秒間隔で実行）
+                // Evaluate infrequently updated DisplayItems and increment the associated profile version when a value changes (run every second).
                 if (currentTimeFrequency - LastLowUpdateFrequencyCheckTime >= Stopwatch.Frequency)
                 {
                     try
@@ -140,7 +140,7 @@ namespace InfoPanel.Models
                                     var currentValue = text.EvaluateText();
                                     if (lastValue != currentValue)
                                     {
-                                        // 値が変化したため対象プロファイルのバージョンをインクリメントする
+                                        // Update the version because a change in the target DisplayItem's value was detected.
                                         if (ProfileInfos.TryGetValue(text.ProfileGuid, out var profileInfo))
                                         {
                                             profileInfo.IncVersion();
@@ -149,8 +149,8 @@ namespace InfoPanel.Models
                                     }
                                     break;
                                 case (ImageDisplayItem image):
-                                    // URL の場合は更新間隔でリクエストが発生できるよう初期値として現在時刻を代入
-                                    // FPSのチェック時に更新間隔の基準点がずれないよう GetOrAdd で代入
+                                    // For URLs, initialize with the current time so requests can be made at the configured interval.
+                                    // Use GetOrAdd to preserve the original interval baseline.
                                     if (image.Type == ImageDisplayItem.ImageType.URL)
                                     {
                                         _ = LowUpdateFrequencyDisplayItemLongValues.GetOrAdd(image.Guid, currentTimeFrequency);
@@ -160,7 +160,7 @@ namespace InfoPanel.Models
 
                                     if ((currentTimeFrequency - lastUpdateTimeFrequency) / Stopwatch.Frequency >= image.RefreshInterval)
                                     {
-                                        // Http画像の更新間隔なので ProfileInfo のバージョンを更新しHttpのリクエストさせる
+                                        // This is the HTTP image update interval, so update the ProfileInfo version to trigger an HTTP request.
                                         if (ProfileInfos.TryGetValue(image.ProfileGuid, out var profileInfo))
                                         {
                                             profileInfo.IncVersion();
@@ -178,19 +178,19 @@ namespace InfoPanel.Models
                     }
                 }
 
-                // 各プロファイルのバージョン更新の要否を確認し、次回更新までの最短待機時間を求める
+                // Check whether each profile version needs updating and find the shortest wait until the next update.
                 foreach (var profileId in ProfileInfos.Keys)
                 {
                     if (!ProfileInfos.TryGetValue(profileId, out var profileInfo)) continue;
                     nextUpdateFrequency = Math.Min(nextUpdateFrequency, profileInfo.UpdateVersionIfNeeded());
                 }
-                // 次回更新までの最短待機時間を計算して待機する
-                // 最低10msは待ち、最大待ち時間は 1000msとする。これは低頻度更新オブジェクトの更新有無を確認するための更新間隔とする
+                // Calculate the shortest wait until the next update and wait.
+                // Wait at least 10 ms and at most 1000 ms. This interval is used to check for updates to infrequently updated objects.
                 await Task.Delay((int)Math.Clamp(Math.Ceiling(nextUpdateFrequency * 1000.0 / Stopwatch.Frequency), 10.0, 1000.0), cancellationToken);
             }
         }
 
-        // 対象のプロファイルのバージョンを返す。プロファイルが存在しない場合は 0 を返す
+        // Return the target profile version, or 0 if the profile does not exist.
         public static long GetProfileVersion(Guid profileId)
         {
             if (ProfileInfos.TryGetValue(profileId, out var profileInfo))
@@ -202,16 +202,16 @@ namespace InfoPanel.Models
             return 0;
         }
 
-        // 対象のプロファイルのバージョンを更新する
+        // Update the target profile version.
         public static void IncProfileVersion(Guid profileId)
         {
-            // プロファイルが存在しない場合は新たに作成する
+            // Create the profile if it does not exist.
             var profileInfo = ProfileInfos.GetOrAdd(profileId, _ => new ProfileInfo());
             profileInfo.IncVersion();
             Logger.Debug("IncProfileVersion : {profileId}:{version}", profileId, profileInfo.GetVersion());
         }
 
-        // センサーID の更新通知を受けてセンサーIDと関連づいているプロファイルのバージョンを更新する
+        // On a sensor ID update notification, update the versions of profiles associated with that sensor ID.
         public static void IncProfileVersionByItem(string itemKey)
         {
             if (string.IsNullOrEmpty(itemKey)) return;
@@ -225,12 +225,13 @@ namespace InfoPanel.Models
             }
         }
 
-        // 起動時・UI 操作に伴い内部情報の再構築が必要になった場合に呼ばれる（他クラスから呼び出される）
+        // Mark profile and panel settings data for rebuilding after startup or a UI change.
         public static void SetProfilesOrSettingsDirty()
         {
             Interlocked.Exchange(ref _profilesDirty, 1);
         }
 
+        // Rebuild the internal data once when a rebuild has been requested.
         private static void CheckProfilesOrSettingsDirty()
         {
             if (Interlocked.Exchange(ref _profilesDirty, 0) == 1)
@@ -239,34 +240,35 @@ namespace InfoPanel.Models
             }
         }
 
-        // 内部情報を更新するための処理
+        // Rebuild internal profile data from the current panel and DisplayItem settings. 
+        // Remove data for items and profiles that are no longer in use, then update each profile's target FPS and version.
         private static void CheckUpdate()
         {
-            // パネル関連の情報更新
+            // Update panel-related information.
             CheckUsedProfilesAndMaxFpsByPanel();
 
-            // ディスプレイアイテムの一覧をコピー
+            // Copy the list of DisplayItems.
             var lastDisplayItems = new ConcurrentDictionary<Guid, DisplayItem>(DisplayItems);
-            // プロファイル関連の情報をコピー（管理対象外プロファイルの有無確認のため）
+            // Copy profile-related information to identify profiles that are not managed.
             var lastEnabledProfiles = new ConcurrentDictionary<Guid, Profile>(EnabledProfiles);
-            // プロファイル関連の情報更新
+            // Update profile-related information.
             foreach (var profile in EnabledProfiles.Values)
             {
                 CheckProfileInfoAndMaxFpsByProfile(profile, lastDisplayItems, lastEnabledProfiles);
             }
-            // ディスプレイアイテムの不要分を削除
+            // Remove DisplayItems that are no longer in use.
             foreach (var displayItem in lastDisplayItems.Values)
             {
                 RemoveDisplayItem(displayItem);
             }
-            // プロファイルの不要分を削除
+            // Remove profiles that are no longer in use.
             foreach (var profileId in lastEnabledProfiles.Keys)
             {
                 _ = ProfileInfos.TryRemove(profileId, out _);
                 _ = EnabledProfiles.TryRemove(profileId, out _);
             }
 
-            // 目標FPS は DisplayItem 由来の最大FPS とパネル由来の最大FPS のうち小さい方を採用し、各プロファイルのバージョンを更新する
+            // Use the lower of the maximum FPS from the DisplayItem and the maximum FPS from the panel as the target FPS, then update each profile version.
             foreach (var enableProfileId in EnabledProfiles.Keys)
             {
                 var profileInfo = ProfileInfos.GetOrAdd(enableProfileId, _ => new ProfileInfo());
@@ -275,7 +277,7 @@ namespace InfoPanel.Models
             }
         }
 
-        // DisplayItem の GUID を SensorIdToDisplayItems（センサーID → DisplayItem マッピング）に登録する
+        // Register the DisplayItem GUID in SensorIdToDisplayItems (sensor ID to DisplayItem mapping).
         public static void AddDisplayItem(DisplayItem displayItem)
         {
             _ = DisplayItems.GetOrAdd(displayItem.Guid, displayItem);
@@ -291,7 +293,7 @@ namespace InfoPanel.Models
         }
 
 
-        // DisplayItem の GUID をキーに SensorIdToDisplayItems（センサーID → DisplayItem マッピング）から削除する
+        // Remove the DisplayItem GUID from SensorIdToDisplayItems (sensor ID to DisplayItem mapping).
         public static void RemoveDisplayItem(DisplayItem displayItem)
         {
             string sensorId = GetSensorIdFromDisplayItem(displayItem);
@@ -312,7 +314,7 @@ namespace InfoPanel.Models
             _ = DisplayItems.TryRemove(displayItem.Guid, out _);
         }
 
-        // 最新のディスプレイアイテム一覧を基に内部情報更新
+        // Update internal state using the latest list of DisplayItems.
         private static void CheckProfileInfoAndMaxFpsByProfile(Profile profile, ConcurrentDictionary<Guid, DisplayItem> lastDisplayItems, ConcurrentDictionary<Guid, Profile> lastEnabledProfiles)
         {
             int tempMaxFps = 0;
@@ -349,7 +351,7 @@ namespace InfoPanel.Models
             MaxTargetFrameRateProfileByDisplayItem[profile.Guid] = tempMaxFps;
         }
 
-        // 最新のパネル一覧を基に内部情報更新
+        // Update internal state using the latest list of panels.
         private static void CheckUsedProfilesAndMaxFpsByPanel()
         {
             Dictionary<Guid, int> profileIndex = new();
@@ -361,7 +363,7 @@ namespace InfoPanel.Models
             }
             foreach (var vendor in PanelVendors)
             {
-                // 各パネルベンダごとの設定を確認し有効なら後続を実行
+                // Check each panel vendor's settings and continue if enabled.
                 string propName = $"{vendor}PanelMultiDeviceMode";
                 var prop = typeof(Settings).GetProperty(propName);
                 if (prop is null)
@@ -380,7 +382,7 @@ namespace InfoPanel.Models
                     continue;
                 }
 
-                // 各パネルが有効なら参照している ProfileGuid と Profile に関連づいている TargetFrameRate の最大値をディクショナリに追加する
+                // For each enabled panel, add its referenced ProfileGuid and the maximum TargetFrameRate associated with that profile to the dictionary.
                 propName = $"{vendor}PanelDevices";
                 prop = typeof(Settings).GetProperty(propName);
 
@@ -394,7 +396,7 @@ namespace InfoPanel.Models
                     var value = prop.GetValue(Settings);
                     if (value is null)
                     {
-                        
+
                         continue;
                     }
                     Logger.Debug("{propName} was found.", propName);
@@ -437,11 +439,11 @@ namespace InfoPanel.Models
                         {
                             _ = EnabledProfiles.GetOrAdd((Guid)profileGuid, Profiles[index]);
                             _ = lastEnabledProfiles.TryRemove((Guid)profileGuid, out _);
-                            Logger.Debug("{vendor} {panel} Enabled → {ProfileGuid}", vendor, device, profileGuid);
+                            Logger.Debug("{vendor} {panel} Enabled -> {ProfileGuid}", vendor, device, profileGuid);
                         }
                         else
                         {
-                            Logger.Debug("{vendor} {panel} Enabled → but, not fount {ProfileGuid}", vendor, device, profileGuid);
+                            Logger.Debug("{vendor} {panel} Enabled -> but, not fount {ProfileGuid}", vendor, device, profileGuid);
                             continue;
                         }
 
@@ -476,7 +478,7 @@ namespace InfoPanel.Models
                     continue;
                 }
             }
-            // 参照されなくなった Profile の情報を削除する
+            // Remove information for profiles that are no longer referenced.
             foreach (var profileId in lastEnabledProfiles.Keys)
             {
                 _ = EnabledProfiles.TryRemove(profileId, out _);
@@ -485,12 +487,12 @@ namespace InfoPanel.Models
             }
             foreach (var profileId in EnabledProfiles.Keys)
             {
-                // TargetFrameRate を更新する
+                // Update TargetFrameRate.
                 MaxTargetFrameRateProfileByPanel[profileId] = maxFrameRateByProfile[profileId];
             }
         }
 
-        // ディスプレイアイテムから SensorId を取得する
+        // Get the SensorId from a DisplayItem.
         private static string GetSensorIdFromDisplayItem(DisplayItem displayItem)
         {
             if (displayItem is null) return string.Empty;
@@ -515,59 +517,60 @@ namespace InfoPanel.Models
             };
         }
 
-        // ディスプレイアイテムから更新に必要な目標FPSを取得する。
+        // Get the target FPS required to update a DisplayItem.
         private static int GetFpsByDisplayItem(DisplayItem displayItem)
         {
-            int fps = MinFps; // デフォルトは 0 FPS とする
+            // Default to 0 FPS.
+            int fps = MinFps;
             switch (displayItem)
             {
                 case ChartDisplayItem chart:
                     switch (chart)
                     {
                         case GraphDisplayItem graph:
-                            // GUI 上では制御されているが、設定ファイルが手編集されて想定外の値とならないよう範囲をクランプする
-                            // ※ MinTargetGraphUpdateRate / MaxTargetGraphUpdateRate は GUI 上で設定可能な最小・最大値
+                            // Clamp the value to prevent unexpected values if the configuration file is edited manually; the GUI already enforces this range.
+                            // MinTargetGraphUpdateRate / MaxTargetGraphUpdateRate are the minimum and maximum values configurable in the GUI.
                             var targetGraphUpdateRate = Math.Clamp(ConfigModel.Instance.Settings.TargetGraphUpdateRate, MinTargetGraphUpdateRate, MaxTargetGraphUpdateRate);
                             fps = (int)Math.Ceiling(1000.0 / targetGraphUpdateRate);
                             break;
                         default:
-                            // BarDisplayItem, DoughnutDisplayItem の2種類は、アニメーションの有無で目標FPSを切り替える
-                            // アニメーション有効時は最大FPS（MaxFps）で更新する
+                            // BarDisplayItem and DoughnutDisplayItem use different target FPS values depending on whether animation is enabled.
+                            // When animation is enabled, update at the maximum FPS (MaxFps).
                             if (chart.Animation)
                             {
                                 fps = MaxFps;
                             }
                             else
                             {
-                                // アニメーションがない場合は対象センサーの更新頻度に紐づき更新されるためここでは 0 FPSでよい
+                                // Without animation, BarDisplayItem and DoughnutDisplayItem update with the target sensor, so this class does not determine their FPS.
                                 fps = MinFps;
                             }
                             break;
                     }
                     break;
                 case CalendarDisplayItem calendar:
-                    // 日付はほぼ更新されないため低頻度更新ディスプレイアイテムとして管理
+                    // Dates rarely change, so manage them as infrequently updated DisplayItems.
                     AddLowFrequencyDicByDisplayItem(calendar);
                     break;
                 case ClockDisplayItem clock:
-                    // FPS を確認するためにフォーマットをチェック (秒以下を表示しない場合は低頻度更新ディスプレイアイテムとして管理)
-                    // フォーマットにミリ秒以下が何桁含まれているかをチェック
+                    // Check the format to determine the FPS (manage as an infrequently updated DisplayItem if it does not show sub-second precision).
+                    // Check how many fractional-second digits are in the format.
                     int fractionalSecondDigits = GetFormatDigits(clock.Format, 'f');
-                    // フォーマットに秒が含まれているかをチェック
+                    // Check whether the format includes seconds.
                     int secondDigits = GetFormatDigits(clock.Format, 's');
                     if (fractionalSecondDigits >= 2)
                     {
-                        // ミリ秒以下が2桁以上はMaxFps
+                        // Use MaxFps when there are two or more fractional-second digits.
                         fps = MaxFps;
                     }
                     else if (fractionalSecondDigits == 1)
                     {
-                        // ミリ秒以下が1桁は10FPS
+                        // Use 10 FPS when there is one fractional-second digit.
                         fps = 10;
                     }
                     else if (secondDigits > 0)
                     {
-                        // 秒が含まれていたら1FPS
+                        // Use 1 FPS if seconds are included.
                         fps = 1;
                     }
                     else
@@ -584,13 +587,13 @@ namespace InfoPanel.Models
                     }
                     break;
                 case GaugeDisplayItem:
-                    // GaugeDisplayItem は SensorDisplayItem の更新により判定されるため、このクラス自身では FPS は判定しない
+                    // GaugeDisplayItem updates are determined by SensorDisplayItem, so this class does not determine its FPS.
                     break;
                 case ImageDisplayItem image:
                     switch (image)
                     {
                         case HttpImageDisplayItem httpImage:
-                            // 対象センサー、プラグインの更新に伴い更新されるため このクラス自身ではFPSは判定しない
+                            // These update when the associated sensor or plugin updates, so this class does not determine their FPS.
                             break;
                         default:
                             switch (image.Type)
@@ -598,13 +601,13 @@ namespace InfoPanel.Models
                                 case ImageDisplayItem.ImageType.URL:
                                     if (image.RefreshInterval == 0)
                                     {
-                                        // 0 は更新が必要ないため MinFps のまま
+                                        // A refresh interval of 0 disables periodic updates, so keep the FPS at MinFps.
                                         RemoveLowFrequencyDicByDisplayItem(image);
                                     }
                                     else
                                     {
-                                        // 1 以上の場合は 1 秒以上の間隔で更新される可能性があるため、低頻度更新ディスプレイアイテムとして管理
-                                        // 設定された更新間隔で描画させることでリクエストを発生させる
+                                        // Values of 1 or greater may update at intervals of one second or more, so manage them as infrequently updated DisplayItems.
+                                        // Increment the associated profile version at the configured interval to trigger rendering and issue a request.
                                         AddLowFrequencyDicByDisplayItem(image);
                                     }
 
@@ -617,7 +620,7 @@ namespace InfoPanel.Models
                     }
                     break;
                 case SensorDisplayItem sensor:
-                    // sensor は HWiNFO、LibreHardwareMonitor、Plugin により収集周期が異なるため、種類ごとに処理を分岐させる
+                    // Sensors have different collection intervals in HWiNFO, LibreHardwareMonitor, and plugins, so handle each type separately.
                     switch (sensor)
                     {
                         case IHwInfoSensorItem hw when hw.SensorType == Enums.SensorType.HwInfo:
@@ -627,39 +630,38 @@ namespace InfoPanel.Models
                             fps = (int)Math.Ceiling(1000.0 / LibrePoolIntervalMilliseconds);
                             break;
                         case IPluginSensorItem plugin when plugin.SensorType == Enums.SensorType.Plugin:
-                            // プラグインのセンサーは、プラグイン側で更新頻度を決定するため、ここでは MinFps（0 FPS）ととする
-                            // プラグイン側で更新された際に対象プロファイルのバージョンが更新される
+                            // Plugin sensors update according to the plugin's schedule, so this class does not determine their FPS.
                             break;
                         default:
-                            // 未対応のセンサー種別（新インタフェース追加時にここに case を追加）
+                            // Unsupported sensor type (add a case here when a new interface is introduced).
                             break;
                     }
                     break;
 
                 case ShapeDisplayItem shape:
-                    // ShapeDisplayItem はグラデーションのアニメーション速度により更新頻度を変更する
+                    // ShapeDisplayItem update frequency depends on the gradient animation speed.
                     if (shape.GradientAnimationSpeed == 0)
                     {
-                        // アニメーション無効の場合は 0 FPS
+                        // Use 0 FPS when animation is disabled.
                     }
                     else
                     {
-                        // アニメーション有効時は GradientAnimationSpeed に応じて FPS を設定
-                        // GradientAnimationSpeed は 1 - 3600 で設定可能だが、MaxFps（60）を超える値は実際の描画能力を超えているため MaxFps でクランプする
+                        // When animation is enabled, set FPS according to GradientAnimationSpeed.
+                        // GradientAnimationSpeed can be set from 1 to 3600, but clamp it to MaxFps because values above MaxFps (60) exceed the actual rendering capability.
                         fps = Math.Clamp(shape.GradientAnimationSpeed, 1, MaxFps);
                     }
                     break;
 
                 default:
-                    // TextDisplayItem、GroupDisplayItem、GuidDisplayItem は設定変更時のみ更新される
-                    // 変更した場合設定変更として再描画発生するため問題なし。
-                    // ディスプレイアイテムの種類が追加された場合はこの switch の分岐を検討する
+                    // TextDisplayItem, GroupDisplayItem, and GuidDisplayItem update only when their settings change.
+                    // A settings change triggers a redraw, so no additional handling is needed here.
+                    // Consider adding a case here when a new DisplayItem type is introduced.
                     break;
             }
             return fps;
         }
 
-        // 低頻度更新ディスプレイアイテムを追加するための共通メソッド
+        // Add a DisplayItem to the collection of infrequently updated items.
         private static void AddLowFrequencyDicByDisplayItem(DisplayItem displayItem)
         {
             _ = LowUpdateFrequencyDisplayItemIds.GetOrAdd(displayItem.Guid, displayItem);
@@ -670,8 +672,8 @@ namespace InfoPanel.Models
                     LowUpdateFrequencyDisplayItemStringValues[text.Guid] = text.EvaluateText();
                     break;
                 case ImageDisplayItem image:
-                    // URL の場合は更新間隔でリクエストが発生できるよう初期値として現在時刻を代入
-                    // FPSのチェック時に更新間隔の基準点がずれないよう GetOrAdd で代入
+                    // For URLs, initialize with the current time so requests can be made at the configured interval.
+                    // Use GetOrAdd to preserve the original interval baseline.
                     if (image.Type == ImageDisplayItem.ImageType.URL)
                     {
                         _ = LowUpdateFrequencyDisplayItemLongValues.GetOrAdd(image.Guid, currentTimeFrequency);
@@ -679,7 +681,7 @@ namespace InfoPanel.Models
                     break;
             }
         }
-        // 低頻度更新ディスプレイアイテムを削除するための共通メソッド
+        // Remove a DisplayItem from the collection of infrequently updated items.
         private static void RemoveLowFrequencyDicByDisplayItem(DisplayItem displayItem)
         {
             _ = LowUpdateFrequencyDisplayItemIds.TryRemove(displayItem.Guid, out _);
@@ -688,29 +690,29 @@ namespace InfoPanel.Models
         }
 
 
-        // 日時フォーマット文字列から、指定された書式指定子（s または f）の最大連続桁数を取得
+        // Get the maximum number of consecutive occurrences of the specified format specifier (s or f) in a time format string.
         static int GetFormatDigits(string format, char targetChar)
         {
             if (string.IsNullOrEmpty(format)) return 0;
 
-            // 検索対象の文字パターンを作成
+            // Create the character pattern to search for.
             string targetPattern;
             if (char.ToLower(targetChar) == 'f')
             {
-                // ミリ秒の場合は大文字Fと小文字fの両方を対象にする
+                // For fractional seconds, match both uppercase F and lowercase f.
                 targetPattern = "([fF]+)";
             }
             else
             {
-                // 秒（s）やその他の文字の場合
+                // For seconds (s) and other characters.
                 targetPattern = $"({char.ToLower(targetChar)}+)";
             }
 
-            // 正規表現パターンの組み立て
-            // 1. '[^']*'      : シングルクォーテーションで囲まれたリテラル
-            // 2. "[^"]*"      : ダブルクォーテーションで囲まれたリテラル
-            // 3. \\.          : バックスラッシュでエスケープされた1文字
-            // 4. targetPattern: 目的の文字の連続
+            // Build the regular expression pattern.
+            // 1. '[^']*'       : Literal enclosed in single quotes.
+            // 2. "[^"]*"       : Literal enclosed in double quotes.
+            // 3. \\.           : One character escaped with a backslash.
+            // 4. targetPattern : Consecutive occurrences of the target character.
             string pattern = $@"'[^']*'|""[^""]*""|\\.|{targetPattern}";
 
             MatchCollection matches = Regex.Matches(format, pattern);

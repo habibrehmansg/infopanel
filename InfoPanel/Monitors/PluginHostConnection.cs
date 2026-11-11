@@ -110,7 +110,7 @@ namespace InfoPanel.Monitors
             {
                 if (_intentionalStop)
                 {
-                    // 意図的な停止時はデバッグログとして記録
+                    // Record intentional shutdowns as debug logs.
                     Logger.Debug("Plugin host process exited for {PluginPath}", _pluginDllPath);
                 }
                 else
@@ -143,7 +143,7 @@ namespace InfoPanel.Monitors
             {
                 if (_intentionalStop)
                 {
-                    // 意図的な停止時はデバッグログとして記録
+                    // Record intentional shutdowns as debug logs.
                     Logger.Debug("JSON-RPC disconnected for {PluginPath}", _pluginDllPath);
                 }
                 else

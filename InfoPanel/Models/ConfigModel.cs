@@ -594,7 +594,7 @@ namespace InfoPanel
 
         private async Task SaveSettingsInternalAsync()
         {
-            // 設定ファイル変更に伴い、更新フラグを立てる
+            // Set the update flag when the configuration file changes.
             ScreenRenderManager.SetProfilesOrSettingsDirty();
             using var _ = await _saveLock.LockAsync();
             try
@@ -1014,7 +1014,7 @@ namespace InfoPanel
                 using var rd = XmlReader.Create(fileName);
                 try
                 {
-                    // プロファイルの読み込みに伴い、更新フラグを立てる
+                    // Set the update flag when a profile is loaded.
                     ScreenRenderManager.SetProfilesOrSettingsDirty();
                     return xs.Deserialize(rd) as List<Profile>;
                 }
@@ -1023,7 +1023,7 @@ namespace InfoPanel
 
             return null;
         }
-        
+
         private void Upgrade_File_Structure_For_1_3_2()
         {
             //Preserve the legacy global target frame rate for BeadaPanel and COM-connected Turing panels. >1.3.1
@@ -1049,7 +1049,7 @@ namespace InfoPanel
                 {
                     device.Model = TuringPanelModel.REV_88INCH_USB.ToString();
                 }
-				else if (device.Model == "REV_46INCH_USB" && device.DeviceId.StartsWith(@"USB\VID_1CBE&PID_0046\"))
+                else if (device.Model == "REV_46INCH_USB" && device.DeviceId.StartsWith(@"USB\VID_1CBE&PID_0046\"))
                 {
                     device.Model = TuringPanelModel.REV_46INCH_USB.ToString();
                 }

@@ -175,7 +175,7 @@ namespace InfoPanel
                 foreach (var child in coll)
                     SubscribeDisplayItemForUndo(child, profile);
             }
-            // DisplayItem の追加により、ScreenRenderManager の内部情報再構築フラグを立てる
+            // Adding a DisplayItem sets the ScreenRenderManager's internal state rebuild flag.
             ScreenRenderManager.SetProfilesOrSettingsDirty();
         }
 
@@ -191,7 +191,7 @@ namespace InfoPanel
                 foreach (var child in coll.ToList())
                     UnsubscribeDisplayItemForUndo(child);
             }
-            // DisplayItem の削除により、ScreenRenderManager の内部情報再構築フラグを立てる
+            // Removing a DisplayItem sets the ScreenRenderManager's internal state rebuild flag.
             ScreenRenderManager.SetProfilesOrSettingsDirty();
         }
 
