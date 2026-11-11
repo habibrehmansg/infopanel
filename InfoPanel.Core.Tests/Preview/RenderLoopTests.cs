@@ -396,6 +396,61 @@ public class RenderLoopTests
         Assert.Equal(Pixels(plain.Service.RenderOnce(plain.Document, 300), 300, 100), Pixels(h.Service.RenderOnce(h.Document, 300), 300, 100));
     }
 
+    [Theory]
+    [InlineData("drawn")]
+    [InlineData("refused")]
+    [InlineData("lost")]
+    public async Task TheStatsOverlay_NamesTheBackendThatDrewTheFrame(string how)
+    {
+        // The same profile with the overlay on the CPU, and through a GPU stand-in that draws the frame ("Metal"), refuses
+        // its size, or is lost while drawing it (the CPU redraws that frame): those two say "CPU", as the CPU's frame does.
+        static JsonObject Overlay() => DocKit.Profile(new JsonObject { ["statsOverlay"] = true });
+        await using var cpu = Bars();
+        cpu.Commit(Overlay());
+        var device = new FakeGpuDevice { Refuses = how == "refused" ? _ => true : null };
+        await using var h = new RenderHarness(RenderHarness.BarDocument(), gpu: () => device);
+        h.Commit(Overlay());
+        Assert.Equal(InfoPanel.Output.Gpu.GpuRendering.Metal, h.Service.Gpu.Apply(true).Using);
+        if (how == "lost")
+            device.LoseAtSubmit = "Lost.";
+        var reference = cpu.Attach();
+        var sink = h.Attach();
+
+        cpu.Tick();
+        h.Tick();
+
+        var row = 300 * 4;
+        Assert.Equal(reference.Frames[^1].Pixels.AsSpan(16 * row).ToArray(), sink.Frames[^1].Pixels.AsSpan(16 * row).ToArray());
+        if (how == "drawn")
+            Assert.NotEqual(reference.Frames[^1].Pixels, sink.Frames[^1].Pixels);
+        else
+            Assert.Equal(reference.Frames[^1].Pixels, sink.Frames[^1].Pixels);
+    }
+
+    [Fact]
+    public async Task OnTheGpu_ThePreviewsSinkAPanelsSinkAndTheThumbnail_GetTheSameBytes_AsOnTheCpu()
+    {
+        // A /ws-style sink (bounds) and a panel-style one (none) on one loop drawing through the GPU stand-in, and the
+        // thumbnail at the profile's width: one frame for all, equal to the same service's frame on the CPU.
+        var device = new FakeGpuDevice();
+        await using var cpu = Growing();
+        await using var h = new RenderHarness(RenderHarness.GrowingDocument(), gpu: () => device);
+        Assert.Equal(InfoPanel.Output.Gpu.GpuRendering.Metal, h.Service.Gpu.Apply(true).Using);
+        var preview = h.Attach(includeBounds: true);
+        var panel = h.Attach(includeBounds: false);
+        var reference = cpu.Attach();
+
+        h.Tick(500);
+        cpu.Tick(500);
+
+        Assert.Equal(1, device.Surfaces);
+        Assert.Equal(reference.Frames[^1].Pixels, preview.Frames[^1].Pixels);
+        Assert.Equal(preview.Frames[^1].Pixels, panel.Frames[^1].Pixels);
+        Assert.Same(preview.Frames[^1].Frame, panel.Frames[^1].Frame);
+        Assert.Equal(preview.Frames[^1].Pixels, Pixels(h.Service.RenderOnce(h.Document, 300), 300, 100));
+        Assert.Equal(2, device.Surfaces);
+    }
+
     [Fact]
     public async Task TheLoop_Stops_WhenItsLastSinkDetaches()
     {

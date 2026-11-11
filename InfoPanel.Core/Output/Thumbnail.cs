@@ -1,3 +1,4 @@
+using InfoPanel.Output.Gpu;
 using InfoPanel.Scenes;
 using SkiaSharp;
 using System;
@@ -35,17 +36,25 @@ public static class Thumbnail
         return (width, (int)Math.Max(1, exactHeight), scale);
     }
 
-    /// <summary>Draws <paramref name="snapshot"/> as a PNG <see cref="Size"/> gives for <paramref name="requestedWidth"/>.</summary>
-    public static byte[] RenderPng(TickSnapshot snapshot, int requestedWidth)
+    /// <summary>
+    /// Draws <paramref name="snapshot"/> as a PNG <see cref="Size"/> gives for <paramref name="requestedWidth"/>: through
+    /// <paramref name="gpu"/> when given (the render service's, so a thumbnail at the profile's width equals the live
+    /// frame whichever draws), else on the CPU.
+    /// </summary>
+    public static byte[] RenderPng(TickSnapshot snapshot, int requestedWidth, GpuRendering? gpu = null)
     {
         var (width, height, scale) = Size(snapshot.Width, snapshot.Height, requestedWidth);
         using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
-        using (var canvas = new SKCanvas(bitmap))
+        void Draw(SKCanvas canvas)
         {
             canvas.Clear(SKColors.Transparent);
             snapshot.Draw(canvas, scale);
-            canvas.Flush();
         }
+
+        if (gpu != null)
+            gpu.Draw(bitmap, Draw);
+        else
+            GpuRendering.DrawOnCpu(bitmap, Draw);
 
         using var image = SKImage.FromBitmap(bitmap);
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);

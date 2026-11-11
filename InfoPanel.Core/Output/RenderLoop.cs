@@ -1,4 +1,5 @@
 using InfoPanel.Documents;
+using InfoPanel.Output.Gpu;
 using InfoPanel.Scenes;
 using InfoPanel.Spec;
 using Serilog;
@@ -385,16 +386,21 @@ public sealed class RenderLoop
         var tickStarted = _time.GetTimestamp();
         using var snapshot = _runtime.Tick(_time.GetElapsedTime(_firstTick.Value, now).TotalSeconds, _time.GetUtcNow());
         List<(float Scale, Surface Surface, List<AttachedSink> Sinks)> groups = [];
-        (string Left, string Right)? overlay = profile.StatsOverlay == true ? _stats.Text(profile.Name) : null;
+        var overlay = profile.StatsOverlay == true;
         foreach (var group in due.GroupBy(d => FrameScale.Normalize(d.Request.Scale, profileWidth, profileHeight)!.Value))
         {
-            var surface = GetSurface(group.Key, profileWidth, profileHeight);
-            surface.Canvas.Clear(SKColors.Transparent);
-            snapshot.Draw(surface.Canvas, group.Key);
-            if (overlay != null)
-                StatsOverlay.Draw(surface.Canvas, group.Key, profileWidth, overlay.Value);
-            surface.Canvas.Flush();
-            groups.Add((group.Key, surface, group.Select(d => d.Entry).ToList()));
+            var scale = group.Key;
+            var surface = GetSurface(scale, profileWidth, profileHeight);
+            // On the GPU when rendering.gpu is on (read back into the bitmap), else on a canvas over it. The overlay names
+            // the backend running this draw: a size the GPU refuses, or the CPU's redraw after a loss, says CPU.
+            _service.Gpu.Draw(surface.Bitmap, (canvas, backend) =>
+            {
+                canvas.Clear(SKColors.Transparent);
+                snapshot.Draw(canvas, scale);
+                if (overlay)
+                    StatsOverlay.Draw(canvas, scale, profileWidth, _stats.Text(profile.Name, GpuRendering.Label(backend)));
+            });
+            groups.Add((scale, surface, group.Select(d => d.Entry).ToList()));
         }
 
         IReadOnlyList<ItemBounds> bounds = includeBounds ? snapshot.Bounds : [];
@@ -519,24 +525,12 @@ public sealed class RenderLoop
     private static byte[] BoundsBytes(IReadOnlyList<ItemBounds> bounds) =>
         bounds.Count == 0 ? [] : JsonSerializer.SerializeToUtf8Bytes(bounds, SpecJson.Options);
 
-    /// <summary>A reused Rgba8888 premultiplied bitmap and its canvas, one per scale.</summary>
-    private sealed class Surface : IDisposable
+    /// <summary>A reused Rgba8888 premultiplied bitmap, one per scale, drawn through <see cref="RenderService.Gpu"/>.</summary>
+    private sealed class Surface(int width, int height) : IDisposable
     {
-        public Surface(int width, int height)
-        {
-            Bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
-            Canvas = new SKCanvas(Bitmap);
-        }
+        public SKBitmap Bitmap { get; } = new(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
 
-        public SKBitmap Bitmap { get; }
-
-        public SKCanvas Canvas { get; }
-
-        public void Dispose()
-        {
-            Canvas.Dispose();
-            Bitmap.Dispose();
-        }
+        public void Dispose() => Bitmap.Dispose();
     }
 }
 

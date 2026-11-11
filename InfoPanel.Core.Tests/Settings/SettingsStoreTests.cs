@@ -422,6 +422,67 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void DrawingWithTheGpu_IsOffByDefault_SetStoredAndReadBack_NullSetsItBack_AndAStoredOneOfTheWrongTypeGetsItsDefault()
+    {
+        var store = Open();
+        Assert.Equal(new RenderingSettings(Gpu: false), store.Current.Settings.Rendering);
+        Assert.Equal(RenderingSettings.Default, EngineSettings.Default.Rendering);
+
+        var on = store.Apply(Change("""{"rendering":{"gpu":true}}"""));
+        Assert.Equal((true, 1L), (on.Settings.Rendering.Gpu, on.Version));
+        Assert.True(Open().Current.Settings.Rendering.Gpu);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"format":"infopanel.settings/1","rendering":{"gpu":true}}"""), Stored()));
+
+        // The default given explicitly is stored; null removes it and empties its container.
+        store.Apply(Change("""{"rendering":{"gpu":false}}"""));
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"format":"infopanel.settings/1","rendering":{"gpu":false}}"""), Stored()));
+        store.Apply(Change("""{"rendering":{"gpu":null}}"""));
+        Assert.False(store.Current.Settings.Rendering.Gpu);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"format":"infopanel.settings/1"}"""), Stored()));
+
+        File.WriteAllText(File_, """{"format":"infopanel.settings/1","media":{"localNetwork":false},"rendering":{"gpu":"yes"}}""");
+        var read = Open();
+        Assert.False(read.Current.Settings.Rendering.Gpu);
+        Assert.False(read.Current.Settings.Media.LocalNetwork);
+        Assert.Contains("/rendering/gpu", Assert.Single(Warnings).RenderMessage(), StringComparison.Ordinal);
+
+        File.WriteAllText(File_, """{"format":"infopanel.settings/1","rendering":true}""");
+        Assert.False(Open().Current.Settings.Rendering.Gpu);
+    }
+
+    [Fact]
+    public void AMemberOfRenderingTheEngineDoesntKnow_IsKept_AsTheGpuSettingChanges()
+    {
+        File.WriteAllText(File_, """{"format":"infopanel.settings/1","rendering":{"gpu":false,"later":{"x":[1,2]}}}""");
+        var store = Open();
+
+        store.Apply(Change("""{"rendering":{"gpu":true}}"""));
+        Assert.True(store.Current.Settings.Rendering.Gpu);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"format":"infopanel.settings/1","rendering":{"gpu":true,"later":{"x":[1,2]}}}"""), Stored()));
+
+        store.Apply(Change("""{"rendering":{"gpu":null}}"""));
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"format":"infopanel.settings/1","rendering":{"later":{"x":[1,2]}}}"""), Stored()));
+    }
+
+    [Theory]
+    [InlineData("""{"rendering":{"gpu":"yes"}}""", "/rendering/gpu")]
+    [InlineData("""{"rendering":{"gpu":1}}""", "/rendering/gpu")]
+    [InlineData("""{"rendering":{"using":"metal"}}""", "/rendering/using")]
+    [InlineData("""{"rendering":{"GPU":true}}""", "/rendering/GPU")]
+    [InlineData("""{"rendering":null}""", "/rendering")]
+    [InlineData("""{"rendering":true}""", "/rendering")]
+    public void ABadRenderingChange_IsRefusedAtItsPath_AndChangesNothing(string json, string path)
+    {
+        var store = Open();
+
+        var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(Change(json)));
+
+        Assert.Contains(refused.Errors, e => e.Path == path && e.Code == "schema");
+        Assert.Equal(RenderingSettings.Default, store.Current.Settings.Rendering);
+        Assert.False(File.Exists(File_));
+    }
+
+    [Fact]
     public void TheWeatherSettings_AreOnAutoAndNoPlaceByDefault_SetAndResetMemberByMember_AndAStoredBadOneGetsItsDefault()
     {
         var store = Open();

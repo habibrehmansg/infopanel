@@ -157,7 +157,7 @@ public sealed class SettingsStore
 
     /// <summary>
     /// Merges <paramref name="change"/> into the settings and writes them: a member's value sets it, <c>null</c> removes it
-    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>sources.weather</c>, <c>sources.systemInfo</c>, <c>media</c>, <c>service</c>, <c>proxy</c> and <c>clients</c> merge member by member, and each
+    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>sources.weather</c>, <c>sources.systemInfo</c>, <c>media</c>, <c>rendering</c>, <c>service</c>, <c>proxy</c> and <c>clients</c> merge member by member, and each
     /// <c>clients</c> member, <c>proxy.hosts</c> and <c>sources.systemInfo.excludedProcesses</c> is set or removed whole. Unknown members are refused.
     /// </summary>
     /// <returns>The settings in effect afterwards (the same version when nothing changed).</returns>
@@ -173,7 +173,14 @@ public sealed class SettingsStore
     /// in effect (and <see cref="Changed"/> was raised), since the file holds them.
     /// </exception>
     /// <exception cref="Exception">What <see cref="Changing"/> refused the change with: nothing changed.</exception>
-    public SettingsSnapshot Apply(JsonElement change)
+    public SettingsSnapshot Apply(JsonElement change) => Apply(change, snapshot => snapshot);
+
+    /// <summary>
+    /// <see cref="Apply(JsonElement)"/>, answered by <paramref name="answer"/> under the store's lock with the settings in
+    /// effect afterwards, once <see cref="Changed"/>'s handlers have run: what they applied (what draws, say) is read with
+    /// the settings that made it, before another change can follow.
+    /// </summary>
+    public T Apply<T>(JsonElement change, Func<SettingsSnapshot, T> answer)
     {
         if (Status != SettingsStatus.Ok)
             throw new SettingsUnavailableException(Status, Problem!);
@@ -222,13 +229,13 @@ public sealed class SettingsStore
             {
                 // Nothing changes, and the members keep the spellings they have (_tree stays as it is).
                 if (!_unflushed)
-                    return _current;
+                    return answer(_current);
 
                 // The last write replaced the file but couldn't flush its folder: write it again, so the retry flushes
                 // what that write didn't (no new version, nothing raised), or throws as it did.
                 AtomicFile.Write(_path, _content, _root, _faults);
                 _unflushed = false;
-                return _current;
+                return answer(_current);
             }
 
             using var changing = Changing?.Invoke(_current.Settings, Effective(next));
@@ -246,8 +253,18 @@ public sealed class SettingsStore
             }
 
             _unflushed = false;
-            return Commit(next, content);
+            return answer(Commit(next, content));
         }
+    }
+
+    /// <summary>
+    /// <paramref name="read"/> of the settings in effect, under the store's lock: never between a change taking effect and
+    /// <see cref="Changed"/>'s handlers finishing, so what they apply is read with the settings that made it.
+    /// </summary>
+    public T Read<T>(Func<SettingsSnapshot, T> read)
+    {
+        lock (_lock)
+            return read(_current);
     }
 
     /// <summary>
@@ -458,6 +475,9 @@ public sealed class SettingsStore
         if (Container(tree, "media", "/media") is { } media)
             Check(media, "localNetwork", "/media/localNetwork", BoolProblem);
 
+        if (Container(tree, "rendering", "/rendering") is { } rendering)
+            Check(rendering, "gpu", "/rendering/gpu", BoolProblem);
+
         if (Container(tree, "service", "/service") is { } service)
         {
             Check(service, "address", "/service/address", AddressProblem);
@@ -500,6 +520,7 @@ public sealed class SettingsStore
         var weather = (tree["sources"] as JsonObject)?["weather"] as JsonObject;
         var systemInfo = (tree["sources"] as JsonObject)?["systemInfo"] as JsonObject;
         var media = tree["media"] as JsonObject;
+        var rendering = tree["rendering"] as JsonObject;
         var service = tree["service"] as JsonObject;
         var proxy = tree["proxy"] as JsonObject;
         var clients = ImmutableDictionary.CreateBuilder<string, JsonElement>(StringComparer.Ordinal);
@@ -526,6 +547,7 @@ public sealed class SettingsStore
                 ? new SystemInfoSettings(ImmutableArray.CreateRange(excluded.Select(n => ElementOf(n).GetString()!)))
                 : SystemInfoSettings.Default,
             new MediaSettings(Bool(media?["localNetwork"]) ?? MediaSettings.Default.LocalNetwork),
+            new RenderingSettings(Bool(rendering?["gpu"]) ?? RenderingSettings.Default.Gpu),
             new ServiceSettings(
                 service?["address"] is { } address && ServiceAddress.TryNormalize(ElementOf(address).GetString(), out var normal) ? normal : null,
                 Bool(service?["aiApps"]) ?? ServiceSettings.Default.AiApps,
@@ -648,13 +670,13 @@ public sealed class SettingsStore
                     }
 
                     break;
-                case "media":
+                case "media" or "rendering":
                     if (!Object(member.Value, pointer))
                         break;
                     foreach (var setting in member.Value.EnumerateObject())
                     {
                         var settingPointer = pointer + "/" + Escape(setting.Name);
-                        if (setting.Name == "localNetwork")
+                        if ((member.Name, setting.Name) is ("media", "localNetwork") or ("rendering", "gpu"))
                             Leaf(setting.Value, settingPointer, BoolProblem);
                         else
                             Unknown(settingPointer);
@@ -752,11 +774,12 @@ public sealed class SettingsStore
 
                     PruneIfEmpty(tree, "sources");
                     break;
-                case "media":
-                    var media = Child(tree, "media");
+                case "media" or "rendering":
+                    // Only booleans: media.localNetwork, rendering.gpu.
+                    var group = Child(tree, member.Name);
                     foreach (var setting in member.Value.EnumerateObject())
-                        Set(media, setting.Name, setting.Value, e => JsonValue.Create(e.GetBoolean()));
-                    PruneIfEmpty(tree, "media");
+                        Set(group, setting.Name, setting.Value, e => JsonValue.Create(e.GetBoolean()));
+                    PruneIfEmpty(tree, member.Name);
                     break;
                 case "service":
                     // An address is stored in its normal form (lower case, no trailing slash or default port).

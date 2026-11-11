@@ -932,6 +932,7 @@ public sealed record EngineSettingsBody
     public required string LogLevel { get; init; }
     public required SettingsSources Sources { get; init; }
     public required MediaSettingsBody Media { get; init; }
+    public required RenderingSettingsBody Rendering { get; init; }
     public required ServiceSettingsBody Service { get; init; }
     public required ProxySettingsBody Proxy { get; init; }
     /// <summary>Each client's preferences by client name, as the client set them.</summary>
@@ -990,6 +991,29 @@ public sealed record MediaSettingsBody
     public required bool LocalNetwork { get; init; }
 }
 
+/// <summary>
+/// Drawing with the GPU (<c>renderingSettings</c>, engineSettings' <c>rendering</c>): the setting, what draws now
+/// (<c>cpu</c>, <c>metal</c>, <c>direct3d12</c>), the GPU's name while one draws, and why the CPU draws though the
+/// setting is on.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/renderingSettings")]
+public sealed record RenderingSettingsBody
+{
+    public required bool Gpu { get; init; }
+    public required string Using { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Device { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required RenderingFallbackBody? Fallback { get; init; }
+}
+
+/// <summary>Why the CPU draws though <c>rendering.gpu</c> is on (<c>renderingFallback</c>): a code and what happened.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/renderingFallback")]
+public sealed record RenderingFallbackBody
+{
+    /// <summary><c>gpu.unsupported</c>, <c>gpu.noDevice</c>, <c>gpu.failed</c> or <c>gpu.lost</c>.</summary>
+    public required string Code { get; init; }
+    public required string Message { get; init; }
+}
+
 [SpecDef("urn:infopanel:api:1#/$defs/libreSettings")]
 public sealed record LibreSettingsBody
 {
@@ -1011,6 +1035,7 @@ public sealed record SettingsChange : IRemovesMembers
     public string? LogLevel { get; init; }
     public SettingsChangeSources? Sources { get; init; }
     public MediaSettingsChange? Media { get; init; }
+    public RenderingSettingsChange? Rendering { get; init; }
     public ServiceSettingsChange? Service { get; init; }
     public ProxySettingsChange? Proxy { get; init; }
     public IReadOnlyDictionary<string, JsonElement>? Clients { get; init; }
@@ -1065,6 +1090,16 @@ public sealed record WeatherSettingsChange : IRemovesMembers
 public sealed record MediaSettingsChange : IRemovesMembers
 {
     public bool? LocalNetwork { get; init; }
+    /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
+
+/// <summary>Drawing with the GPU to change; <c>null</c> goes back to the default, off (<see cref="IRemovesMembers"/>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/rendering")]
+public sealed record RenderingSettingsChange : IRemovesMembers
+{
+    public bool? Gpu { get; init; }
     /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
     public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);

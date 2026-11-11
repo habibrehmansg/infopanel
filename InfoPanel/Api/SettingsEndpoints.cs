@@ -1,5 +1,7 @@
 using InfoPanel.Documents;
 using InfoPanel.Hosting;
+using InfoPanel.Output;
+using InfoPanel.Output.Gpu;
 using InfoPanel.Security;
 using InfoPanel.Service;
 using InfoPanel.Settings;
@@ -23,9 +25,12 @@ public static class SettingsEndpoints
     {
         var api = app.MapGroup("/api/settings");
 
-        api.MapGet("", (SettingsStore settings, EngineOptions options) => Json(BodyOf(settings, settings.Current, options.DefaultServiceAddress))).RequireScope(ApiScope.Session);
+        // The settings and what draws are read together under the settings' lock, so a change whose handler is still making
+        // the GPU's device is answered once it has (never its new setting with the old status).
+        api.MapGet("", (SettingsStore settings, EngineOptions options, RenderService render) =>
+            Json(settings.Read(current => BodyOf(settings, current, options.DefaultServiceAddress, render.Gpu.Status)))).RequireScope(ApiScope.Session);
 
-        api.MapPatch("", async (HttpRequest request, SettingsStore settings, EngineOptions options, Workspace workspace, CancellationToken ct) =>
+        api.MapPatch("", async (HttpRequest request, SettingsStore settings, EngineOptions options, Workspace workspace, RenderService render, CancellationToken ct) =>
         {
             // Settings the engine couldn't read at start-up are never changed: answered before the body is read, as a
             // profile that can't be opened is.
@@ -46,7 +51,9 @@ public static class SettingsEndpoints
 
             try
             {
-                return Json(BodyOf(settings, settings.Apply(json.RootElement), options.DefaultServiceAddress));
+                // A change of rendering.gpu is applied by the settings' change handler; the answer is taken under the
+                // settings' lock after it, so it says what draws with the settings that made it, before another change.
+                return Json(settings.Apply(json.RootElement, applied => BodyOf(settings, applied, options.DefaultServiceAddress, render.Gpu.Status)));
             }
             catch (SettingsChangeException refused)
             {
@@ -62,9 +69,9 @@ public static class SettingsEndpoints
 
     /// <summary>
     /// The settings in effect as the API answers them: every value, the version, the status and its problem; the service's
-    /// address the one set, else <paramref name="defaultServiceAddress"/>.
+    /// address the one set, else <paramref name="defaultServiceAddress"/>; what draws now, <paramref name="drawing"/>.
     /// </summary>
-    internal static EngineSettingsBody BodyOf(SettingsStore store, SettingsSnapshot snapshot, string? defaultServiceAddress)
+    internal static EngineSettingsBody BodyOf(SettingsStore store, SettingsSnapshot snapshot, string? defaultServiceAddress, GpuStatus drawing)
     {
         var settings = snapshot.Settings;
         return new EngineSettingsBody
@@ -93,6 +100,13 @@ public static class SettingsEndpoints
                 SystemInfo = new SystemInfoSettingsBody { ExcludedProcesses = settings.SystemInfo.ExcludedProcesses },
             },
             Media = new MediaSettingsBody { LocalNetwork = settings.Media.LocalNetwork },
+            Rendering = new RenderingSettingsBody
+            {
+                Gpu = settings.Rendering.Gpu,
+                Using = drawing.Using,
+                Device = drawing.Device,
+                Fallback = drawing.Fallback is { } fallback ? new RenderingFallbackBody { Code = fallback.Code, Message = fallback.Message } : null,
+            },
             Service = new ServiceSettingsBody { Address = settings.Service.Address ?? defaultServiceAddress, AiApps = settings.Service.AiApps, Pairing = settings.Service.Pairing },
             Proxy = new ProxySettingsBody { Hosts = settings.Proxy.Hosts },
             Clients = settings.Clients,

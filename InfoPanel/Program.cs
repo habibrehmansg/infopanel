@@ -526,12 +526,16 @@ try
         Support = workspace.Support,
         Locale = sp.GetRequiredService<RegionalFormat>(),
     });
-    // Live frames for /ws and desktop windows; disposed with the host, which stops every render loop.
-    builder.Services.AddSingleton(sp => new RenderService(
-        sp.GetRequiredService<Workspace>(),
-        sp.GetRequiredService<SceneRuntimeOptions>(),
-        sp.GetRequiredService<TimeProvider>(),
-        sp.GetService<RenderServiceOptions>()));
+    // Live frames for /ws and desktop windows; disposed with the host, which stops every render loop. They draw with the GPU
+    // while rendering.gpu is on: the stored value applied now, each change at once (so a PATCH's answer says what draws).
+    builder.Services.AddSingleton(sp =>
+    {
+        var render = new RenderService(sp.GetRequiredService<Workspace>(), sp.GetRequiredService<SceneRuntimeOptions>(),
+            sp.GetRequiredService<TimeProvider>(), sp.GetService<RenderServiceOptions>());
+        render.Gpu.Apply(settings.Current.Settings.Rendering.Gpu);
+        settings.Changed += snapshot => render.Gpu.Apply(snapshot.Settings.Rendering.Gpu);
+        return render;
+    });
     builder.Services.AddSingleton(new PreviewSocketOptions());
     // The preview's H.264 encoders: the hardware one, then the user's own ffmpeg (--ffmpeg, PATH, then the folders package
     // managers use), each probed only when a video subscription first reaches it.

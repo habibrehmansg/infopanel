@@ -231,6 +231,15 @@ public sealed record MediaSettings(bool LocalNetwork)
 }
 
 /// <summary>
+/// Drawing (<c>rendering</c>): whether the engine draws frames with the GPU (<c>rendering.gpu</c>, off by default;
+/// <c>InfoPanel.Output.Gpu.GpuRendering</c>).
+/// </summary>
+public sealed record RenderingSettings(bool Gpu)
+{
+    public static RenderingSettings Default { get; } = new(false);
+}
+
+/// <summary>
 /// The configured service's settings: its address as set (<c>service.address</c>, an origin in its normal form,
 /// <c>InfoPanel.Service.ServiceAddress</c>), or null when none is set and the engine's default applies; and whether AI
 /// apps may use this engine's tools through the configured service (<c>service.aiApps</c>, off by default); and whether
@@ -264,6 +273,7 @@ public sealed record EngineSettings(
     WeatherSettings Weather,
     SystemInfoSettings SystemInfo,
     MediaSettings Media,
+    RenderingSettings Rendering,
     ServiceSettings Service,
     ProxySettings Proxy,
     IReadOnlyDictionary<string, JsonElement> Clients)
@@ -277,6 +287,7 @@ public sealed record EngineSettings(
         WeatherSettings.Default,
         SystemInfoSettings.Default,
         MediaSettings.Default,
+        RenderingSettings.Default,
         ServiceSettings.Default,
         ProxySettings.Default,
         ImmutableDictionary<string, JsonElement>.Empty);

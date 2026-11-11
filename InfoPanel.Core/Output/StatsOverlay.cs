@@ -7,8 +7,8 @@ namespace InfoPanel.Output;
 
 /// <summary>
 /// The engine's frame-rate overlay (a profile's <c>statsOverlay</c>, spec/docs/document.md): a dark band across the top
-/// of the canvas with the profile's name on the left and the loop's ticks per second and the time a tick takes on the
-/// right. Drawn by the render loop over the tick's frame, on live outputs only (not thumbnails); 1.x drew the same band.
+/// of the canvas with the profile's name on the left and, on the right, what draws (the CPU or the GPU's backend), the
+/// loop's ticks per second and the time a tick takes. Drawn by the render loop over the tick's frame, on live outputs only (not thumbnails); 1.x drew the same band.
 /// </summary>
 internal sealed class StatsOverlay
 {
@@ -27,8 +27,11 @@ internal sealed class StatsOverlay
             _ticks.Dequeue();
     }
 
-    /// <summary>The left and right texts for the next frames.</summary>
-    public (string Left, string Right) Text(string profileName) => (profileName, $"CPU | FPS {_ticks.Count} | {Math.Round(_lastMs)}ms");
+    /// <summary>
+    /// The left and right texts for the next frames: the right one starts with what draws them, <paramref name="drawing"/>
+    /// (<c>CPU</c>, <c>Metal</c>, <c>Direct3D 12</c>; 1.x said <c>OpenGL</c> when its GPU path drew).
+    /// </summary>
+    public (string Left, string Right) Text(string profileName, string drawing) => (profileName, $"{drawing} | FPS {_ticks.Count} | {Math.Round(_lastMs)}ms");
 
     /// <summary>Draws the band at <paramref name="scale"/> over a canvas <paramref name="profileWidth"/> profile pixels wide.</summary>
     public static void Draw(SKCanvas canvas, float scale, int profileWidth, (string Left, string Right) text)

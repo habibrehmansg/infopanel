@@ -26,7 +26,8 @@ internal sealed class RenderHarness : IAsyncDisposable
 
     private readonly TempDirectory _temp = new();
 
-    public RenderHarness(JsonObject document, bool autoTick = false, TimeProvider? time = null, TimeProvider? drawTime = null)
+    public RenderHarness(JsonObject document, bool autoTick = false, TimeProvider? time = null, TimeProvider? drawTime = null,
+        Func<InfoPanel.Output.Gpu.IGpuDevice>? gpu = null)
     {
         Time = time ?? new ManualClock();
         var paths = new DataPaths(_temp.Path);
@@ -45,7 +46,7 @@ internal sealed class RenderHarness : IAsyncDisposable
         Assert.True(created.Entry is not null, string.Join("; ", created.Invalid?.Errors.Select(e => $"{e.Path} {e.Code} {e.Message}") ?? []));
         ProfileId = ProfileIdOf;
         SetLoad(50);
-        Service = new RenderService(Workspace, Scenes(Workspace, Sensors, History, drawTime), Time, new RenderServiceOptions(autoTick));
+        Service = new RenderService(Workspace, Scenes(Workspace, Sensors, History, drawTime), Time, new RenderServiceOptions(autoTick) { GpuDevice = gpu });
     }
 
     /// <summary>The runtime options the engine uses, over fake sensors, with the zone and locale pinned.</summary>

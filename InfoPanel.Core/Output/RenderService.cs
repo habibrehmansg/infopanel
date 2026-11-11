@@ -1,4 +1,5 @@
 using InfoPanel.Documents;
+using InfoPanel.Output.Gpu;
 using InfoPanel.Scenes;
 using Serilog;
 using SkiaSharp;
@@ -14,7 +15,11 @@ namespace InfoPanel.Output;
 /// True (the engine): each loop ticks on its own timer. False: loops never tick by themselves and
 /// <see cref="RenderService.Tick"/> drives them, for deterministic tests.
 /// </param>
-public sealed record RenderServiceOptions(bool AutoTick = true);
+public sealed record RenderServiceOptions(bool AutoTick = true)
+{
+    /// <summary>Makes the GPU <see cref="RenderService.Gpu"/> draws with when it is turned on; null: this computer's (<see cref="GpuRendering.ForThisComputer"/>).</summary>
+    public Func<IGpuDevice>? GpuDevice { get; init; }
+}
 
 /// <summary>
 /// The engine's renderer of live profiles: one <see cref="RenderLoop"/> per profile that has sinks, created on the
@@ -65,11 +70,18 @@ public sealed class RenderService : IAsyncDisposable
         SceneOptions = scenes;
         _time = time;
         _options = options ?? new RenderServiceOptions();
+        Gpu = new GpuRendering(_options.GpuDevice, time);
         _workspace.ProfilesChanged += OnProfilesChanged;
     }
 
     /// <summary>What every loop's runtime is made with.</summary>
     public SceneRuntimeOptions SceneOptions { get; }
+
+    /// <summary>
+    /// Drawing with the GPU (the <c>rendering.gpu</c> setting, which the engine applies here): every loop's frames and
+    /// <see cref="RenderOnce"/>'s thumbnails draw through it. Disposed with the service.
+    /// </summary>
+    public GpuRendering Gpu { get; }
 
     internal TimeProvider Time => _time;
 
@@ -244,9 +256,10 @@ public sealed class RenderService : IAsyncDisposable
 
     /// <summary>
     /// A PNG thumbnail <paramref name="width"/> pixels wide (<see cref="Thumbnail.Size"/>; spec/docs/api.md,
-    /// "Thumbnails"). While a loop renders the profile it is drawn from the tick snapshot the loop last drew, without
-    /// advancing it, so at the profile's width it is the loop's frame (without the stats overlay, which only live outputs
-    /// draw); otherwise from a one-off snapshot of the current generation (state at init, elapsed 0).
+    /// "Thumbnails"), drawn through <see cref="Gpu"/> as the loops' frames are. While a loop renders the profile it is
+    /// drawn from the tick snapshot the loop last drew, without advancing it, so at the profile's width it is the loop's
+    /// frame (without the stats overlay, which only live outputs draw); otherwise from a one-off snapshot of the current
+    /// generation (state at init, elapsed 0).
     /// </summary>
     public byte[] RenderOnce(ProfileDocument document, int width)
     {
@@ -255,7 +268,7 @@ public sealed class RenderService : IAsyncDisposable
             _loops.TryGetValue(document.Id, out loop);
 
         using var snapshot = loop?.LatestSnapshot() ?? OneOff(document.Current);
-        return Thumbnail.RenderPng(snapshot, width);
+        return Thumbnail.RenderPng(snapshot, width, Gpu);
     }
 
     /// <summary>
@@ -303,7 +316,10 @@ public sealed class RenderService : IAsyncDisposable
         return runtime.Snapshot(_time.GetUtcNow());
     }
 
-    /// <summary>Stops every loop, closes their sinks (<see cref="FrameSinkClosedReason.Shutdown"/>) and waits for the loops to stop.</summary>
+    /// <summary>
+    /// Stops every loop, closes their sinks (<see cref="FrameSinkClosedReason.Shutdown"/>), waits for the loops to stop and
+    /// releases the GPU (<see cref="Gpu"/>).
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         List<AttachedSink> sinks;
@@ -332,6 +348,8 @@ public sealed class RenderService : IAsyncDisposable
         {
             Logger.Warning(ex, "A render loop did not stop cleanly");
         }
+
+        Gpu.Dispose();
     }
 
     private void OnProfilesChanged(object? sender, ProfilesChangedEventArgs e) => CloseDeleted();

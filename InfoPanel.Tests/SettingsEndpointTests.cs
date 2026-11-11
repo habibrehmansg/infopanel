@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -6,6 +7,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using InfoPanel.Hosting;
+using InfoPanel.Output;
+using InfoPanel.Output.Gpu;
 using InfoPanel.Sensors;
 using InfoPanel.Settings;
 using InfoPanel.Spec;
@@ -251,6 +254,206 @@ public sealed class SettingsEndpointTests
         Assert.Equal(TimeSpan.FromMilliseconds(250), history.Interval);
     }
 
+    // ---- drawing with the GPU -------------------------------------------------------------------------------------
+
+    /// <summary>An engine of <paramref name="engine"/>'s folder whose GPU is <paramref name="device"/>, and a session client of it.</summary>
+    private static (WebApplicationFactory<Program> Factory, HttpClient Api) WithGpu(EngineFactory engine, Func<IGpuDevice> device)
+    {
+        var factory = engine.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services => services.AddSingleton(new RenderServiceOptions { GpuDevice = device })));
+        var api = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = false });
+        api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+        return (factory, api);
+    }
+
+    private static (bool Gpu, string? Using, string? Device, JsonValueKind Fallback) Rendering(JsonElement settings)
+    {
+        var rendering = settings.GetProperty("rendering");
+        return (rendering.GetProperty("gpu").GetBoolean(), rendering.GetProperty("using").GetString(),
+            rendering.GetProperty("device").GetString(), rendering.GetProperty("fallback").ValueKind);
+    }
+
+    [Fact]
+    public async Task DrawingWithTheGpu_IsOffByDefault_TheCpuDrawing()
+    {
+        using var factory = new EngineFactory();
+        using var api = factory.CreateApiClient();
+
+        var settings = await Get(api);
+
+        Assert.Equal((false, "cpu", (string?)null, JsonValueKind.Null), Rendering(settings));
+    }
+
+    [Fact]
+    public async Task TheGpuSetting_TurnedOn_AnswersWhatDraws_AppliesAtOnce_AndNullTurnsItOff()
+    {
+        using var engine = new EngineFactory();
+        var device = new RasterGpu("Fake GPU 9000");
+        var (factory, api) = WithGpu(engine, () => device);
+        using (factory)
+        using (api)
+        {
+            var on = await Patch(api, """{"rendering":{"gpu":true}}""");
+
+            Assert.Equal((true, "metal", "Fake GPU 9000", JsonValueKind.Null), Rendering(on));
+            Assert.Equal(1, on.GetProperty("version").GetInt64());
+            Assert.True(JsonElement.DeepEquals(on, await Get(api)));
+            Assert.True(JsonNode.Parse(File.ReadAllText(Settings(engine)))!["rendering"]!["gpu"]!.GetValue<bool>());
+            Assert.Equal("metal", factory.Services.GetRequiredService<RenderService>().Gpu.Status.Using);
+
+            var off = await Patch(api, """{"rendering":{"gpu":null}}""");
+
+            Assert.Equal((false, "cpu", (string?)null, JsonValueKind.Null), Rendering(off));
+            Assert.True(device.Disposed);
+            Assert.False(JsonNode.Parse(File.ReadAllText(Settings(engine)))!.AsObject().ContainsKey("rendering"));
+        }
+    }
+
+    [Fact]
+    public async Task AGpuThatCantDraw_IsAFallbackWithItsCodeAndMessage_AndTheSettingStaysOn()
+    {
+        using var engine = new EngineFactory();
+        var (factory, api) = WithGpu(engine, () => throw new GpuUnavailableException("gpu.noDevice", "No hardware graphics device."));
+        using (factory)
+        using (api)
+        {
+            var on = await Patch(api, """{"rendering":{"gpu":true}}""");
+
+            Assert.Equal((true, "cpu", (string?)null, JsonValueKind.Object), Rendering(on));
+            var fallback = on.GetProperty("rendering").GetProperty("fallback");
+            Assert.Equal(("gpu.noDevice", "No hardware graphics device."), (fallback.GetProperty("code").GetString(), fallback.GetProperty("message").GetString()));
+            Assert.True(JsonNode.Parse(File.ReadAllText(Settings(engine)))!["rendering"]!["gpu"]!.GetValue<bool>());
+        }
+    }
+
+    [Fact]
+    public async Task TheStoredGpuSetting_IsAppliedAtStart()
+    {
+        using var engine = new EngineFactory();
+        Directory.CreateDirectory(engine.DataDir);
+        File.WriteAllText(Settings(engine), """{"format":"infopanel.settings/1","rendering":{"gpu":true}}""");
+        var (factory, api) = WithGpu(engine, () => new RasterGpu("Fake GPU at start"));
+        using (factory)
+        using (api)
+        {
+            var settings = await Get(api);
+
+            Assert.Equal((true, "metal", "Fake GPU at start", JsonValueKind.Null), Rendering(settings));
+            Assert.Equal(0, settings.GetProperty("version").GetInt64());
+        }
+    }
+
+    [Fact]
+    public async Task TheSettingsAndWhatDraws_AreOneSnapshot_WhileAChangeMakesTheDevice_AndWhenTwoChangesRace()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var engine = new EngineFactory();
+        using var making = new SemaphoreSlim(0);
+        using var made = new ManualResetEventSlim(false);
+        var (factory, api) = WithGpu(engine, () =>
+        {
+            making.Release();
+            made.Wait(TimeSpan.FromSeconds(30));
+            return new RasterGpu("Held GPU");
+        });
+        using (factory)
+        using (api)
+        {
+            await Get(api);
+            var on = Patch(api, """{"rendering":{"gpu":true}}""");
+            Assert.True(await making.WaitAsync(TimeSpan.FromSeconds(30), ct));
+
+            // While the device is being made: a read, and a change turning the GPU off again. Neither may answer with the
+            // new setting and the old status (gpu true, the CPU drawing, no fallback): the read waits for the device.
+            var read = Get(api);
+            var off = Patch(api, """{"rendering":{"gpu":false}}""");
+            await Task.WhenAny(read, Task.Delay(TimeSpan.FromMilliseconds(500), ct));
+            made.Set();
+
+            var drawing = (true, "metal", (string?)"Held GPU", JsonValueKind.Null);
+            var cpu = (false, "cpu", (string?)null, JsonValueKind.Null);
+            Assert.Equal(drawing, Rendering(await on));
+            Assert.Equal(cpu, Rendering(await off));
+            var got = Rendering(await read);
+            Assert.True(got == drawing || got == cpu, $"GET answered {got}");
+        }
+    }
+
+    [Fact]
+    public async Task ADeviceThatTakesTooLongToMake_IsGpuFailed_WithinTheBound_ReadsGoOn_AndTheLateDeviceIsReleased()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var engine = new EngineFactory();
+        using var making = new SemaphoreSlim(0);
+        using var made = new ManualResetEventSlim(false);
+        var late = new RasterGpu("Late GPU");
+        var (factory, api) = WithGpu(engine, () =>
+        {
+            making.Release();
+            made.Wait(TimeSpan.FromSeconds(60));
+            return late;
+        });
+        using (factory)
+        using (api)
+        {
+            await Get(api);
+            var bound = GpuRendering.MakeTimeout;
+            var clock = Stopwatch.StartNew();
+            var on = Patch(api, """{"rendering":{"gpu":true}}""");
+            Assert.True(await making.WaitAsync(TimeSpan.FromSeconds(30), ct));
+
+            // The device is still being made: a read waits at most the bound, as the change does.
+            var read = await Get(api);
+            var answered = await on;
+            var elapsed = clock.Elapsed;
+
+            Assert.True(elapsed < bound + TimeSpan.FromSeconds(5), $"answered after {elapsed}");
+            var failed = (true, "cpu", (string?)null, JsonValueKind.Object);
+            Assert.Equal(failed, Rendering(answered));
+            Assert.Equal(failed, Rendering(read));
+            var fallback = answered.GetProperty("rendering").GetProperty("fallback");
+            Assert.Equal((GpuRendering.Failed, GpuRendering.TookTooLong),
+                (fallback.GetProperty("code").GetString(), fallback.GetProperty("message").GetString()));
+
+            // An unrelated change goes on while the device is still held.
+            Assert.Equal(30, (await Patch(api, """{"frameRate":30}""")).GetProperty("frameRate").GetInt32());
+
+            // The device made after the bound is released, never drawn with.
+            made.Set();
+            for (var i = 0; i < 300 && !late.Disposed; i++)
+                await Task.Delay(TimeSpan.FromMilliseconds(10), ct);
+            Assert.True(late.Disposed);
+            Assert.Equal("cpu", factory.Services.GetRequiredService<RenderService>().Gpu.Status.Using);
+            Assert.Equal(failed, Rendering(await Get(api)));
+        }
+    }
+
+    /// <summary>A GPU stand-in whose surfaces are raster ones.</summary>
+    private sealed class RasterGpu(string name) : IGpuDevice
+    {
+        public volatile bool Disposed;
+
+        public string Backend => "metal";
+
+        public string Name { get; } = name;
+
+        public SkiaSharp.SKSurface? CreateSurface(SkiaSharp.SKImageInfo info) => SkiaSharp.SKSurface.Create(info);
+
+        public void Submit()
+        {
+        }
+
+        public string? CheckLost() => null;
+
+        public void PurgeUnused(TimeSpan unused)
+        {
+        }
+
+        public IDisposable? DrawScope() => null;
+
+        public void Dispose() => Disposed = true;
+    }
+
     // ---- refusals -----------------------------------------------------------------------------------------------
 
     [Fact]
@@ -301,6 +504,9 @@ public sealed class SettingsEndpointTests
         { """{"sources":{"systemInfo":{"excludedProcesses":"InfoPanel"}}}""", "/sources/systemInfo/excludedProcesses", "schema" },
         { """{"sources":{"systemInfo":{"excluded":[]}}}""", "/sources/systemInfo/excluded", "schema" },
         { """{"sources":{"systemInfo":null}}""", "/sources/systemInfo", "schema" },
+        { """{"rendering":{"gpu":"yes"}}""", "/rendering/gpu", "schema" },
+        { """{"rendering":{"using":"metal"}}""", "/rendering/using", "schema" },
+        { """{"rendering":null}""", "/rendering", "schema" },
         { """{"clients":{"my client":{}}}""", "/clients/my client", "schema" },
         { """{"clients":null}""", "/clients", "schema" },
         { "[]", "", "schema" },
@@ -383,6 +589,7 @@ public sealed class SettingsEndpointTests
         var problem = settings.GetProperty("problem");
         Assert.Equal((code, path), (problem.GetProperty("code").GetString(), problem.GetProperty("path").GetString()));
         Assert.Equal((15, 0L), (settings.GetProperty("frameRate").GetInt32(), settings.GetProperty("version").GetInt64()));
+        Assert.Equal((false, "cpu", (string?)null, JsonValueKind.Null), Rendering(settings));
 
         // A valid change and an invalid one alike: the settings' status answers first.
         foreach (var change in new[] { """{"frameRate":30}""", """{"frameRate":0}""", "not json", "{}" })

@@ -1382,6 +1382,7 @@ export interface EngineSettingsOk {
   logLevel: LogLevel;
   sources: SettingsSources;
   media: MediaSettings;
+  rendering: RenderingSettings;
   service: ServiceSettings;
   proxy: ProxySettings;
   /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
@@ -1412,6 +1413,7 @@ export interface EngineSettingsProblem {
   logLevel: LogLevel;
   sources: SettingsSources;
   media: MediaSettings;
+  rendering: RenderingSettings;
   service: ServiceSettings;
   proxy: ProxySettings;
   /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
@@ -1480,6 +1482,26 @@ export interface MediaSettings {
   localNetwork: boolean;
 }
 
+/** Drawing with the GPU (docs/api.md#drawing-with-the-gpu): the setting, and what draws the frames now. */
+export interface RenderingSettings {
+  /** Whether the engine draws its frames with the GPU (Metal on macOS; on Windows the CPU draws, with `gpu.unsupported`, until the engine's Direct3D 12 backend lands), read back into the frame every output shares; false by default, the CPU. A change applies from the next frame, without a restart; the GPU failing never changes it. */
+  gpu: boolean;
+  /** What draws the frames now: `cpu`, `metal` or `direct3d12`. A client shows a value it doesn't know as it is. */
+  using: "cpu" | "metal" | "direct3d12";
+  /** The GPU's name while one draws (`using` isn't `cpu`), else null. */
+  device: string | null;
+  /** Why the CPU draws though `gpu` is true; null otherwise. */
+  fallback: RenderingFallback | null;
+}
+
+/** Why the CPU draws though `rendering.gpu` is true (docs/api.md#drawing-with-the-gpu). */
+export interface RenderingFallback {
+  /** `gpu.unsupported`: the engine has no GPU backend on this system. `gpu.noDevice`: no hardware graphics device (none, or only a software one). `gpu.failed`: the device or its context couldn't be made. `gpu.lost`: the device was lost while drawing; turning `gpu` off and on again, or a restart, tries again. A client treats a code it doesn't know as `gpu.failed`. */
+  code: "gpu.unsupported" | "gpu.noDevice" | "gpu.failed" | "gpu.lost";
+  /** What happened, for people: what failed, with the platform's error code where it gives one. */
+  message: string;
+}
+
 /** The names a reverse proxy on this computer reaches the engine by (docs/api.md#where-requests-come-from). */
 export interface ProxySettings {
   /**
@@ -1506,7 +1528,7 @@ export type LogLevel = "debug" | "information" | "warning" | "error";
  */
 export type ClientName = string;
 
-/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `sources.systemInfo`, `media`, `service`, `proxy` and `clients` are merged member by member, each client's preferences, `proxy.hosts` and `sources.systemInfo.excludedProcesses` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
+/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `sources.systemInfo`, `media`, `rendering`, `service`, `proxy` and `clients` are merged member by member, each client's preferences, `proxy.hosts` and `sources.systemInfo.excludedProcesses` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
 export interface SettingsChange {
   /**
    * Frames a second, 1 to 60 (engineSettings).
@@ -1550,6 +1572,10 @@ export interface SettingsChange {
   media?: {
     /** mediaSettings. */
     localNetwork?: boolean | null;
+  };
+  rendering?: {
+    /** renderingSettings: whether the engine draws with the GPU; `null` sets it back to its default, off. */
+    gpu?: boolean | null;
   };
   service?: {
     /**

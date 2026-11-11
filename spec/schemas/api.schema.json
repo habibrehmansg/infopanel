@@ -1434,7 +1434,7 @@
     "engineSettingsOk": {
       "description": "The engine read its stored settings (or had none), and they can be changed: no `problem`.",
       "type": "object",
-      "required": ["status", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "service", "proxy", "clients"],
+      "required": ["status", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "rendering", "service", "proxy", "clients"],
       "additionalProperties": false,
       "properties": {
         "status": { "const": "ok" },
@@ -1449,6 +1449,7 @@
         "logLevel": { "$ref": "#/$defs/logLevel" },
         "sources": { "$ref": "#/$defs/settingsSources" },
         "media": { "$ref": "#/$defs/mediaSettings" },
+        "rendering": { "$ref": "#/$defs/renderingSettings" },
         "service": { "$ref": "#/$defs/serviceSettings" },
         "proxy": { "$ref": "#/$defs/proxySettings" },
         "clients": {
@@ -1463,7 +1464,7 @@
     "engineSettingsProblem": {
       "description": "The engine couldn't read its stored settings when it started: the defaults are in effect, `problem` says why, and every change is refused (409 settingsStatusProblem) until the stored settings are fixed or removed and the engine restarts.",
       "type": "object",
-      "required": ["status", "problem", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "service", "proxy", "clients"],
+      "required": ["status", "problem", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "rendering", "service", "proxy", "clients"],
       "additionalProperties": false,
       "properties": {
         "status": {
@@ -1482,6 +1483,7 @@
         "logLevel": { "$ref": "#/$defs/logLevel" },
         "sources": { "$ref": "#/$defs/settingsSources" },
         "media": { "$ref": "#/$defs/mediaSettings" },
+        "rendering": { "$ref": "#/$defs/renderingSettings" },
         "service": { "$ref": "#/$defs/serviceSettings" },
         "proxy": { "$ref": "#/$defs/proxySettings" },
         "clients": {
@@ -1571,6 +1573,34 @@
         "localNetwork": { "description": "Whether a provider may connect to this computer and the local network (docs/providers.md#addresses); true by default.", "type": "boolean" }
       }
     },
+    "renderingSettings": {
+      "description": "Drawing with the GPU (docs/api.md#drawing-with-the-gpu): the setting, and what draws the frames now.",
+      "type": "object",
+      "required": ["gpu", "using", "device", "fallback"],
+      "additionalProperties": false,
+      "properties": {
+        "gpu": { "description": "Whether the engine draws its frames with the GPU (Metal on macOS; on Windows the CPU draws, with `gpu.unsupported`, until the engine's Direct3D 12 backend lands), read back into the frame every output shares; false by default, the CPU. A change applies from the next frame, without a restart; the GPU failing never changes it.", "type": "boolean" },
+        "using": { "description": "What draws the frames now: `cpu`, `metal` or `direct3d12`. A client shows a value it doesn't know as it is.", "enum": ["cpu", "metal", "direct3d12"] },
+        "device": { "description": "The GPU's name while one draws (`using` isn't `cpu`), else null.", "type": ["string", "null"] },
+        "fallback": {
+          "description": "Why the CPU draws though `gpu` is true; null otherwise.",
+          "oneOf": [{ "$ref": "#/$defs/renderingFallback" }, { "type": "null" }]
+        }
+      }
+    },
+    "renderingFallback": {
+      "description": "Why the CPU draws though `rendering.gpu` is true (docs/api.md#drawing-with-the-gpu).",
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "`gpu.unsupported`: the engine has no GPU backend on this system. `gpu.noDevice`: no hardware graphics device (none, or only a software one). `gpu.failed`: the device or its context couldn't be made. `gpu.lost`: the device was lost while drawing; turning `gpu` off and on again, or a restart, tries again. A client treats a code it doesn't know as `gpu.failed`.",
+          "enum": ["gpu.unsupported", "gpu.noDevice", "gpu.failed", "gpu.lost"]
+        },
+        "message": { "description": "What happened, for people: what failed, with the platform's error code where it gives one.", "type": "string" }
+      }
+    },
     "proxySettings": {
       "description": "The names a reverse proxy on this computer reaches the engine by (docs/api.md#where-requests-come-from).",
       "type": "object",
@@ -1602,7 +1632,7 @@
       "pattern": "^[A-Za-z0-9._-]{1,64}$"
     },
     "settingsChange": {
-      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `sources.systemInfo`, `media`, `service`, `proxy` and `clients` are merged member by member, each client's preferences, `proxy.hosts` and `sources.systemInfo.excludedProcesses` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
+      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `sources.systemInfo`, `media`, `rendering`, `service`, `proxy` and `clients` are merged member by member, each client's preferences, `proxy.hosts` and `sources.systemInfo.excludedProcesses` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -1657,6 +1687,13 @@
           "additionalProperties": false,
           "properties": {
             "localNetwork": { "description": "mediaSettings.", "type": ["boolean", "null"] }
+          }
+        },
+        "rendering": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gpu": { "description": "renderingSettings: whether the engine draws with the GPU; `null` sets it back to its default, off.", "type": ["boolean", "null"] }
           }
         },
         "service": {
