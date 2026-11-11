@@ -47,32 +47,41 @@ internal sealed class ItemRuntime(string id)
 
     // The watchdog: ticks whose evaluation or slowest draw took longer than the item budget, counted once per tick
     // however many outputs and scales drew it. Draws mark from their own threads.
+    // The figures of the last three ticks counted, the newest last, for the line a suspension logs.
     private readonly Lock _watch = new();
+    private readonly Queue<SlowMark> _marks = new(4);
     private long _slowTick = -1;
     private int _slowRun;
 
-    /// <summary>Marks tick <paramref name="tick"/> slow; a tick already counted, or older than the last counted, changes nothing.</summary>
-    public void MarkSlow(long tick)
+    /// <summary>Marks <paramref name="mark"/>'s tick slow; a tick already counted, or older than the last counted, changes nothing.</summary>
+    public void MarkSlow(SlowMark mark)
     {
+        var tick = mark.Tick;
         lock (_watch)
         {
             if (tick <= _slowTick) return;
             _slowRun = tick == _slowTick + 1 ? _slowRun + 1 : 1;
             _slowTick = tick;
+            _marks.Enqueue(mark);
+            if (_marks.Count > 3) _marks.Dequeue();
         }
     }
 
     /// <summary>
     /// After evaluating tick <paramref name="tick"/>: true when the ticks up to it (or up to the one before, whose draws
-    /// are done) were slow three times running; the count then starts again after this tick.
+    /// are done) were slow three times running, with those three ticks' figures (<paramref name="marks"/>); the count then
+    /// starts again after this tick.
     /// </summary>
-    public bool TakeSuspension(long tick)
+    public bool TakeSuspension(long tick, out SlowMark[] marks)
     {
         lock (_watch)
         {
+            marks = [];
             if (_slowRun < 3 || _slowTick < tick - 1) return false;
             _slowRun = 0;
             _slowTick = Math.Max(_slowTick, tick);
+            marks = _marks.ToArray();
+            _marks.Clear();
             return true;
         }
     }

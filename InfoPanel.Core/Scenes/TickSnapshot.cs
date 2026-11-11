@@ -333,6 +333,7 @@ public sealed class TickSnapshot : IDisposable
                     var panelCount = SceneDrawer.Panel?.Save() ?? 0;
                     canvas.Concat(in s.World);
                     SceneDrawer.Panel?.Concat(in s.World);
+                    var watch = s.Runtime is not null ? WatchSpan.Start(_drawTime) : default;
                     var start = _drawTime.GetTimestamp();
                     if (s.Nodes is { } nodes) SceneDrawer.Draw(canvas, nodes);
                     else Placeholders.DrawItem(canvas, s.PlaceholderBox);
@@ -345,13 +346,35 @@ public sealed class TickSnapshot : IDisposable
                         // Counted per canvas pixel: a frame drawn at a scale above 1 has scale² times the pixels, so its
                         // time is divided by that; at 1 or smaller it counts whole (spec/docs/limits.md).
                         var area = (double)scale * scale;
-                        var ms = _drawTime.GetElapsedTime(start).TotalMilliseconds / (area > 1 ? area : 1);
-                        if (ms > _drawBudgetMs) rt.MarkSlow(Tick);
+                        var wall = _drawTime.GetElapsedTime(start).TotalMilliseconds;
+                        var ms = wall / (area > 1 ? area : 1);
+                        if (ms > _drawBudgetMs)
+                        {
+                            // The figures first: naming the drawer walks the stack, which no figure may include.
+                            var mark = watch.Slow(Tick, "draw", wall, scale);
+                            rt.MarkSlow(mark with { Drawer = Drawer(_drawTime) });
+                        }
                     }
                     break;
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Who draws, for a slow draw's figures only: <c>loop</c> (a render loop's frame), <c>thumbnail</c>, or <c>other</c>
+    /// (a test, the preview checks), read off the calling stack.
+    /// </summary>
+    private static string Drawer(TimeProvider time)
+    {
+        if ((time as IThreadTime)?.Drawer() is { } given) return given;
+        foreach (var frame in new StackTrace(1, false).GetFrames())
+            for (var type = frame.GetMethod()?.DeclaringType; type is not null; type = type.DeclaringType)
+            {
+                if (type == typeof(Output.Thumbnail)) return "thumbnail";
+                if (type == typeof(Output.RenderLoop)) return "loop";
+            }
+        return "other";
     }
 
     // ---- bounds ------------------------------------------------------------------------------------------------

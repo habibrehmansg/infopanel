@@ -300,6 +300,7 @@ public sealed class SceneRuntime : IDisposable
                     rt.Suspended = false;
                     var diag = new ItemDiagnostics(d.Id);
                     var inputs = Inputs(scene, d, readings, histories);
+                    var watch = advance ? WatchSpan.Start(_options.DrawTime) : default;
                     var start = Stopwatch.GetTimestamp();
                     try
                     {
@@ -319,7 +320,7 @@ public sealed class SceneRuntime : IDisposable
                         snap.Problem = "invalid";
                         diag.Add("runtime.error", e.Message);
                     }
-                    if (advance) Watchdog(rt, tick, Stopwatch.GetElapsedTime(start).TotalMilliseconds, nowTicks);
+                    if (advance) Watchdog(rt, tick, Stopwatch.GetElapsedTime(start).TotalMilliseconds, watch, nowTicks);
                     if (snap.Problem is null && diag.Media is { } media) snap.Media = new ItemMedia { Code = media.Code, Message = media.Message };
                     diagnostics.AddRange(diag.Items);
                     return snap;
@@ -349,16 +350,22 @@ public sealed class SceneRuntime : IDisposable
 
     /// <summary>
     /// The watchdog (spec/docs/limits.md): a tick is slow when the item's evaluation or its slowest draw of that tick
-    /// took longer than the budget; three slow ticks running suspend it.
+    /// took longer than the budget; three slow ticks running suspend it. The warning gives the three ticks' figures
+    /// (<see cref="SlowMark"/>), never the document's text.
     /// </summary>
-    private void Watchdog(ItemRuntime rt, long tick, double ms, long now)
+    private void Watchdog(ItemRuntime rt, long tick, double ms, WatchSpan watch, long now)
     {
-        if (ms > _options.ItemBudgetMs) rt.MarkSlow(tick);
-        if (rt.TakeSuspension(tick))
+        if (ms > _options.ItemBudgetMs) rt.MarkSlow(watch.Slow(tick, "evaluate", ms));
+        if (rt.TakeSuspension(tick, out var marks))
         {
             rt.Suspended = true;
             rt.SuspendedAt = now;
-            _log.Warning("Item {Id} is suspended for {Seconds} s: it took too long to evaluate or draw", rt.Id, _options.SuspendFor.TotalSeconds);
+            _log.Warning("Item {Id} is suspended for {Seconds} s: it took too long to evaluate or draw; its slow ticks: {@SlowTicks}",
+                rt.Id, _options.SuspendFor.TotalSeconds, marks.Select(m => new
+                {
+                    m.Tick, m.Stage, WallMs = Math.Round(m.WallMs, 2), ThreadMs = m.ThreadMs is { } t ? Math.Round(t, 2) : (double?)null,
+                    GcPauseMs = Math.Round(m.GcPauseMs, 2), m.Gen0, m.Gen1, m.Gen2, m.Scale, m.Drawer, m.Qos,
+                }).ToArray());
         }
     }
 
