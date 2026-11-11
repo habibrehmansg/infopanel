@@ -23,7 +23,11 @@ namespace InfoPanel.Desktop;
 /// putting the window on the display it ended on (<see cref="DisplayMatcher.Promote"/>: that display becomes
 /// <c>display</c>, the previous one goes first in <c>spots</c>): one per finished drag (the display holding the window's
 /// top-left), one per resize after <see cref="ResizeQuiet"/> without changes (<c>width</c>, <c>height</c>, and the
-/// display holding the window's top-left at the resize's last change, with <c>window.x</c>/<c>y</c> relative to it).</item>
+/// display holding the window's top-left at the resize's last change, with <c>window.x</c>/<c>y</c> relative to it).
+/// Only the user's: never a frame left on no display, and never the system moving a window while the displays change
+/// (a pending resize dropped, a same-size "resize" ignored, and a release where it left the window no drag, for
+/// <see cref="DisplaySettle"/>); then the window goes back
+/// to its places, hidden while none of them is connected (strict).</item>
 /// <item>Every window is drawn at the engine's frame rate setting (<see cref="SettingsStore"/>); a change re-times every
 /// window's render loop at once, without reattaching it.</item>
 /// <item>All its state lives on the platform's UI thread: every event is posted there (<see cref="IDesktopPlatform.Post"/>).</item>
@@ -43,6 +47,13 @@ public sealed class DisplayWindowManager(
     /// <summary>How long a window's size must stay unchanged before a resize becomes an edit (1.x: 300 ms).</summary>
     public static readonly TimeSpan ResizeQuiet = TimeSpan.FromMilliseconds(300);
 
+    /// <summary>
+    /// How long after the platform last said the displays changed they are taken as still changing (the system moving
+    /// windows off and onto them; Windows' platform says it once more after a second). Then every window is placed
+    /// again by its profile.
+    /// </summary>
+    public static readonly TimeSpan DisplaySettle = TimeSpan.FromSeconds(2);
+
     /// <summary>How many times a drag's or resize's commit is tried, read again after each conflict.</summary>
     internal const int CommitAttempts = 3;
 
@@ -58,6 +69,9 @@ public sealed class DisplayWindowManager(
     private readonly string _gestureClient = Guid.NewGuid().ToString("N");
     private int _gestures;
     private IReadOnlyList<DisplayInfo>? _displays;
+    /// <summary>Until when the displays are taken as still changing, and the timer that places every window again then (UI thread).</summary>
+    private DateTimeOffset _settleUntil = DateTimeOffset.MinValue;
+    private ITimer? _settleTimer;
     /// <summary>The frame rate the windows' loops were last told of (UI thread).</summary>
     private int _frameRate;
     private bool _running;
@@ -112,6 +126,7 @@ public sealed class DisplayWindowManager(
             try
             {
                 _stopped = true;
+                _settleTimer?.Dispose();
                 foreach (var id in _windows.Keys.ToList())
                     CloseWindow(id);
                 foreach (var (_, doc) in _documents)
@@ -167,27 +182,53 @@ public sealed class DisplayWindowManager(
     private void OnProfilesChanged(object? sender, ProfilesChangedEventArgs e) => platform.Post(SyncProfiles);
 
     /// <summary>
-    /// Raised on the UI thread. A pending resize whose display went away or changed is dropped here, at once: a resize
-    /// commit already posted would otherwise run before the posted <see cref="RematchDisplays"/> and make that display
-    /// the window's place.
+    /// Raised on the UI thread. When the displays listed differ from those the windows were last placed by, every pending
+    /// resize is dropped here, at once: the system moves windows as displays come and go, and macOS reports such a move
+    /// as a resize, which can't be told from the user's; a resize commit already posted would otherwise run before the
+    /// posted <see cref="RematchDisplays"/> and make a display the window's place. The displays are then taken as still
+    /// changing for <see cref="DisplaySettle"/>, after which every window is placed again by its profile (the system may
+    /// have moved one after <see cref="RematchDisplays"/>, saying nothing). Said with the same displays listed (Windows
+    /// says it once more a second after a change), it is a refresh: the windows are matched again, nothing dropped.
     /// </summary>
     private void OnDisplaysChanged()
     {
-        if (!_stopped && _windows.Values.Any(e => e.ResizePending))
-            DropResizesOff(platform.GetDisplays());
+        if (!_stopped && (_displays is not { } placed || !placed.SequenceEqual(platform.GetDisplays())))
+        {
+            foreach (var entry in _windows.Values.Where(e => e.ResizePending))
+                DropResize(entry);
+            _settleUntil = time.GetUtcNow() + DisplaySettle;
+            _settleTimer?.Dispose();
+            _settleTimer = time.CreateTimer(_ => platform.Post(() =>
+            {
+                if (!_stopped)
+                    RematchDisplays();
+            }), null, DisplaySettle, Timeout.InfiniteTimeSpan);
+        }
+
         platform.Post(RematchDisplays);
     }
+
+    /// <summary>
+    /// UI thread: the displays are still changing: the platform said so less than <see cref="DisplaySettle"/> ago, or
+    /// already lists others than the windows were last placed by (it hasn't said so yet).
+    /// </summary>
+    private bool DisplaysSettling(IReadOnlyList<DisplayInfo> displays) =>
+        time.GetUtcNow() < _settleUntil || _displays is { } placed && !placed.SequenceEqual(displays);
 
     /// <summary>UI thread: ends, with no edit, each pending resize whose display isn't among <paramref name="displays"/> as it was.</summary>
     private void DropResizesOff(IReadOnlyList<DisplayInfo> displays)
     {
         foreach (var entry in _windows.Values.Where(e => e.ResizePending && e.ResizeDisplay is { } d && !displays.Contains(d)))
-        {
-            entry.ResizeTimer?.Dispose();
-            entry.ResizeTimer = null;
-            entry.ResizePending = false;
-            entry.ResizeGeneration++;
-        }
+            DropResize(entry);
+    }
+
+    /// <summary>Ends the window's pending resize with no edit, its commit, posted or not, included.</summary>
+    private static void DropResize(WindowEntry entry)
+    {
+        entry.ResizeTimer?.Dispose();
+        entry.ResizeTimer = null;
+        entry.ResizePending = false;
+        entry.ResizeGeneration++;
     }
 
     private void OnDocumentChanged(object? sender, DocumentChangedEventArgs e)
@@ -368,6 +409,7 @@ public sealed class DisplayWindowManager(
         }
 
         entry.Settled = window.Frame;
+        entry.Relocated = null;
         window.SetVisible(true);
     }
 
@@ -380,8 +422,10 @@ public sealed class DisplayWindowManager(
 
     /// <summary>
     /// The mouse button is up after a press on the window. Moved, the display holding the window's top-left becomes
-    /// the target, the position relative to it. A click, the end of a resize, or a press during which a display went
-    /// away or changed, is no move.
+    /// the target, the position relative to it. A click, the end of a resize, a press during which a display went
+    /// away or changed, a frame left on no display (<see cref="DisplayMatcher.Holding"/>), or the window still where the
+    /// system moved it while the displays settled (<see cref="WindowEntry.Relocated"/>), is no move; a resize still
+    /// pending then is committed at its own last frame.
     /// </summary>
     private void OnUserMoved(WindowEntry entry)
     {
@@ -391,12 +435,15 @@ public sealed class DisplayWindowManager(
         var frame = entry.Window.Frame;
         var displaysChanged = entry.DisplaysChanged;
         entry.DisplaysChanged = false;
+        // Still where the system moved it (OnUserResized ignored that): the release is no drag.
+        var relocated = entry.Relocated == frame;
+        entry.Relocated = null;
 
         // A drag released before the resize ahead of it is quiet: the resize is its own edit first, at its last frame.
         if (entry.ResizePending && entry.ResizeFrame != frame)
             EditResize(entry);
 
-        if (!displaysChanged && !entry.ResizePending && entry.Settled != frame && DisplayMatcher.At(platform.GetDisplays(), frame.X, frame.Y) is { } display)
+        if (!displaysChanged && !relocated && !entry.ResizePending && entry.Settled != frame && DisplayMatcher.Holding(platform.GetDisplays(), frame) is { } display)
         {
             var (x, y) = DisplayMatcher.Position(display, frame);
             Edit(entry, x, y, null, display);
@@ -406,15 +453,33 @@ public sealed class DisplayWindowManager(
         Reconcile(entry.ProfileId);
     }
 
+    /// <summary>
+    /// The window's frame changed under the user's resize, or so the platform says: while the displays are still
+    /// changing (<see cref="DisplaysSettling"/>), a change that keeps the window's size (its pending resize's last one, or
+    /// where it was placed) is the system moving it (macOS reports that as a resize) and is no edit, nor is the release
+    /// that finds the window still there (<see cref="WindowEntry.Relocated"/>); the window is placed again once they
+    /// settle, or when the pending resize commits, at the user's frame. A resize that leaves the frame on
+    /// no display (<see cref="DisplayMatcher.Holding"/>) commits nothing and puts the window back.
+    /// </summary>
     private void OnUserResized(WindowEntry entry)
     {
         if (entry.Closed || _stopped)
             return;
 
+        var frame = entry.Window.Frame;
+        var displays = platform.GetDisplays();
+        var last = entry.ResizePending ? entry.ResizeFrame : entry.Settled;
+        if (last is { } before && DisplayMatcher.SameSize(before, frame) && DisplaysSettling(displays))
+        {
+            entry.Relocated = frame;
+            return;
+        }
+
+        entry.Relocated = null;
         entry.ResizePending = true;
-        entry.ResizeFrame = entry.Window.Frame;
+        entry.ResizeFrame = frame;
         entry.ResizeScale = entry.Window.BackingScale;
-        entry.ResizeDisplay = DisplayMatcher.At(platform.GetDisplays(), entry.ResizeFrame.X, entry.ResizeFrame.Y);
+        entry.ResizeDisplay = DisplayMatcher.Holding(displays, frame);
         var generation = ++entry.ResizeGeneration;
         entry.ResizeTimer?.Dispose();
         entry.ResizeTimer = time.CreateTimer(_ => platform.Post(() => CommitResize(entry, generation)), null, ResizeQuiet, Timeout.InfiniteTimeSpan);
@@ -557,6 +622,12 @@ public sealed class DisplayWindowManager(
 
         /// <summary>Where the window was last placed or its resize committed: a release there is no move.</summary>
         public PointRect? Settled { get; set; }
+
+        /// <summary>
+        /// The frame the system last moved the window to while the displays settled, reported as a resize and ignored
+        /// (<see cref="OnUserResized"/>), until the window is placed again or the button is up: a release there is no move.
+        /// </summary>
+        public PointRect? Relocated { get; set; }
 
         public bool ResizePending { get; set; }
 

@@ -163,6 +163,18 @@ public static class DisplayMatcher
         ?? displays.OrderBy(d => d.Frame.DistanceSquared(x, y)).FirstOrDefault();
 
     /// <summary>
+    /// The display a drag or resize that leaves the window at <paramref name="frame"/> ends on (<see cref="At"/> its
+    /// top-left); null when the frame lies on no display at all, which no drag of the user's leaves (the pointer holding
+    /// it is on one) but the system can, moving a window whose display went away.
+    /// </summary>
+    public static DisplayInfo? Holding(IReadOnlyList<DisplayInfo> displays, PointRect frame) =>
+        displays.Any(d => Overlap(d.Frame, frame)) ? At(displays, frame.X, frame.Y) : null;
+
+    /// <summary>True when the two rectangles share some area.</summary>
+    private static bool Overlap(PointRect a, PointRect b) =>
+        a.X < b.X + b.Width && b.X < a.X + a.Width && a.Y < b.Y + b.Height && b.Y < a.Y + a.Height;
+
+    /// <summary>
     /// The window's frame in desktop points: its top-left <paramref name="windowX"/>, <paramref name="windowY"/>
     /// pixels from <paramref name="display"/>'s top-left (pixels of that display), its size
     /// <paramref name="width"/> × <paramref name="height"/> pixels at <paramref name="sizeScale"/> (the backing scale
@@ -221,5 +233,9 @@ public static class DisplayMatcher
 
     /// <summary>True when two frames are the same to within a thousandth of a point.</summary>
     public static bool SameFrame(PointRect a, PointRect b) =>
-        Math.Abs(a.X - b.X) < 1e-3 && Math.Abs(a.Y - b.Y) < 1e-3 && Math.Abs(a.Width - b.Width) < 1e-3 && Math.Abs(a.Height - b.Height) < 1e-3;
+        Math.Abs(a.X - b.X) < 1e-3 && Math.Abs(a.Y - b.Y) < 1e-3 && SameSize(a, b);
+
+    /// <summary>True when two frames are the same size to within a thousandth of a point, wherever they are.</summary>
+    public static bool SameSize(PointRect a, PointRect b) =>
+        Math.Abs(a.Width - b.Width) < 1e-3 && Math.Abs(a.Height - b.Height) < 1e-3;
 }
