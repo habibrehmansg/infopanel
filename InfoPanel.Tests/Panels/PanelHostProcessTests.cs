@@ -231,6 +231,9 @@ public sealed class PanelHostProcessTests : IAsyncDisposable
         _launcher.Crash(); // the host process dies
 
         await Until(() => _launcher.Starts == 2, "the host was never started again");
+        // The panel's session on the dead host reads "running" until its runner's next write finds the host gone; only a
+        // second session's start means the panel was started again on the new host.
+        await Until(() => _launcher.Sessions == 2, "the virtual panel was never started again on the new host");
         await Until(VirtualId, s => s.State == "running" && _launcher.Running == 1, "the virtual panel never ran on the new host");
         Assert.Equal(2, _launcher.Sessions);
         var bead = await Until(BeadaId, s => s.State == "running", "the BeadaPanel stopped");
