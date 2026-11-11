@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The virtual panel package: a test fixture, never shipped (the packaging scripts leave it out). A panel package as a
+       family's would be: InfoPanel.Panels.Virtual.dll with its panel.json, run in a panel host. Its driver drives no
+       device: it takes the virtual USB device 1209:0001 (a spare engine lists one with Engine:VirtualPanels) and keeps
+       what it is sent, as virtual-mode.txt beside it asks. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>InfoPanel.Panels.Virtual</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The engine's panel SDK, not copied: the host gives the package its own. -->
+    <ProjectReference Include="..\InfoPanel.Panels.Sdk\InfoPanel.Panels.Sdk.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="panel.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

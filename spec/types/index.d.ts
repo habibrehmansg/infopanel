@@ -1756,6 +1756,75 @@ export interface DeviceList {
   version: number;
   /** The saved panels. */
   devices: DeviceEntry[];
+  /** Every panel family the engine knows this run: its built-in families, then those its panel packages declare (bundled ones first, then those in its data folder's `plugins/`, each in folder-name order), whether their package is on, off or failed; empty when `supported` is false. Absent from an engine without panel packages: a client then knows only the families it knows itself. */
+  families?: DeviceFamily[];
+}
+
+/** A panel family the engine knows (docs/api.md#panel-families): built in, or declared by a panel package's panel.json. */
+export interface DeviceFamily {
+  /**
+   * The family's id, as deviceEntry.family and createDeviceRequest.family name it: a lower-case letter, then at most 31 letters and digits.
+   * Pattern: `^[a-z][a-z0-9]{0,31}$`.
+   */
+  id: string;
+  /**
+   * Its name for people: a built-in family's is the engine's English (a client words the families it knows itself), a package's is its panel.json's.
+   * Length: 1–64.
+   */
+  name: string;
+  /**
+   * `builtIn`, or the folder name of the panel package that declares it (`InfoPanel.{Name}`).
+   * Length: 1–128.
+   */
+  driver: string;
+  /** `ready` (built in, or its package is on: its host runs while a panel of it is plugged in), `off` (its package is turned off: its panels are `off` with the `driver` reason) or `failed` (its package can't run, `reason` says why: its panels are `failed` with the `driver` reason). A client treats a state it doesn't know as `failed`. */
+  state: "ready" | "off" | "failed";
+  /** Why it is `failed`, else null: `code` (`gaveUp`: its package's host kept ending and was restarted as often as the engine restarts one, three times in a minute; `sdk`: its package is built for a panel SDK this engine doesn't have; the codes are open) and `message`. */
+  reason: DeviceReason | null;
+  /**
+   * Its models, as its package declares them (a built-in family's, the engine's), at most 512.
+   * Items: ≤ 512.
+   */
+  models: DeviceFamilyModel[];
+  /**
+   * The settings its panels honour, as deviceEntry.supports names them.
+   * Unique items.
+   */
+  supports: string[];
+  /**
+   * How its panels are reached, each once: `usb` (USB transfers), `serial` (a USB serial port) or `hid` (HID reports).
+   * Unique items.
+   */
+  transports: ("usb" | "serial" | "hid")[];
+}
+
+/** A model of a panel family. */
+export interface DeviceFamilyModel {
+  /**
+   * Its id within the family, as deviceModel.id names it.
+   * Length: 1–64.
+   */
+  id: string;
+  /**
+   * Its name for people from its package's panel.json; null for a built-in family's (a client words those).
+   * Length: 1–64.
+   */
+  name: string | null;
+  /**
+   * Its width in pixels, as it is mounted at rotation 0.
+   * Range: 1–16384.
+   */
+  width: number;
+  /**
+   * Its height in pixels, as it is mounted at rotation 0.
+   * Range: 1–16384.
+   */
+  height: number;
+  /**
+   * The model's name in InfoPanel 1.x, which a client bringing 1.x devices over maps by; null when it had none.
+   * Length: 1–64.
+   */
+  v1Model: string | null;
 }
 
 /** One saved USB panel (docs/api.md#devices): what it is, its state now, its settings and those its family honours. */
@@ -1774,9 +1843,9 @@ export interface DeviceEntry {
   model: DeviceModel | null;
   /** Whether it is plugged in and identified now. */
   connected: boolean;
-  /** `notConnected` (not plugged in), `off` (plugged in, and turned off, without a profile, or its profile can't be shown), `starting` (its session is starting, or waiting until the panel takes one: `reason` says why), `running` (it shows its profile) or `failed` (its session failed: `reason` says why; it is tried again every second). A client treats a state it doesn't know as `failed`. */
+  /** `notConnected` (not plugged in), `off` (plugged in, and turned off, without a profile, or its profile can't be shown; or, with the `driver` reason, its family's panel package is turned off), `starting` (its session is starting, or waiting until the panel takes one: `reason` says why), `running` (it shows its profile) or `failed` (its session failed: `reason` says why; it is tried again every second; with the `driver` reason, its family's driver failed or none is installed). A client treats a state it doesn't know as `failed`. */
   state: "notConnected" | "off" | "starting" | "running" | "failed";
-  /** Why it is `failed` or `starting` and waiting, or null. */
+  /** Why it is `failed`, `starting` and waiting, or `off` because its driver is, or null. */
   reason: DeviceReason | null;
   settings: DeviceSettings;
   /**
@@ -1789,6 +1858,21 @@ export interface DeviceEntry {
   details: DeviceDetails;
   /** The 1.x device it was saved from, as the save gave it (createDeviceRequest.v1); absent when it has none. */
   v1?: V1DeviceIdentity;
+  /**
+   * Its family's driver, as deviceFamily.driver names it: `builtIn`, or the panel package's folder name; absent when no driver the engine knows declares its family.
+   * Length: 1–128.
+   */
+  driver?: string;
+  /**
+   * Its family's name from its panel package's panel.json; absent for a built-in family (a client words those). A client shows it for a family it doesn't know.
+   * Length: 1–64.
+   */
+  familyName?: string;
+  /**
+   * Its model's name from its panel package's panel.json; absent for a built-in family, or a model the package doesn't declare. A client shows it for a family it doesn't know.
+   * Length: 1–64.
+   */
+  modelName?: string;
 }
 
 /** A panel's model. */
@@ -1813,7 +1897,7 @@ export interface DeviceModel {
 /** Why a panel is `failed`, or `starting` and waiting (docs/api.md#devices). */
 export interface DeviceReason {
   /**
-   * The reason for programs, an open code: `busy` (another program holds the panel), `access` (the system won't let the engine use it), `notSupported` (its driver can't do what the engine asks), `timeout` (it stopped answering), `io` (any other failure of a transfer) or `settling` (the panel takes no new session for a while after a JPEG one ended; it starts once it does). A client words the codes it knows and shows `message` for one it doesn't.
+   * The reason for programs, an open code: `busy` (another program holds the panel), `access` (the system won't let the engine use it), `notSupported` (its driver can't do what the engine asks), `timeout` (it stopped answering), `io` (any other failure of a transfer), `settling` (the panel takes no new session for a while after a JPEG one ended; it starts once it does) or `driver` (its family's driver is off, failed or not installed, or its host ended; for a family, as deviceFamily.reason gives them: `gaveUp`, `sdk`). A client words the codes it knows and shows `message` for one it doesn't.
    * Pattern: `^[a-z][A-Za-z0-9]{0,63}$`.
    */
   code: string;
@@ -1888,12 +1972,12 @@ export interface DeviceSettingsChange {
 /** POST /api/devices: a panel to save that need not be plugged in, such as one a client brings over from another program (docs/api.md#saving-a-device). A saved panel with the same 1.x device id, or the same family and serial: 409 existsProblem with its id. Answered 201 with its deviceEntry. */
 export interface CreateDeviceRequest {
   /**
-   * The kind of panel, as deviceEntry.family names it: `beadapanel`. A family the engine doesn't drive is refused (`device.family`).
+   * The kind of panel, as deviceEntry.family names it: `beadapanel`, or one of deviceList.families (whether its package is on, off or failed). A family the engine doesn't know is refused (`device.family`).
    * Length: 1–64.
    */
   family: string;
   /**
-   * Its model's id within the family, as deviceModel.id names it ("6C"). A model the family doesn't have is refused (`device.model`).
+   * Its model's id within the family, as deviceModel.id names it ("6C"), one of its deviceFamily.models. A model the family doesn't have is refused (`device.model`).
    * Length: 1–64.
    */
   model: string;
@@ -2008,7 +2092,7 @@ export interface SettingsMessage {
   version: number;
 }
 
-/** The USB panel devices' list changed (GET /api/devices): a panel found, plugged in or out, its state or settings changed, or forgotten, by any client; a change of the running panels' stats alone at most once a second. Sent to every socket, and after `hello` when the list has changed in this run. The client reads GET /api/devices. The engine keeps only the newest to send. */
+/** The USB panel devices' list changed (GET /api/devices): a panel found, plugged in or out, its state or settings changed, or forgotten, by any client; a family's state or reason changed; a change of the running panels' stats alone at most once a second. Sent to every socket, and after `hello` when the list has changed in this run. The client reads GET /api/devices. The engine keeps only the newest to send. */
 export interface DevicesMessage {
   type: "devices";
   /**
@@ -4984,7 +5068,7 @@ export interface ApiOperations {
     };
   };
   /**
-   * listDevices: The USB panels the engine has saved, in the order it first saw them, with their state, settings and the list's version (the devices feature).
+   * listDevices: The USB panels the engine has saved, in the order it first saw them, with their state, settings and the list's version, and the panel families it knows (the devices feature).
    *
    * docs/api.md#devices.
    */
@@ -5017,7 +5101,7 @@ export interface ApiOperations {
       403: ScopeProblem;
       /** A saved panel has the 1.x device id (ignoring case), or the family and serial, the save names (existsProblem, with the saved panel's id); or the engine drives no panels this run, couldn't read its devices file when it started, or couldn't write it (problem). Nothing was saved. */
       409: ExistsProblem | Problem;
-      /** The body breaks its definition or `requestBytes`, or names a family the engine doesn't drive (`device.family` at /family), a model the family doesn't have (`device.model` at /model) or a setting the family doesn't honour (`device.setting` at /settings/{name}); nothing was saved. */
+      /** The body breaks its definition or `requestBytes`, or names a family the engine doesn't know, built in or a panel package's (`device.family` at /family), a model the family doesn't have (`device.model` at /model) or a setting the family doesn't honour (`device.setting` at /settings/{name}); nothing was saved. */
       422: InvalidProblem;
     };
   };

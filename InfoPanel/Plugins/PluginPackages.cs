@@ -32,7 +32,8 @@ public static partial class PluginPackages
     /// The packages in <paramref name="bundled"/> (beside the engine; may be null or absent) then in
     /// <paramref name="installed"/> (the data folder's <c>plugins/</c>, listed through <see cref="RegularFile"/>, links
     /// never followed), each in name order. A folder whose name isn't <c>InfoPanel.{Name}</c> or that has no
-    /// <c>InfoPanel.{Name}.dll</c> is skipped and logged; an installed package with a bundled one's name (ignoring case)
+    /// <c>InfoPanel.{Name}.dll</c> is skipped and logged, and a panel package (with a <c>panel.json</c>) is left to the
+    /// panel hosts; an installed package with a bundled one's name (ignoring case)
     /// is skipped too: the bundled one wins. A package that can't be read, or a folder that can't be listed, is skipped
     /// and logged: the others still start.
     /// </summary>
@@ -99,6 +100,10 @@ public static partial class PluginPackages
     {
         // Install leftovers and hidden folders aren't packages, and aren't worth a warning.
         if (dir.Name.StartsWith('.'))
+            return null;
+        // A panel package (its panel.json) is the panel hosts', never a sensor plugin host's (InfoPanel.Panels.PanelPackages);
+        // checked before the name, which may be dotted (InfoPanel.Panels.{Name}).
+        if (InfoPanel.Panels.PanelPackages.HasManifest(dir.FullName))
             return null;
         if (!IsPackageName(dir.Name))
         {

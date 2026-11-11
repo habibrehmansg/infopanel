@@ -19,6 +19,7 @@
 - [Building and Deployment](#building-and-deployment)
 - [Debugging](#debugging)
 - [Best Practices](#best-practices)
+- [Panel Drivers](#panel-drivers) (2.0, .NET 10)
 
 ## Introduction
 
@@ -585,3 +586,27 @@ dotnet run --project InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csp
 For questions or help with plugin development, join the [InfoPanel Discord][discord] community.
 
 [discord]: https://discord.gg/aNGeJxjE7Q
+
+## Panel Drivers
+
+InfoPanel 2.0 drives USB panels through **panel drivers**, a kind of plugin of their own: everything above is about sensor plugins (.NET 8). A panel driver targets **.NET 10**, the engine's runtime, and references `InfoPanel.Panels.Sdk` (in this repository). One project can't be both, and a package holds one or the other. What the engine does with a driver: [docs/2.0/panels.md](docs/2.0/panels.md); how it finds, runs and bounds a panel package: [docs/2.0/plugins.md](docs/2.0/plugins.md#panel-packages).
+
+A driver is two small interfaces:
+
+- `IPanelDriver`: its `Family` id, the USB devices it `Matches` (vendor and product ids, with a transport), a `Probe` that tells one of its own panels (it may open the device and ask it, never draws) and answers its identity (model, size, serial, firmware), and `Open`, which runs the start sequence and answers an `IPanelSession`.
+- `IPanelSession`: its `Capabilities` (size, pixel formats in order of preference, the most frames a second, a JPEG cap and quality, brightness range), `WriteFrame` (one frame, answering the time the transfer alone took: the engine paces the panel by it), `SetBrightness`, and `Close`, which turns the screen off within the budget it is given.
+
+The engine renders, turns, encodes and paces every frame, keeps each panel's settings and serves the API: a driver only talks to its device, and never retries (a failed call ends the session; the engine opens it again a second later). A driver has a public constructor that takes nothing.
+
+### The package
+
+A panel package is a folder `InfoPanel.{Name}` with `InfoPanel.{Name}.dll` (the driver, built with the SDK referenced but not copied: `<ProjectReference … Private="false" />`) and a `panel.json` beside it:
+
+```json
+{ "format": "infopanel.panel-package/1", "sdk": "1.0",
+  "families": [{ "id": "virtual", "name": "Virtual panel",
+    "match": [{ "usb": "1209:0001" }],
+    "models": [{ "id": "480x320", "name": "Virtual panel 480 × 320", "width": 480, "height": 320 }] }] }
+```
+
+The engine reads `panel.json` when it starts, so a family is known before its driver runs; `sdk` is the panel SDK version the package was built for (the engine runs its own major and a minor no higher), and a family id is unique across every package. Each package runs in a panel host, a process of its own (`InfoPanel --panel-host`), started when one of its devices is plugged in: a driver that crashes takes down only its own panels, and is started again. `InfoPanel.Panels.Virtual` in this repository is a complete package (a virtual panel with no device behind it, for tests), and its `panel.json` the shape to copy. Copy a package into the data folder's `plugins/` and start the engine again.

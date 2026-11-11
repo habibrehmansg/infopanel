@@ -1895,7 +1895,50 @@
           "oneOf": [{ "description": "A client treats a reason it doesn't know as `library`.", "enum": ["off", "library", "store"] }, { "type": "null" }]
         },
         "version": { "description": "How many times the list has changed in this run of the engine (the `devices` message's): 0 when it starts, greater for a later change. A change of the running panels' `stats` alone counts at most once a second.", "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-        "devices": { "description": "The saved panels.", "type": "array", "items": { "$ref": "#/$defs/deviceEntry" } }
+        "devices": { "description": "The saved panels.", "type": "array", "items": { "$ref": "#/$defs/deviceEntry" } },
+        "families": { "description": "Every panel family the engine knows this run: its built-in families, then those its panel packages declare (bundled ones first, then those in its data folder's `plugins/`, each in folder-name order), whether their package is on, off or failed; empty when `supported` is false. Absent from an engine without panel packages: a client then knows only the families it knows itself.", "type": "array", "items": { "$ref": "#/$defs/deviceFamily" } }
+      }
+    },
+    "deviceFamily": {
+      "description": "A panel family the engine knows (docs/api.md#panel-families): built in, or declared by a panel package's panel.json.",
+      "type": "object",
+      "required": ["id", "name", "driver", "state", "reason", "models", "supports", "transports"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "description": "The family's id, as deviceEntry.family and createDeviceRequest.family name it: a lower-case letter, then at most 31 letters and digits.", "type": "string", "pattern": "^[a-z][a-z0-9]{0,31}$" },
+        "name": { "description": "Its name for people: a built-in family's is the engine's English (a client words the families it knows itself), a package's is its panel.json's.", "type": "string", "minLength": 1, "maxLength": 64 },
+        "driver": { "description": "`builtIn`, or the folder name of the panel package that declares it (`InfoPanel.{Name}`).", "type": "string", "minLength": 1, "maxLength": 128 },
+        "state": {
+          "description": "`ready` (built in, or its package is on: its host runs while a panel of it is plugged in), `off` (its package is turned off: its panels are `off` with the `driver` reason) or `failed` (its package can't run, `reason` says why: its panels are `failed` with the `driver` reason). A client treats a state it doesn't know as `failed`.",
+          "enum": ["ready", "off", "failed"]
+        },
+        "reason": { "description": "Why it is `failed`, else null: `code` (`gaveUp`: its package's host kept ending and was restarted as often as the engine restarts one, three times in a minute; `sdk`: its package is built for a panel SDK this engine doesn't have; the codes are open) and `message`.", "oneOf": [{ "$ref": "#/$defs/deviceReason" }, { "type": "null" }] },
+        "models": { "description": "Its models, as its package declares them (a built-in family's, the engine's), at most 512.", "type": "array", "maxItems": 512, "items": { "$ref": "#/$defs/deviceFamilyModel" } },
+        "supports": {
+          "description": "The settings its panels honour, as deviceEntry.supports names them.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "uniqueItems": true
+        },
+        "transports": {
+          "description": "How its panels are reached, each once: `usb` (USB transfers), `serial` (a USB serial port) or `hid` (HID reports).",
+          "type": "array",
+          "items": { "description": "A client treats a transport it doesn't know as `usb`.", "enum": ["usb", "serial", "hid"] },
+          "uniqueItems": true
+        }
+      }
+    },
+    "deviceFamilyModel": {
+      "description": "A model of a panel family.",
+      "type": "object",
+      "required": ["id", "name", "width", "height", "v1Model"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "description": "Its id within the family, as deviceModel.id names it.", "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "description": "Its name for people from its package's panel.json; null for a built-in family's (a client words those).", "type": ["string", "null"], "minLength": 1, "maxLength": 64 },
+        "width": { "description": "Its width in pixels, as it is mounted at rotation 0.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "height": { "description": "Its height in pixels, as it is mounted at rotation 0.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "v1Model": { "description": "The model's name in InfoPanel 1.x, which a client bringing 1.x devices over maps by; null when it had none.", "type": ["string", "null"], "minLength": 1, "maxLength": 64 }
       }
     },
     "deviceEntry": {
@@ -1909,10 +1952,10 @@
         "model": { "description": "Its model, or null before the engine has identified it.", "oneOf": [{ "$ref": "#/$defs/deviceModel" }, { "type": "null" }] },
         "connected": { "description": "Whether it is plugged in and identified now.", "type": "boolean" },
         "state": {
-          "description": "`notConnected` (not plugged in), `off` (plugged in, and turned off, without a profile, or its profile can't be shown), `starting` (its session is starting, or waiting until the panel takes one: `reason` says why), `running` (it shows its profile) or `failed` (its session failed: `reason` says why; it is tried again every second). A client treats a state it doesn't know as `failed`.",
+          "description": "`notConnected` (not plugged in), `off` (plugged in, and turned off, without a profile, or its profile can't be shown; or, with the `driver` reason, its family's panel package is turned off), `starting` (its session is starting, or waiting until the panel takes one: `reason` says why), `running` (it shows its profile) or `failed` (its session failed: `reason` says why; it is tried again every second; with the `driver` reason, its family's driver failed or none is installed). A client treats a state it doesn't know as `failed`.",
           "enum": ["notConnected", "off", "starting", "running", "failed"]
         },
-        "reason": { "description": "Why it is `failed` or `starting` and waiting, or null.", "oneOf": [{ "$ref": "#/$defs/deviceReason" }, { "type": "null" }] },
+        "reason": { "description": "Why it is `failed`, `starting` and waiting, or `off` because its driver is, or null.", "oneOf": [{ "$ref": "#/$defs/deviceReason" }, { "type": "null" }] },
         "settings": { "$ref": "#/$defs/deviceSettings" },
         "supports": {
           "description": "The names of the settings its family honours (a change of any other is refused); `enabled`, `profileId`, `rotation` and `brightness` for a BeadaPanel, none for a family the engine doesn't drive.",
@@ -1922,7 +1965,10 @@
         },
         "stats": { "description": "While it is `running`: its frames a second and the time a frame takes; else null.", "oneOf": [{ "$ref": "#/$defs/deviceStats" }, { "type": "null" }] },
         "details": { "$ref": "#/$defs/deviceDetails" },
-        "v1": { "$ref": "#/$defs/v1DeviceIdentity", "description": "The 1.x device it was saved from, as the save gave it (createDeviceRequest.v1); absent when it has none." }
+        "v1": { "$ref": "#/$defs/v1DeviceIdentity", "description": "The 1.x device it was saved from, as the save gave it (createDeviceRequest.v1); absent when it has none." },
+        "driver": { "description": "Its family's driver, as deviceFamily.driver names it: `builtIn`, or the panel package's folder name; absent when no driver the engine knows declares its family.", "type": "string", "minLength": 1, "maxLength": 128 },
+        "familyName": { "description": "Its family's name from its panel package's panel.json; absent for a built-in family (a client words those). A client shows it for a family it doesn't know.", "type": "string", "minLength": 1, "maxLength": 64 },
+        "modelName": { "description": "Its model's name from its panel package's panel.json; absent for a built-in family, or a model the package doesn't declare. A client shows it for a family it doesn't know.", "type": "string", "minLength": 1, "maxLength": 64 }
       }
     },
     "deviceModel": {
@@ -1943,7 +1989,7 @@
       "additionalProperties": false,
       "properties": {
         "code": {
-          "description": "The reason for programs, an open code: `busy` (another program holds the panel), `access` (the system won't let the engine use it), `notSupported` (its driver can't do what the engine asks), `timeout` (it stopped answering), `io` (any other failure of a transfer) or `settling` (the panel takes no new session for a while after a JPEG one ended; it starts once it does). A client words the codes it knows and shows `message` for one it doesn't.",
+          "description": "The reason for programs, an open code: `busy` (another program holds the panel), `access` (the system won't let the engine use it), `notSupported` (its driver can't do what the engine asks), `timeout` (it stopped answering), `io` (any other failure of a transfer), `settling` (the panel takes no new session for a while after a JPEG one ended; it starts once it does) or `driver` (its family's driver is off, failed or not installed, or its host ended; for a family, as deviceFamily.reason gives them: `gaveUp`, `sdk`). A client words the codes it knows and shows `message` for one it doesn't.",
           "type": "string",
           "pattern": "^[a-z][A-Za-z0-9]{0,63}$"
         },
@@ -2010,8 +2056,8 @@
       "required": ["family", "model", "settings"],
       "additionalProperties": false,
       "properties": {
-        "family": { "description": "The kind of panel, as deviceEntry.family names it: `beadapanel`. A family the engine doesn't drive is refused (`device.family`).", "type": "string", "minLength": 1, "maxLength": 64 },
-        "model": { "description": "Its model's id within the family, as deviceModel.id names it (\"6C\"). A model the family doesn't have is refused (`device.model`).", "type": "string", "minLength": 1, "maxLength": 64 },
+        "family": { "description": "The kind of panel, as deviceEntry.family names it: `beadapanel`, or one of deviceList.families (whether its package is on, off or failed). A family the engine doesn't know is refused (`device.family`).", "type": "string", "minLength": 1, "maxLength": 64 },
+        "model": { "description": "Its model's id within the family, as deviceModel.id names it (\"6C\"), one of its deviceFamily.models. A model the family doesn't have is refused (`device.model`).", "type": "string", "minLength": 1, "maxLength": 64 },
         "serial": { "description": "The serial number the panel reports, letters and digits; absent when it isn't known. A panel without one is matched to the first unknown panel of its model plugged in only when that can't be mistaken (docs/api.md#saving-a-device).", "type": "string", "pattern": "^[A-Za-z0-9]{1,128}$" },
         "v1": { "$ref": "#/$defs/v1DeviceIdentity", "description": "The 1.x device it is brought over from, when it is one: stored with it and answered in its deviceEntry. A saved panel with the same `deviceId` (ignoring case) is 409 existsProblem." },
         "settings": { "$ref": "#/$defs/deviceSettingsChange", "description": "Its settings, as a change gives them; a setting left out takes a new panel's: off, no profile, rotation 0, brightness 100." }
@@ -2146,7 +2192,7 @@
       }
     },
     "devicesMessage": {
-      "description": "The USB panel devices' list changed (GET /api/devices): a panel found, plugged in or out, its state or settings changed, or forgotten, by any client; a change of the running panels' stats alone at most once a second. Sent to every socket, and after `hello` when the list has changed in this run. The client reads GET /api/devices. The engine keeps only the newest to send.",
+      "description": "The USB panel devices' list changed (GET /api/devices): a panel found, plugged in or out, its state or settings changed, or forgotten, by any client; a family's state or reason changed; a change of the running panels' stats alone at most once a second. Sent to every socket, and after `hello` when the list has changed in this run. The client reads GET /api/devices. The engine keeps only the newest to send.",
       "type": "object",
       "required": ["type", "version"],
       "additionalProperties": false,

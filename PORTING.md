@@ -87,7 +87,7 @@ The host runs as a mode of the engine (`--plugin-host`) and the app side's senso
 
 | Commit | What it does |
 |---|---|
-| `48b3684` | Fix: plugin actions are invoked through the current host connection, so the action buttons keep working after the host restarts (`PluginsViewModel`; port the idea with actions: 2.0's hosts restart in `PluginHostRunner`) |
+| `48b3684` | Fix: plugin actions are invoked through the current host connection, so the action buttons keep working after the host restarts (`PluginsViewModel`; port the idea with actions: 2.0's hosts restart in `PluginHostRunner`). Ported for panel hosts: a hosted panel's every call goes through its host's connection as it is then, so after a restart the panel's next session and its writes reach the new host, never the ended one (`InfoPanel.Core/Panels/Hosted/HostedPanelDriver.cs`; pinned by `HostedPanelTests.After_its_host_restarts_the_proxy_goes_through_the_new_connection_never_the_stale_one`) |
 | `1acc815` | Fix: large plugin images (2650x720) starved the window's input under heavy render load. Adds a no-resize fast path for plugin frames in `LockedImage` (port with plugin images); the `DisplayWindow` dispatcher-priority part is WPF only |
 
 ### Guide and image-refresh model fields

@@ -11,8 +11,8 @@ using SkiaSharp;
 
 namespace InfoPanel.Panels;
 
-/// <summary>How a <see cref="PanelRunner"/> ended: stopped when asked, or failed with a status and why.</summary>
-public sealed record PanelRunEnd(bool Failed, UsbStatus Status, string Message, FrameSinkClosedReason? SinkClosed = null);
+/// <summary>How a <see cref="PanelRunner"/> ended: stopped when asked, or failed with a status and why; <c>Code</c>: the reason's code when it isn't the status's (<c>driver</c>: a hosted driver couldn't be reached).</summary>
+public sealed record PanelRunEnd(bool Failed, UsbStatus Status, string Message, FrameSinkClosedReason? SinkClosed = null, string? Code = null);
 
 /// <summary>Timings a <see cref="PanelRunner"/> keeps: the keep-alive (an unchanged frame re-sent) and how often it logs its stats.</summary>
 public sealed record PanelRunnerOptions
@@ -262,6 +262,12 @@ public sealed class PanelRunner
         catch (OperationCanceledException)
         {
             end = new PanelRunEnd(false, UsbStatus.Ok, "stopped");
+        }
+        catch (InfoPanel.Panels.Hosted.PanelDriverException ex)
+        {
+            // Its driver's host ended, or its package is off or failed: the panel's reason is the driver's.
+            _logger.Information("Panel {Panel}: {Why:l}", _label, ex.Message);
+            end = new PanelRunEnd(true, UsbStatus.Io, ex.Message, Code: "driver");
         }
         catch (Exception ex)
         {

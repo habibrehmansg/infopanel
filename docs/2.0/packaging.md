@@ -27,7 +27,10 @@ downloading it; it is refused unless its SHA-256 is the pinned one). It writes:
 
 - `<out>/libusb/`: libusb's build, `libusb-1.0.dylib` and `libusb-COPYING.txt`;
 - `<out>/publish/`: the self-contained `osx-arm64` Release publish (`-p:Version`, `-p:InfoPanelAllowOrigin`, no debug
-  symbols) with `libusb-1.0.dylib` copied into its top level;
+  symbols) with `libusb-1.0.dylib` copied into its top level, and in `plugins/{folder}` every panel driver project
+  (`InfoPanel.Panels.{Family}/` with a `panel.json`, but the virtual panel, a test fixture), each published framework
+  dependent for `osx-arm64`: the engine's bundled panel packages (`build.sh --list-panel-drivers` lists them, and those
+  it leaves out, without building anything). The Windows script publishes the same projects for `win-x64` the same way;
 - `<out>/dmg/InfoPanel.app`: the app;
 - `<out>/InfoPanel-<version>-mac-arm64.dmg`: the disk image (`hdiutil create -format UDZO`, an HFS+ volume named
   "InfoPanel <version>") holding the app, a link to `/Applications`, `LICENSE`, `LICENSES.md` and `libusb-COPYING.txt`;

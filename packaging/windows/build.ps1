@@ -140,6 +140,20 @@ $runtimeInstaller = Get-Pinned $runtimeName $Runtime.Url $DotnetRuntime 'SHA512'
 & dotnet publish (Join-Path $repo 'InfoPanel\InfoPanel.csproj') -c Release -r win-x64 --self-contained true `
   "-p:Version=$Version" "-p:InfoPanelAllowOrigin=$AllowOrigin" -o $publish --nologo
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish exited $LASTEXITCODE." }
+# Every panel driver project, InfoPanel.Panels.{Family}\ with its {folder}.csproj and a panel.json, but the virtual panel
+# (a test fixture, never shipped): published for win-x64 into plugins\{folder} beside the engine, where it finds its
+# bundled panel packages (docs/2.0/plugins.md, Panel packages); the installer takes the publish's folders whole.
+$panelDrivers = Get-ChildItem -LiteralPath $repo -Directory -Filter 'InfoPanel.Panels.*' |
+  Where-Object { $_.Name -ne 'InfoPanel.Panels.Virtual' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'panel.json')) -and (Test-Path -LiteralPath (Join-Path $_.FullName "$($_.Name).csproj")) }
+foreach ($driver in $panelDrivers) {
+  $driverOut = Join-Path $publish "plugins\$($driver.Name)"
+  & dotnet publish (Join-Path $driver.FullName "$($driver.Name).csproj") -c Release -r win-x64 --self-contained false "-p:Version=$Version" -o $driverOut --nologo
+  if ($LASTEXITCODE -ne 0) { throw "dotnet publish of the panel driver $($driver.Name) exited $LASTEXITCODE." }
+  if (-not (Test-Path -LiteralPath (Join-Path $driverOut "$($driver.Name).dll")) -or -not (Test-Path -LiteralPath (Join-Path $driverOut 'panel.json'))) {
+    throw "The panel driver $($driver.Name) published no $($driver.Name).dll and panel.json."
+  }
+  Write-Host "Panel driver: $($driver.Name) -> plugins\$($driver.Name)"
+}
 $libusbFinal = Join-Path $publish 'libusb-1.0.dll'
 Copy-Item -LiteralPath $libusbDll -Destination $libusbFinal
 $libusbCopyingFinal = Join-Path $publish 'libusb-COPYING.txt'

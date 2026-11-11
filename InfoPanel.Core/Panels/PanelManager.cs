@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using InfoPanel.Output;
 using InfoPanel.Panels.BeadaPanel;
+using InfoPanel.Panels.Hosted;
 using InfoPanel.Panels.Sdk;
 using InfoPanel.Panels.Usb;
 using Serilog;
@@ -19,7 +20,7 @@ namespace InfoPanel.Panels;
 /// <c>timeout</c>, <c>io</c>), or <c>settling</c> while a start waits out <see cref="PanelManager.JpegSettle"/>.
 /// </summary>
 public sealed record PanelStatus(SavedPanel Saved, bool Connected, string State, string? Reason, BeadaPanelInfo? Info, double? Fps, double? FrameTimeMs, bool? Jpeg = null,
-    string? ReasonCode = null);
+    string? ReasonCode = null, PanelIdentity? Identity = null);
 
 /// <summary>
 /// What <see cref="PanelManager.SaveAsync"/> did: the panel's state as saved, or, when nothing was saved, the
@@ -109,6 +110,7 @@ public sealed class PanelManager : IAsyncDisposable
     private long _profilesGeneration; // how many times the profiles changed (the manager's thread)
     private long _version; // how many times the list changed this run (written on the manager's thread)
     private IReadOnlyList<PanelStatus> _published; // the list as the version last counted it (the manager's thread)
+    private IReadOnlyList<PanelDriverProblem?> _publishedProblems; // each hosted driver's package problem as the version last counted it
     private long? _statsCountedAt; // when a change of the stats alone was last counted
 
     /// <param name="sinceBoot">
@@ -131,6 +133,7 @@ public sealed class PanelManager : IAsyncDisposable
         _runnerOptions = runnerOptions ?? new PanelRunnerOptions();
         _devices = [.. store.Devices];
         _published = [.. _devices.Select(StatusOf)];
+        _publishedProblems = [.. _drivers.OfType<HostedPanelDriver>().Select(d => d.Link.Problem)];
     }
 
     /// <summary>The drivers built into the engine, in the order a device is offered to them: BeadaPanel's.</summary>
@@ -139,9 +142,17 @@ public sealed class PanelManager : IAsyncDisposable
     /// <summary>A listed USB device as a driver is offered it.</summary>
     internal static PanelCandidate CandidateOf(UsbDeviceId usb) => new(usb.VendorId, usb.ProductId, usb.Bus, usb.Address, usb.PortPath);
 
-    /// <summary>The drivers whose matches name <paramref name="usb"/>'s ids, in their order.</summary>
+    /// <summary>The drivers whose matches name <paramref name="usb"/>'s ids, in their order; a hosted one only while its package can be used.</summary>
     private IEnumerable<IPanelDriver> DriversOf(UsbDeviceId usb) =>
-        _drivers.Where(d => d.Matches.Any(m => m.VendorId == usb.VendorId && m.ProductId == usb.ProductId));
+        _drivers.Where(d => Names(d, usb) && d is not HostedPanelDriver { Link.Problem: not null });
+
+    private static bool Names(IPanelDriver driver, UsbDeviceId usb) => driver.Matches.Any(m => m.VendorId == usb.VendorId && m.ProductId == usb.ProductId);
+
+    /// <summary>The driver of <paramref name="family"/>, or null when none declares it.</summary>
+    private IPanelDriver? DriverOf(string family) => _drivers.FirstOrDefault(d => d.Family == family);
+
+    /// <summary>Where a driver comes from, for the log: built in, or its panel package.</summary>
+    private static string OriginOf(IPanelDriver driver) => driver is HostedPanelDriver hosted ? $"the panel package {hosted.Link.Folder}" : "built in";
 
     /// <summary>A family's name in the log: BeadaPanel's as it is written, any other's id.</summary>
     private static string NameOf(string family) => family == SavedPanel.BeadaPanelFamily ? "BeadaPanel" : family;
@@ -380,16 +391,21 @@ public sealed class PanelManager : IAsyncDisposable
     }
 
     /// <summary>
-    /// After each of the manager's actions: when the list it answers changed, <see cref="Version"/> goes up and
+    /// After each of the manager's actions: when the list it answers changed (or a panel package's state, which its
+    /// families' state in the API is), <see cref="Version"/> goes up and
     /// <see cref="Changed"/> is raised; a change of the stats alone only once <see cref="StatsInterval"/> has passed since
     /// the last one counted (it counts later, after another action, when it is still there).
     /// </summary>
     private void Publish()
     {
         List<PanelStatus> now = [.. _devices.Select(StatusOf)];
-        if (now.SequenceEqual(_published))
+        // The packages' state is the list's too (its families' state and reason): a change counts with no saved panel.
+        List<PanelDriverProblem?> problems = [.. _drivers.OfType<HostedPanelDriver>().Select(d => d.Link.Problem)];
+        var familiesChanged = !problems.SequenceEqual(_publishedProblems);
+        if (!familiesChanged && now.SequenceEqual(_published))
             return;
-        if (now.Select(WithoutStats).SequenceEqual(_published.Select(WithoutStats)))
+        _publishedProblems = problems;
+        if (!familiesChanged && now.Select(WithoutStats).SequenceEqual(_published.Select(WithoutStats)))
         {
             if (_statsCountedAt is { } counted && _time.GetElapsedTime(counted) < StatsInterval)
                 return;
@@ -423,9 +439,16 @@ public sealed class PanelManager : IAsyncDisposable
             : waiting ? $"the panel takes no new stream until {JpegSettle.TotalSeconds:0} s after its JPEG stream ended"
             : runtime.Reason;
         var code = reason == null ? null : waiting ? "settling" : runtime.ReasonCode;
+        // A family no driver declares, or whose package is off or failed: the driver's reason, whatever the panel's own.
+        if (runner == null && !asleep && DriverOf(saved.Family) is var driver && driver is null or HostedPanelDriver { Link.Problem: not null })
+        {
+            var problem = (driver as HostedPanelDriver)?.Link.Problem;
+            (state, reason, code) = (problem is { Off: true } ? "off" : "failed",
+                problem?.Message ?? $"no driver for the family {saved.Family} is installed", "driver");
+        }
         return new PanelStatus(saved, runtime.Usb != null, state, reason, runtime.Info,
             runner is { Running: true } ? runner.Fps : null, runner is { Running: true } ? runner.FrameTimeMs : null,
-            runner is { Running: true } ? runner.Jpeg : null, code);
+            runner is { Running: true } ? runner.Jpeg : null, code, runtime.Identity);
     }
 
     /// <summary>
@@ -468,6 +491,10 @@ public sealed class PanelManager : IAsyncDisposable
             _logger.Warning(ex, "USB panels: the USB devices couldn't be listed");
             return;
         }
+
+        // Each package's host is told whether a device its families name is plugged in: it runs while one is (or a session is open).
+        foreach (var link in _drivers.OfType<HostedPanelDriver>().GroupBy(d => d.Link))
+            link.Key.SetPresent(listed.Any(u => link.Any(d => Names(d, u))));
 
         // Only the devices some driver's matches name: no other is ever opened.
         var panels = listed.Where(d => DriversOf(d).Any()).ToList();
@@ -719,7 +746,7 @@ public sealed class PanelManager : IAsyncDisposable
                 $"{usb.VendorId:x4}:{usb.ProductId:x4}", usb.PortPath, string.Join("; ", passedOn));
             return null;
         }
-        _logger.Information("The USB device {Ids:l} at {Port}: driver {Driver:l}, built in", $"{usb.VendorId:x4}:{usb.ProductId:x4}", usb.PortPath, driver.Family);
+        _logger.Information("The USB device {Ids:l} at {Port}: driver {Driver:l}, {Origin:l}", $"{usb.VendorId:x4}:{usb.ProductId:x4}", usb.PortPath, driver.Family, OriginOf(driver));
 
         var family = driver.Family;
         var serial = identity.Serial;
@@ -867,6 +894,8 @@ public sealed class PanelManager : IAsyncDisposable
         }
         if (!wanted || runtime.Usb is not { } usb || runtime.Driver is not { } driver || runtime.Identity is not { } identity)
             return;
+        if (driver is HostedPanelDriver { Link.Problem: not null })
+            return; // its package is off or failed: nothing to start (the status says why)
 
         // After a JPEG stream the panel takes no new one for a while: the start waits for it (the next passes try again).
         if (SettleLeft(runtime) is { } left)
@@ -932,7 +961,7 @@ public sealed class PanelManager : IAsyncDisposable
         if (runtime.Reason != end.Message)
             _logger.Information("Panel {Panel}: {Message}; tried again on the next pass", Label(id), end.Message);
         runtime.Reason = end.Message;
-        runtime.ReasonCode = end.Status switch
+        runtime.ReasonCode = end.Code ?? end.Status switch
         {
             UsbStatus.Busy => "busy",
             UsbStatus.Access => "access",

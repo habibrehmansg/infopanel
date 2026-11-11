@@ -1,0 +1,1 @@
+{"supported": true, "reason": null, "version": 1, "devices": [], "families": [{"id": "virtual", "name": "Virtual panel", "driver": "InfoPanel.Panels.Virtual", "state": "ready", "reason": null, "models": [{"id": "480x320", "name": "Virtual panel 480 × 320", "width": 480, "height": 320}], "supports": ["enabled", "profileId", "rotation", "brightness"], "transports": ["usb"]}]}

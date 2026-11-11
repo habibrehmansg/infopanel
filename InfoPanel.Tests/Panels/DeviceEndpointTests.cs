@@ -366,7 +366,8 @@ public sealed class DeviceEndpointTests
         Assert.Equal("later", later.GetProperty("family").GetString());
         Assert.Equal(JsonValueKind.Null, later.GetProperty("model").ValueKind);
         Assert.False(later.GetProperty("connected").GetBoolean());
-        Assert.Equal("notConnected", later.GetProperty("state").GetString());
+        Assert.Equal("failed", later.GetProperty("state").GetString());
+        Assert.Equal("driver", later.GetProperty("reason").GetProperty("code").GetString());
         Assert.Equal(0, later.GetProperty("supports").GetArrayLength());
         var (refused, why) = await Send(api, HttpMethod.Patch, $"/api/devices/{other}", """{"settings":{"brightness":50}}""");
         Assert.Equal(HttpStatusCode.UnprocessableEntity, refused);

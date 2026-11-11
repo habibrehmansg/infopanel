@@ -1240,6 +1240,33 @@ public sealed record DeviceList
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Reason { get; init; }
     public required long Version { get; init; }
     public required IReadOnlyList<DeviceEntryBody> Devices { get; init; }
+    /// <summary>Every panel family the engine knows: the built-in ones, then each panel package's; absent from an engine without them.</summary>
+    public IReadOnlyList<DeviceFamilyBody>? Families { get; init; }
+}
+
+/// <summary>A panel family the engine knows: built in or a package's, its state, its models, the settings it honours and its transports.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceFamily")]
+public sealed record DeviceFamilyBody
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required string Driver { get; init; }
+    public required string State { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required DeviceReasonBody? Reason { get; init; }
+    public required IReadOnlyList<DeviceFamilyModelBody> Models { get; init; }
+    public required IReadOnlyList<string> Supports { get; init; }
+    public required IReadOnlyList<string> Transports { get; init; }
+}
+
+/// <summary>A model of a family: its id, its name from its package (null for a built-in family's), its size and the 1.x model it was.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceFamilyModel")]
+public sealed record DeviceFamilyModelBody
+{
+    public required string Id { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Name { get; init; }
+    public required int Width { get; init; }
+    public required int Height { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? V1Model { get; init; }
 }
 
 /// <summary>One saved panel: what it is, its state now, its settings and what its family honours.</summary>
@@ -1258,6 +1285,11 @@ public sealed record DeviceEntryBody
     public required DeviceDetailsBody Details { get; init; }
     /// <summary>The 1.x device it was saved from, as the save gave it; absent when it has none.</summary>
     public V1DeviceIdentity? V1 { get; init; }
+    /// <summary>Its family's driver: <c>builtIn</c>, or the panel package's folder name; absent when no driver declares its family.</summary>
+    public string? Driver { get; init; }
+    /// <summary>Its family's and model's names from its panel package; absent for a built-in family (the client names those).</summary>
+    public string? FamilyName { get; init; }
+    public string? ModelName { get; init; }
 }
 
 /// <summary>A panel's model: its id within its family, and its size in pixels.</summary>

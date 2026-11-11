@@ -38,7 +38,14 @@ public static class DeviceEndpoints
             // reads again on the next devices message misses nothing.
             var version = manager.Version;
             var list = await manager.ListAsync();
-            return Json(new DeviceList { Supported = true, Reason = null, Version = version, Devices = [.. list.Select(EntryOf)] });
+            return Json(new DeviceList
+            {
+                Supported = true,
+                Reason = null,
+                Version = version,
+                Devices = [.. list.Select(s => EntryOf(s, panels.Families))],
+                Families = [.. panels.Families.Select(FamilyOf)],
+            });
         }).RequireScope(ApiScope.Read);
 
         devices.MapPost("", async (HttpRequest request, PanelService panels, Workspace workspace, CancellationToken ct) =>
@@ -62,11 +69,12 @@ public static class DeviceEndpoints
 
             // The engine stores what it is given: a family it drives, one of its models, the settings it honours.
             var body = SpecJson.Read<CreateDeviceRequest>(json.RootElement);
-            if (body.Family != SavedPanel.BeadaPanelFamily)
+            // A family the engine knows: built in, or a panel package's (on, off or failed alike).
+            if (panels.Families.FirstOrDefault(f => f.Id == body.Family) is not { } family)
                 return Invalid("/family", "device.family", $"The engine drives no '{body.Family}' devices.");
-            if (BeadaPanelModel.All.All(m => m.Id != body.Model))
+            if (family.Models.All(m => m.Id != body.Model))
                 return Invalid("/model", "device.model", $"A {body.Family} device has no model '{body.Model}'.");
-            var supports = SupportsOf(body.Family);
+            var supports = SupportsOf(body.Family, panels.Families);
             var refused = json.RootElement.GetProperty("settings").EnumerateObject().Where(m => !supports.Contains(m.Name)).Select(m => new ValidationErrorBody
             {
                 Path = $"/settings/{m.Name}",
@@ -99,7 +107,7 @@ public static class DeviceEndpoints
                     Id = save.Existing,
                 }, StatusCodes.Status409Conflict);
             // The device as saved, from the save itself: a change since (another client's DELETE) doesn't change the answer.
-            return Json(EntryOf(saved), StatusCodes.Status201Created);
+            return Json(EntryOf(saved, panels.Families), StatusCodes.Status201Created);
         }).WithOwnBodyLimit().RequireScope(ApiScope.Session);
 
         devices.MapPatch("/{id}", async (string id, HttpRequest request, PanelService panels, Workspace workspace, CancellationToken ct) =>
@@ -121,7 +129,7 @@ public static class DeviceEndpoints
                 return InvalidBody([.. check.Errors.Select(ErrorBody)]);
 
             var settings = json.RootElement.GetProperty("settings");
-            var supports = SupportsOf(found.Saved.Family);
+            var supports = SupportsOf(found.Saved.Family, panels.Families);
             var refused = settings.EnumerateObject().Where(m => !supports.Contains(m.Name)).Select(m => new ValidationErrorBody
             {
                 Path = $"/settings/{m.Name}",
@@ -144,7 +152,7 @@ public static class DeviceEndpoints
             }
             if (changed == null || (await manager.ListAsync()).FirstOrDefault(s => s.Saved.Id == id) is not { } entry)
                 return NoDevice(id); // forgotten meanwhile
-            return Json(EntryOf(entry));
+            return Json(EntryOf(entry, panels.Families));
         }).WithOwnBodyLimit().RequireScope(ApiScope.Session);
 
         devices.MapDelete("/{id}", async (string id, PanelService panels) =>
@@ -164,7 +172,26 @@ public static class DeviceEndpoints
         }).RequireScope(ApiScope.Session);
     }
 
-    private static IReadOnlyList<string> SupportsOf(string family) => family == SavedPanel.BeadaPanelFamily ? BeadaPanelSettings : [];
+    /// <summary>
+    /// The settings a family honours: all four for every family the engine knows (it turns frames itself for every
+    /// family, and sends the brightness to each), none for one it doesn't.
+    /// </summary>
+    private static IReadOnlyList<string> SupportsOf(string family, IReadOnlyList<PanelFamilyInfo> families) =>
+        family == SavedPanel.BeadaPanelFamily || families.Any(f => f.Id == family) ? BeadaPanelSettings : [];
+
+    /// <summary>A family as the list gives it: its id, name, driver, state and reason, models, settings and transports.</summary>
+    private static DeviceFamilyBody FamilyOf(PanelFamilyInfo family) => new()
+    {
+        Id = family.Id,
+        Name = family.Name,
+        Driver = family.Driver,
+        State = family.State,
+        Reason = family.Reason is { } reason ? new DeviceReasonBody { Code = family.ReasonCode ?? "gaveUp", Message = reason.Length > 4096 ? reason[..4096] : reason } : null,
+        // A built-in family's names are the client's; a package's come from its panel.json.
+        Models = [.. family.Models.Select(m => new DeviceFamilyModelBody { Id = m.Id, Name = family.Runner == null ? null : m.Name, Width = m.Width, Height = m.Height, V1Model = m.V1Model })],
+        Supports = BeadaPanelSettings,
+        Transports = family.Transports,
+    };
 
     /// <summary>The settings given, over the saved ones; a member left out keeps its value. The body is checked already.</summary>
     private static SavedPanel Merge(SavedPanel saved, DeviceSettingsChange change) => saved with
@@ -175,15 +202,23 @@ public static class DeviceEndpoints
         Brightness = change.Brightness ?? saved.Brightness,
     };
 
-    internal static DeviceEntryBody EntryOf(PanelStatus status)
+    internal static DeviceEntryBody EntryOf(PanelStatus status, IReadOnlyList<PanelFamilyInfo> families)
     {
         var saved = status.Saved;
         var beadaPanel = saved.Family == SavedPanel.BeadaPanelFamily;
+        // A package's family: its model from panel.json, else the size its driver found; its names from the package.
+        var family = beadaPanel ? null : families.FirstOrDefault(f => f.Id == saved.Family);
+        var declared = family?.Models.FirstOrDefault(m => m.Id == saved.Model);
         var model = status.Info is { } info
             ? new DeviceModelBody { Id = info.Model.Id, Width = info.Width, Height = info.Height }
             : beadaPanel && BeadaPanelModel.All.FirstOrDefault(m => m.Id == saved.Model) is { } known
                 ? new DeviceModelBody { Id = known.Id, Width = known.Width, Height = known.Height }
-                : null;
+                : declared != null
+                    ? new DeviceModelBody { Id = declared.Id, Width = declared.Width, Height = declared.Height }
+                    : family != null && status.Identity is { Model.Length: >= 1 and <= 64 } identity && identity.Model == saved.Model
+                        ? new DeviceModelBody { Id = identity.Model, Width = identity.Width, Height = identity.Height }
+                        : null;
+        var usbIds = family?.Runner?.Families.FirstOrDefault(f => f.Id == saved.Family)?.Matches;
         return new DeviceEntryBody
         {
             Id = saved.Id,
@@ -203,19 +238,25 @@ public static class DeviceEndpoints
                 Rotation = (int)saved.Rotation,
                 Brightness = saved.Brightness,
             },
-            Supports = SupportsOf(saved.Family),
+            Supports = SupportsOf(saved.Family, families),
             Stats = status.Fps is { } fps && status.FrameTimeMs is { } frameTime ? new DeviceStatsBody { Fps = fps, FrameTimeMs = frameTime } : null,
             Details = new DeviceDetailsBody
             {
-                UsbId = beadaPanel ? $"{BeadaPanelProtocol.VendorId:x4}:{BeadaPanelProtocol.ProductId:x4}" : null,
+                UsbId = beadaPanel ? $"{BeadaPanelProtocol.VendorId:x4}:{BeadaPanelProtocol.ProductId:x4}"
+                    : usbIds is [var only] ? $"{only.VendorId:x4}:{only.ProductId:x4}" : null,
                 Port = saved.Port,
                 Serial = saved.Serial,
-                Firmware = status.Info?.Firmware,
+                Firmware = status.Info?.Firmware
+                    ?? (status.Identity?.Firmware is { } firmware && int.TryParse(firmware, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var number)
+                        && number is >= 0 and <= 65535 ? number : (int?)null),
             },
             // A stored identity the answer can't carry (edited by hand) is left out of it, and kept.
             V1 = saved.V1 is { } v1 && Fits(v1.DeviceId, 1) && Fits(v1.DeviceLocation, 0)
                 ? new V1DeviceIdentity { DeviceId = v1.DeviceId, DeviceLocation = v1.DeviceLocation }
                 : null,
+            Driver = beadaPanel ? "builtIn" : family?.Driver,
+            FamilyName = family?.Runner != null ? family.Name : null,
+            ModelName = family?.Runner != null ? declared?.Name : null,
         };
     }
 

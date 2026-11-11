@@ -12,6 +12,8 @@
 #                    which this script runs into <out>/libusb, refuses it unless its SHA-256 is the one native/libusb/pins.txt
 #                    pins; without it that build downloads the tarball (and checks it the same way)
 #   --check-args     only check the arguments above, then stop (exit 0 when they are accepted)
+#   --list-panel-drivers  only list the panel driver projects the build publishes into plugins/ (and those it leaves
+#                    out, with why), then stop; needs no other argument
 #
 # A self-contained osx-arm64 Release publish of the engine becomes InfoPanel.app. codesign takes every file in
 # Contents/MacOS for code (a managed .dll, a .json or a folder there makes it refuse the bundle), so the publish goes to
@@ -30,7 +32,7 @@
 set -euo pipefail
 
 usage() {
-  sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -39,6 +41,7 @@ origin=""
 out=""
 libusb_source=""
 check_args=0
+list_drivers=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --version) [ $# -ge 2 ] || usage; version="$2"; shift 2 ;;
@@ -46,10 +49,38 @@ while [ $# -gt 0 ]; do
     --out) [ $# -ge 2 ] || usage; out="$2"; shift 2 ;;
     --libusb-source) [ $# -ge 2 ] || usage; libusb_source="$2"; shift 2 ;;
     --check-args) check_args=1; shift ;;
+    --list-panel-drivers) list_drivers=1; shift ;;
     -h|--help) usage ;;
     *) echo "build.sh: unknown argument: $1" >&2; usage ;;
   esac
 done
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root="$(cd "$here/../.." && pwd)"
+
+# The panel driver projects: every InfoPanel.Panels.{Family}/ with its {folder}.csproj and a panel.json, but the
+# virtual panel (a test fixture, never shipped); each is published into plugins/{folder} beside the engine, where it
+# finds its bundled panel packages (docs/2.0/plugins.md, Panel packages). With verbose, those left out, with why.
+panel_drivers() {
+  local dir name
+  for dir in "$root"/InfoPanel.Panels.*/; do
+    [ -d "$dir" ] || continue
+    name="$(basename "$dir")"
+    if [ "$name" = "InfoPanel.Panels.Virtual" ]; then
+      [ "${1:-}" != verbose ] || echo "left out: $name (the virtual panel, a test fixture)"
+    elif [ ! -f "$dir/panel.json" ] || [ ! -f "$dir/$name.csproj" ]; then
+      [ "${1:-}" != verbose ] || echo "left out: $name (no panel.json beside $name.csproj: not a panel driver)"
+    elif [ "${1:-}" = verbose ]; then
+      echo "published: $name -> {engine}/plugins/$name"
+    else
+      echo "$name"
+    fi
+  done
+}
+if [ "$list_drivers" -eq 1 ]; then
+  panel_drivers verbose
+  exit 0
+fi
 
 [ -n "$version" ] && [ -n "$origin" ] && [ -n "$out" ] || usage
 [ -z "$libusb_source" ] || [ -f "$libusb_source" ] || { echo "build.sh: --libusb-source isn't a file: $libusb_source" >&2; exit 2; }
@@ -80,9 +111,6 @@ if [ "$(uname -s)" != "Darwin" ]; then
   echo "build.sh: macOS only (codesign, hdiutil)" >&2
   exit 2
 fi
-
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-root="$(cd "$here/../.." && pwd)"
 
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
@@ -117,6 +145,16 @@ echo "==> Publishing the engine $version for osx-arm64"
   -p:Version="$version" -p:InfoPanelAllowOrigin="$origin" -p:DebugType=none -p:DebugSymbols=false \
   -o "$publish")
 [ -x "$publish/InfoPanel" ] || { echo "build.sh: the publish has no InfoPanel executable" >&2; exit 1; }
+echo "==> Publishing the panel drivers into plugins/"
+while IFS= read -r driver; do
+  [ -n "$driver" ] || continue
+  (cd "$root" && dotnet publish "$driver/$driver.csproj" -c Release -r osx-arm64 --self-contained false \
+    -p:Version="$version" -p:DebugType=none -p:DebugSymbols=false -o "$publish/plugins/$driver")
+  [ -f "$publish/plugins/$driver/$driver.dll" ] && [ -f "$publish/plugins/$driver/panel.json" ] || {
+    echo "build.sh: the panel driver $driver published no $driver.dll and panel.json" >&2
+    exit 1
+  }
+done < <(panel_drivers)
 cp "$libusb" "$publish/libusb-1.0.dylib"
 
 echo "==> Assembling InfoPanel.app"

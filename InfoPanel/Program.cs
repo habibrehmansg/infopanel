@@ -36,6 +36,9 @@ using System.Text.Json.Serialization;
 // A plugin host (the engine starts one per plugin DLL): nothing of the engine runs, not even its command line.
 if (InfoPanel.Plugins.Host.PluginHostEntry.IsHostMode(args))
     return await InfoPanel.Plugins.Host.PluginHostEntry.RunAsync(args);
+// A panel host (one per panel package, started when a device of it is plugged in): the same.
+if (InfoPanel.Panels.PanelHostEntry.IsHostMode(args))
+    return await InfoPanel.Panels.PanelHostEntry.RunAsync(args);
 
 var parsed = EngineCommandLine.Parse(args);
 if (parsed.ShowHelp)
@@ -576,6 +579,13 @@ try
     builder.Services.AddSingleton<DisplayWindowManager>();
     builder.Services.AddSingleton<DisplayLister>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<DisplayWindowManager>());
+    // A spare engine with the virtual panel package (development and tests, a setting and never a flag): that many virtual
+    // USB devices in place of the computer's own, so no real device is listed or opened.
+    if (int.TryParse(builder.Configuration[$"{EngineOptions.Section}:VirtualPanels"], out var virtualPanels) && virtualPanels > 0)
+    {
+        Log.Information("USB panels: {Count} virtual devices in place of this computer's (Engine:VirtualPanels)", Math.Min(virtualPanels, InfoPanel.Panels.VirtualUsbBackend.MaxDevices));
+        builder.Services.AddSingleton(new InfoPanel.Panels.PanelServiceOptions { Backend = () => new InfoPanel.Panels.VirtualUsbBackend(virtualPanels) });
+    }
     // USB panels (docs/2.0/panels.md): after the render service, so the host stops them, each screen turned off, first.
     builder.Services.AddSingleton(sp => new InfoPanel.Panels.PanelService(options, paths, sp.GetRequiredService<Workspace>(),
         sp.GetRequiredService<RenderService>(), settings, sp.GetRequiredService<TimeProvider>(), engineLogger.ForContext<InfoPanel.Panels.PanelService>(),

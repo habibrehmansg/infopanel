@@ -9,6 +9,9 @@ namespace InfoPanel.Panels.BeadaPanel;
 /// </summary>
 public sealed record BeadaPanelModel(byte Code, string Id, int Width, int Height)
 {
+    /// <summary>The model's name in InfoPanel 1.x (<c>Model6C</c>): 1.4's model enum's name, which 1.4 stored with each panel.</summary>
+    public string V1Model => "Model" + Id;
+
     /// <summary>The 21 models InfoPanel 1.4 knows. Code 1 has no entry: a panel reporting it isn't driven.</summary>
     public static IReadOnlyList<BeadaPanelModel> All { get; } =
     [
