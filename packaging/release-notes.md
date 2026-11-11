@@ -14,7 +14,7 @@
 1. Download `InfoPanel-<version>-win-x64-setup.exe` and run it.
 2. The setup isn't signed yet: if Windows says it protected your PC, choose **More info**, then **Run anyway**.
 3. It installs as **InfoPanel 2**, beside InfoPanel 1.x, which it leaves alone: 1.x's program, settings and profiles
-   stay as they are.
+   stay as they are. The first time you open the editor, it opens Import with your 1.x profiles.
 4. InfoPanel 2 runs in the notification area. Its menu's **Open editor** opens the editor, and **Start when I sign in**
    starts it with Windows.
 

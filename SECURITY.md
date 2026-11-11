@@ -9,7 +9,7 @@ Report it through GitHub's private vulnerability reporting: the repository's **S
 | Version | Branch | Supported |
 |---|---|---|
 | InfoPanel 1.x, the current release | `1.4.x` | Yes |
-| InfoPanel 2.0, in development (no release yet) | `2.0.x` | Yes |
+| InfoPanel 2.0, in beta (pre-releases) | `2.0.x` | Yes |
 
 ## What matters most
 

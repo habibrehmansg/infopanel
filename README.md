@@ -27,6 +27,8 @@ Each release lists the files' SHA-256 in `SHA256SUMS`.
 
 Then choose **Open Editor** in the menu (on Windows, a click on the icon does the same). Starting InfoPanel again while it runs opens the editor too. InfoPanel includes an example profile to start from.
 
+**Coming from InfoPanel 1.x?** On Windows, 2.0 installs beside it and leaves 1.x's program, settings and profiles alone. If InfoPanel finds your 1.x profiles, the first time you open the editor it opens Import with them, so you can bring them over.
+
 **Updates.** Once a day InfoPanel checks GitHub for a newer release. When there is one, its menu says **Update Available** and you get one notification; both open the release page. **Check for Updates…** checks straight away.
 
 ## Where it shows
