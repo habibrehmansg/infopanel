@@ -796,14 +796,28 @@ public sealed class LocalChannelClient : IAsyncDisposable
             if (socket != null && (peerOf ?? UnixIdentity.PeerOf)(socket) is var peer && peer != UnixIdentity.CurrentUser)
                 throw new LocalChannelException($"The channel {endpoint.Name} is held by another user's process (uid {peer?.ToString() ?? "unknown"}), so it isn't trusted.");
 
-            await stream.WriteAsync(LocalChannel.Line(new JsonObject { ["channel"] = LocalChannel.Version, ["client"] = client }), limit.Token).ConfigureAwait(false);
+            // An engine at its connection limit sends its refusal as it accepts the connection and closes it, which can
+            // come before this hello is written: a hello that can't be sent still reads that refusal, and is otherwise a
+            // connection gone.
+            var sent = true;
+            try
+            {
+                await stream.WriteAsync(LocalChannel.Line(new JsonObject { ["channel"] = LocalChannel.Version, ["client"] = client }), limit.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or SocketException)
+            {
+                sent = false;
+            }
+
             var reader = new LineReader(stream, LocalChannel.MaxHelloBytes);
             var line = await reader.ReadLineAsync(limit.Token).ConfigureAwait(false);
             if (line == null)
-                throw new LocalChannelException("The engine closed the channel before it said hello.", closed: true);
+                throw sent ? new LocalChannelException("The engine closed the channel before it said hello.", closed: true) : new IOException("The engine closed the channel before the hello was sent.");
             var hello = JsonNode.Parse(line, documentOptions: LocalChannel.MessageOptions) as JsonObject ?? throw new LocalChannelException("The engine's hello isn't a JSON object.");
             if (hello["refused"]?.GetValue<string>() is { } refused)
                 throw new LocalChannelException(refused);
+            if (!sent)
+                throw new IOException("The hello couldn't be sent.");
             return new LocalChannelClient(stream, socket, hello);
         }
         catch (Exception ex) when (ex is IOException and not LocalChannelException or SocketException or JsonException or OperationCanceledException && !ct.IsCancellationRequested)

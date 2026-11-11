@@ -441,19 +441,22 @@ public class MediaFoundationStreamTests
         using var feed = new Feed(chain);
         try
         {
-            // A start refused (busy at its begin, or a size the encoder can't take), its teardown's shutdown wedged.
+            // A start refused (busy at its begin, or a size the encoder can't take), its teardown's shutdown wedged. The
+            // refusal is logged (or recorded) before the stream settles on PNG, which starts a new generation and drops a
+            // frame offered before it: the wait is for its fresh-frame ask, the last step, before the next frame is offered.
             chain.Entry.Encoder.HoldShutdown = hold;
+            var asked = feed.Refreshes;
             if (how == "busy")
             {
                 chain.Entry.Encoder.BeginHr = Mf.HwMftFailedStartStreaming;
                 feed.Frame();
-                await Eventually(() => chain.Log.Messages.Any(m => m.Contains("is busy")), "the busy start");
+                await Eventually(() => chain.Log.Messages.Any(m => m.Contains("is busy")) && feed.Refreshes > asked, "the busy start, settled");
             }
             else
             {
                 chain.Entry.Encoder.OutputTypeHr = t => t.Width == 80 ? Mf.InvalidMediaType : Mf.SOk;
                 feed.Frame(80, 48);
-                await Eventually(() => chain.Backends.IsUnsupported(chain.Backend, 80, 48), "the unsupported start");
+                await Eventually(() => chain.Backends.IsUnsupported(chain.Backend, 80, 48) && feed.Refreshes > asked, "the unsupported start, settled");
             }
 
             var refused = chain.Catalog.Ports[^1];
