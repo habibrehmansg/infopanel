@@ -1,0 +1,12 @@
+{
+  "format": "infopanel.panel-package/1",
+  "sdk": "1.0",
+  "families": [
+    {
+      "id": "virtual",
+      "name": "Virtual panel",
+      "match": [{ "usb": "1209:0001" }],
+      "models": [{ "id": "480x320", "name": "Virtual panel 480 × 320", "width": 480, "height": 320 }]
+    }
+  ]
+}

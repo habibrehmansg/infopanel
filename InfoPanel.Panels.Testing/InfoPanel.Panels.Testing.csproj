@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The panel test kit: fakes of the SDK's device seam (IPanelDevices) that script a device's replies and record every
+       transfer as a text trace, and a recorder that wraps the real seam on a tester's hardware. References only the SDK
+       and no test framework, so any test project (and any panel package's tests) can use it; never shipped. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>InfoPanel.Panels.Testing</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InfoPanel.Panels.Sdk\InfoPanel.Panels.Sdk.csproj" />
+  </ItemGroup>
+
+</Project>

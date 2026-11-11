@@ -90,7 +90,12 @@ public enum PanelFrameFormat
 /// the most bytes a frame may be (a JPEG over it is encoded again at a lower quality, down to <see cref="MinJpegQuality"/>);
 /// the JPEG quality; whether it turns frames itself (else the engine does); its brightness range (null: none); how often
 /// the last frame is written again without a new one (null: after 1 s); and whether a write returns only once the frame
-/// is shown.
+/// is shown. Then, as <c>init</c> properties (the positional parameters stay the SDK's first ones, so a driver built
+/// against them keeps running): whether the engine dims the frame itself (<see cref="DimInSoftware"/>, for a panel
+/// without a light of its own: <see cref="Brightness"/> stays null), the PNG overlays drawn over the turned frame before
+/// it is encoded (<see cref="Overlays"/>, by rotation: 0, 90, 180 or 270; each the frame's size as turned, its alpha
+/// kept), the part of the frame that is sent (<see cref="Crop"/>, null: all of it), and how much lower each new try at a
+/// JPEG over <see cref="MaxFrameBytes"/> goes (<see cref="JpegQualityStep"/>).
 /// </summary>
 public sealed record PanelCapabilities(
     int Width,
@@ -103,7 +108,29 @@ public sealed record PanelCapabilities(
     bool RotatesItself = false,
     PanelRange? Brightness = null,
     TimeSpan? KeepAliveEvery = null,
-    bool WriteWaitsForDisplay = false);
+    bool WriteWaitsForDisplay = false)
+{
+    // Never a positional parameter: a new constructor or Deconstruct signature breaks every driver built before it.
+
+    /// <summary>Whether the engine dims the frame itself, for a panel without a light of its own (<see cref="Brightness"/> stays null).</summary>
+    public bool DimInSoftware { get; init; }
+
+    /// <summary>The PNG overlays drawn over the turned frame before it is encoded, by rotation (0, 90, 180 or 270); each the frame's size as turned, its alpha kept. Null: none.</summary>
+    public IReadOnlyDictionary<int, byte[]>? Overlays { get; init; }
+
+    /// <summary>The part of the frame that is sent; null: all of it.</summary>
+    public PanelCrop? Crop { get; init; }
+
+    /// <summary>How much lower each new try at a JPEG over <see cref="MaxFrameBytes"/> goes (5 by default).</summary>
+    public int JpegQualityStep { get; init; } = 5;
+}
+
+/// <summary>
+/// The part of a frame that is sent: <see cref="Width"/> × <see cref="Height"/> pixels from (<see cref="X"/>,
+/// <see cref="Y"/>) of the <see cref="PanelCapabilities.Width"/> × <see cref="PanelCapabilities.Height"/> frame, as
+/// turned (a panel rendered at 480 rows and sent its top 462, say).
+/// </summary>
+public sealed record PanelCrop(int X, int Y, int Width, int Height);
 
 /// <summary>
 /// One frame for <see cref="IPanelSession.WriteFrame"/>, a view of the engine's buffer (no copy, valid only during the

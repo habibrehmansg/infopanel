@@ -8,4 +8,8 @@
     <RootNamespace>InfoPanel.Panels.Sdk</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="InfoPanel.Core.Tests" />
+  </ItemGroup>
+
 </Project>
