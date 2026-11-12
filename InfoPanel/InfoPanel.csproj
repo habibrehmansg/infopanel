@@ -20,6 +20,9 @@
     <!-- Windows: the program's icon (Explorer, the taskbar, Start), written into the apphost when it is built on
          Windows; packaging/windows/make-icon.ps1 makes it from Images/logo.png. -->
     <ApplicationIcon>..\packaging\windows\InfoPanel.ico</ApplicationIcon>
+    <!-- A desktop app, not a server: the concurrent workstation garbage collector (the Web SDK defaults to the server one,
+         which holds a heap per core). The plugin hosts run this executable too. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

@@ -34,6 +34,15 @@ public class EnginePublishTests
             var problems = new List<string>();
             CheckIsolated(problems, artifacts, restoreFiles);
             await CheckDeps(problems, "engine", root, "InfoPanel.deps.json");
+            // A desktop app, not a server: the concurrent workstation garbage collector (the Web SDK's default is the server one).
+            using (var config = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(root, "InfoPanel.runtimeconfig.json"), Ct)))
+            {
+                // An absent key means the workstation collector (the default).
+                if (config.RootElement.GetProperty("runtimeOptions").TryGetProperty("configProperties", out var configProperties)
+                    && configProperties.TryGetProperty("System.GC.Server", out var serverGc)
+                    && serverGc.ValueKind == JsonValueKind.True)
+                    problems.Add("InfoPanel.runtimeconfig.json: System.GC.Server is true, the server garbage collector");
+            }
             // The sensor helper is published for Windows runtimes only (LibreHardwareMonitor's assemblies are Windows ones).
             if (Directory.Exists(Path.Combine(root, "sensor-helper")))
                 problems.Add("sensor-helper/: the sensor helper's folder, in a publish for no runtime");
