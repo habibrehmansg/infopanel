@@ -1074,13 +1074,13 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AResizeFromAnEdge_ReleasedBeforeItCommits_IsStillOneEdit()
+    public async Task AResizeFromAnEdge_CommitsAtTheRelease_AsOneEdit()
     {
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
 
         // The button goes down on the window's left edge, the resize moves its top-left, and the button is up again
-        // before the size is quiet: the release is no move of its own.
+        // before the size is quiet: the release commits the resize at once, and is no move of its own.
         await _platform.InvokeAsync(() =>
         {
             window.BeginUserMove();
@@ -1088,8 +1088,10 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
             window.EndUserMove();
         });
         await _platform.IdleAsync();
-        Assert.Equal(1, doc.Rev);
+        Assert.Equal(2, doc.Rev);
+                Assert.Equal((1900, 480, 20, 0), (P(doc).Width, P(doc).Height, W(doc).X, W(doc).Y));
 
+        // The resize's timer has nothing left to commit.
         _clock.Advance(DisplayWindowManager.ResizeQuiet);
         await _platform.IdleAsync();
         await _platform.IdleAsync();

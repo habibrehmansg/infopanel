@@ -22,8 +22,9 @@ namespace InfoPanel.Desktop;
 /// revision they read as <c>baseRev</c> (undoable, dirty, saved by Save; read again and retried on a conflict), each
 /// putting the window on the display it ended on (<see cref="DisplayMatcher.Promote"/>: that display becomes
 /// <c>display</c>, the previous one goes first in <c>spots</c>): one per finished drag (the display holding the window's
-/// top-left), one per resize after <see cref="ResizeQuiet"/> without changes (<c>width</c>, <c>height</c>, and the
-/// display holding the window's top-left at the resize's last change, with <c>window.x</c>/<c>y</c> relative to it).
+/// top-left), one per resize at its release or after <see cref="ResizeQuiet"/> without changes, whichever comes first
+/// (<c>width</c>, <c>height</c>, and the display holding the window's top-left at the resize's last change, with
+/// <c>window.x</c>/<c>y</c> relative to it).
 /// Only the user's: never a frame left on no display, and never the system moving a window while the displays change
 /// (a pending resize dropped, a same-size "resize" ignored, and a release where it left the window no drag, for
 /// <see cref="DisplaySettle"/>); then the window goes back
@@ -44,7 +45,10 @@ public sealed class DisplayWindowManager(
     TimeProvider time,
     ILogger<DisplayWindowManager> logger) : IHostedService
 {
-    /// <summary>How long a window's size must stay unchanged before a resize becomes an edit (1.x: 300 ms).</summary>
+    /// <summary>
+    /// How long a window's size must stay unchanged before a resize becomes an edit when the button isn't released first
+    /// (1.x: 300 ms); the release commits it at once.
+    /// </summary>
     public static readonly TimeSpan ResizeQuiet = TimeSpan.FromMilliseconds(300);
 
     /// <summary>
@@ -424,8 +428,9 @@ public sealed class DisplayWindowManager(
     /// The mouse button is up after a press on the window. Moved, the display holding the window's top-left becomes
     /// the target, the position relative to it. A click, the end of a resize, a press during which a display went
     /// away or changed, a frame left on no display (<see cref="DisplayMatcher.Holding"/>), or the window still where the
-    /// system moved it while the displays settled (<see cref="WindowEntry.Relocated"/>), is no move; a resize still
-    /// pending then is committed at its own last frame.
+    /// system moved it while the displays settled (<see cref="WindowEntry.Relocated"/>), is no move. A resize still
+    /// pending is committed here, at once, at its own last frame (not <see cref="ResizeQuiet"/> after it): the end of the
+    /// resize itself, or of a drag after it, which is then an edit of its own.
     /// </summary>
     private void OnUserMoved(WindowEntry entry)
     {
@@ -439,11 +444,12 @@ public sealed class DisplayWindowManager(
         var relocated = entry.Relocated == frame;
         entry.Relocated = null;
 
-        // A drag released before the resize ahead of it is quiet: the resize is its own edit first, at its last frame.
-        if (entry.ResizePending && entry.ResizeFrame != frame)
+        // A resize still pending is committed at the release, at its last frame, which becomes the settled frame: released
+        // where the resize left it, the release is no move; a drag after it is an edit of its own.
+        if (entry.ResizePending)
             EditResize(entry);
 
-        if (!displaysChanged && !relocated && !entry.ResizePending && entry.Settled != frame && DisplayMatcher.Holding(platform.GetDisplays(), frame) is { } display)
+        if (!displaysChanged && !relocated && entry.Settled != frame && DisplayMatcher.Holding(platform.GetDisplays(), frame) is { } display)
         {
             var (x, y) = DisplayMatcher.Position(display, frame);
             Edit(entry, x, y, null, display);
