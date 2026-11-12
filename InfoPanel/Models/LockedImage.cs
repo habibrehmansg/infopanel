@@ -240,6 +240,7 @@ namespace InfoPanel.Models
                             // FPS is handled by Flyleaf, which falls back to 25 FPS when frame rate information is unavailable.
                             // Reference: https://github.com/SuRGeoNix/Flyleaf/blob/v3.10.3/FlyleafLib/MediaFramework/MediaStream/VideoStream.cs
                             sourceImageDisplayItem.TargetFps = (int)Math.Ceiling(_backgroundVideoPlayer.VideoDecoder.VideoStream.FPS);
+                            ScreenRenderManager.SetProfilesOrSettingsDirty();
                         }
 
                         Loaded = true;
@@ -354,6 +355,7 @@ namespace InfoPanel.Models
                         if (sourceImageDisplayItem is not null)
                         {
                             sourceImageDisplayItem.TargetFps = (int)Math.Ceiling(1000.0 / minDelay);
+                            ScreenRenderManager.SetProfilesOrSettingsDirty();
                         }
 
                         //start the stopwatch

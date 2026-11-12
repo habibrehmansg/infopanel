@@ -22,16 +22,26 @@ namespace InfoPanel.Models
             // Manage version information associated with the profile.
             private long _version;
             // Time when the profile version was last updated.
-            private long _lastUpdateTimeFrequency = Stopwatch.GetTimestamp();
+            private long _lastUpdateTimeFrequency = GetCurrentSecondStartTimestamp();
             // Profile version update interval. Default to 1 FPS.
             private long _updateIntervalFrequency = Stopwatch.Frequency;
             // Lock object protecting reads and writes to the update interval (_updateIntervalFrequency).
             private readonly object _fpsLock = new();
 
+            // Returns the current monotonic timestamp aligned to the start of the current UTC second.
+            private static long GetCurrentSecondStartTimestamp()
+            {
+                var currentTimeFrequency = Stopwatch.GetTimestamp();
+                var subsecondTicks = DateTime.UtcNow.Ticks % TimeSpan.TicksPerSecond;
+                var elapsedFrequency = (long)(subsecondTicks * (double)Stopwatch.Frequency / TimeSpan.TicksPerSecond);
+                return currentTimeFrequency - elapsedFrequency;
+            }
+
             // Update version information associated with the profile.
             public void IncVersion()
             {
                 Interlocked.Increment(ref _version);
+                // Logger.Debug("Increment Version");
             }
             // Get version information associated with the profile.
             public long GetVersion()
@@ -48,19 +58,26 @@ namespace InfoPanel.Models
                 if (elapsedTime >= interval)
                 {
                     IncVersion();
-                    _lastUpdateTimeFrequency = currentTimeFrequency;
-                    return interval;
+                    // Keep the original cadence so one-second updates stay aligned to second boundaries.
+                    var elapsedWithinInterval = elapsedTime % interval;
+                    _lastUpdateTimeFrequency = currentTimeFrequency - elapsedWithinInterval;
+                    return interval - elapsedWithinInterval;
                 }
                 else
                 {
                     return interval == long.MaxValue ? long.MaxValue : _lastUpdateTimeFrequency - currentTimeFrequency + interval;
                 }
-            }            // Calculate and set the update interval in Stopwatch ticks from the specified target FPS.
+            }
+            // Calculate and set the update interval in Stopwatch ticks from the specified target FPS.
             public void UpdateMaxFps(int targetFps)
             {
                 lock (_fpsLock)
                 {
                     var targetFrameTimeFrequency = targetFps == 0 ? long.MaxValue : Stopwatch.Frequency / targetFps;
+                    if (targetFps == 1)
+                    {
+                        _lastUpdateTimeFrequency = GetCurrentSecondStartTimestamp();
+                    }
                     Volatile.Write(ref _updateIntervalFrequency, targetFrameTimeFrequency);
                 }
             }
@@ -75,10 +92,12 @@ namespace InfoPanel.Models
         // No panels are defined with a rate above 60 FPS, so use 60 FPS as the maximum. This may need to change if more panel types are added.
         public const int MinFps = 0;
         public const int MaxFps = 60;
+        // Periodically refresh profiles at least once per second as a fallback for missed update requirements.
+        private const int MinimumProfileRefreshFps = 1;
         // Minimum and maximum graph update intervals.
         public const int MinTargetGraphUpdateRate = 100;
         public const int MaxTargetGraphUpdateRate = 3000;
-        // Vendor names used for reflection because there is no base class for retrieving panel information.
+        // Vendor names used for reflection because there is no base class for retrieving panel information. Update this list when adding a panel vendor.
         private static string[] PanelVendors { get; } = ["Beada", "Jl", "Jonsbo", "LianLi", "Thermalright", "Thermaltake", "Turing", "Vmax"];
 
         // List of profiles.
@@ -116,74 +135,144 @@ namespace InfoPanel.Models
         // Update each profile version according to its target FPS (the main process of this class, called when InfoPanel starts).
         public static async Task UpdateProfilesVersions(CancellationToken cancellationToken)
         {
-            CheckUpdate();
+            SetProfilesOrSettingsDirty();
+            var retryDelayMilliseconds = 50;
             while (!cancellationToken.IsCancellationRequested)
             {
-                CheckProfilesOrSettingsDirty();
-                // Store the wait duration until the next loop in Stopwatch ticks.
-                long nextUpdateFrequency = long.MaxValue;
-                var currentTimeFrequency = Stopwatch.GetTimestamp();
+                try
+                {
+                    await UpdateProfileVersionsOnce(cancellationToken);
+                    retryDelayMilliseconds = 50;
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    Logger.Error(ex, "An error occurred while updating profile versions. Retrying in {DelayMilliseconds} ms.", retryDelayMilliseconds);
+                    SetProfilesOrSettingsDirty();
+                    await Task.Delay(retryDelayMilliseconds, cancellationToken);
+                    retryDelayMilliseconds = Math.Min(retryDelayMilliseconds * 2, 3000);
+                }
+            }
+        }
 
-                // Evaluate infrequently updated DisplayItems and increment the associated profile version when a value changes (run every second).
-                if (currentTimeFrequency - LastLowUpdateFrequencyCheckTime >= Stopwatch.Frequency)
+        // Perform one profile update cycle. Exceptions are handled by UpdateProfilesVersions, which applies retry backoff.
+        private static async Task UpdateProfileVersionsOnce(CancellationToken cancellationToken)
+        {
+            try
+            {
+                CheckProfilesOrSettingsDirty();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to rebuild profile and panel state.");
+                throw;
+            }
+            // Store the wait duration until the next loop in Stopwatch ticks.
+            long nextUpdateFrequency = long.MaxValue;
+            var currentTimeFrequency = Stopwatch.GetTimestamp();
+
+            // Evaluate infrequently updated DisplayItems and increment the associated profile version when a value changes (run every second).
+            if (currentTimeFrequency - LastLowUpdateFrequencyCheckTime >= Stopwatch.Frequency)
+            {
+                LastLowUpdateFrequencyCheckTime = currentTimeFrequency;
+                foreach (KeyValuePair<Guid, DisplayItem> kvp in LowUpdateFrequencyDisplayItemIds)
+                {
+                    switch (kvp.Value)
+                    {
+                        case TextDisplayItem text:
+                            if (!LowUpdateFrequencyDisplayItemStringValues.TryGetValue(text.Guid, out var lastValue) || lastValue is null)
+                            {
+                                Logger.Warning("Cannot get the previous text value for low-frequency DisplayItem {ProfileGuid}/{DisplayItemGuid} ({Name}). Rebuilding profile state.", text.ProfileGuid, text.Guid, text.Name);
+                                SetProfilesOrSettingsDirty();
+                                break;
+                            }
+
+                            string currentValue;
+                            try
+                            {
+                                currentValue = text.EvaluateText();
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Warning(ex, "Failed to evaluate low-frequency text DisplayItem {ProfileGuid}/{DisplayItemGuid} ({Name}).", text.ProfileGuid, text.Guid, text.Name);
+                                throw;
+                            }
+
+                            if (lastValue != currentValue)
+                            {
+                                // Update the version because a change in the target DisplayItem's value was detected.
+                                if (ProfileInfos.TryGetValue(text.ProfileGuid, out var profileInfo))
+                                {
+                                    profileInfo.IncVersion();
+                                    LowUpdateFrequencyDisplayItemStringValues[text.Guid] = currentValue;
+                                    Logger.Debug("Increment Profile version. {profileId} : {currentValue} : {version}", text.ProfileGuid, currentValue, profileInfo.GetVersion());
+                                }
+                                else
+                                {
+                                    // This should not normally happen, so rebuild the internal state.
+                                    SetProfilesOrSettingsDirty();
+                                }
+                            }
+                            break;
+                        case ImageDisplayItem image:
+                            // For URLs, initialize with the current time so requests can be made at the configured interval.
+                            // Use GetOrAdd to preserve the original interval baseline.
+                            if (image.Type == ImageDisplayItem.ImageType.URL)
+                            {
+                                _ = LowUpdateFrequencyDisplayItemLongValues.GetOrAdd(image.Guid, currentTimeFrequency);
+                            }
+
+                            _ = LowUpdateFrequencyDisplayItemLongValues.TryGetValue(image.Guid, out var lastUpdateTimeFrequency);
+
+                            if ((currentTimeFrequency - lastUpdateTimeFrequency) / Stopwatch.Frequency >= image.RefreshInterval)
+                            {
+                                // This is the HTTP image update interval, so update the ProfileInfo version to trigger an HTTP request.
+                                if (ProfileInfos.TryGetValue(image.ProfileGuid, out var profileInfo))
+                                {
+                                    profileInfo.IncVersion();
+                                    LowUpdateFrequencyDisplayItemLongValues[image.Guid] = currentTimeFrequency;
+                                    Logger.Debug("Increment Profile version. {profileId} : {currentValue} : {version}", image.ProfileGuid, image.HttpUrl, profileInfo.GetVersion());
+                                }
+                                else
+                                {
+                                    // This should not normally happen, so rebuild the internal state.
+                                    Logger.Warning("Cannot get profileInfo for low-frequency image DisplayItem {ProfileGuid}/{DisplayItemGuid}. Rebuilding profile state.", image.ProfileGuid, image.Guid);
+                                    SetProfilesOrSettingsDirty();
+                                }
+                            }
+                            break;
+                    }
+                }
+            }
+
+            // Check whether each profile version needs updating and find the shortest wait until the next update.
+            foreach (var profileId in ProfileInfos.Keys)
+            {
+                if (ProfileInfos.TryGetValue(profileId, out var profileInfo))
                 {
                     try
                     {
-                        LastLowUpdateFrequencyCheckTime = currentTimeFrequency;
-                        foreach (KeyValuePair<Guid, DisplayItem> kvp in LowUpdateFrequencyDisplayItemIds)
-                        {
-                            switch (kvp.Value)
-                            {
-                                case (TextDisplayItem text):
-                                    _ = LowUpdateFrequencyDisplayItemStringValues.TryGetValue(kvp.Key, out var lastValue);
-
-                                    var currentValue = text.EvaluateText();
-                                    if (lastValue != currentValue)
-                                    {
-                                        // Update the version because a change in the target DisplayItem's value was detected.
-                                        if (ProfileInfos.TryGetValue(text.ProfileGuid, out var profileInfo))
-                                        {
-                                            profileInfo.IncVersion();
-                                            LowUpdateFrequencyDisplayItemStringValues[kvp.Key] = currentValue;
-                                        }
-                                    }
-                                    break;
-                                case (ImageDisplayItem image):
-                                    // For URLs, initialize with the current time so requests can be made at the configured interval.
-                                    // Use GetOrAdd to preserve the original interval baseline.
-                                    if (image.Type == ImageDisplayItem.ImageType.URL)
-                                    {
-                                        _ = LowUpdateFrequencyDisplayItemLongValues.GetOrAdd(image.Guid, currentTimeFrequency);
-                                    }
-
-                                    _ = LowUpdateFrequencyDisplayItemLongValues.TryGetValue(kvp.Key, out var lastUpdateTimeFrequency);
-
-                                    if ((currentTimeFrequency - lastUpdateTimeFrequency) / Stopwatch.Frequency >= image.RefreshInterval)
-                                    {
-                                        // This is the HTTP image update interval, so update the ProfileInfo version to trigger an HTTP request.
-                                        if (ProfileInfos.TryGetValue(image.ProfileGuid, out var profileInfo))
-                                        {
-                                            profileInfo.IncVersion();
-                                            LowUpdateFrequencyDisplayItemLongValues[kvp.Key] = currentTimeFrequency;
-                                        }
-
-                                    }
-                                    break;
-                            }
-                        }
+                        nextUpdateFrequency = Math.Min(nextUpdateFrequency, profileInfo.UpdateVersionIfNeeded());
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error(ex, "An error occurred while checking low-frequency items. Please verify the TextDisplayItem or ImageDisplayItem. (The DateTime format may be incorrect.)");
+                        Logger.Error(ex, "Failed to update the version for profile {ProfileGuid}.", profileId);
+                        throw;
                     }
                 }
-
-                // Check whether each profile version needs updating and find the shortest wait until the next update.
-                foreach (var profileId in ProfileInfos.Keys)
+                else
                 {
-                    if (!ProfileInfos.TryGetValue(profileId, out var profileInfo)) continue;
-                    nextUpdateFrequency = Math.Min(nextUpdateFrequency, profileInfo.UpdateVersionIfNeeded());
+                    // This should not normally happen, so rebuild the internal state.
+                    Logger.Warning("Cannot get profileInfo for profile {ProfileGuid}. Rebuilding profile state.", profileId);
+                    SetProfilesOrSettingsDirty();
                 }
+            }
+            if (IsProfilesOrSettingsDirty())
+            {
+                // Rebuild inconsistent internal state promptly. Rebuilding always increments the profile version.
+                await Task.Delay(10, cancellationToken);
+            }
+            else
+            {
                 // Calculate the shortest wait until the next update and wait.
                 // Wait at least 10 ms and at most 1000 ms. This interval is used to check for updates to infrequently updated objects.
                 await Task.Delay((int)Math.Clamp(Math.Ceiling(nextUpdateFrequency * 1000.0 / Stopwatch.Frequency), 10.0, 1000.0), cancellationToken);
@@ -239,6 +328,11 @@ namespace InfoPanel.Models
                 CheckUpdate();
             }
         }
+        // Check whether profile and panel settings data needs rebuilding.
+        public static bool IsProfilesOrSettingsDirty()
+        {
+            return Volatile.Read(ref _profilesDirty) == 1;
+        }
 
         // Rebuild internal profile data from the current panel and DisplayItem settings. 
         // Remove data for items and profiles that are no longer in use, then update each profile's target FPS and version.
@@ -272,8 +366,10 @@ namespace InfoPanel.Models
             foreach (var enableProfileId in EnabledProfiles.Keys)
             {
                 var profileInfo = ProfileInfos.GetOrAdd(enableProfileId, _ => new ProfileInfo());
-                profileInfo.UpdateMaxFps(Math.Min(MaxTargetFrameRateProfileByDisplayItem[enableProfileId], MaxTargetFrameRateProfileByPanel[enableProfileId]));
+                var targetFps = Math.Min(MaxTargetFrameRateProfileByDisplayItem[enableProfileId], MaxTargetFrameRateProfileByPanel[enableProfileId]);
+                profileInfo.UpdateMaxFps(Math.Max(MinimumProfileRefreshFps, targetFps));
                 profileInfo.IncVersion();
+                Logger.Debug("Increment Profile version. {ProfileId} : {targtFps} FPS : {version}", enableProfileId, Math.Min(MaxTargetFrameRateProfileByDisplayItem[enableProfileId], MaxTargetFrameRateProfileByPanel[enableProfileId]), profileInfo.GetVersion());
             }
         }
 
@@ -318,13 +414,14 @@ namespace InfoPanel.Models
         private static void CheckProfileInfoAndMaxFpsByProfile(Profile profile, ConcurrentDictionary<Guid, DisplayItem> lastDisplayItems, ConcurrentDictionary<Guid, Profile> lastEnabledProfiles)
         {
             int tempMaxFps = 0;
+            _ = lastEnabledProfiles.TryRemove(profile.Guid, out _);
             var displayItems = SharedModel.Instance.GetProfileDisplayItemsCopy(profile);
             foreach (var displayItem in displayItems)
             {
                 if (displayItem.Hidden) continue;
                 if (displayItem is GroupDisplayItem group)
                 {
-                    foreach (var childDisplayItem in group.DisplayItems)
+                    foreach (var childDisplayItem in group.DisplayItemsCopy)
                     {
                         if (childDisplayItem.Hidden) continue;
                         var fps = GetFpsByDisplayItem(childDisplayItem);
@@ -334,7 +431,6 @@ namespace InfoPanel.Models
                         }
                         AddDisplayItem(childDisplayItem);
                         _ = lastDisplayItems.TryRemove(childDisplayItem.Guid, out _);
-                        _ = lastEnabledProfiles.TryRemove(profile.Guid, out _);
                     }
                 }
                 else
@@ -411,65 +507,74 @@ namespace InfoPanel.Models
                     {
                         var type = device.GetType();
 
-                        prop = type.GetProperty("Enabled");
-                        if (prop is null)
+                        try
                         {
-                            Logger.Debug("{prop} was not found.", prop);
-                            continue;
-                        }
-                        if (prop.GetValue(device) is not bool enabled || !enabled)
-                        {
-                            Logger.Debug("{device} was disabled.", device);
-                            continue;
-                        }
+                            prop = type.GetProperty("Enabled");
+                            if (prop is null)
+                            {
+                                Logger.Debug("{prop} was not found.", prop);
+                                continue;
+                            }
+                            if (prop.GetValue(device) is not bool enabled || !enabled)
+                            {
+                                Logger.Debug("{device} was disabled.", device);
+                                continue;
+                            }
 
-                        prop = type.GetProperty("ProfileGuid");
-                        if (prop is null)
-                        {
-                            Logger.Debug("{device} {prop} was not found.", device, prop);
-                            continue;
-                        }
-                        var profileGuid = prop.GetValue(device);
-                        if (profileGuid is null)
-                        {
-                            Logger.Debug("{device} {prop} was null.", device, prop);
-                            continue;
-                        }
-                        if (profileIndex.TryGetValue((Guid)profileGuid, out var index))
-                        {
-                            _ = EnabledProfiles.GetOrAdd((Guid)profileGuid, Profiles[index]);
-                            _ = lastEnabledProfiles.TryRemove((Guid)profileGuid, out _);
-                            Logger.Debug("{vendor} {panel} Enabled -> {ProfileGuid}", vendor, device, profileGuid);
-                        }
-                        else
-                        {
-                            Logger.Debug("{vendor} {panel} Enabled -> but, not fount {ProfileGuid}", vendor, device, profileGuid);
-                            continue;
-                        }
+                            prop = type.GetProperty("ProfileGuid");
+                            if (prop is null)
+                            {
+                                Logger.Debug("{device} {prop} was not found.", device, prop);
+                                continue;
+                            }
+                            var profileGuid = prop.GetValue(device);
+                            if (profileGuid is null)
+                            {
+                                Logger.Debug("{device} {prop} was null.", device, prop);
+                                continue;
+                            }
+                            if (profileIndex.TryGetValue((Guid)profileGuid, out var index))
+                            {
+                                _ = EnabledProfiles.GetOrAdd((Guid)profileGuid, Profiles[index]);
+                                _ = lastEnabledProfiles.TryRemove((Guid)profileGuid, out _);
+                                Logger.Debug("{vendor} {panel} Enabled -> {ProfileGuid}", vendor, device, profileGuid);
+                            }
+                            else
+                            {
+                                Logger.Debug("{vendor} {panel} Enabled -> but, not fount {ProfileGuid}", vendor, device, profileGuid);
+                                continue;
+                            }
 
-                        prop = type.GetProperty("TargetFrameRate");
-                        if (prop is null)
-                        {
-                            Logger.Debug("{device} {prop} was not found.", device, prop);
-                            continue;
-                        }
-                        var targetFrameRate = prop.GetValue(device);
-                        if (targetFrameRate is null)
-                        {
-                            Logger.Debug("{device} {prop} was null.", device, prop);
-                            continue;
-                        }
-                        if (maxFrameRateByProfile.TryGetValue((Guid)profileGuid, out var tempMaxFrameRate))
-                        {
-                            if ((int)targetFrameRate > tempMaxFrameRate)
+                            prop = type.GetProperty("TargetFrameRate");
+                            if (prop is null)
+                            {
+                                Logger.Debug("{device} {prop} was not found.", device, prop);
+                                continue;
+                            }
+                            var targetFrameRate = prop.GetValue(device);
+                            if (targetFrameRate is null)
+                            {
+                                Logger.Debug("{device} {prop} was null.", device, prop);
+                                continue;
+                            }
+                            if (maxFrameRateByProfile.TryGetValue((Guid)profileGuid, out var tempMaxFrameRate))
+                            {
+                                if ((int)targetFrameRate > tempMaxFrameRate)
+                                {
+                                    maxFrameRateByProfile[(Guid)profileGuid] = (int)targetFrameRate;
+                                }
+                            }
+                            else
                             {
                                 maxFrameRateByProfile[(Guid)profileGuid] = (int)targetFrameRate;
                             }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            maxFrameRateByProfile[(Guid)profileGuid] = (int)targetFrameRate;
+                            Logger.Warning(ex, "Get error {device} {propName}", device, propName);
+                            continue;
                         }
+
                     }
                 }
                 catch (Exception ex)
@@ -488,7 +593,15 @@ namespace InfoPanel.Models
             foreach (var profileId in EnabledProfiles.Keys)
             {
                 // Update TargetFrameRate.
-                MaxTargetFrameRateProfileByPanel[profileId] = maxFrameRateByProfile[profileId];
+                try
+                {
+                    MaxTargetFrameRateProfileByPanel[profileId] = maxFrameRateByProfile[profileId];
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Failed to update the panel frame rate for profile {ProfileGuid}.", profileId);
+                    throw;
+                }
             }
         }
 
@@ -499,9 +612,7 @@ namespace InfoPanel.Models
             Logger.Debug("GetSensorIdFromDisplayItem : item class {class} , base class {baseclass}", displayItem.GetType().FullName, displayItem.GetType().BaseType!.FullName);
             return displayItem switch
             {
-                SensorDisplayItem sensor => GetSensorKey(sensor),
-                ChartDisplayItem chart => GetSensorKey(chart),
-                HttpImageDisplayItem httpImage => $"{httpImage.PluginSensorId}",
+                ISensorItem sensorItem => GetSensorKey(sensorItem),
                 _ => $"{displayItem.Guid}",
             };
         }
@@ -524,30 +635,6 @@ namespace InfoPanel.Models
             int fps = MinFps;
             switch (displayItem)
             {
-                case ChartDisplayItem chart:
-                    switch (chart)
-                    {
-                        case GraphDisplayItem graph:
-                            // Clamp the value to prevent unexpected values if the configuration file is edited manually; the GUI already enforces this range.
-                            // MinTargetGraphUpdateRate / MaxTargetGraphUpdateRate are the minimum and maximum values configurable in the GUI.
-                            var targetGraphUpdateRate = Math.Clamp(ConfigModel.Instance.Settings.TargetGraphUpdateRate, MinTargetGraphUpdateRate, MaxTargetGraphUpdateRate);
-                            fps = (int)Math.Ceiling(1000.0 / targetGraphUpdateRate);
-                            break;
-                        default:
-                            // BarDisplayItem and DoughnutDisplayItem use different target FPS values depending on whether animation is enabled.
-                            // When animation is enabled, update at the maximum FPS (MaxFps).
-                            if (chart.Animation)
-                            {
-                                fps = MaxFps;
-                            }
-                            else
-                            {
-                                // Without animation, BarDisplayItem and DoughnutDisplayItem update with the target sensor, so this class does not determine their FPS.
-                                fps = MinFps;
-                            }
-                            break;
-                    }
-                    break;
                 case CalendarDisplayItem calendar:
                     // Dates rarely change, so manage them as infrequently updated DisplayItems.
                     AddLowFrequencyDicByDisplayItem(calendar);
@@ -586,40 +673,28 @@ namespace InfoPanel.Models
                         RemoveLowFrequencyDicByDisplayItem(clock);
                     }
                     break;
-                case GaugeDisplayItem:
-                    // GaugeDisplayItem updates are determined by SensorDisplayItem, so this class does not determine its FPS.
-                    break;
-                case ImageDisplayItem image:
-                    switch (image)
+                case ISensorItem sensor:
+                    // Handles sensor-dependent display items and determines their target FPS:
+                    // ChartDisplayItem (BarDisplayItem, GraphDisplayItem, DonutDisplayItem),
+                    // GaugeDisplayItem, HttpImageDisplayItem, SensorDisplayItem, and SensorImageDisplayItem.
+                    if (displayItem is ChartDisplayItem chart)
                     {
-                        case HttpImageDisplayItem httpImage:
-                            // These update when the associated sensor or plugin updates, so this class does not determine their FPS.
+                        if (displayItem is GraphDisplayItem)
+                        {
+                            // Clamp the value to prevent unexpected values if the configuration file is edited manually; the GUI already enforces this range.
+                            // MinTargetGraphUpdateRate / MaxTargetGraphUpdateRate are the minimum and maximum values configurable in the GUI.
+                            var targetGraphUpdateRate = Math.Clamp(ConfigModel.Instance.Settings.TargetGraphUpdateRate, MinTargetGraphUpdateRate, MaxTargetGraphUpdateRate);
+                            fps = (int)Math.Ceiling(1000.0 / targetGraphUpdateRate);
                             break;
-                        default:
-                            switch (image.Type)
-                            {
-                                case ImageDisplayItem.ImageType.URL:
-                                    if (image.RefreshInterval == 0)
-                                    {
-                                        // A refresh interval of 0 disables periodic updates, so keep the FPS at MinFps.
-                                        RemoveLowFrequencyDicByDisplayItem(image);
-                                    }
-                                    else
-                                    {
-                                        // Values of 1 or greater may update at intervals of one second or more, so manage them as infrequently updated DisplayItems.
-                                        // Increment the associated profile version at the configured interval to trigger rendering and issue a request.
-                                        AddLowFrequencyDicByDisplayItem(image);
-                                    }
-
-                                    break;
-                                default:
-                                    fps = image.TargetFps;
-                                    break;
-                            }
+                        }
+                        if (chart.Animation)
+                        {
+                            // BarDisplayItem and DonutDisplayItem use different target FPS values depending on whether animation is enabled.
+                            // When animation is enabled, update at the maximum FPS (MaxFps).
+                            fps = MaxFps;
                             break;
+                        }
                     }
-                    break;
-                case SensorDisplayItem sensor:
                     // Sensors have different collection intervals in HWiNFO, LibreHardwareMonitor, and plugins, so handle each type separately.
                     switch (sensor)
                     {
@@ -637,7 +712,6 @@ namespace InfoPanel.Models
                             break;
                     }
                     break;
-
                 case ShapeDisplayItem shape:
                     // ShapeDisplayItem update frequency depends on the gradient animation speed.
                     if (shape.GradientAnimationSpeed == 0)
@@ -651,8 +725,34 @@ namespace InfoPanel.Models
                         fps = Math.Clamp(shape.GradientAnimationSpeed, 1, MaxFps);
                     }
                     break;
-
                 default:
+                    // HttpImageDisplayItem and SensorImageDisplayItem inherit ImageDisplayItem, 
+                    // so determine their FPS here rather than in a dedicated switch case.
+                    if (displayItem is ImageDisplayItem image)
+                    {
+                        switch (image.Type)
+                        {
+                            case ImageDisplayItem.ImageType.URL:
+                                if (image.RefreshInterval == 0)
+                                {
+                                    // A refresh interval of 0 disables periodic updates, so keep the FPS at MinFps.
+                                    RemoveLowFrequencyDicByDisplayItem(image);
+                                }
+                                else
+                                {
+                                    // Values of 1 or greater may update at intervals of one second or more, so manage them as infrequently updated DisplayItems.
+                                    // Increment the associated profile version at the configured interval to trigger rendering and issue a request.
+                                    AddLowFrequencyDicByDisplayItem(image);
+                                }
+
+                                break;
+                            default:
+                                fps = image.TargetFps;
+                                break;
+                        }
+                        break;
+
+                    }
                     // TextDisplayItem, GroupDisplayItem, and GuidDisplayItem update only when their settings change.
                     // A settings change triggers a redraw, so no additional handling is needed here.
                     // Consider adding a case here when a new DisplayItem type is introduced.
@@ -669,7 +769,15 @@ namespace InfoPanel.Models
             switch (displayItem)
             {
                 case TextDisplayItem text:
-                    LowUpdateFrequencyDisplayItemStringValues[text.Guid] = text.EvaluateText();
+                    try
+                    {
+                        LowUpdateFrequencyDisplayItemStringValues[text.Guid] = text.EvaluateText();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning(ex, "Failed to initialize low-frequency text DisplayItem {ProfileGuid}/{DisplayItemGuid} ({Name}).", text.ProfileGuid, text.Guid, text.Name);
+                        throw;
+                    }
                     break;
                 case ImageDisplayItem image:
                     // For URLs, initialize with the current time so requests can be made at the configured interval.
@@ -681,6 +789,7 @@ namespace InfoPanel.Models
                     break;
             }
         }
+
         // Remove a DisplayItem from the collection of infrequently updated items.
         private static void RemoveLowFrequencyDicByDisplayItem(DisplayItem displayItem)
         {
