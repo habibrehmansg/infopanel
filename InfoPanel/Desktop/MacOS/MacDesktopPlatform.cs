@@ -18,6 +18,9 @@ namespace InfoPanel.Desktop.MacOS;
 /// animations (a frame rendered below scale 1 is stretched to fill the window, filtered linearly).</item>
 /// <item>A press on a window is reported once, when the mouse button is up again, moved or not; moves made by
 /// <see cref="IDesktopWindow.SetFrame"/> never are.</item>
+/// <item>AppKit resizes a resizable window but shows no cursor for it (never key, the app never active): the view's
+/// tracking area sets the frame resize cursor over <see cref="MacResizeBand"/>'s band and the arrow again after it, one
+/// window owning the cursor at a time (<see cref="MacResizeCursorOwner"/>).</item>
 /// </list>
 /// </summary>
 [SupportedOSPlatform("macos")]
@@ -58,6 +61,9 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
     private static readonly Serilog.ILogger Logger = Log.ForContext<MacDesktopPlatform>();
 
     private static readonly Dictionary<IntPtr, MacWindow> Windows = [];
+
+    /// <summary>Which window's resize cursor is shown, across every window (one pointer, one cursor).</summary>
+    private static readonly MacResizeCursorOwner CursorOwner = new();
     private static MacDesktopPlatform? _current;
     private static IntPtr _delegateClass;
     private static IntPtr _viewClass;
@@ -142,7 +148,10 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
                 ("screenParametersChanged:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&ScreenParametersChanged, "v@:@"));
             _viewClass = ObjC.DefineClass("InfoPanelFrameView", "NSView",
                 ("acceptsFirstMouse:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, byte>)&Yes1, "c@:@"),
-                ("mouseDownCanMoveWindow", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, byte>)&Yes0, "c@:"));
+                ("mouseDownCanMoveWindow", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, byte>)&Yes0, "c@:"),
+                ("mouseEntered:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&PointerMoved, "v@:@"),
+                ("mouseMoved:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&PointerMoved, "v@:@"),
+                ("mouseExited:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&PointerExited, "v@:@"));
             _windowClass = ObjC.DefineClass("InfoPanelWindow", "NSWindow",
                 ("constrainFrameRect:toScreen:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, NSRect, IntPtr, NSRect>)&Unconstrained, "{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}@"),
                 ("sendEvent:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&SendEvent, "v@:@"));
@@ -216,6 +225,19 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
         ObjC.SendSuperVoidId(&super, sel, nsEvent);
     }
 
+    /// <summary>
+    /// <c>-[InfoPanelFrameView mouseEntered:]</c> and <c>mouseMoved:</c>, from the view's tracking area: the window's
+    /// resize cursor follows the pointer.
+    /// </summary>
+    [UnmanagedCallersOnly]
+    private static void PointerMoved(IntPtr self, IntPtr sel, IntPtr nsEvent) =>
+        Guard(() => Windows.GetValueOrDefault(ObjC.Send(self, Sel.Window))?.OnPointerMoved());
+
+    /// <summary><c>-[InfoPanelFrameView mouseExited:]</c>: the window gives up the resize cursor if it has it.</summary>
+    [UnmanagedCallersOnly]
+    private static void PointerExited(IntPtr self, IntPtr sel, IntPtr nsEvent) =>
+        Guard(() => Windows.GetValueOrDefault(ObjC.Send(self, Sel.Window))?.OnPointerExited());
+
     [UnmanagedCallersOnly]
     private static byte Yes1(IntPtr self, IntPtr sel, IntPtr arg) => 1;
 
@@ -266,7 +288,27 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
         public static readonly IntPtr IsVisible = ObjC.Sel("isVisible");
         public static readonly IntPtr Type = ObjC.Sel("type");
         public static readonly IntPtr CATransaction = ObjC.Class("CATransaction");
+        public static readonly IntPtr Window = ObjC.Sel("window");
+        public static readonly IntPtr MouseLocation = ObjC.Sel("mouseLocation");
+        public static readonly IntPtr FrameResizeCursor = ObjC.Sel("frameResizeCursorFromPosition:inDirections:");
+        public static readonly IntPtr ArrowCursor = ObjC.Sel("arrowCursor");
+        public static readonly IntPtr Set = ObjC.Sel("set");
+        public static readonly IntPtr NSCursor = ObjC.Class("NSCursor");
+        public static readonly IntPtr NSEvent = ObjC.Class("NSEvent");
+        public static readonly IntPtr NSWindow = ObjC.Class("NSWindow");
+        public static readonly IntPtr WindowNumber = ObjC.Sel("windowNumber");
+        public static readonly IntPtr WindowNumberAtPoint = ObjC.Sel("windowNumberAtPoint:belowWindowWithWindowNumber:");
     }
+
+    /// <summary>
+    /// <c>NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSTrackingActiveAlways | NSTrackingInVisibleRect</c>
+    /// (<c>NSTrackingArea.h</c>): pointer events whether or not the app is active (the window is never key), over the
+    /// view's visible rect as it resizes. <c>NSTrackingCursorUpdate</c> can't be active always.
+    /// </summary>
+    private const nuint CursorTracking = 0x01 | 0x02 | 0x80 | 0x200;
+
+    /// <summary><c>NSCursorFrameResizeDirectionsAll</c> (<c>NSCursor.h</c>, macOS 15, the engine's minimum).</summary>
+    private const nuint AllDirections = 0x03;
 
     private sealed class MacWindow : IDesktopWindow
     {
@@ -310,6 +352,10 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             var view = ObjC.SendIdRect(ObjC.Send(_viewClass, Sel.Alloc), ObjC.Sel("initWithFrame:"), new NSRect(0, 0, rect.Width, rect.Height));
             ObjC.SendVoidId(view, ObjC.Sel("setLayer:"), _layer);
             ObjC.SendVoidBool(view, ObjC.Sel("setWantsLayer:"), 1);
+            var tracking = ObjC.SendInitTrackingArea(ObjC.Send(ObjC.Class("NSTrackingArea"), Sel.Alloc),
+                ObjC.Sel("initWithRect:options:owner:userInfo:"), default, CursorTracking, view, IntPtr.Zero);
+            ObjC.SendVoidId(view, ObjC.Sel("addTrackingArea:"), tracking);
+            ObjC.SendVoid(tracking, Sel.Release);
             ObjC.SendVoidId(_window, ObjC.Sel("setContentView:"), view);
             ObjC.SendVoid(view, Sel.Release);
 
@@ -384,6 +430,47 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             // An explicit NO is what makes transparent pixels take clicks; YES lets every click, scroll and the pointer
             // through to what's beneath, so no drag or resize reaches the window (Movable and the style mask are kept).
             ObjC.SendVoidBool(_window, ObjC.Sel("setIgnoresMouseEvents:"), style.ClickThrough ? (byte)1 : (byte)0);
+
+            // Wherever the pointer rests now, whatever cursor was shown before; only if no window covers this one there.
+            var pointer = ObjC.SendPoint(Sel.NSEvent, Sel.MouseLocation);
+            SetCursor(CursorOwner.Restyled(_window, _visible, BandAt(pointer), _visible && FrontmostAt(pointer)));
+        }
+
+        /// <summary>
+        /// Whether this window is the one a click at <paramref name="pointer"/> (screen space) would reach: no window, of
+        /// any app, above it there (0: the search starts at the frontmost window).
+        /// </summary>
+        private bool FrontmostAt(NSPoint pointer) =>
+            ObjC.SendIntPointInt(Sel.NSWindow, Sel.WindowNumberAtPoint, pointer, 0) == ObjC.SendIntRet(_window, Sel.WindowNumber);
+
+        /// <summary>The pointer entered or moved over the window: its band's resize cursor, or the arrow after it.</summary>
+        internal void OnPointerMoved()
+        {
+            if (_window != IntPtr.Zero)
+                SetCursor(CursorOwner.Moved(_window, _visible, BandAt(ObjC.SendPoint(Sel.NSEvent, Sel.MouseLocation))));
+        }
+
+        /// <summary>The pointer left the window: the arrow, if this window's resize cursor was shown.</summary>
+        internal void OnPointerExited()
+        {
+            if (_window != IntPtr.Zero)
+                SetCursor(CursorOwner.Exited(_window));
+        }
+
+        /// <summary>The edge or corner at <paramref name="pointer"/>, in screen space (<see cref="MacResizeBand"/>, by the current style).</summary>
+        private MacResizeEdge BandAt(NSPoint pointer)
+        {
+            // Screen space is y up, as the window's frame: the point from the window's top-left.
+            var frame = ObjC.SendRect(_window, Sel.Frame);
+            return MacResizeBand.At(pointer.X - frame.X, frame.Y + frame.Height - pointer.Y, frame.Width, frame.Height, Style);
+        }
+
+        private static void SetCursor(MacCursorChange change)
+        {
+            if (change.Kind == MacCursorChangeKind.Resize)
+                ObjC.SendVoid(ObjC.SendIdUIntUInt(Sel.NSCursor, Sel.FrameResizeCursor, (nuint)change.Edge, AllDirections), Sel.Set);
+            else if (change.Kind == MacCursorChangeKind.Arrow)
+                ObjC.SendVoid(ObjC.Send(Sel.NSCursor, Sel.ArrowCursor), Sel.Set);
         }
 
         public void SetVisible(bool visible)
@@ -394,7 +481,11 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             if (visible)
                 ObjC.SendVoid(_window, ObjC.Sel("orderFrontRegardless"));
             else
+            {
+                // Hidden, it gives up the cursor it shows; its late tracking events change nothing (not visible).
+                SetCursor(CursorOwner.Hidden(_window));
                 ObjC.SendVoidId(_window, ObjC.Sel("orderOut:"), IntPtr.Zero);
+            }
         }
 
         public void ShowFrame(DesktopFrame frame)
@@ -446,6 +537,7 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             if (_window == IntPtr.Zero)
                 return;
 
+            SetCursor(CursorOwner.Hidden(_window));
             ObjC.SendVoidId(_window, ObjC.Sel("orderOut:"), IntPtr.Zero);
             ObjC.SendVoidId(_window, ObjC.Sel("setDelegate:"), IntPtr.Zero);
             Windows.Remove(_window);

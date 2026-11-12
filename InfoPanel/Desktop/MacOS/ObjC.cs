@@ -84,6 +84,18 @@ internal static unsafe class ObjC
     public static readonly delegate* unmanaged<IntPtr, IntPtr, NSRect, IntPtr> SendIdRect = (delegate* unmanaged<IntPtr, IntPtr, NSRect, IntPtr>)MsgSend;
     public static readonly delegate* unmanaged<IntPtr, IntPtr, double, IntPtr> SendIdDouble = (delegate* unmanaged<IntPtr, IntPtr, double, IntPtr>)MsgSend;
     public static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr, nuint, IntPtr> SendIdPtrUInt = (delegate* unmanaged<IntPtr, IntPtr, IntPtr, nuint, IntPtr>)MsgSend;
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, nuint, nuint, IntPtr> SendIdUIntUInt = (delegate* unmanaged<IntPtr, IntPtr, nuint, nuint, IntPtr>)MsgSend;
+
+    /// <summary>A method returning <c>NSPoint</c> (<c>+[NSEvent mouseLocation]</c>; 16 bytes, so the plain entry point on both architectures).</summary>
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, NSPoint> SendPoint = (delegate* unmanaged<IntPtr, IntPtr, NSPoint>)MsgSend;
+
+    /// <summary><c>+[NSWindow windowNumberAtPoint:belowWindowWithWindowNumber:]</c>: an <c>NSPoint</c> and an <c>NSInteger</c> in, an <c>NSInteger</c> out.</summary>
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, NSPoint, nint, nint> SendIntPointInt =
+        (delegate* unmanaged<IntPtr, IntPtr, NSPoint, nint, nint>)MsgSend;
+
+    /// <summary><c>-[NSTrackingArea initWithRect:options:owner:userInfo:]</c>.</summary>
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, NSRect, nuint, IntPtr, IntPtr, IntPtr> SendInitTrackingArea =
+        (delegate* unmanaged<IntPtr, IntPtr, NSRect, nuint, IntPtr, IntPtr, IntPtr>)MsgSend;
 
     /// <summary><c>-[NSMenuItem initWithTitle:action:keyEquivalent:]</c>: an object, a selector, an object.</summary>
     public static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr, IntPtr> SendIdIdSelId =
