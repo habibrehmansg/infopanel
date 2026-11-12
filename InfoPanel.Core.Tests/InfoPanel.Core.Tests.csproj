@@ -26,9 +26,16 @@
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Core\InfoPanel.Core.csproj" />
     <ProjectReference Include="..\InfoPanel.Panels.Testing\InfoPanel.Panels.Testing.csproj" />
+    <!-- The virtual panel package, compiled against but not copied: its tests load it from its own output, where its
+         panel.json is (PanelPackageOutput, in Panels/Testing/PanelPackagesUnderTest.cs; the path MSBuild resolved for it
+         is written into this assembly by PanelPackages.targets). A copy would put its panel.json beside this assembly,
+         where no driver's manifest may be. -->
+    <ProjectReference Include="..\InfoPanel.Panels.Virtual\InfoPanel.Panels.Virtual.csproj" Private="false" PanelPackage="true" />
     <!-- The sensor helper's stand-in, run as a child process by HelperChildProcessTests. It compiles Core's helper sources
          itself, so it is referenced under an alias no file uses: only its build output is wanted. -->
     <ProjectReference Include="..\InfoPanel.SensorHelper.TestHost\InfoPanel.SensorHelper.TestHost.csproj" Aliases="testhost" />
   </ItemGroup>
+
+  <Import Project="..\InfoPanel.Panels.Testing\PanelPackages.targets" />
 
 </Project>

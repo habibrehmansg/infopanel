@@ -106,7 +106,7 @@ public sealed class FakePanelDevices : IPanelDevices
 /// any of them, in order, each on its handle (<see cref="PanelTraceEntry.Handle"/>: each open takes the next number from
 /// 1). Calls are numbered from 1 in the order they are made: each open and each transfer (not a close, not
 /// <see cref="IPanelDevices.Describe"/> or <see cref="IPanelDevices.ListHid"/>), so a test can fail the nth with
-/// <see cref="Fail"/>, stall it with <see cref="Stall"/>, fail its zero-length packet with <see cref="FailTerminator"/>,
+/// <see cref="Fail"/>, stall it with <see cref="Stall"/>, slow it with <see cref="Delay"/>, fail its zero-length packet with <see cref="FailTerminator"/>,
 /// or unplug the device at it with <see cref="UnplugAt"/>. A call on a handle already disposed throws
 /// <see cref="ObjectDisposedException"/>, reaches nothing and is counted in <see cref="CallsAfterDispose"/>. Thread-safe;
 /// a responder runs under the device's lock and must not call the device.
@@ -117,6 +117,9 @@ public sealed class FakePanelDevice
     private readonly Dictionary<int, (PanelDeviceStatus Status, int Delivered)> _failures = [];
     private readonly Dictionary<int, PanelDeviceStatus> _terminatorFailures = [];
     private readonly Dictionary<int, TaskCompletionSource> _stalls = [];
+    private readonly Dictionary<int, (TimeSpan Delay, TaskCompletionSource Waiting)> _delays = [];
+    private readonly Dictionary<int, (Task Release, TaskCompletionSource Held)> _holds = [];
+    private readonly List<FakeCallTiming> _timings = [];
     private readonly List<FakeHid> _hids = [];
     private int _calls;
     private int _handles;
@@ -254,6 +257,62 @@ public sealed class FakePanelDevice
         }
     }
 
+    /// <summary>
+    /// Call <paramref name="call"/> is slow, as a device slow to take a transfer: it waits <paramref name="delay"/>, then
+    /// goes on as any call does. A delay longer than the call's timeout answers <see cref="PanelDeviceStatus.Timeout"/>
+    /// once the timeout has passed, and the wait ends as a stall's does on its token, its handle's dispose or an unplug.
+    /// The task completes once the call is waiting.
+    /// </summary>
+    public Task Delay(int call, TimeSpan delay)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero);
+        lock (Gate)
+        {
+            var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _delays[call] = (delay, waiting);
+            return waiting.Task;
+        }
+    }
+
+    /// <summary>
+    /// When each call ran, in the order made (opens and transfers, as numbered for <see cref="Fail"/>): the timeout it
+    /// was given, and when the seam call was entered and when it returned, around the whole of it (the wait for the
+    /// device's lock, a stall's or delay's wait, the reply's copy, a responder and the trace's <see cref="PanelTrace.Added"/>
+    /// callbacks), so a driver's own work before or after a call lies outside it. A call that ends with an exception
+    /// (its token cancelled) is listed too, ended where it threw.
+    /// </summary>
+    public IReadOnlyList<FakeCallTiming> Timings
+    {
+        get
+        {
+            lock (Gate)
+                return [.. _timings.OrderBy(t => t.Call)];
+        }
+    }
+
+    /// <summary>
+    /// Holds call <paramref name="call"/> until <paramref name="release"/> completes, then lets it go on as any call does
+    /// (its timeout doesn't end the hold: a test decides when it ends, by a signal, never a time); the hold ends early as
+    /// a stall's does, on its token (it throws <see cref="OperationCanceledException"/>), its handle's dispose
+    /// (<see cref="PanelDeviceStatus.Io"/>) or an unplug (<see cref="PanelDeviceStatus.Gone"/>). The task completes
+    /// once the call is held.
+    /// </summary>
+    public Task Hold(int call, Task release)
+    {
+        ArgumentNullException.ThrowIfNull(release);
+        lock (Gate)
+        {
+            var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _holds[call] = (release, held);
+            release.ContinueWith(_ =>
+            {
+                lock (Gate)
+                    Monitor.PulseAll(Gate);
+            }, TaskScheduler.Default);
+            return held.Task;
+        }
+    }
+
     /// <summary>The device is unplugged at call <paramref name="call"/> (from 1): that call and every later one answer <see cref="PanelDeviceStatus.Gone"/>.</summary>
     public void UnplugAt(int call)
     {
@@ -274,9 +333,10 @@ public sealed class FakePanelDevice
     // The next call: its number, and what the script makes of it: Gone once unplugged, a scripted failure (with the bytes
     // it delivers), a stall waited out, else Ok (the call itself then decides). The caller has checked its handle, its
     // timeout and its token. Under Gate.
-    internal (int Call, PanelDeviceStatus Status, int Delivered) Begin(int timeoutMs, CancellationToken token, HandleState? handle)
+    internal (int Call, PanelDeviceStatus Status, int Delivered) Begin(CallClock clock, CancellationToken token, HandleState? handle)
     {
-        var call = ++_calls;
+        var call = clock.Call = ++_calls;
+        var timeoutMs = clock.TimeoutMs;
         if (_unplugAt is { } at && call >= at)
             _plugged = false;
         if (!_plugged)
@@ -284,12 +344,28 @@ public sealed class FakePanelDevice
         if (_failures.TryGetValue(call, out var failure))
             return (call, failure.Status, failure.Delivered);
         if (_stalls.Remove(call, out var stalled))
-            return (call, Wait(timeoutMs, token, handle, stalled), 0);
+            return (call, Wait(timeoutMs, token, handle, stalled, null), 0);
+        if (_delays.Remove(call, out var delayed))
+            return (call, Wait(timeoutMs, token, handle, delayed.Waiting, delayed.Delay), 0);
+        if (_holds.Remove(call, out var held))
+            return (call, Wait(timeoutMs, token, handle, held.Held, null, held.Release), 0);
         return (call, PanelDeviceStatus.Ok, 0);
     }
 
-    // A stalled call's wait, the lock let go meanwhile. Under Gate.
-    private PanelDeviceStatus Wait(int timeoutMs, CancellationToken token, HandleState? handle, TaskCompletionSource stalled)
+    /// <summary>A seam call's clock, made as the call is entered (before the device's lock) and disposed as it returns: its timing.</summary>
+    internal CallClock Clock(int timeoutMs) => new(this, timeoutMs);
+
+    // A call's timing, as its clock is disposed. Not under Gate.
+    internal void Timed(CallClock clock, long ended)
+    {
+        lock (Gate)
+            _timings.Add(new FakeCallTiming(clock.Call, clock.TimeoutMs, clock.Entered, ended));
+    }
+
+    // A stalled call's wait (until its timeout: Timeout), a delayed one's (Ok once the delay has passed, if that is
+    // before the timeout) or a held one's (Ok once `release` completes, whatever its timeout), the lock let go meanwhile;
+    // `waiting` is told once it waits. Under Gate.
+    private PanelDeviceStatus Wait(int timeoutMs, CancellationToken token, HandleState? handle, TaskCompletionSource waiting, TimeSpan? delay, Task? release = null)
     {
         var registration = token.Register(() =>
         {
@@ -300,8 +376,9 @@ public sealed class FakePanelDevice
             handle.Pending++;
         try
         {
-            stalled.TrySetResult();
+            waiting.TrySetResult();
             var clock = Stopwatch.StartNew();
+            var timeout = TimeSpan.FromMilliseconds(timeoutMs);
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -309,10 +386,20 @@ public sealed class FakePanelDevice
                     return PanelDeviceStatus.Io;
                 if (!_plugged)
                     return PanelDeviceStatus.Gone;
-                var left = timeoutMs - clock.ElapsedMilliseconds;
-                if (left <= 0)
+                if (release != null)
+                {
+                    if (release.IsCompleted)
+                        return PanelDeviceStatus.Ok;
+                    Monitor.Wait(Gate);
+                    continue;
+                }
+                var elapsed = clock.Elapsed;
+                if (delay is { } slow && elapsed >= slow && slow < timeout)
+                    return PanelDeviceStatus.Ok;
+                if (elapsed >= timeout)
                     return PanelDeviceStatus.Timeout;
-                Monitor.Wait(Gate, TimeSpan.FromMilliseconds(left));
+                var until = delay is { } d && d < timeout ? d : timeout;
+                Monitor.Wait(Gate, until - elapsed);
             }
         }
         finally
@@ -385,9 +472,10 @@ public sealed class FakePanelDevice
     internal PanelDeviceStatus OpenUsb(int interfaceNumber, int timeoutMs, CancellationToken token, out IPanelUsb? usb)
     {
         usb = null;
+        using var clock = Clock(timeoutMs);
         lock (Gate)
         {
-            var (_, status, _) = Begin(timeoutMs, token, null);
+            var (_, status, _) = Begin(clock, token, null);
             var claimed = _descriptor.Interfaces.FirstOrDefault(i => i.Number == interfaceNumber);
             if (status == PanelDeviceStatus.Ok)
                 status = claimed == null ? PanelDeviceStatus.NotSupported : Usb.OpenStatus;
@@ -404,9 +492,10 @@ public sealed class FakePanelDevice
     internal PanelDeviceStatus OpenHid(PanelHidFilter? filter, string? id, int timeoutMs, CancellationToken token, out IPanelHid? hid)
     {
         hid = null;
+        using var clock = Clock(timeoutMs);
         lock (Gate)
         {
-            var (_, status, _) = Begin(timeoutMs, token, null);
+            var (_, status, _) = Begin(clock, token, null);
             var collection = filter != null
                 ? _hids.FirstOrDefault(h => h.PresentUnlocked && h.Passes(filter))
                 : _hids.FirstOrDefault(h => h.PresentUnlocked && h.Id == id);
@@ -430,9 +519,10 @@ public sealed class FakePanelDevice
     internal PanelDeviceStatus OpenSerial(PanelSerialOptions options, int timeoutMs, CancellationToken token, out IPanelSerial? serial)
     {
         serial = null;
+        using var clock = Clock(timeoutMs);
         lock (Gate)
         {
-            var (_, status, _) = Begin(timeoutMs, token, null);
+            var (_, status, _) = Begin(clock, token, null);
             if (status == PanelDeviceStatus.Ok)
                 status = Serial.Present ? Serial.OpenStatus : PanelDeviceStatus.NotSupported;
             if (status == PanelDeviceStatus.Ok && Serial.IsOpen)
@@ -446,6 +536,36 @@ public sealed class FakePanelDevice
             }
             return status;
         }
+    }
+}
+
+/// <summary>
+/// One call as a fake device saw it (<see cref="FakePanelDevice.Timings"/>): its number (from 1), the timeout it was given
+/// in milliseconds, and when the seam call was entered and when it returned, as <see cref="Stopwatch.GetTimestamp"/> values.
+/// </summary>
+public sealed record FakeCallTiming(int Call, int TimeoutMs, long Started, long Ended)
+{
+    /// <summary>How long the call took, from its entry to its return.</summary>
+    public TimeSpan Length => Stopwatch.GetElapsedTime(Started, Ended);
+}
+
+/// <summary>
+/// One seam call's clock: <see cref="Entered"/> as the call is made, its number set by <see cref="FakePanelDevice.Begin"/>,
+/// and its timing recorded as it is disposed, when the call returns or throws (a call that threw before it was numbered
+/// isn't one).
+/// </summary>
+internal sealed class CallClock(FakePanelDevice device, int timeoutMs) : IDisposable
+{
+    public long Entered { get; } = Stopwatch.GetTimestamp();
+
+    public int TimeoutMs { get; } = timeoutMs;
+
+    public int Call { get; set; }
+
+    public void Dispose()
+    {
+        if (Call > 0)
+            device.Timed(this, Stopwatch.GetTimestamp());
     }
 }
 
@@ -586,11 +706,12 @@ public sealed class FakeUsb
 
         public PanelDeviceStatus BulkWrite(byte endpoint, ReadOnlySpan<byte> data, int timeoutMs, bool zeroLengthPacketIfFull = false, CancellationToken cancellationToken = default)
         {
+            using var clock = device.Clock(timeoutMs);
             lock (device.Gate)
             {
                 Check(timeoutMs, cancellationToken);
                 var target = $"ep{endpoint:x2}";
-                var (call, status, delivered) = device.Begin(timeoutMs, cancellationToken, _state);
+                var (call, status, delivered) = device.Begin(clock, cancellationToken, _state);
                 var outEndpoint = Endpoints.FirstOrDefault(e => e.Address == endpoint && !e.IsIn);
                 if (status == PanelDeviceStatus.Ok && outEndpoint == null)
                     status = PanelDeviceStatus.Io;
@@ -614,11 +735,12 @@ public sealed class FakeUsb
         public PanelDeviceStatus BulkRead(byte endpoint, Span<byte> buffer, int timeoutMs, out int read, CancellationToken cancellationToken = default)
         {
             read = 0;
+            using var clock = device.Clock(timeoutMs);
             lock (device.Gate)
             {
                 Check(timeoutMs, cancellationToken);
                 var target = $"ep{endpoint:x2}";
-                var (_, status, _) = device.Begin(timeoutMs, cancellationToken, _state);
+                var (_, status, _) = device.Begin(clock, cancellationToken, _state);
                 var inEndpoint = Endpoints.FirstOrDefault(e => e.Address == endpoint && e.IsIn);
                 if (status == PanelDeviceStatus.Ok && inEndpoint == null)
                     status = PanelDeviceStatus.Io;
@@ -787,10 +909,11 @@ public sealed class FakeHid
 
         private PanelDeviceStatus WriteOf(PanelTraceOp op, ReadOnlySpan<byte> report, int max, int timeoutMs, CancellationToken token)
         {
+            using var clock = _device.Clock(timeoutMs);
             lock (_device.Gate)
             {
                 Check(timeoutMs, token);
-                var (_, status, _) = _device.Begin(timeoutMs, token, _state);
+                var (_, status, _) = _device.Begin(clock, token, _state);
                 if (status == PanelDeviceStatus.Ok && (report.Length == 0 || report.Length > max))
                     status = PanelDeviceStatus.Io;
                 var entry = _device.Record(op, "", report.ToArray(), status, _state.Id);
@@ -802,10 +925,11 @@ public sealed class FakeHid
 
         public PanelDeviceStatus Read(Span<byte> buffer, int timeoutMs, out int read, CancellationToken cancellationToken = default)
         {
+            using var clock = _device.Clock(timeoutMs);
             lock (_device.Gate)
             {
                 Check(timeoutMs, cancellationToken);
-                var (_, status, _) = _device.Begin(timeoutMs, cancellationToken, _state);
+                var (_, status, _) = _device.Begin(clock, cancellationToken, _state);
                 byte[]? reply = null;
                 if (status == PanelDeviceStatus.Ok)
                 {
@@ -818,10 +942,11 @@ public sealed class FakeHid
 
         public PanelDeviceStatus GetFeature(Span<byte> buffer, int timeoutMs, out int read, CancellationToken cancellationToken = default)
         {
+            using var clock = _device.Clock(timeoutMs);
             lock (_device.Gate)
             {
                 Check(timeoutMs, cancellationToken);
-                var (_, status, _) = _device.Begin(timeoutMs, cancellationToken, _state);
+                var (_, status, _) = _device.Begin(clock, cancellationToken, _state);
                 byte[]? reply = null;
                 if (status == PanelDeviceStatus.Ok)
                 {
@@ -982,10 +1107,11 @@ public sealed class FakeSerial
 
         public PanelDeviceStatus Write(ReadOnlySpan<byte> data, int timeoutMs, CancellationToken cancellationToken = default)
         {
+            using var clock = device.Clock(timeoutMs);
             lock (device.Gate)
             {
                 Check(timeoutMs, cancellationToken);
-                var (_, status, delivered) = device.Begin(timeoutMs, cancellationToken, _state);
+                var (_, status, delivered) = device.Begin(clock, cancellationToken, _state);
                 var entry = device.Record(PanelTraceOp.SerialWrite, "", data.ToArray(), status, _state.Id);
                 if (status != PanelDeviceStatus.Ok)
                 {
@@ -1011,10 +1137,11 @@ public sealed class FakeSerial
         public PanelDeviceStatus Read(Span<byte> buffer, int timeoutMs, out int read, CancellationToken cancellationToken = default)
         {
             read = 0;
+            using var clock = device.Clock(timeoutMs);
             lock (device.Gate)
             {
                 Check(timeoutMs, cancellationToken);
-                var (_, status, _) = device.Begin(timeoutMs, cancellationToken, _state);
+                var (_, status, _) = device.Begin(clock, cancellationToken, _state);
                 if (status == PanelDeviceStatus.Ok && (_serial._input.Count == 0 || buffer.Length == 0))
                     status = PanelDeviceStatus.Timeout;
                 if (status != PanelDeviceStatus.Ok)
@@ -1033,11 +1160,12 @@ public sealed class FakeSerial
 
         public PanelDeviceStatus DiscardInput()
         {
+            using var clock = device.Clock(1);
             lock (device.Gate)
             {
                 if (_state.Disposed)
                     throw device.Disposed(nameof(IPanelSerial));
-                var (_, status, _) = device.Begin(1, CancellationToken.None, null); // it doesn't wait: never stalled for long
+                var (_, status, _) = device.Begin(clock, CancellationToken.None, null); // it doesn't wait: never stalled for long
                 if (status == PanelDeviceStatus.Ok)
                     _serial._input.Clear();
                 device.Record(PanelTraceOp.SerialDiscard, "", [], status, _state.Id);

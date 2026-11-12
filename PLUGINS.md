@@ -602,6 +602,8 @@ For questions or help with plugin development, join the [InfoPanel Discord][disc
 
 InfoPanel 2.0 drives USB panels through **panel drivers**, a kind of plugin of their own: everything above is about sensor plugins (.NET 8). A panel driver targets **.NET 10**, the engine's runtime, and references `InfoPanel.Panels.Sdk` (in this repository). One project can't be both, and a package holds one or the other. What the engine does with a driver: [docs/2.0/panels.md](docs/2.0/panels.md); how it finds, runs and bounds a panel package: [docs/2.0/plugins.md](docs/2.0/plugins.md#panel-packages).
 
+Adding a family, from the package and its `panel.json` to the tests without a device, the conformance suite and the pull request: [docs/2.0/panel-drivers.md](docs/2.0/panel-drivers.md).
+
 A driver is two small interfaces:
 
 - `IPanelDriver`: its `Family` id, the USB devices it `Matches` (vendor and product ids, with a transport), a `Probe` that tells one of its own panels (it may open the device and ask it, never draws) and answers its identity (model, size, serial, firmware), and `Open`, which runs the start sequence and answers an `IPanelSession`.

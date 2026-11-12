@@ -1,0 +1,14 @@
+<Project>
+  <!-- Imported by a test project that references panel packages with PanelPackage="true" (and Private="false": built
+       first and compiled against, never copied beside the tests). Writes each such package's own output, the path
+       MSBuild resolved for it (its TargetPath, whatever the configuration, runtime or artifacts layout), into the test
+       assembly as [AssemblyMetadata("InfoPanel.PanelPackage", path)], which PanelPackageOutput.Use(assembly) reads. -->
+  <Target Name="WritePanelPackagePaths" BeforeTargets="GetAssemblyAttributes" DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'%(_ResolvedProjectReferencePaths.PanelPackage)' == 'true'">
+        <_Parameter1>InfoPanel.PanelPackage</_Parameter1>
+        <_Parameter2>%(_ResolvedProjectReferencePaths.FullPath)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+</Project>
