@@ -299,82 +299,82 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Copyright**: 2024 (authors: Eirik Tsarpalis)
 - **Project**: https://eiriktsarpalis.github.io/PolyType/
 
-### runtime.android-arm.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Android, arm)
+### runtime.android-arm.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Android, arm)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.android-arm64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Android, arm64)
+### runtime.android-arm64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Android, arm64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.android-x64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Android, x64)
+### runtime.android-x64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Android, x64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.android-x86.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Android, x86)
+### runtime.android-x86.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Android, x86)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.linux-arm.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Linux, arm)
+### runtime.linux-arm.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Linux, arm)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.linux-arm64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Linux, arm64)
+### runtime.linux-arm64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Linux, arm64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.linux-bionic-arm64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Linux with Bionic, arm64)
+### runtime.linux-bionic-arm64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Linux with Bionic, arm64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.linux-bionic-x64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Linux with Bionic, x64)
+### runtime.linux-bionic-x64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Linux with Bionic, x64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.linux-musl-arm.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Linux with musl, arm)
+### runtime.linux-musl-arm.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Linux with musl, arm)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.linux-musl-arm64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Linux with musl, arm64)
+### runtime.linux-musl-arm64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Linux with musl, arm64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.linux-musl-x64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Linux with musl, x64)
+### runtime.linux-musl-x64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Linux with musl, x64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.linux-x64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Linux, x64)
+### runtime.linux-x64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Linux, x64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.maccatalyst-arm64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Mac Catalyst, arm64)
+### runtime.maccatalyst-arm64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Mac Catalyst, arm64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.maccatalyst-x64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for Mac Catalyst, x64)
+### runtime.maccatalyst-x64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for Mac Catalyst, x64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.osx-arm64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for macOS, arm64)
+### runtime.osx-arm64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for macOS, arm64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### runtime.osx-x64.runtime.native.System.IO.Ports 10.0.6 (System.IO.Ports' native library for macOS, x64)
+### runtime.osx-x64.runtime.native.System.IO.Ports 10.0.15 (System.IO.Ports' native library for macOS, x64)
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
@@ -504,7 +504,7 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### System.IO.Ports 10.0.6
+### System.IO.Ports 10.0.15
 - **Use**: the panel driver seam's serial ports (`InfoPanel.Core/Panels/Devices/SerialPorts.cs`)
 - **Licence**: MIT (the package's own licence expression; it carries no licence file)
 - **Copyright**: © Microsoft Corporation. All rights reserved.
@@ -529,7 +529,7 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 
 Only in a publish for Windows (`dotnet publish InfoPanel -r win-x64`), in its own folder beside the engine: LibreHardwareMonitorLib and its dependencies, unmodified, as published on nuget.org; their source is at the projects below. The `InfoPanel.SensorHelper` graph, Windows runtimes.
 
-### BlackSharp.Core 1.0.7
+### BlackSharp.Core 1.0.9
 - **Licence**: MPL-2.0
 - **Copyright**: Florian K.
 - **Project**: https://github.com/Blacktempel/BlackSharp
@@ -559,22 +559,22 @@ Only in a publish for Windows (`dotnet publish InfoPanel -r win-x64`), in its ow
 - **Copyright**: Florian K.
 - **Project**: https://github.com/Blacktempel/RAMSPDToolkit
 
-### System.CodeDom 10.0.6
+### System.CodeDom 10.0.15
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### System.IO.Ports 10.0.6
+### System.IO.Ports 10.0.15
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### System.Management 10.0.6
+### System.Management 10.0.15
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
-### System.Threading.AccessControl 10.0.6
+### System.Threading.AccessControl 10.0.15
 - **Licence**: MIT
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/

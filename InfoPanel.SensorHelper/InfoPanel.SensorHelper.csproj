@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- The sensor helper: a process of its own that hosts LibreHardwareMonitorLib and answers the engine over a named pipe
-       (InfoPanel.Core/SensorHelper/HelperProtocol.cs). net8.0-windows as 1.4.x, so LibreHardwareMonitorLib restores the
-       same graph and runs the same assembly 1.4.x runs; it rolls forward to the engine's runtime. Builds on macOS with
+       (InfoPanel.Core/SensorHelper/HelperProtocol.cs). net8.0-windows as 1.4.x, so LibreHardwareMonitorLib runs the same
+       assembly 1.4.x runs; it rolls forward to the engine's runtime. Builds on macOS with
        EnableWindowsTargeting; it runs on Windows only, and its build output carries LibreHardwareMonitorLib only when
        built or published for a Windows runtime (dotnet publish -r win-x64), since the package ships its assemblies per
        runtime. -->
@@ -24,7 +24,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <!-- LibreHardwareMonitorLib and each of its dependencies, at the versions 1.4.x ships (Directory.Packages.props). -->
+  <!-- LibreHardwareMonitorLib and each of its dependencies, at the latest versions LibreHardwareMonitorLib works with
+       (Directory.Packages.props). -->
   <ItemGroup>
     <PackageReference Include="LibreHardwareMonitorLib" />
     <PackageReference Include="BlackSharp.Core" />

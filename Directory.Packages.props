@@ -42,19 +42,24 @@
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
   </ItemGroup>
 
-  <!-- InfoPanel.SensorHelper only: LibreHardwareMonitorLib and its dependencies, pinned to the versions 1.4.x ships (its
-       net8.0 graph, which the helper's net8.0-windows restores exactly), so the sensor identifiers match 1.x profiles. Bumped
-       only after an identifier diff on a real PC. The engine and InfoPanel.Core reference none of them. -->
+  <!-- InfoPanel.SensorHelper: LibreHardwareMonitorLib 0.9.6 and its dependencies, each at the latest version LHM 0.9.6
+       works with (the owner's choice, 12 Nov 2026), checked offline against the types and members 0.9.6 uses and the
+       packages' own dependency ranges. Not their latest releases: BlackSharp.Core 1.0.10 and later drop
+       DataStorageSizeConverter, which 0.9.6 calls, so DiskInfoToolkit and RAMSPDToolkit-NDD stay at the last releases that
+       take a BlackSharp.Core before it (DiskInfoToolkit 2.x is also a new API 0.9.6 doesn't call); the System packages
+       stay on 10.0, as 11.0 has no net8.0 assets for the helper's net8.0-windows. Whether the sensor identifiers still match
+       1.x profiles is checked next on a real PC (an identifier diff). InfoPanel.Core shares System.IO.Ports (the panel
+       driver seam's serial ports) and HidSharp; the engine references no other of them. -->
   <ItemGroup>
     <PackageVersion Include="LibreHardwareMonitorLib" Version="0.9.6" />
-    <PackageVersion Include="BlackSharp.Core" Version="1.0.7" />
+    <PackageVersion Include="BlackSharp.Core" Version="1.0.9" />
     <PackageVersion Include="DiskInfoToolkit" Version="1.1.2" />
     <PackageVersion Include="HidSharp" Version="2.6.4" />
     <PackageVersion Include="Mono.Posix.NETStandard" Version="1.0.0" />
     <PackageVersion Include="RAMSPDToolkit-NDD" Version="1.4.2" />
-    <PackageVersion Include="System.IO.Ports" Version="10.0.6" />
-    <PackageVersion Include="System.Management" Version="10.0.6" />
-    <PackageVersion Include="System.Threading.AccessControl" Version="10.0.6" />
+    <PackageVersion Include="System.IO.Ports" Version="10.0.15" />
+    <PackageVersion Include="System.Management" Version="10.0.15" />
+    <PackageVersion Include="System.Threading.AccessControl" Version="10.0.15" />
   </ItemGroup>
 
   <!-- Test projects -->
