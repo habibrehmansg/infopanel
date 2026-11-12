@@ -21,7 +21,7 @@ public static class ConformanceFrames
         return format switch
         {
             PanelFrameFormat.Jpeg => GreyJpeg(width, height),
-            PanelFrameFormat.Rgb565Le or PanelFrameFormat.Rgb565Be => Pattern(width, height, 2, opaque: false),
+            PanelFrameFormat.Rgb565Le or PanelFrameFormat.Rgb565Be or PanelFrameFormat.Rgb565LeTruncated => Pattern(width, height, 2, opaque: false),
             PanelFrameFormat.Rgb888 or PanelFrameFormat.Bgr888 => Pattern(width, height, 3, opaque: false),
             PanelFrameFormat.Rgba8888 => Pattern(width, height, 4, opaque: true),
             _ => throw new ArgumentOutOfRangeException(nameof(format), format, "a format the SDK doesn't have"),
@@ -31,7 +31,7 @@ public static class ConformanceFrames
     /// <summary>The bytes a pixel of a raw format; null for <see cref="PanelFrameFormat.Jpeg"/> (or a format the SDK doesn't have).</summary>
     public static int? BytesPerPixel(PanelFrameFormat format) => format switch
     {
-        PanelFrameFormat.Rgb565Le or PanelFrameFormat.Rgb565Be => 2,
+        PanelFrameFormat.Rgb565Le or PanelFrameFormat.Rgb565Be or PanelFrameFormat.Rgb565LeTruncated => 2,
         PanelFrameFormat.Rgb888 or PanelFrameFormat.Bgr888 => 3,
         PanelFrameFormat.Rgba8888 => 4,
         _ => null,

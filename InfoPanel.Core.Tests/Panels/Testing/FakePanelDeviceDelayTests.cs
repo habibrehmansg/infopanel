@@ -117,6 +117,22 @@ public sealed class FakePanelDeviceDelayTests
     }
 
     [Fact]
+    public async Task A_scripted_unplug_at_a_later_call_ends_a_held_call_with_Gone()
+    {
+        // The device is unplugged at the call after the held one (UnplugAt): the held call ends as at Unplug, with Gone,
+        // instead of waiting for a release that never comes.
+        var (device, usb) = Opened();
+        var held = device.Hold(device.Calls + 1, new TaskCompletionSource().Task);
+        device.UnplugAt(device.Calls + 2);
+
+        var write = Task.Run(() => usb.BulkWrite(0x01, [1], 1000));
+        await held.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal(PanelDeviceStatus.Gone, usb.BulkWrite(0x01, [2], 1000));
+
+        Assert.Equal(PanelDeviceStatus.Gone, await write.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task An_unplug_ends_a_delayed_call_with_Gone()
     {
         var (device, usb) = Opened();

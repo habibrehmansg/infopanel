@@ -14,6 +14,7 @@ public sealed class ConformanceFramesTests
     [Theory]
     [InlineData(PanelFrameFormat.Rgb565Le, 2)]
     [InlineData(PanelFrameFormat.Rgb565Be, 2)]
+    [InlineData(PanelFrameFormat.Rgb565LeTruncated, 2)]
     [InlineData(PanelFrameFormat.Rgb888, 3)]
     [InlineData(PanelFrameFormat.Bgr888, 3)]
     [InlineData(PanelFrameFormat.Rgba8888, 4)]
@@ -23,6 +24,19 @@ public sealed class ConformanceFramesTests
 
         Assert.Equal(37 * 11 * bytesPerPixel, frame.Length);
         Assert.True(frame.Distinct().Count() > 1, "a frame that isn't uniform");
+    }
+
+    [Fact]
+    public void Every_format_the_SDK_has_makes_a_frame_its_bytes_a_pixel_long()
+    {
+        foreach (var format in Enum.GetValues<PanelFrameFormat>())
+        {
+            var frame = ConformanceFrames.Of(format, 5, 3);
+            if (format == PanelFrameFormat.Jpeg)
+                Assert.Null(ConformanceFrames.BytesPerPixel(format));
+            else
+                Assert.Equal(frame.Length, 5 * 3 * ConformanceFrames.BytesPerPixel(format));
+        }
     }
 
     [Fact]

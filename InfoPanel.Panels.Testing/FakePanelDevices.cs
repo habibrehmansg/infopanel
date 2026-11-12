@@ -313,7 +313,10 @@ public sealed class FakePanelDevice
         }
     }
 
-    /// <summary>The device is unplugged at call <paramref name="call"/> (from 1): that call and every later one answer <see cref="PanelDeviceStatus.Gone"/>.</summary>
+    /// <summary>
+    /// The device is unplugged at call <paramref name="call"/> (from 1): that call and every later one answer
+    /// <see cref="PanelDeviceStatus.Gone"/>, and a call still held, stalled or delayed then ends with it, as at <see cref="Unplug"/>.
+    /// </summary>
     public void UnplugAt(int call)
     {
         lock (Gate)
@@ -337,8 +340,11 @@ public sealed class FakePanelDevice
     {
         var call = clock.Call = ++_calls;
         var timeoutMs = clock.TimeoutMs;
-        if (_unplugAt is { } at && call >= at)
+        if (_unplugAt is { } at && call >= at && _plugged)
+        {
             _plugged = false;
+            Monitor.PulseAll(Gate); // a call held, stalled or delayed before it ends with Gone, as at Unplug
+        }
         if (!_plugged)
             return (call, PanelDeviceStatus.Gone, 0);
         if (_failures.TryGetValue(call, out var failure))

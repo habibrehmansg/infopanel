@@ -1,0 +1,12 @@
+# InfoPanel: Thermalright panels (the ids in this package's panel.json), readable and writable by the user at the
+# seat, so InfoPanel needs no root. Copy to /etc/udev/rules.d/, then: sudo udevadm control --reload && sudo udevadm trigger
+# ChiZhu (USB bulk)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="87ad", ATTRS{idProduct}=="70db", MODE="0660", TAG+="uaccess"
+# Trofeo (HID)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5302", MODE="0660", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5302", MODE="0660", TAG+="uaccess"
+# TrofeoBulk LY and LY1 (USB bulk)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5408", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5409", MODE="0660", TAG+="uaccess"
+# ALi (USB bulk; the same id as a SCSI model, which Linux leaves to its storage driver)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5406", MODE="0660", TAG+="uaccess"

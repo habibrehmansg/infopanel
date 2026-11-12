@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Thermalright panel package: InfoPanel 1.4's Thermalright protocols (ChiZhu and TrofeoBulk over USB bulk, Trofeo
+       over HID, ALi) as pure code, with every model and its detection keys in panel.json, the family's one table of
+       matches and models. It references the panel SDK only (not copied: the host gives the package its own); a device
+       is reached through the SDK alone. The display masks are 1.4's PNG overlays, embedded. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>InfoPanel.Panels.Thermalright</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InfoPanel.Panels.Sdk\InfoPanel.Panels.Sdk.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The driver's tests run its sessions without waiting out 1.4's delays (ThermalrightDriver.Wait). -->
+    <InternalsVisibleTo Include="InfoPanel.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Beside the DLL in its build and its publish (the packaging scripts take a driver's publish with its panel.json);
+         the Core tests reference the package as a panel package (PanelPackage="true", not copied), so they run it from
+         here. Linux's access rule for the family's USB and HID ids goes with it, shipped once a Linux package exists. -->
+    <None Update="99-infopanel-thermalright.rules" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="panel.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The same file, read by ThermalrightCatalog.Default, so the code never holds a second table. -->
+    <EmbeddedResource Include="panel.json" LogicalName="InfoPanel.Panels.Thermalright.panel.json" />
+    <EmbeddedResource Include="Overlays\*.png" LogicalName="InfoPanel.Panels.Thermalright.Overlays.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>
