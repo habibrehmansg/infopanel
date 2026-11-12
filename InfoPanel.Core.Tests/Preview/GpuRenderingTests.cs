@@ -395,6 +395,100 @@ public sealed class GpuRenderingTests
             (GpuRendering.Label(GpuRendering.Metal), GpuRendering.Label(GpuRendering.Direct3D12), GpuRendering.Label(GpuRendering.CpuBackend), GpuRendering.Label("vulkan")));
     }
 
+    [Fact]
+    public async Task ADeviceMadeAsTheWaitEnds_IsReleasedOnTheThreadPool_SoApplyAnswersThoughItsReleaseHangs()
+    {
+        using var make = new ManualResetEventSlim();
+        using var releasing = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var device = new FakeGpuDevice
+        {
+            Disposing = () =>
+            {
+                releasing.Set();
+                release.Wait(TimeSpan.FromSeconds(30));
+            },
+        };
+        using var gpu = new GpuRendering(() =>
+        {
+            make.Wait(TimeSpan.FromSeconds(30));
+            return device;
+        }, logger: _logger);
+        // The device is made in the moment between the wait giving up and its late release being queued.
+        gpu.MakeTimedOut = making =>
+        {
+            make.Set();
+            making.Wait(TimeSpan.FromSeconds(10));
+        };
+        var applying = Task.Run(() => gpu.Apply(true), TestContext.Current.CancellationToken);
+
+        try
+        {
+            var answered = await Task.WhenAny(applying, Task.Delay(GpuRendering.MakeTimeout + TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken)) == applying;
+
+            Assert.True(answered, "Apply waited for the late device's release");
+            Assert.Equal(new GpuFallback(GpuRendering.Failed, GpuRendering.TookTooLong), (await applying).Fallback);
+            Assert.True(releasing.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The late device was never released");
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        await applying;
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref device.Disposed), TimeSpan.FromSeconds(10)), "The late device's release never ended");
+    }
+
+    // ---- Direct3D 12, Windows' device ----
+
+    public static TheoryData<string[], string> SoftwareAdaptersOnly => new()
+    {
+        { ["Microsoft Basic Render Driver", "Microsoft Basic Render Driver (software)"], "No hardware graphics adapter (DXGI lists: Microsoft Basic Render Driver, Microsoft Basic Render Driver)" },
+        { [], "No hardware graphics adapter (DXGI lists: none)" },
+    };
+
+    [Theory]
+    [MemberData(nameof(SoftwareAdaptersOnly))]
+    public void Direct3D12_WithOnlySoftwareAdapters_IsGpuNoDevice_AndTheCpuDraws(string[] adapters, string message)
+    {
+        // As DXGI lists them: the Basic Render Driver without the software flag (Microsoft's), and with it.
+        var listed = adapters.Select(a => a.EndsWith("(software)", StringComparison.Ordinal)
+            ? new D3D12AdapterInfo("Microsoft Basic Render Driver", 0x1414, 0x8C, D3D12Abi.AdapterFlagSoftware, 0)
+            : new D3D12AdapterInfo(a, 0x1414, 0x8C, 0, 0)).ToList();
+#pragma warning disable CA1416 // No adapter is a candidate: the device's making stops before any Windows call.
+        using var gpu = new GpuRendering(() => GpuRendering.Direct3D12Device(() => D3D12Device.Create(() => new DxgiAdapters(listed))), logger: _logger);
+#pragma warning restore CA1416
+
+        var status = gpu.Apply(true);
+
+        Assert.Equal(new GpuStatus(GpuRendering.CpuBackend, null, new GpuFallback(GpuRendering.NoDevice, message)), status);
+        Assert.Equal(Cpu(SKColors.Red), Draw(gpu, SKColors.Red));
+        Assert.Contains(message, Assert.Single(Warnings).RenderMessage(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Direct3D12_ADeviceRemovedWhileDrawing_IsGpuLost_ThatFrameDrawnOnTheCpu_AndTheDeviceReleasedWithoutFreeing()
+    {
+        using var context = GpuContextForTests.ForThisComputer();
+        using var com = new FakeD3D12();
+#pragma warning disable CA1416 // Over fake COM objects and this computer's own GPU context: no Windows call.
+        D3D12Device? device = null;
+        using var gpu = new GpuRendering(() => device = com.Device(context.Context, "Fake Radeon"), logger: _logger);
+        Assert.Equal(new GpuStatus(GpuRendering.Direct3D12, "Fake Radeon", null), gpu.Apply(true));
+        using var bitmap = new SKBitmap(Info);
+        Assert.Equal(GpuRendering.Direct3D12, gpu.Draw(bitmap, c => Scene(c, SKColors.Red)));
+
+        com.DeviceObject.RemovedReason = D3D12DeviceTests.DeviceRemoved;
+
+        Assert.Equal(GpuRendering.CpuBackend, gpu.Draw(bitmap, c => Scene(c, SKColors.Green)));
+        Assert.Equal(Cpu(SKColors.Green), bitmap.GetPixelSpan().ToArray());
+        Assert.Equal(new GpuStatus(GpuRendering.CpuBackend, null, new GpuFallback(GpuRendering.Lost, D3D12DeviceTests.RemovedMessage)), gpu.Status);
+        Assert.Contains("0x887A0005", Assert.Single(Warnings).RenderMessage(), StringComparison.Ordinal);
+        Assert.False(device!.AbandonedReleasing);
+#pragma warning restore CA1416
+        Assert.Equal((1, 1, 1), com.Releases);
+    }
+
     private sealed class CollectingSink(List<LogEvent> events) : ILogEventSink
     {
         public void Emit(LogEvent logEvent)
@@ -509,7 +603,14 @@ internal sealed class FakeGpuDevice : IGpuDevice
         return new Scope(this);
     }
 
-    public void Dispose() => Disposed = true;
+    /// <summary>Runs as it is disposed, before <see cref="Disposed"/> is set.</summary>
+    public Action? Disposing { get; init; }
+
+    public void Dispose()
+    {
+        Disposing?.Invoke();
+        Disposed = true;
+    }
 
     private sealed class Scope(FakeGpuDevice device) : IDisposable
     {

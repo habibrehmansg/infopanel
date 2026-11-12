@@ -1484,7 +1484,7 @@ export interface MediaSettings {
 
 /** Drawing with the GPU (docs/api.md#drawing-with-the-gpu): the setting, and what draws the frames now. */
 export interface RenderingSettings {
-  /** Whether the engine draws its frames with the GPU (Metal on macOS; on Windows the CPU draws, with `gpu.unsupported`, until the engine's Direct3D 12 backend lands), read back into the frame every output shares; false by default, the CPU. A change applies from the next frame, without a restart; the GPU failing never changes it. */
+  /** Whether the engine draws its frames with the GPU (Metal on macOS, Direct3D 12 on Windows), read back into the frame every output shares; false by default, the CPU. A change applies from the next frame, without a restart; the GPU failing never changes it. */
   gpu: boolean;
   /** What draws the frames now: `cpu`, `metal` or `direct3d12`. A client shows a value it doesn't know as it is. */
   using: "cpu" | "metal" | "direct3d12";

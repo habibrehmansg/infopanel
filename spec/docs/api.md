@@ -331,7 +331,7 @@ A plugin with settings (`configurable`) answers `GET /api/plugins/{folder}/plugi
 | `sources.weather.place` | A place name, or `latitude, longitude` in decimal degrees: 1–200 characters (UTF-16 code units), not all white space; or `null` | `null` | The place it asks the service for; `null` asks for the place the service finds for the request's network address |
 | `sources.systemInfo.excludedProcesses` | At most 64 process names, each 1–64 characters | `["_Total", "Idle", "dwm", "csrss", "svchost", "lsass", "system", "spoolsv", "Memory Compression"]` | The process names the system information sensor source's (`infopanel.system-info`) top-process tables leave out; set whole. A name leaves out the processes of exactly that name, in the same case and with no white space trimmed: `node ` or `Node` leaves out no `node`. `[]` leaves out none |
 | `media.localNetwork` | `true`, `false` | `true` | Whether media providers may connect to this computer and the local network ([providers](providers.md#addresses)) |
-| `rendering.gpu` | `true`, `false` | `false` | Whether the engine draws its frames with the GPU: Metal on macOS; on Windows the CPU draws, with `gpu.unsupported`, until the engine's Direct3D 12 backend lands ([below](#drawing-with-the-gpu)). The answer's `rendering` also says what draws now |
+| `rendering.gpu` | `true`, `false` | `false` | Whether the engine draws its frames with the GPU: Metal on macOS, Direct3D 12 on Windows ([below](#drawing-with-the-gpu)). The answer's `rendering` also says what draws now |
 | `service.address` | An origin: `https`, or `http` on a loopback host | The engine's own, or none | The configured service's address ([below](#the-configured-service)). A change removes the credential the engine keeps for the service |
 | `service.aiApps` | `true`, `false` | `false` | Whether AI apps may use this engine's tools through the configured service ([below](#ai-apps-elsewhere)) |
 | `service.pairing` | `true`, `false` | `false` | Whether a client on another computer may pair with this engine through a pass the configured service signed ([below](#pairing-through-the-configured-service)) |
@@ -346,14 +346,14 @@ A change takes effect at once: outputs re-time to the new frame rate, the histor
 
 ### Drawing with the GPU
 
-`rendering.gpu` chooses what draws the frames: the CPU (`false`, the default) or the GPU (`true`): Metal on macOS. On Windows the engine has no GPU backend yet: it answers `gpu.unsupported` and draws on the CPU until its Direct3D 12 backend (`direct3d12`) lands. There is no GPU backend on Linux. On the GPU the engine draws each frame there and reads it back into the frame every output shares, so the preview, desktop windows, USB panels and thumbnails all show the same pixels as each other whichever draws them. The GPU and the CPU draw anti-aliased edges, gradients and blur slightly differently: a frame drawn on the GPU may differ from the CPU's by a few levels in a small share of its pixels. The GPU is faster for large or effect-heavy profiles; small ones can be faster on the CPU, and the GPU uses more memory.
+`rendering.gpu` chooses what draws the frames: the CPU (`false`, the default) or the GPU (`true`): Metal on macOS, Direct3D 12 (`direct3d12`) on Windows. On Windows the engine takes the first graphics adapter in Windows' order that makes a Direct3D 12 device, never a software one or Microsoft's Basic Render Driver, which draw on the CPU. There is no GPU backend on Linux. On the GPU the engine draws each frame there and reads it back into the frame every output shares, so the preview, desktop windows, USB panels and thumbnails all show the same pixels as each other whichever draws them. The GPU and the CPU draw anti-aliased edges, gradients and blur slightly differently: a frame drawn on the GPU may differ from the CPU's by a few levels in a small share of its pixels. The GPU is faster for large or effect-heavy profiles; small ones can be faster on the CPU, and the GPU uses more memory.
 
 The answer's `rendering` (`renderingSettings`) says what draws now: `using` is `cpu`, `metal` or `direct3d12` (a client shows a value it doesn't know as it is), `device` the GPU's name while one draws (else `null`), and `fallback` (`renderingFallback`, else `null`) why the CPU draws though `gpu` is `true`, a `code` and a `message`:
 
 | `code` | Why |
 |---|---|
-| `gpu.unsupported` | The engine has no GPU backend on this system (Linux, and Windows until its Direct3D 12 backend lands) |
-| `gpu.noDevice` | No hardware graphics device: none, or only a software one |
+| `gpu.unsupported` | The engine has no GPU backend on this system (Linux) |
+| `gpu.noDevice` | No hardware graphics device: none, or only a software one (on Windows, Microsoft's Basic Render Driver included) |
 | `gpu.failed` | The device, or the engine's drawing context on it, couldn't be made, or wasn't made within 5 seconds (a device made later is released unused); `message` says what failed |
 | `gpu.lost` | The device was lost while drawing. That frame was drawn on the CPU, as every one after it is until `gpu` is turned off and on again or the engine restarts |
 

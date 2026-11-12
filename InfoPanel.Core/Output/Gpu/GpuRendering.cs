@@ -53,7 +53,8 @@ public interface IGpuDevice : IDisposable
 /// <summary>
 /// A device whose drawing is Skia's <see cref="GRContext"/>: its resource cache held to
 /// <see cref="GpuRendering.CacheBytes"/>, surfaces budgeted in it, and on dispose the context abandoned (its resources
-/// released) and disposed before the platform's device (<see cref="ReleaseDevice"/>).
+/// released, unless the platform's device is gone: <see cref="IsGone"/>) and disposed before the platform's device
+/// (<see cref="ReleaseDevice"/>).
 /// </summary>
 public abstract class GrContextDevice : IGpuDevice
 {
@@ -90,8 +91,10 @@ public abstract class GrContextDevice : IGpuDevice
 
         try
         {
+            // Asked first, so a device gone since the last draw's check takes the same path as one that check saw.
+            var gone = IsGone();
             if (!Context.IsAbandoned)
-                Context.AbandonContext(releaseResources: true);
+                Abandon(releaseResources: !gone);
             Context.Dispose();
         }
         finally
@@ -101,6 +104,22 @@ public abstract class GrContextDevice : IGpuDevice
 
         GC.SuppressFinalize(this);
     }
+
+    /// <summary>
+    /// Abandons Skia's context: no call reaches the device through it again. With <paramref name="releaseResources"/>
+    /// it frees what it made on the device first; a device that is gone gets no such call.
+    /// </summary>
+    protected void Abandon(bool releaseResources)
+    {
+        AbandonedReleasing = releaseResources;
+        Context.AbandonContext(releaseResources);
+    }
+
+    /// <summary>How Skia's context was abandoned: freeing its resources (true) or not (false); null while it isn't. For tests.</summary>
+    internal bool? AbandonedReleasing { get; private set; }
+
+    /// <summary>Whether the platform's device is gone (Direct3D 12: removed), so nothing may be freed on it.</summary>
+    protected virtual bool IsGone() => false;
 
     /// <summary>Releases the platform's device and queue, after Skia's context is gone.</summary>
     protected abstract void ReleaseDevice();
@@ -187,14 +206,33 @@ public sealed class GpuRendering : IDisposable
         _ => "CPU",
     };
 
-    /// <summary>This computer's GPU: Metal on macOS; elsewhere <see cref="GpuUnavailableException"/> <c>gpu.unsupported</c>.</summary>
+    /// <summary>
+    /// This computer's GPU: Metal on macOS, Direct3D 12 on Windows; elsewhere <see cref="GpuUnavailableException"/>
+    /// <c>gpu.unsupported</c>.
+    /// </summary>
     public static IGpuDevice ForThisComputer()
     {
         if (OperatingSystem.IsMacOS())
             return MetalDevice.Create();
         if (OperatingSystem.IsWindows())
-            throw new GpuUnavailableException(Unsupported, "This build of the engine has no Direct3D 12 backend: frames are drawn on the CPU.");
+            return Direct3D12Device(D3D12Device.Create);
         throw new GpuUnavailableException(Unsupported, "There is no GPU backend on this system: frames are drawn on the CPU.");
+    }
+
+    /// <summary>
+    /// A Direct3D 12 device from <paramref name="create"/>: no hardware adapter is <c>gpu.noDevice</c>; any other
+    /// failure keeps its message (what failed, with its HRESULT), which <see cref="Apply"/> answers as <c>gpu.failed</c>.
+    /// </summary>
+    internal static IGpuDevice Direct3D12Device(Func<IGpuDevice> create)
+    {
+        try
+        {
+            return create();
+        }
+        catch (D3D12DeviceException e) when (e.NoDevice)
+        {
+            throw new GpuUnavailableException(NoDevice, e.Message);
+        }
     }
 
     /// <summary>
@@ -220,11 +258,13 @@ public sealed class GpuRendering : IDisposable
             }
 
             // Made on a thread of its own and waited for at most MakeTimeout: this runs under the settings' lock, which every
-            // settings request takes. A device made later is released, never drawn with.
+            // settings request takes. A device made later is released, never drawn with: on the thread pool, never inline
+            // here, though it may be made by the time the release is queued, since releasing it can take as long.
             var making = Task.Run(_devices);
             if (!Finishes(making, MakeTimeout))
             {
-                _ = making.ContinueWith(ReleaseLate, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                MakeTimedOut?.Invoke(making);
+                _ = making.ContinueWith(ReleaseLate, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
                 _status = new GpuStatus(CpuBackend, null, new GpuFallback(Failed, TookTooLong));
                 _logger.Warning("The GPU didn't start within {Timeout}; drawing on the CPU", MakeTimeout);
                 return _status;
@@ -263,6 +303,12 @@ public sealed class GpuRendering : IDisposable
             return true;
         }
     }
+
+    /// <summary>
+    /// Called under the lock with the making when it has outlasted <see cref="MakeTimeout"/>, before its late release is
+    /// queued. For tests.
+    /// </summary>
+    internal Action<Task>? MakeTimedOut { get; set; }
 
     /// <summary>A device made after <see cref="MakeTimeout"/>: released unused (a failure to make it, logged).</summary>
     private void ReleaseLate(Task<IGpuDevice> making)
