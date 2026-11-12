@@ -10,6 +10,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="InfoPanel.Core.Tests" />
+    <!-- The engine reads a package's panel.json as a driver does (ManifestFile: one handle, never through a link). -->
+    <InternalsVisibleTo Include="InfoPanel.Core" />
   </ItemGroup>
 
 </Project>

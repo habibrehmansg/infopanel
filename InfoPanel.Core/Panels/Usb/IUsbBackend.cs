@@ -52,7 +52,24 @@ public interface IUsbBackend : IDisposable
     /// with other ids or another port path.
     /// </summary>
     UsbStatus Open(UsbDeviceId device, out IUsbDevice? opened);
+
+    /// <summary>
+    /// A listed device's descriptors as the OS has them cached (no I/O to the device): its class codes, release and the
+    /// interfaces of its active configuration (its first, when it has none active), each with its endpoints;
+    /// <see cref="UsbStatus.NoDevice"/> when it is gone. A backend that can't tell answers <see cref="UsbStatus.NotSupported"/>.
+    /// </summary>
+    UsbStatus Describe(UsbDeviceId device, out UsbDescriptor? descriptor)
+    {
+        descriptor = null;
+        return UsbStatus.NotSupported;
+    }
 }
+
+/// <summary>A device's cached descriptors (<see cref="IUsbBackend.Describe"/>).</summary>
+public sealed record UsbDescriptor(byte DeviceClass, byte DeviceSubClass, byte DeviceProtocol, ushort BcdDevice, IReadOnlyList<UsbInterfaceDescriptor> Interfaces);
+
+/// <summary>An interface's first alternate setting: its number, class codes and endpoints (address, transfer type 0–3 as bmAttributes' low bits, largest packet).</summary>
+public sealed record UsbInterfaceDescriptor(int Number, byte Class, byte SubClass, byte Protocol, IReadOnlyList<(byte Address, int Type, int MaxPacketSize)> Endpoints);
 
 /// <summary>An opened USB device. Its calls block; one thread uses it at a time.</summary>
 public interface IUsbDevice : IDisposable
@@ -77,4 +94,10 @@ public interface IUsbDevice : IDisposable
 
     /// <summary>A bulk transfer in on <paramref name="endpoint"/>, at most <paramref name="buffer"/>'s length.</summary>
     UsbStatus BulkRead(byte endpoint, Span<byte> buffer, int timeoutMs, out int read);
+
+    /// <summary>
+    /// A zero-length packet on <paramref name="endpoint"/>: only the panel driver seam sends one, and only when a driver
+    /// asks for it after a write that fills its last packet (never on BeadaPanel's path: see <see cref="IUsbBackend"/>).
+    /// </summary>
+    UsbStatus WriteZeroLengthPacket(byte endpoint, int timeoutMs) => UsbStatus.NotSupported;
 }

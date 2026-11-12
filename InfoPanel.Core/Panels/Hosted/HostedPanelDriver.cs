@@ -73,6 +73,7 @@ public sealed class HostedPanelDriver(PanelPackageFamily family, IPanelHostLink 
             Brightness = options.Brightness,
             Rotation = options.Rotation,
             Format = options.Format,
+            FamilySettings = options.FamilySettings.ValueKind == System.Text.Json.JsonValueKind.Object ? options.FamilySettings : null,
             Ms = (int)_options.OpenDeadline.TotalMilliseconds,
         }, sending.Token);
         // A start given up on (cancelled, or past its deadline) is closed, screen off, once the host answers it.
@@ -149,7 +150,7 @@ public sealed class HostedPanelDriver(PanelPackageFamily family, IPanelHostLink 
             largest = Math.Max(largest, format switch
             {
                 PanelFrameFormat.Jpeg => capabilities.MaxFrameBytes ?? pixels * 4 + 65536,
-                PanelFrameFormat.Rgb565Le or PanelFrameFormat.Rgb565Be => pixels * 2,
+                PanelFrameFormat.Rgb565Le or PanelFrameFormat.Rgb565Be or PanelFrameFormat.Rgb565LeTruncated => pixels * 2,
                 PanelFrameFormat.Rgb888 or PanelFrameFormat.Bgr888 => pixels * 3,
                 _ => pixels * 4,
             });

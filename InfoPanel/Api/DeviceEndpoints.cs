@@ -4,6 +4,7 @@ using InfoPanel.Panels;
 using InfoPanel.Panels.BeadaPanel;
 using InfoPanel.Security;
 using InfoPanel.Spec;
+using InfoPanel.Spec.Schema;
 using static InfoPanel.Api.ApiResults;
 
 namespace InfoPanel.Api;
@@ -23,8 +24,8 @@ public static class DeviceEndpoints
 
     private const string CreateSchema = SpecSchemas.Api + "#/$defs/createDeviceRequest";
 
-    /// <summary>The settings a BeadaPanel honours, in the order the API lists them.</summary>
-    private static readonly string[] BeadaPanelSettings = ["enabled", "profileId", "rotation", "brightness"];
+    /// <summary>The settings a BeadaPanel honours, in the order the API lists them (every family the engine drives honours them: the engine paces, turns and dims).</summary>
+    private static readonly string[] BeadaPanelSettings = ["enabled", "profileId", "rotation", "brightness", "frameRate"];
 
     public static void MapDeviceEndpoints(this IEndpointRouteBuilder app)
     {
@@ -65,7 +66,7 @@ public static class DeviceEndpoints
                 return Invalid("", "json", "The body isn't JSON.");
             var check = SpecSchemas.Strict.Validate(json.RootElement, CreateSchema, limits.JsonDepth);
             if (!check.IsValid)
-                return InvalidBody([.. check.Errors.Select(ErrorBody)]);
+                return InvalidBody(ErrorsOf(check.Errors));
 
             // The engine stores what it is given: a family it drives, one of its models, the settings it honours.
             var body = SpecJson.Read<CreateDeviceRequest>(json.RootElement);
@@ -83,10 +84,13 @@ public static class DeviceEndpoints
             }).ToList();
             if (refused.Count > 0)
                 return InvalidBody(refused);
+            if (CheckFamilySettings(null, json.RootElement, family, out var familySettings) is { } wrong)
+                return wrong;
 
             var fresh = new SavedPanel(Guid.NewGuid().ToString("D"), body.Family, body.Model, body.Serial, Port: null)
             {
                 V1 = body.V1 is { } v1 ? new PanelV1Identity(v1.DeviceId, v1.DeviceLocation) : null,
+                FamilySettings = familySettings,
             };
             PanelSave save;
             try
@@ -126,7 +130,7 @@ public static class DeviceEndpoints
                 return Invalid("", "json", "The body isn't JSON.");
             var check = SpecSchemas.Strict.Validate(json.RootElement, ChangeSchema, limits.JsonDepth);
             if (!check.IsValid)
-                return InvalidBody([.. check.Errors.Select(ErrorBody)]);
+                return InvalidBody(ErrorsOf(check.Errors));
 
             var settings = json.RootElement.GetProperty("settings");
             var supports = SupportsOf(found.Saved.Family, panels.Families);
@@ -138,13 +142,23 @@ public static class DeviceEndpoints
             }).ToList();
             if (refused.Count > 0)
                 return InvalidBody(refused);
+            // Checked against the family's declared settings here; merged over the panel's own values in the update.
+            var family = panels.Families.FirstOrDefault(f => f.Id == found.Saved.Family);
+            if (CheckFamilySettings(found.Saved.FamilySettings, json.RootElement, family, out _) is { } wrong)
+                return wrong;
 
             // Read through the format's model: an integer spelled 50.0 or 9e1 is one, and a null profileId clears it.
             var change = SpecJson.Read<DeviceChangeRequest>(json.RootElement).Settings;
+            var familyChange = json.RootElement.TryGetProperty("familySettings", out var members) ? members.Clone() : (JsonElement?)null;
             SavedPanel? changed;
             try
             {
-                changed = await manager.UpdateAsync(id, saved => Merge(saved, change));
+                changed = await manager.UpdateAsync(id, saved => Merge(saved, change) with
+                {
+                    FamilySettings = familyChange is { } given && family != null
+                        ? PanelFamilySettings.Apply(saved.FamilySettings, given, family.Settings, [.. family.Models.Select(m => m.Id)], out _)
+                        : saved.FamilySettings,
+                });
             }
             catch (PanelsNotSavedException)
             {
@@ -179,6 +193,67 @@ public static class DeviceEndpoints
     private static IReadOnlyList<string> SupportsOf(string family, IReadOnlyList<PanelFamilyInfo> families) =>
         family == SavedPanel.BeadaPanelFamily || families.Any(f => f.Id == family) ? BeadaPanelSettings : [];
 
+    /// <summary>
+    /// A save's or change's schema errors as the body reports them (<see cref="ErrorBody"/>), but one about a single
+    /// family setting's value (at <c>/familySettings/{id}</c> or within it: a value of a type no setting takes, a string
+    /// too long) is that setting's: one <c>device.setting</c> error a setting, at its own path, as every other refused
+    /// family setting is (spec/docs/api.md, Family settings).
+    /// </summary>
+    private static List<ValidationErrorBody> ErrorsOf(IEnumerable<SchemaError> errors)
+    {
+        const string Prefix = "/familySettings/";
+        var bodies = new List<ValidationErrorBody>();
+        var settings = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var error in errors)
+        {
+            if (!error.InstancePath.StartsWith(Prefix, StringComparison.Ordinal) || error.Keyword is "more" or "json" or "depth")
+            {
+                bodies.Add(ErrorBody(error));
+                continue;
+            }
+            var key = error.InstancePath[Prefix.Length..].Split('/')[0];
+            if (settings.Add(key))
+                bodies.Add(new ValidationErrorBody
+                {
+                    Path = Prefix + key,
+                    Code = "device.setting",
+                    Message = $"A family setting's value is true or false, a number, a string of at most {PanelFamilySettings.MaxStringChars} characters, or null: {error.Message} ({error.Keyword})",
+                });
+        }
+        return bodies;
+    }
+
+    /// <summary>
+    /// The body's <c>familySettings</c> (when it has them) checked against <paramref name="family"/>'s declared settings and
+    /// models, over <paramref name="saved"/>: null with the values set after it in <paramref name="merged"/>, or the 422
+    /// (<c>device.setting</c>, one error per member refused). A family the engine doesn't know declares none.
+    /// </summary>
+    private static IResult? CheckFamilySettings(string? saved, JsonElement body, PanelFamilyInfo? family, out string? merged)
+    {
+        merged = saved;
+        if (!body.TryGetProperty("familySettings", out var given))
+            return null;
+        merged = PanelFamilySettings.Apply(saved, given, family?.Settings ?? [], [.. family?.Models.Select(m => m.Id) ?? []], out var refusals);
+        return refusals.Count == 0 ? null : InvalidBody([.. refusals.Select(r => new ValidationErrorBody
+        {
+            Path = $"/familySettings/{r.Key}",
+            Code = "device.setting",
+            Message = r.Message,
+        })]);
+    }
+
+    private static DeviceFamilySettingBody SettingOf(PanelFamilySetting setting) => new()
+    {
+        Id = setting.Id,
+        Name = setting.Name,
+        Type = setting.Type,
+        Default = setting.Default,
+        Values = setting.Type == "enum" ? [.. setting.Values.Select(v => new DeviceFamilySettingValueBody { Id = v.Id, Name = v.Name })] : null,
+        Min = setting.Min,
+        Max = setting.Max,
+        V1Field = setting.V1Field,
+    };
+
     /// <summary>A family as the list gives it: its id, name, driver, state and reason, models, settings and transports.</summary>
     private static DeviceFamilyBody FamilyOf(PanelFamilyInfo family) => new()
     {
@@ -188,9 +263,18 @@ public static class DeviceEndpoints
         State = family.State,
         Reason = family.Reason is { } reason ? new DeviceReasonBody { Code = family.ReasonCode ?? "gaveUp", Message = reason.Length > 4096 ? reason[..4096] : reason } : null,
         // A built-in family's names are the client's; a package's come from its panel.json.
-        Models = [.. family.Models.Select(m => new DeviceFamilyModelBody { Id = m.Id, Name = family.Runner == null ? null : m.Name, Width = m.Width, Height = m.Height, V1Model = m.V1Model })],
+        Models = [.. family.Models.Select(m => new DeviceFamilyModelBody
+        {
+            Id = m.Id,
+            Name = family.Runner == null ? null : m.Name,
+            Width = m.Width,
+            Height = m.Height,
+            V1Model = m.V1Model,
+            V1Aliases = m.V1Aliases.Count > 0 ? m.V1Aliases : null,
+        })],
         Supports = BeadaPanelSettings,
         Transports = family.Transports,
+        Settings = family.Settings.Count > 0 ? [.. family.Settings.Select(SettingOf)] : null,
     };
 
     /// <summary>The settings given, over the saved ones; a member left out keeps its value. The body is checked already.</summary>
@@ -200,6 +284,7 @@ public static class DeviceEndpoints
         ProfileId = change.Removed.Contains(nameof(DeviceSettingsChange.ProfileId)) ? null : change.ProfileId ?? saved.ProfileId,
         Rotation = change.Rotation is { } rotation ? (PanelRotation)rotation : saved.Rotation,
         Brightness = change.Brightness ?? saved.Brightness,
+        FrameRate = change.Removed.Contains(nameof(DeviceSettingsChange.FrameRate)) ? null : change.FrameRate ?? saved.FrameRate,
     };
 
     internal static DeviceEntryBody EntryOf(PanelStatus status, IReadOnlyList<PanelFamilyInfo> families)
@@ -237,6 +322,7 @@ public static class DeviceEndpoints
                 ProfileId = DocumentStore.IsValidId(saved.ProfileId) ? saved.ProfileId : null,
                 Rotation = (int)saved.Rotation,
                 Brightness = saved.Brightness,
+                FrameRate = saved.FrameRate,
             },
             Supports = SupportsOf(saved.Family, families),
             Stats = status.Fps is { } fps && status.FrameTimeMs is { } frameTime ? new DeviceStatsBody { Fps = fps, FrameTimeMs = frameTime } : null,
@@ -257,6 +343,7 @@ public static class DeviceEndpoints
             Driver = beadaPanel ? "builtIn" : family?.Driver,
             FamilyName = family?.Runner != null ? family.Name : null,
             ModelName = family?.Runner != null ? declared?.Name : null,
+            FamilySettings = saved.FamilySettings is { } set ? PanelFamilySettings.ElementOf(set) : null,
         };
     }
 

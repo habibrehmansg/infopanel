@@ -102,13 +102,20 @@ public sealed class PanelSink : IFrameSink
     /// <summary>Frames copied by <see cref="OnFrame"/> (for tests).</summary>
     public long FramesCopied;
 
+    private volatile bool _renew;
+
+    /// <summary>The next frame is copied whatever its content (a panel the engine dims needs the same picture again at a new brightness).</summary>
+    public void Renew() => _renew = true;
+
     public void OnFrame(RenderedFrame frame)
     {
         if (_retired)
             return;
 
         var rotation = Rotation;
-        if (_copied && frame.ContentHash == _lastHash && frame.PixelWidth == _lastWidth && frame.PixelHeight == _lastHeight && rotation == _lastRotation)
+        var renew = _renew;
+        _renew = false;
+        if (!renew && _copied && frame.ContentHash == _lastHash && frame.PixelWidth == _lastWidth && frame.PixelHeight == _lastHeight && rotation == _lastRotation)
             return;
 
         using var pixmap = frame.Image.PeekPixels();

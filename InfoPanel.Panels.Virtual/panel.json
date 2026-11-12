@@ -6,7 +6,12 @@
       "id": "virtual",
       "name": "Virtual panel",
       "match": [{ "usb": "1209:0001" }],
-      "models": [{ "id": "480x320", "name": "Virtual panel 480 × 320", "width": 480, "height": 320 }]
+      "models": [{ "id": "480x320", "name": "Virtual panel 480 × 320", "width": 480, "height": 320 }],
+      "settings": [
+        { "id": "mirror", "name": "Mirror the picture", "type": "boolean", "default": false },
+        { "id": "look", "name": "Look", "type": "enum", "values": [{ "id": "plain", "name": "Plain" }, { "id": "framed", "name": "Framed" }], "default": "plain", "v1Field": "Look" },
+        { "id": "model", "name": "Model", "type": "model", "default": null }
+      ]
     }
   ]
 }

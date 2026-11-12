@@ -1822,7 +1822,70 @@ export interface DeviceFamily {
    * Unique items.
    */
   transports: ("usb" | "serial" | "hid")[];
+  /**
+   * The settings of its own its panels take, as its package's panel.json declares them, in its order (docs/api.md#family-settings); absent when it declares none.
+   * Items: ≤ 32.
+   */
+  settings?: DeviceFamilySetting[];
 }
+
+/** A setting a panel family declares for its panels (docs/api.md#family-settings): a panel's value is in deviceEntry.familySettings, changed through deviceChange.familySettings. */
+export interface DeviceFamilySetting {
+  /** Its key in a panel's familySettings. */
+  id: FamilySettingId;
+  /**
+   * Its name for people, from the package's panel.json.
+   * Length: 1–64.
+   */
+  name: string;
+  /** `boolean`; `enum` (one of `values`' ids); `integer` (`min` to `max`); `string` (at most 64 characters); `model` (one of the family's models' ids: the model a panel whose handshake names a model the family doesn't know is tried as; its id is `model`). A client shows a setting of a type it doesn't know read-only, by its name and value. */
+  type: "boolean" | "enum" | "integer" | "string" | "model";
+  /** The value a panel has while it hasn't set it: of the setting's type; null for a `model` setting (the model its handshake found). */
+  default: boolean | number | string | null;
+  /**
+   * An `enum` setting's values, in order; absent for other types.
+   * Items: 1–64.
+   */
+  values?: DeviceFamilySettingValue[];
+  /**
+   * An `integer` setting's least value.
+   * Range: -2147483648–2147483647.
+   */
+  min?: number;
+  /**
+   * An `integer` setting's greatest value.
+   * Range: -2147483648–2147483647.
+   */
+  max?: number;
+  /**
+   * The element of a 1.x panel device its value comes from (as 1.x stored it, `FlickerFix`), which a client bringing 1.x devices over reads; absent when none.
+   * Length: 1–64.
+   */
+  v1Field?: string;
+}
+
+/** A value of an `enum` family setting. */
+export interface DeviceFamilySettingValue {
+  /**
+   * The value as a panel's familySettings holds it.
+   * Length: 1–64.
+   */
+  id: string;
+  /**
+   * Its name for people, from the package's panel.json.
+   * Length: 1–64.
+   */
+  name: string;
+}
+
+/**
+ * A family setting's id: a lower-case letter, then at most 31 letters and digits.
+ * Pattern: `^[a-z][A-Za-z0-9]{0,31}$`.
+ */
+export type FamilySettingId = string;
+
+/** A panel's values of its family's settings, by their ids (deviceFamilySetting): each of its setting's type, a string at most 64 characters. In a change or a save, null puts a setting back to its default. */
+export type FamilySettings = { [key: string]: boolean | number | string | null };
 
 /** A model of a panel family. */
 export interface DeviceFamilyModel {
@@ -1851,6 +1914,11 @@ export interface DeviceFamilyModel {
    * Length: 1–64.
    */
   v1Model: string | null;
+  /**
+   * Other names 1.x saved the model under (a model it renamed), mapped as `v1Model` is when no model's `v1Model` is the name; absent when it has none.
+   * Items: ≤ 16.
+   */
+  v1Aliases?: string[];
 }
 
 /** One saved USB panel (docs/api.md#devices): what it is, its state now, its settings and those its family honours. */
@@ -1875,7 +1943,7 @@ export interface DeviceEntry {
   reason: DeviceReason | null;
   settings: DeviceSettings;
   /**
-   * The names of the settings its family honours (a change of any other is refused); `enabled`, `profileId`, `rotation` and `brightness` for a BeadaPanel, none for a family the engine doesn't drive.
+   * The names of the settings its family honours (a change of any other is refused); `enabled`, `profileId`, `rotation`, `brightness` and `frameRate` for a BeadaPanel and every family a panel package declares, none for a family the engine doesn't drive.
    * Unique items.
    */
   supports: string[];
@@ -1895,10 +1963,12 @@ export interface DeviceEntry {
    */
   familyName?: string;
   /**
-   * Its model's name from its panel package's panel.json; absent for a built-in family, or a model the package doesn't declare. A client shows it for a family it doesn't know.
+   * Its model's name from its panel package's panel.json; absent for a built-in family, or a model the package doesn't declare (a model its handshake named that the family doesn't know: see docs/api.md#family-settings). A client shows it for a family it doesn't know.
    * Length: 1–64.
    */
   modelName?: string;
+  /** Its family's settings it has set (deviceFamily.settings; one it hasn't set has its default); absent when it has set none. */
+  familySettings?: FamilySettings;
 }
 
 /** A panel's model. */
@@ -1947,6 +2017,11 @@ export interface DeviceSettings {
    * Range: 0–100.
    */
   brightness: number;
+  /**
+   * Its own frame rate, the most frames a second it is sent (1 to 60), in place of the engine's frameRate setting; it never runs past its own ceiling or what it is seen to keep up with. Absent: the engine's.
+   * Range: 1–60.
+   */
+  frameRate?: number;
 }
 
 /** A running panel's frames, as the engine measures them. */
@@ -1984,6 +2059,8 @@ export interface DeviceDetails {
 /** PATCH /api/devices/{id}: settings to change (docs/api.md#changing-a-device). */
 export interface DeviceChange {
   settings: DeviceSettingsChange;
+  /** Its family's settings to set, each checked against deviceFamily.settings (a setting the family doesn't declare, or a value not of its type, range or values, is refused: 422 `device.setting`); null puts one back to its default. A change of any closes the panel's session and opens it again with them. Absent: none changed. */
+  familySettings?: FamilySettings;
 }
 
 /** The settings a change sets, each as deviceSettings has it; a setting left out keeps its value. */
@@ -1993,6 +2070,8 @@ export interface DeviceSettingsChange {
   rotation?: 0 | 90 | 180 | 270;
   /** Range: 0–100. */
   brightness?: number;
+  /** Its own frame rate, 1 to 60; null puts it back to the engine's. */
+  frameRate?: number | null;
 }
 
 /** POST /api/devices: a panel to save that need not be plugged in, such as one a client brings over from another program (docs/api.md#saving-a-device). A saved panel with the same 1.x device id, or the same family and serial: 409 existsProblem with its id. Answered 201 with its deviceEntry. */
@@ -2014,8 +2093,10 @@ export interface CreateDeviceRequest {
   serial?: string;
   /** The 1.x device it is brought over from, when it is one: stored with it and answered in its deviceEntry. A saved panel with the same `deviceId` (ignoring case) is 409 existsProblem. */
   v1?: V1DeviceIdentity;
-  /** Its settings, as a change gives them; a setting left out takes a new panel's: off, no profile, rotation 0, brightness 100. */
+  /** Its settings, as a change gives them; a setting left out takes a new panel's: off, no profile, rotation 0, brightness 100, the engine's frame rate. */
   settings: DeviceSettingsChange;
+  /** Its family's settings (a 1.x panel's values, read from the elements deviceFamilySetting.v1Field names), checked as a change's are (422 `device.setting`); absent: none set. */
+  familySettings?: FamilySettings;
 }
 
 /** A 1.x panel device, as 1.x stored it and v1DeviceOutcome names it: the same strings. The engine stores them as given and reads nothing into them. */

@@ -226,7 +226,7 @@ public sealed class DeviceEndpointTests
         Assert.Equal(JsonValueKind.Null, settings.GetProperty("profileId").ValueKind);
         Assert.Equal(0, settings.GetProperty("rotation").GetInt32());
         Assert.Equal(100, settings.GetProperty("brightness").GetInt32());
-        Assert.Equal(["enabled", "profileId", "rotation", "brightness"], device.GetProperty("supports").EnumerateArray().Select(s => s.GetString()));
+        Assert.Equal(["enabled", "profileId", "rotation", "brightness", "frameRate"], device.GetProperty("supports").EnumerateArray().Select(s => s.GetString()));
         Assert.Equal(JsonValueKind.Null, device.GetProperty("stats").ValueKind);
         var details = device.GetProperty("details");
         Assert.Equal("4e58:1001", details.GetProperty("usbId").GetString());
@@ -433,7 +433,7 @@ public sealed class DeviceEndpointTests
         Assert.Equal(profile, settings.GetProperty("profileId").GetString());
         Assert.Equal(90, settings.GetProperty("rotation").GetInt32());
         Assert.Equal(80, settings.GetProperty("brightness").GetInt32());
-        Assert.Equal(["enabled", "profileId", "rotation", "brightness"], entry.GetProperty("supports").EnumerateArray().Select(s => s.GetString()));
+        Assert.Equal(["enabled", "profileId", "rotation", "brightness", "frameRate"], entry.GetProperty("supports").EnumerateArray().Select(s => s.GetString()));
         Assert.Equal(JsonValueKind.Null, entry.GetProperty("stats").ValueKind);
         var details = entry.GetProperty("details");
         Assert.Equal("4e58:1001", details.GetProperty("usbId").GetString());

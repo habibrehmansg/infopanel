@@ -68,10 +68,15 @@ public static class PanelHostEntry
             .WriteTo.File(Path.Combine(Path.GetFullPath(logDir), folder + "-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 3,
                 fileSizeLimitBytes: 10 * 1024 * 1024)
             .CreateLogger();
+        Usb.IUsbBackend? usb = null;
         try
         {
             WatchEngine(enginePid, engineStart);
-            var drivers = Load(directory, folder, Log.Logger);
+            // The device seam the package's drivers get: libusb when it loads (else USB answers notSupported), HID, serial.
+            if (Usb.LibUsb.LoadAndLog(Usb.LibUsb.DefaultCandidates(), Log.Logger) is { } library)
+                usb = Usb.LibUsbBackend.Create(library, out _);
+            var devices = new Devices.EnginePanelDevices(usb, new Devices.HidSharpSystem(Log.Logger), new Devices.SerialPorts(Log.Logger), Log.Logger);
+            var drivers = Load(directory, folder, Log.Logger, devices);
             await using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
             using (var connect = new CancellationTokenSource(ConnectTimeout))
                 await pipe.ConnectAsync(connect.Token).ConfigureAwait(false);
@@ -87,6 +92,7 @@ public static class PanelHostEntry
         }
         finally
         {
+            usb?.Dispose();
             Log.Information("Panel host stopped");
             await Log.CloseAndFlushAsync().ConfigureAwait(false);
         }
@@ -161,9 +167,12 @@ public static class PanelHostEntry
         ExitNow(3);
     }
 
-    /// <summary>The package's drivers: its manifest's families, each made from the DLL's public driver for it.</summary>
+    /// <summary>
+    /// The package's drivers: its manifest's families, each made from the DLL's public driver for it, through its public
+    /// constructor that takes the device seam (given <paramref name="devices"/>, the host's), else the one that takes nothing.
+    /// </summary>
     /// <exception cref="InvalidDataException">Its manifest can't be used, or a family it declares has no driver.</exception>
-    internal static IReadOnlyList<IPanelDriver> Load(string directory, string folder, Serilog.ILogger logger)
+    internal static IReadOnlyList<IPanelDriver> Load(string directory, string folder, Serilog.ILogger logger, IPanelDevices? devices = null)
     {
         var manifest = PanelPackages.ReadManifest(directory, out var error) ?? throw new InvalidDataException($"its {PanelPackages.ManifestName} {error}");
         if (PanelPackages.SdkProblem(manifest.Sdk) is { } sdk)
@@ -173,12 +182,13 @@ public static class PanelHostEntry
         var drivers = new List<IPanelDriver>();
         foreach (var type in assembly.GetExportedTypes().Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IPanelDriver).IsAssignableFrom(t)))
         {
-            if (type.GetConstructor(Type.EmptyTypes) == null)
+            var withDevices = devices != null ? type.GetConstructor([typeof(IPanelDevices)]) : null;
+            if (withDevices == null && type.GetConstructor(Type.EmptyTypes) == null)
             {
-                logger.Warning("{Type:l} isn't loaded: a driver has a public constructor that takes nothing", type.FullName);
+                logger.Warning("{Type:l} isn't loaded: a driver has a public constructor that takes the device seam (IPanelDevices) or nothing", type.FullName);
                 continue;
             }
-            var driver = (IPanelDriver)Activator.CreateInstance(type)!;
+            var driver = withDevices != null ? (IPanelDriver)withDevices.Invoke([devices]) : (IPanelDriver)Activator.CreateInstance(type)!;
             if (manifest.Families.All(f => f.Id != driver.Family) || drivers.Any(d => d.Family == driver.Family))
             {
                 logger.Warning("{Type:l} isn't loaded: its family {Family:l} isn't one panel.json declares once", type.FullName, driver.Family);

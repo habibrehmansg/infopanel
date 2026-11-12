@@ -1291,6 +1291,8 @@ public sealed record DeviceFamilyBody
     public required IReadOnlyList<DeviceFamilyModelBody> Models { get; init; }
     public required IReadOnlyList<string> Supports { get; init; }
     public required IReadOnlyList<string> Transports { get; init; }
+    /// <summary>The settings of its own its panels take (its panel.json's); absent when it declares none.</summary>
+    public IReadOnlyList<DeviceFamilySettingBody>? Settings { get; init; }
 }
 
 /// <summary>A model of a family: its id, its name from its package (null for a built-in family's), its size and the 1.x model it was.</summary>
@@ -1302,6 +1304,30 @@ public sealed record DeviceFamilyModelBody
     public required int Width { get; init; }
     public required int Height { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? V1Model { get; init; }
+    /// <summary>The other names 1.x saved the model under; absent when it has none.</summary>
+    public IReadOnlyList<string>? V1Aliases { get; init; }
+}
+
+/// <summary>A setting a family declares for its panels: its id, name, type, default, and per type its values or range; the 1.x element it comes from.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceFamilySetting")]
+public sealed record DeviceFamilySettingBody
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required string Type { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required JsonElement Default { get; init; }
+    public IReadOnlyList<DeviceFamilySettingValueBody>? Values { get; init; }
+    public int? Min { get; init; }
+    public int? Max { get; init; }
+    public string? V1Field { get; init; }
+}
+
+/// <summary>A value of an enum family setting: its id and its name for people.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceFamilySettingValue")]
+public sealed record DeviceFamilySettingValueBody
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
 }
 
 /// <summary>One saved panel: what it is, its state now, its settings and what its family honours.</summary>
@@ -1325,6 +1351,8 @@ public sealed record DeviceEntryBody
     /// <summary>Its family's and model's names from its panel package; absent for a built-in family (the client names those).</summary>
     public string? FamilyName { get; init; }
     public string? ModelName { get; init; }
+    /// <summary>Its family's settings it has set (a setting not set takes the family's default); absent when none.</summary>
+    public JsonElement? FamilySettings { get; init; }
 }
 
 /// <summary>A panel's model: its id within its family, and its size in pixels.</summary>
@@ -1352,6 +1380,8 @@ public sealed record DeviceSettingsBody
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? ProfileId { get; init; }
     public required int Rotation { get; init; }
     public required int Brightness { get; init; }
+    /// <summary>Its own frame rate (1–60); absent: the engine's.</summary>
+    public int? FrameRate { get; init; }
 }
 
 /// <summary>A running panel's frames a second and milliseconds a frame.</summary>
@@ -1377,9 +1407,11 @@ public sealed record DeviceDetailsBody
 public sealed record DeviceChangeRequest
 {
     public required DeviceSettingsChange Settings { get; init; }
+    /// <summary>Its family's settings to set (null puts one back to its default); absent: none changed.</summary>
+    public JsonElement? FamilySettings { get; init; }
 }
 
-/// <summary>The settings a change sets; a member left out keeps its value, and <c>profileId: null</c> clears it (<see cref="IRemovesMembers"/>).</summary>
+/// <summary>The settings a change sets; a member left out keeps its value, and <c>profileId: null</c> or <c>frameRate: null</c> clears it (<see cref="IRemovesMembers"/>).</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/deviceSettingsChange")]
 public sealed record DeviceSettingsChange : IRemovesMembers
 {
@@ -1387,6 +1419,7 @@ public sealed record DeviceSettingsChange : IRemovesMembers
     public string? ProfileId { get; init; }
     public int? Rotation { get; init; }
     public int? Brightness { get; init; }
+    public int? FrameRate { get; init; }
     /// <summary>The members this change clears (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
     public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
@@ -1405,6 +1438,8 @@ public sealed record CreateDeviceRequest
     /// <summary>The 1.x device it is brought over from, or null.</summary>
     public V1DeviceIdentity? V1 { get; init; }
     public required DeviceSettingsChange Settings { get; init; }
+    /// <summary>Its family's settings (a 1.x panel's, say), as a change gives them; absent: none set.</summary>
+    public JsonElement? FamilySettings { get; init; }
 }
 
 /// <summary>A 1.x panel device, its <c>DeviceId</c> and <c>DeviceLocation</c> as 1.x stored them; stored as given.</summary>

@@ -119,6 +119,67 @@ public sealed unsafe class LibUsbBackend : IUsbBackend
         }
     }
 
+    public UsbStatus Describe(UsbDeviceId device, out UsbDescriptor? descriptor)
+    {
+        descriptor = null;
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            void** list = null;
+            var count = _lib.libusb_get_device_list(_context, &list);
+            if (count < 0 || list is null)
+                return LibUsb.Status((int)count);
+            try
+            {
+                for (nint i = 0; i < count; i++)
+                {
+                    var dev = list[i];
+                    if (_lib.libusb_get_bus_number(dev) != device.Bus || _lib.libusb_get_device_address(dev) != device.Address)
+                        continue;
+                    LibUsbDeviceDescriptor d;
+                    if (_lib.libusb_get_device_descriptor(dev, &d) < 0 || d.idVendor != device.VendorId || d.idProduct != device.ProductId || PortPath(dev) != device.PortPath)
+                        return UsbStatus.NoDevice;
+                    // The cached descriptors: the active configuration's, else (unconfigured) the first.
+                    LibUsbConfigDescriptor* config = null;
+                    var code = _lib.libusb_get_active_config_descriptor(dev, &config);
+                    if (code < 0 || config is null)
+                        code = _lib.libusb_get_config_descriptor(dev, 0, &config);
+                    if (code < 0 || config is null)
+                        return LibUsb.Status(code);
+                    try
+                    {
+                        var interfaces = new List<UsbInterfaceDescriptor>();
+                        for (var n = 0; n < config->bNumInterfaces; n++)
+                        {
+                            var alternates = config->@interface[n];
+                            if (alternates.num_altsetting < 1)
+                                continue;
+                            var setting = alternates.altsetting[0];
+                            var endpoints = new List<(byte, int, int)>();
+                            for (var e = 0; e < setting.bNumEndpoints; e++)
+                            {
+                                var endpoint = setting.endpoint[e];
+                                endpoints.Add((endpoint.bEndpointAddress, endpoint.bmAttributes & 0x3, endpoint.wMaxPacketSize & 0x7FF));
+                            }
+                            interfaces.Add(new UsbInterfaceDescriptor(setting.bInterfaceNumber, setting.bInterfaceClass, setting.bInterfaceSubClass, setting.bInterfaceProtocol, endpoints));
+                        }
+                        descriptor = new UsbDescriptor(d.bDeviceClass, d.bDeviceSubClass, d.bDeviceProtocol, d.bcdDevice, interfaces);
+                        return UsbStatus.Ok;
+                    }
+                    finally
+                    {
+                        _lib.libusb_free_config_descriptor(config);
+                    }
+                }
+                return UsbStatus.NoDevice;
+            }
+            finally
+            {
+                _lib.libusb_free_device_list(list, 1);
+            }
+        }
+    }
+
     private void Closed()
     {
         lock (_lock)
@@ -216,6 +277,12 @@ public sealed unsafe class LibUsbBackend : IUsbBackend
                 code = Lib.libusb_bulk_transfer(Handle(), endpoint, p, buffer.Length, &transferred, (uint)timeoutMs);
             read = transferred;
             return LibUsb.Status(code);
+        }
+
+        public UsbStatus WriteZeroLengthPacket(byte endpoint, int timeoutMs)
+        {
+            int transferred = 0;
+            return LibUsb.Status(Lib.libusb_bulk_transfer(Handle(), endpoint, null, 0, &transferred, (uint)timeoutMs));
         }
 
         private void* Handle()

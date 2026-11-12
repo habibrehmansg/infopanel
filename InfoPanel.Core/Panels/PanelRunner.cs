@@ -73,6 +73,7 @@ public sealed class PanelRunner
     private volatile string _profileId;
     private volatile StrongBox<FrameSinkClosedReason>? _sinkClosed;
     private readonly PanelEncoding _encoding;
+    private readonly System.Text.Json.JsonElement _familySettings;
     private volatile bool _jpeg;
     private volatile StrongBox<UsbStatus>? _jpegRefused;
     private long _encodes;
@@ -105,10 +106,12 @@ public sealed class PanelRunner
     /// The format asked of the driver: <see cref="PanelEncoding.Auto"/> none (its own choice), <see cref="PanelEncoding.Jpeg"/>
     /// JPEG, <see cref="PanelEncoding.Raw"/> RGB565; raw unless given.
     /// </param>
+    /// <param name="familySettings">The family's settings the panel has set (an object; none: undefined), for the driver's <c>Open</c>.</param>
     public PanelRunner(IPanelDriver driver, PanelCandidate device, PanelIdentity identity, string label, string profileId, int brightness, PanelRotation rotation,
         Func<PanelSink, bool> attach, Action<PanelSink> detach, Action<PanelSink> requestChanged, Action<PanelSink> refresh, Func<int> frameRate,
-        TimeProvider time, PanelRunnerOptions options, ILogger logger, PanelEncoding encoding = PanelEncoding.Raw)
+        TimeProvider time, PanelRunnerOptions options, ILogger logger, PanelEncoding encoding = PanelEncoding.Raw, System.Text.Json.JsonElement familySettings = default)
     {
+        _familySettings = familySettings;
         _driver = driver;
         _device = device;
         _identity = identity;
@@ -240,7 +243,7 @@ public sealed class PanelRunner
         try
         {
             // A refused JPEG start is kept at once, so the manager remembers it whatever the start comes to.
-            var options = new PanelOpenOptions(_brightness, (int)Rotation, FormatOf(_encoding))
+            var options = new PanelOpenOptions(_brightness, (int)Rotation, FormatOf(_encoding), _familySettings)
             {
                 FormatRefused = refused =>
                 {
@@ -374,6 +377,12 @@ public sealed class PanelRunner
         var capabilities = session.Capabilities;
         if (WrittenFormat(capabilities) is not { } streamed)
             return Failed(UsbStatus.NotSupported, "the panel takes none of the pixel formats the engine writes");
+        if (PanelFrameWriter.Problem(capabilities) is { } problem)
+            return Failed(UsbStatus.NotSupported, $"its driver's capabilities can't be written: {problem}");
+        using var writer = new PanelFrameWriter(capabilities, streamed, _logger, _label);
+        // The session's own keep-alive interval when it gives one, else the runner's.
+        var keepAlive = capabilities.KeepAliveEvery is { } every && every > TimeSpan.Zero ? every : _options.KeepAlive;
+        var dimmedAt = _brightness;
         // The panel's own ceiling; none at 60 or more, which the pace never passes anyway.
         int? ceiling = capabilities.MaxFps < 60 ? Math.Max(1, capabilities.MaxFps) : null;
         _pacer = new PanelPacer(ceiling);
@@ -385,13 +394,9 @@ public sealed class PanelRunner
         _jpeg = jpeg;
         var (width, height) = (capabilities.Width, capabilities.Height);
         _logger.Information("Panel {Panel}: running, {Width} x {Height}, {Encoding:l}, profile {ProfileId}", _label, width, height,
-            jpeg ? $"JPEG q{capabilities.JpegQuality}" : "raw RGB565", profileId);
+            jpeg ? $"JPEG q{capabilities.JpegQuality}" : streamed == PanelFrameFormat.Rgb565Le ? "raw RGB565" : $"raw {streamed}", profileId);
 
-        // A raw stream writes the transformed frame; a JPEG one encodes it once, and a re-send writes the same JPEG.
-        var format = jpeg ? PanelPixelFormat.Rgba8888 : PanelPixelFormat.Rgb565Le;
-        var target = new byte[PanelTransform.TargetLength(width, height, format)];
-        var encoded = Array.Empty<byte>();
-        var encodedLength = 0;
+        // A raw stream writes the transformed frame; a JPEG one encodes it once, and a re-send writes the same bytes.
         var written = false;
         long lastWrite = 0;
         var started = _time.GetTimestamp();
@@ -418,41 +423,62 @@ public sealed class PanelRunner
                 _logger.Information("Panel {Panel}: profile {ProfileId}", _label, profileId);
             }
 
-            var status = UsbStatusOf(session.SetBrightness(_brightness));
+            var brightness = _brightness;
+            var status = UsbStatusOf(session.SetBrightness(brightness));
             if (status != UsbStatus.Ok)
                 return Failed(status, "the brightness wasn't taken");
             if (_stop.IsCancellationRequested)
                 break; // asked to stop during the brightness: no frame now, the screen-off next
+            if (capabilities.DimInSoftware && brightness != dimmedAt)
+            {
+                // The engine dims this panel's frames: a new brightness needs a new frame, whatever the sink last had.
+                dimmedAt = brightness;
+                sink.Renew();
+                _refresh(sink);
+            }
 
             var frame = sink.Take();
             // How long the thread waited for this frame since its last write returned: an unloaded write needs one.
             var idleMs = written ? _time.GetElapsedTime(lastWrite).TotalMilliseconds : double.PositiveInfinity;
             long? encodeStarted = null;
+            var repeat = frame == null;
             if (frame != null)
             {
+                long frameId, frameRev;
                 try
                 {
-                    Transform(frame, target, width, height, format);
-                    _frameId = frame.FrameId;
-                    _frameRev = frame.Rev;
+                    Prepare(frame, writer, dimmedAt);
+                    (frameId, frameRev) = (frame.FrameId, frame.Rev);
                 }
                 finally
                 {
                     sink.Return(frame);
                 }
                 if (jpeg)
-                {
                     encodeStarted = _time.GetTimestamp();
-                    encodedLength = PanelJpeg.Encode(target, width, height, capabilities.JpegQuality, ref encoded);
+                var encoded = writer.Encode();
+                if (jpeg)
+                {
                     Interlocked.Increment(ref _encodes);
                     _options.AfterEncode?.Invoke();
                 }
+                if (!encoded)
+                {
+                    // Over the panel's cap even at its floor: not sent, the panel keeps its last frame; a keep-alive due
+                    // still goes, with that frame, however many such frames come.
+                    if (!(written && keepAlive != Timeout.InfiniteTimeSpan && _time.GetElapsedTime(lastWrite) >= keepAlive))
+                        continue;
+                    repeat = true;
+                    encodeStarted = null;
+                }
+                else
+                    (_frameId, _frameRev) = (frameId, frameRev);
             }
-            else if (!(written && _options.KeepAlive != Timeout.InfiniteTimeSpan && _time.GetElapsedTime(lastWrite) >= _options.KeepAlive))
+            else if (!(written && keepAlive != Timeout.InfiniteTimeSpan && _time.GetElapsedTime(lastWrite) >= keepAlive))
             {
                 // Until a frame comes, a stop or a brightness change, or the keep-alive is due (none before the first write).
-                WaitForWork(written && _options.KeepAlive != Timeout.InfiniteTimeSpan
-                    ? _options.KeepAlive - _time.GetElapsedTime(lastWrite)
+                WaitForWork(written && keepAlive != Timeout.InfiniteTimeSpan
+                    ? keepAlive - _time.GetElapsedTime(lastWrite)
                     : Timeout.InfiniteTimeSpan);
                 continue;
             }
@@ -462,7 +488,7 @@ public sealed class PanelRunner
             // A JPEG frame's time counts its encode too: the panel's thread spends both on it.
             var writeStarted = _time.GetTimestamp();
             var before = encodeStarted ?? writeStarted;
-            var write = session.WriteFrame(new PanelFrameView(jpeg ? encoded.AsSpan(0, encodedLength) : target, streamed, _frameId, repeat: frame == null), _stop.Token);
+            var write = session.WriteFrame(new PanelFrameView(writer.Frame, streamed, _frameId, repeat: repeat), _stop.Token);
             status = UsbStatusOf(write.Status);
             if (status != UsbStatus.Ok)
                 return Failed(status, "a frame wasn't taken");
@@ -522,11 +548,11 @@ public sealed class PanelRunner
             : new PanelRunEnd(false, UsbStatus.Ok, "stopped");
     }
 
-    /// <summary>The format the engine writes the session in: the first of its formats that is JPEG or RGB565 (little-endian); null when none is.</summary>
+    /// <summary>The format the engine writes the session in: the first of its formats the engine produces (every format the SDK names); null when none is.</summary>
     private static PanelFrameFormat? WrittenFormat(PanelCapabilities capabilities)
     {
         foreach (var format in capabilities.Formats)
-            if (format is PanelFrameFormat.Jpeg or PanelFrameFormat.Rgb565Le)
+            if (Enum.IsDefined(format))
                 return format;
         return null;
     }
@@ -614,13 +640,13 @@ public sealed class PanelRunner
         }
     }
 
-    /// <summary>The copied frame (Rgba8888, premultiplied) into the panel's buffer (RGB565, or opaque RGBA to encode), at its rotation.</summary>
-    private static unsafe void Transform(PanelFrame frame, byte[] target, int width, int height, PanelPixelFormat format)
+    /// <summary>The copied frame (Rgba8888, premultiplied) prepared by the session's writer (turned, dimmed, overlaid, cropped), at its rotation.</summary>
+    private static unsafe void Prepare(PanelFrame frame, PanelFrameWriter writer, int brightness)
     {
         fixed (byte* pixels = frame.Pixels)
         {
             using var pixmap = new SKPixmap(new SKImageInfo(frame.Width, frame.Height, SKColorType.Rgba8888, SKAlphaType.Premul), (IntPtr)pixels, frame.RowBytes);
-            PanelTransform.Render(pixmap, target, width, height, frame.Rotation, format);
+            writer.Prepare(pixmap, frame.Rotation, brightness);
         }
     }
 }

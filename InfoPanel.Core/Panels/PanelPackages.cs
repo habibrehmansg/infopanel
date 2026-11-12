@@ -11,17 +11,66 @@ using Serilog;
 
 namespace InfoPanel.Panels;
 
-/// <summary>A model a panel package declares: its id within its family, its name for people, its size, and the 1.x model it was (null: none).</summary>
-public sealed record PanelPackageModel(string Id, string Name, int Width, int Height, string? V1Model);
+/// <summary>
+/// A model a panel package declares: its id within its family, its name for people, its size, and the 1.x model it was
+/// (null: none); <see cref="V1Aliases"/>, the other names 1.x saved it under (a model 1.x renamed), mapped as
+/// <see cref="V1Model"/> is.
+/// </summary>
+public sealed record PanelPackageModel(string Id, string Name, int Width, int Height, string? V1Model)
+{
+    /// <summary>The other names 1.x saved this model under, none by default.</summary>
+    public IReadOnlyList<string> V1Aliases { get; init; } = [];
+
+    /// <summary>Whether a 1.x panel saved with the model name <paramref name="v1"/> is this model: its <see cref="V1Model"/> or one of its <see cref="V1Aliases"/>.</summary>
+    public bool IsV1(string v1) => V1Model == v1 || V1Aliases.Contains(v1, StringComparer.Ordinal);
+
+    // A record's equality would compare the aliases by reference.
+    public bool Equals(PanelPackageModel? other) => other is not null && Id == other.Id && Name == other.Name && Width == other.Width
+        && Height == other.Height && V1Model == other.V1Model && V1Aliases.SequenceEqual(other.V1Aliases);
+
+    public override int GetHashCode() => HashCode.Combine(Id, Name, Width, Height, V1Model, V1Aliases.Count);
+}
+
+/// <summary>A value of an <c>enum</c> family setting: its id (stored) and its name for people.</summary>
+public sealed record PanelFamilySettingValue(string Id, string Name);
+
+/// <summary>
+/// A setting a family declares for its panels (<c>panel.json</c>'s <c>settings</c>): its <see cref="Id"/> (the key in a
+/// panel's <c>familySettings</c>), its <see cref="Name"/> for people, its <see cref="Type"/> (<c>boolean</c>; <c>enum</c>,
+/// one of <see cref="Values"/>; <c>integer</c>, <see cref="Min"/> to <see cref="Max"/>; <c>string</c>, at most
+/// <see cref="PanelFamilySettings.MaxStringChars"/> characters; <c>model</c>, one of the family's models, the model a panel
+/// whose handshake names a model the family doesn't know is tried as), its <see cref="Default"/> (null for <c>model</c>),
+/// and <see cref="V1Field"/>, the 1.x element a 1.x panel's value comes from (null: none).
+/// </summary>
+public sealed record PanelFamilySetting(string Id, string Name, string Type, JsonElement Default)
+{
+    public IReadOnlyList<PanelFamilySettingValue> Values { get; init; } = [];
+
+    public int? Min { get; init; }
+
+    public int? Max { get; init; }
+
+    public string? V1Field { get; init; }
+}
 
 /// <summary>
 /// A family a panel package declares in its <c>panel.json</c>: its id (stored with every panel of it, never renamed),
-/// its name for people, the USB devices its driver may drive, and its models.
+/// its name for people, the USB devices its driver may drive, its models, and the settings its panels take
+/// (<see cref="Settings"/>, none by default).
 /// </summary>
 public sealed record PanelPackageFamily(string Id, string Name, IReadOnlyList<PanelMatch> Matches, IReadOnlyList<PanelPackageModel> Models)
 {
+    public IReadOnlyList<PanelFamilySetting> Settings { get; init; } = [];
+
     /// <summary>Whether its matches name the device's ids.</summary>
     public bool Names(ushort vendorId, ushort productId) => Matches.Any(m => m.VendorId == vendorId && m.ProductId == productId);
+
+    /// <summary>
+    /// The model a 1.x panel saved with the model name <paramref name="v1"/> (its <c>Model</c> element) is: the one whose
+    /// <c>v1Model</c> it is, else the one with it among its <c>v1Aliases</c>; null when none.
+    /// </summary>
+    public PanelPackageModel? ModelOfV1(string v1) =>
+        Models.FirstOrDefault(m => m.V1Model == v1) ?? Models.FirstOrDefault(m => m.V1Aliases.Contains(v1, StringComparer.Ordinal));
 }
 
 /// <summary>
@@ -69,6 +118,9 @@ public static partial class PanelPackages
     public const int MaxMatches = 64;
     public const int MaxModels = 512;
     public const int MaxNameChars = 64;
+
+    /// <summary>The most other 1.x names (<c>v1Aliases</c>) a model has.</summary>
+    public const int MaxV1Aliases = 16;
 
     /// <summary>At most this many entries are looked at in the installed folder.</summary>
     public const int ListingEntries = 10_000;
@@ -209,6 +261,10 @@ public static partial class PanelPackages
     /// <summary>What a <c>panel.json</c> declares.</summary>
     public sealed record Manifest(string Sdk, IReadOnlyList<PanelPackageFamily> Families);
 
+    /// <summary>Tests: called on this thread between the check that the manifest is a regular file and its read (to put a link there in between).</summary>
+    [ThreadStatic]
+    internal static Action<string>? ManifestChecked;
+
     /// <summary>
     /// Reads <c>{directory}/panel.json</c>: a regular file, not a link, of at most <see cref="MaxManifestBytes"/>, UTF-8
     /// JSON (a BOM allowed) of depth 16 at most: <c>format</c> <see cref="Format"/>; <c>sdk</c>, <c>major.minor</c>;
@@ -231,7 +287,10 @@ public static partial class PanelPackages
                 error = "is a link or isn't a regular file";
                 return null;
             }
-            bytes = RegularFile.ReadAtMost(path, MaxManifestBytes);
+            ManifestChecked?.Invoke(path);
+            // One handle, opened without following a link and checked as a regular file itself (O_NOFOLLOW; on Windows
+            // FILE_FLAG_OPEN_REPARSE_POINT and its reparse tag), then read: a link put there since the check is refused.
+            bytes = ManifestFile.ReadAtMost(path, MaxManifestBytes);
         }
         catch (InvalidDataException)
         {
@@ -328,10 +387,29 @@ public static partial class PanelPackages
                         return Fail($"{at}.models has a v1Model that isn't 1 to {MaxNameChars} characters", out error);
                     if (models.Any(x => x.Id == modelId))
                         return Fail($"{at}.models has the model {modelId} twice", out error);
-                    models.Add(new PanelPackageModel(modelId, modelName, width, height, v1));
+                    var aliases = new List<string>();
+                    if (model.TryGetProperty("v1Aliases", out var v1Aliases))
+                    {
+                        if (v1Aliases.ValueKind != JsonValueKind.Array || v1Aliases.GetArrayLength() > MaxV1Aliases)
+                            return Fail($"{at}.models has a v1Aliases that isn't a list of at most {MaxV1Aliases} names", out error);
+                        foreach (var alias in v1Aliases.EnumerateArray())
+                        {
+                            if (alias.ValueKind != JsonValueKind.String || alias.GetString() is not { Length: > 0 } text || text.EnumerateRunes().Count() > MaxNameChars)
+                                return Fail($"{at}.models has a v1Aliases name that isn't 1 to {MaxNameChars} characters", out error);
+                            aliases.Add(text);
+                        }
+                    }
+                    models.Add(new PanelPackageModel(modelId, modelName, width, height, v1) { V1Aliases = aliases });
                 }
             }
-            parsed.Add(new PanelPackageFamily(id, name, matches, models));
+            IReadOnlyList<PanelFamilySetting> settings = [];
+            if (family.TryGetProperty("settings", out var declared))
+            {
+                if (PanelFamilySettings.Parse(declared, at, out error) is not { } read)
+                    return null;
+                settings = read;
+            }
+            parsed.Add(new PanelPackageFamily(id, name, matches, models) { Settings = settings });
         }
         return new Manifest(sdk, parsed);
     }

@@ -47,6 +47,9 @@ public sealed unsafe class LibUsb
     internal delegate* unmanaged[Cdecl]<void*, byte, byte*, int, int> libusb_get_string_descriptor_ascii;
     internal delegate* unmanaged[Cdecl]<void*, byte, byte*, int, int*, uint, int> libusb_bulk_transfer;
     internal delegate* unmanaged[Cdecl]<LibUsbVersion*> libusb_get_version;
+    internal delegate* unmanaged[Cdecl]<void*, LibUsbConfigDescriptor**, int> libusb_get_active_config_descriptor;
+    internal delegate* unmanaged[Cdecl]<void*, byte, LibUsbConfigDescriptor**, int> libusb_get_config_descriptor;
+    internal delegate* unmanaged[Cdecl]<LibUsbConfigDescriptor*, void> libusb_free_config_descriptor;
 
     /// <summary>
     /// The places looked in, in order: beside the engine (<paramref name="engineFolder"/>), the folder
@@ -163,6 +166,9 @@ public sealed unsafe class LibUsb
             u.libusb_get_string_descriptor_ascii = (delegate* unmanaged[Cdecl]<void*, byte, byte*, int, int>)Export(handle, "libusb_get_string_descriptor_ascii");
             u.libusb_bulk_transfer = (delegate* unmanaged[Cdecl]<void*, byte, byte*, int, int*, uint, int>)Export(handle, "libusb_bulk_transfer");
             u.libusb_get_version = (delegate* unmanaged[Cdecl]<LibUsbVersion*>)Export(handle, "libusb_get_version");
+            u.libusb_get_active_config_descriptor = (delegate* unmanaged[Cdecl]<void*, LibUsbConfigDescriptor**, int>)Export(handle, "libusb_get_active_config_descriptor");
+            u.libusb_get_config_descriptor = (delegate* unmanaged[Cdecl]<void*, byte, LibUsbConfigDescriptor**, int>)Export(handle, "libusb_get_config_descriptor");
+            u.libusb_free_config_descriptor = (delegate* unmanaged[Cdecl]<LibUsbConfigDescriptor*, void>)Export(handle, "libusb_free_config_descriptor");
             var v = u.libusb_get_version();
             u.Version = v is null ? "?" : $"{v->Major}.{v->Minor}.{v->Micro}";
             reason = "";
@@ -213,6 +219,65 @@ internal struct LibUsbDeviceDescriptor
     public byte iProduct;
     public byte iSerialNumber;
     public byte bNumConfigurations;
+}
+
+/// <summary><c>struct libusb_endpoint_descriptor</c>.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct LibUsbEndpointDescriptor
+{
+    public byte bLength;
+    public byte bDescriptorType;
+    public byte bEndpointAddress;
+    public byte bmAttributes;
+    public ushort wMaxPacketSize;
+    public byte bInterval;
+    public byte bRefresh;
+    public byte bSynchAddress;
+    public byte* extra;
+    public int extra_length;
+}
+
+/// <summary><c>struct libusb_interface_descriptor</c>.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct LibUsbInterfaceDescriptor
+{
+    public byte bLength;
+    public byte bDescriptorType;
+    public byte bInterfaceNumber;
+    public byte bAlternateSetting;
+    public byte bNumEndpoints;
+    public byte bInterfaceClass;
+    public byte bInterfaceSubClass;
+    public byte bInterfaceProtocol;
+    public byte iInterface;
+    public LibUsbEndpointDescriptor* endpoint;
+    public byte* extra;
+    public int extra_length;
+}
+
+/// <summary><c>struct libusb_interface</c>: an interface's alternate settings.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct LibUsbInterface
+{
+    public LibUsbInterfaceDescriptor* altsetting;
+    public int num_altsetting;
+}
+
+/// <summary><c>struct libusb_config_descriptor</c>.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct LibUsbConfigDescriptor
+{
+    public byte bLength;
+    public byte bDescriptorType;
+    public ushort wTotalLength;
+    public byte bNumInterfaces;
+    public byte bConfigurationValue;
+    public byte iConfiguration;
+    public byte bmAttributes;
+    public byte MaxPower;
+    public LibUsbInterface* @interface;
+    public byte* extra;
+    public int extra_length;
 }
 
 /// <summary><c>struct libusb_version</c>.</summary>

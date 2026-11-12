@@ -43,6 +43,9 @@ public sealed record PanelServiceOptions
 /// </summary>
 public sealed record PanelFamilyInfo(string Id, string Name, PanelHostRunner? Runner, IReadOnlyList<PanelPackageModel> Models, IReadOnlyList<string> Transports)
 {
+    /// <summary>The settings its panels take (its panel.json's); none for a built-in family.</summary>
+    public IReadOnlyList<PanelFamilySetting> Settings { get; init; } = [];
+
     /// <summary><c>builtIn</c>, or the package's folder name.</summary>
     public string Driver => Runner?.Folder ?? "builtIn";
 
@@ -212,7 +215,7 @@ public sealed class PanelService(
                 {
                     drivers.Add(new HostedPanelDriver(family, runner, logger));
                     families.Add(new PanelFamilyInfo(family.Id, family.Name, runner, family.Models,
-                        [.. family.Matches.Select(m => PanelPackages.NameOf(m.Transport)).Distinct()]));
+                        [.. family.Matches.Select(m => PanelPackages.NameOf(m.Transport)).Distinct()]) { Settings = family.Settings });
                 }
                 if (!on)
                     logger.Information("The panel package {Folder:l} is turned off: its families' panels stay off", package.Folder);

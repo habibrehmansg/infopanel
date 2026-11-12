@@ -1,0 +1,1 @@
+{"family": "thermalright", "model": "wonder-360", "v1": {"deviceId": "USB\\VID_87AD&PID_70DB\\SERIAL1", "deviceLocation": "Port_#0002.Hub_#0001"}, "settings": {"enabled": true, "brightness": 100, "frameRate": 15}, "familySettings": {"flickerFix": false, "mask": "roundedLeft"}}

@@ -28,6 +28,9 @@
     <PackageReference Include="Svg.Skia" />
     <!-- The Now Playing source's Linux reader (LinuxNowPlayingReader) reads MPRIS players on the session bus. -->
     <PackageReference Include="Tmds.DBus.Protocol" />
+    <!-- The panel driver seam's HID (HidSharp) and serial ports (System.IO.Ports): Panels/Devices/EnginePanelDevices. -->
+    <PackageReference Include="HidSharp" />
+    <PackageReference Include="System.IO.Ports" />
     <PackageReference Include="Topten.RichTextKit" />
   </ItemGroup>
 

@@ -1,0 +1,1 @@
+{"supported": true, "reason": null, "version": 1, "devices": [], "families": [{"id": "virtual", "name": "Virtual panel", "driver": "InfoPanel.Panels.Virtual", "state": "ready", "reason": null, "models": [], "supports": [], "transports": ["usb"], "settings": [{"id": "look", "name": "Look", "type": "colour", "default": "plain"}]}]}

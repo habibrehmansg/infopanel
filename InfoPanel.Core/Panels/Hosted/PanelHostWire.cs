@@ -13,7 +13,7 @@ namespace InfoPanel.Panels.Hosted;
 /// <summary>
 /// A message from the engine to a panel host. <see cref="Op"/>: <c>hello</c>; <c>probe</c> (<see cref="Family"/>,
 /// <see cref="Device"/>, <see cref="Ms"/> its deadline); <c>open</c> (and <see cref="Identity"/>, <see cref="Brightness"/>,
-/// <see cref="Rotation"/>, <see cref="Format"/>); <c>attach</c> (<see cref="Session"/>, <see cref="Path"/>: its slot file);
+/// <see cref="Rotation"/>, <see cref="Format"/>, <see cref="FamilySettings"/>); <c>attach</c> (<see cref="Session"/>, <see cref="Path"/>: its slot file);
 /// <c>write</c> (<see cref="Session"/>, <see cref="Slot"/>, <see cref="FrameId"/>, <see cref="Repeat"/>: the slot is the
 /// host's until its answer); <c>brightness</c>; <c>close</c> (<see cref="ScreenOff"/>, <see cref="Ms"/> its budget);
 /// <c>shutdown</c> (every session closed, screen off, within <see cref="Ms"/>, then the host ends).
@@ -28,6 +28,8 @@ public sealed record PanelHostRequest
     public int? Brightness { get; init; }
     public int? Rotation { get; init; }
     public PanelFrameFormat? Format { get; init; }
+    /// <summary>An <c>open</c>'s family settings, as the panel has them set (an object).</summary>
+    public JsonElement? FamilySettings { get; init; }
     public long? Session { get; init; }
     public int? Slot { get; init; }
     public long? FrameId { get; init; }

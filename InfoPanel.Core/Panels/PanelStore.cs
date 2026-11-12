@@ -36,6 +36,12 @@ public sealed record SavedPanel(
     /// <summary>The 1.x device a client saved it from (spec/docs/api.md "Saving a device"), or null.</summary>
     public PanelV1Identity? V1 { get; init; }
 
+    /// <summary>Its own frame rate, 1–60 frames a second; null: the engine's (the <c>frameRate</c> setting).</summary>
+    public int? FrameRate { get; init; }
+
+    /// <summary>Its family's settings it has set, as a compact JSON object (<see cref="PanelFamilySettings"/>); null: none.</summary>
+    public string? FamilySettings { get; init; }
+
     /// <summary>The encoding in effect; setting it (<c>with { Encoding = … }</c>) replaces an <see cref="UnknownEncoding"/>.</summary>
     public PanelEncoding Encoding
     {
@@ -274,11 +280,14 @@ public sealed partial class PanelStore
         var encoding = PanelEncoding.Auto;
         byte[]? unknownEncoding = null;
         PanelV1Identity? v1 = null;
+        int? frameRate = null;
+        string? familySettings = null;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var kept = new List<JsonMemberText>();
         foreach (var member in members)
         {
-            if (member.Name is not ("id" or "family" or "model" or "serial" or "port" or "enabled" or "profileId" or "rotation" or "brightness" or "encoding" or "v1"))
+            if (member.Name is not ("id" or "family" or "model" or "serial" or "port" or "enabled" or "profileId" or "rotation" or "brightness" or "encoding" or "v1"
+                or "frameRate" or "familySettings"))
             {
                 kept.Add(member);
                 continue;
@@ -303,6 +312,8 @@ public sealed partial class PanelStore
                 "brightness" => Brightness(value, out brightness),
                 "encoding" => Encoding(value, member.Value, out encoding, out unknownEncoding),
                 "v1" => (v1 = ReadV1(member.Value)) != null,
+                "frameRate" => FrameRate(value, out frameRate),
+                "familySettings" => value is { ValueKind: JsonValueKind.Object } settings && (familySettings = Compact(settings)) != null,
                 _ => false,
             };
             if (!ok)
@@ -324,7 +335,34 @@ public sealed partial class PanelStore
         }
 
         why = null;
-        return new SavedPanel(id, family, model, serial, port, enabled, profileId, rotation, brightness, encoding) { Kept = kept, UnknownEncoding = unknownEncoding, V1 = v1 };
+        return new SavedPanel(id, family, model, serial, port, enabled, profileId, rotation, brightness, encoding)
+        {
+            Kept = kept,
+            UnknownEncoding = unknownEncoding,
+            V1 = v1,
+            FrameRate = frameRate,
+            FamilySettings = familySettings is "{}" ? null : familySettings,
+        };
+    }
+
+    /// <summary>A panel's own frame rate: an integer 1–60, or null (the engine's).</summary>
+    private static bool FrameRate(JsonElement? value, out int? frameRate)
+    {
+        frameRate = null;
+        if (value is { ValueKind: JsonValueKind.Null })
+            return true;
+        if (value is not { ValueKind: JsonValueKind.Number } n || !n.TryGetInt32(out var rate) || rate is < 1 or > 60)
+            return false;
+        frameRate = rate;
+        return true;
+    }
+
+    private static string Compact(JsonElement element)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+            element.WriteTo(writer);
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
     }
 
     /// <summary>
@@ -510,6 +548,14 @@ public sealed partial class PanelStore
             {
                 writer.WritePropertyName("v1");
                 writer.WriteRawValue(V1Json(v1), skipInputValidation: true);
+            }
+            // Written only when set, so a file without them reads as it did.
+            if (device.FrameRate is { } frameRate)
+                writer.WriteNumber("frameRate", frameRate);
+            if (device.FamilySettings is { } familySettings)
+            {
+                writer.WritePropertyName("familySettings");
+                writer.WriteRawValue(familySettings);
             }
             writer.WriteEndObject();
         }

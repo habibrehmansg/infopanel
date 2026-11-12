@@ -140,7 +140,8 @@ public sealed class PanelHostServer(IReadOnlyList<IPanelDriver> drivers, ILogger
         if (DriverOf(request.Family) is not { } driver || request.Device is not { } device || request.Identity is not { } identity)
             return new PanelHostReply { Status = PanelDeviceStatus.NotSupported, Message = $"this host has no driver for {request.Family}" };
         PanelDeviceStatus? refused = null;
-        var options = new PanelOpenOptions(Math.Clamp(request.Brightness ?? 100, 0, 100), request.Rotation ?? 0, request.Format)
+        var options = new PanelOpenOptions(Math.Clamp(request.Brightness ?? 100, 0, 100), request.Rotation ?? 0, request.Format,
+            request.FamilySettings is { ValueKind: System.Text.Json.JsonValueKind.Object } settings ? settings : default)
         {
             FormatRefused = status => refused = status,
         };

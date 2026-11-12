@@ -82,6 +82,11 @@ public enum PanelFrameFormat
     Bgr888,
     /// <summary>Four bytes a pixel, opaque: red, green, blue, then 255.</summary>
     Rgba8888,
+    /// <summary>
+    /// As <see cref="Rgb565Le"/>, each channel's low bits dropped with no rounding or dithering, as
+    /// <see cref="Rgb565Be"/> is (<see cref="Rgb565Le"/> itself is the engine's rounded conversion).
+    /// </summary>
+    Rgb565LeTruncated,
 }
 
 /// <summary>

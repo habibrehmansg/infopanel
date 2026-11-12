@@ -151,6 +151,24 @@ public sealed class PanelManager : IAsyncDisposable
     /// <summary>The driver of <paramref name="family"/>, or null when none declares it.</summary>
     private IPanelDriver? DriverOf(string family) => _drivers.FirstOrDefault(d => d.Family == family);
 
+    private readonly HashSet<string> _mismatchLogged = [];
+
+    /// <summary>
+    /// A panel's family settings for its driver's <c>Open</c>: each stored value checked against the setting its family
+    /// declares now, one it doesn't take (a setting declared again with another type) opening with the declared default,
+    /// logged once a panel and setting (without the value); the stored value stays in <c>devices.json</c> until it is changed.
+    /// </summary>
+    private System.Text.Json.JsonElement FamilySettingsFor(SavedPanel saved, IPanelDriver driver)
+    {
+        if (driver is not HostedPanelDriver { Declared: var family })
+            return PanelFamilySettings.ElementOf(saved.FamilySettings);
+        var settings = PanelFamilySettings.ForOpen(saved.FamilySettings, family.Settings, [.. family.Models.Select(m => m.Id)], out var mismatched);
+        foreach (var id in mismatched)
+            if (_mismatchLogged.Add(saved.Id + "/" + id))
+                _logger.Warning("Panel {Panel}: its stored value of the family setting {Setting:l} isn't one the setting takes now; it opens with the default until the setting is set again", Label(saved.Id), id);
+        return settings;
+    }
+
     /// <summary>Where a driver comes from, for the log: built in, or its panel package.</summary>
     private static string OriginOf(IPanelDriver driver) => driver is HostedPanelDriver hosted ? $"the panel package {hosted.Link.Folder}" : "built in";
 
@@ -296,9 +314,11 @@ public sealed class PanelManager : IAsyncDisposable
         SaveChange(next);
         _devices[index] = after;
         var runtime = RuntimeOf(id);
+        runtime.FrameRate = after.FrameRate ?? 0;
         if (runtime.Runner is { } runner && !runtime.Stopping)
         {
-            if (after.Enabled != before.Enabled || after.Encoding != before.Encoding)
+            // The family's settings are the session's: a change closes it, and the next pass opens it again with them.
+            if (after.Enabled != before.Enabled || after.Encoding != before.Encoding || after.FamilySettings != before.FamilySettings)
             {
                 runtime.Stopping = true;
                 runner.RequestStop();
@@ -458,6 +478,13 @@ public sealed class PanelManager : IAsyncDisposable
     /// sessions are counted; a session that never got past its start tag counts too once it was JPEG.
     /// </summary>
     public static readonly TimeSpan JpegSettle = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Whether a panel waits out <see cref="JpegSettle"/> after a JPEG session: a BeadaPanel's T113 (platform 5) does, and a
+    /// BeadaPanel whose info isn't known is taken for one; no other family's panel does.
+    /// </summary>
+    internal static bool SettlesAfterJpeg(IPanelDriver? driver, BeadaPanelInfo? info) =>
+        driver is BeadaPanelDriver && info is null or { Platform: 5 };
 
     /// <summary>What is left of <see cref="JpegSettle"/> since the panel's last JPEG session ended; null when nothing is.</summary>
     private TimeSpan? SettleLeft(Runtime runtime)
@@ -909,9 +936,12 @@ public sealed class PanelManager : IAsyncDisposable
 
         // A panel that refused the JPEG start once this run is raw until the engine restarts, whatever its setting.
         var encoding = runtime.JpegRefused ? PanelEncoding.Raw : saved.Encoding;
+        // Its own frame rate when it has one, else the engine's setting, read at every tick (a change applies at once).
+        runtime.FrameRate = saved.FrameRate ?? 0;
         var started = new PanelRunner(driver, CandidateOf(usb), identity, Label(saved.Id), saved.ProfileId!, saved.Brightness, saved.Rotation,
-            sink => _host.Attach(sink), sink => _host.Detach(sink), sink => _host.RequestChanged(sink), sink => _host.Refresh(sink), _host.FrameRate,
-            _time, _runnerOptions, _logger, encoding);
+            sink => _host.Attach(sink), sink => _host.Detach(sink), sink => _host.RequestChanged(sink), sink => _host.Refresh(sink),
+            () => runtime.FrameRate is > 0 and var own ? own : _host.FrameRate(),
+            _time, _runnerOptions, _logger, encoding, FamilySettingsFor(saved, driver));
         lock (_liveLock)
         {
             if (_stopping || _suspended)
@@ -936,7 +966,7 @@ public sealed class PanelManager : IAsyncDisposable
             return;
         runtime.Runner = null;
         runtime.Stopping = false;
-        if (runner.Jpeg)
+        if (runner.Jpeg && SettlesAfterJpeg(runtime.Driver, runtime.Info))
             runtime.JpegEndedAt = _time.GetTimestamp();
         if (runtime.Forgotten)
         {
@@ -1121,6 +1151,7 @@ public sealed class PanelManager : IAsyncDisposable
         public bool JpegRefused; // the panel didn't take a JPEG start this run: raw from now on
         public long? JpegEndedAt; // when its last JPEG session ended (the manager's clock), for JpegSettle
         public bool Settling; // a start is waiting out JpegSettle (logged once)
+        public volatile int FrameRate; // the panel's own frame rate, 0: the engine's (read by its runner's sink on the render thread)
     }
 
     private sealed class Seen(UsbDeviceId usb)

@@ -1962,8 +1962,47 @@
           "type": "array",
           "items": { "description": "A client treats a transport it doesn't know as `usb`.", "enum": ["usb", "serial", "hid"] },
           "uniqueItems": true
-        }
+        },
+        "settings": { "description": "The settings of its own its panels take, as its package's panel.json declares them, in its order (docs/api.md#family-settings); absent when it declares none.", "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/deviceFamilySetting" } }
       }
+    },
+    "deviceFamilySetting": {
+      "description": "A setting a panel family declares for its panels (docs/api.md#family-settings): a panel's value is in deviceEntry.familySettings, changed through deviceChange.familySettings.",
+      "type": "object",
+      "required": ["id", "name", "type", "default"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "description": "Its key in a panel's familySettings.", "$ref": "#/$defs/familySettingId" },
+        "name": { "description": "Its name for people, from the package's panel.json.", "type": "string", "minLength": 1, "maxLength": 64 },
+        "type": { "description": "`boolean`; `enum` (one of `values`' ids); `integer` (`min` to `max`); `string` (at most 64 characters); `model` (one of the family's models' ids: the model a panel whose handshake names a model the family doesn't know is tried as; its id is `model`). A client shows a setting of a type it doesn't know read-only, by its name and value.", "enum": ["boolean", "enum", "integer", "string", "model"] },
+        "default": { "description": "The value a panel has while it hasn't set it: of the setting's type; null for a `model` setting (the model its handshake found).", "type": ["boolean", "integer", "string", "null"] },
+        "values": { "description": "An `enum` setting's values, in order; absent for other types.", "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/deviceFamilySettingValue" } },
+        "min": { "description": "An `integer` setting's least value.", "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "max": { "description": "An `integer` setting's greatest value.", "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "v1Field": { "description": "The element of a 1.x panel device its value comes from (as 1.x stored it, `FlickerFix`), which a client bringing 1.x devices over reads; absent when none.", "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "deviceFamilySettingValue": {
+      "description": "A value of an `enum` family setting.",
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "description": "The value as a panel's familySettings holds it.", "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "description": "Its name for people, from the package's panel.json.", "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "familySettingId": {
+      "description": "A family setting's id: a lower-case letter, then at most 31 letters and digits.",
+      "type": "string",
+      "pattern": "^[a-z][A-Za-z0-9]{0,31}$"
+    },
+    "familySettings": {
+      "description": "A panel's values of its family's settings, by their ids (deviceFamilySetting): each of its setting's type, a string at most 64 characters. In a change or a save, null puts a setting back to its default.",
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": { "$ref": "#/$defs/familySettingId" },
+      "additionalProperties": { "type": ["boolean", "integer", "string", "null"], "maxLength": 64 }
     },
     "deviceFamilyModel": {
       "description": "A model of a panel family.",
@@ -1975,7 +2014,8 @@
         "name": { "description": "Its name for people from its package's panel.json; null for a built-in family's (a client words those).", "type": ["string", "null"], "minLength": 1, "maxLength": 64 },
         "width": { "description": "Its width in pixels, as it is mounted at rotation 0.", "type": "integer", "minimum": 1, "maximum": 16384 },
         "height": { "description": "Its height in pixels, as it is mounted at rotation 0.", "type": "integer", "minimum": 1, "maximum": 16384 },
-        "v1Model": { "description": "The model's name in InfoPanel 1.x, which a client bringing 1.x devices over maps by; null when it had none.", "type": ["string", "null"], "minLength": 1, "maxLength": 64 }
+        "v1Model": { "description": "The model's name in InfoPanel 1.x, which a client bringing 1.x devices over maps by; null when it had none.", "type": ["string", "null"], "minLength": 1, "maxLength": 64 },
+        "v1Aliases": { "description": "Other names 1.x saved the model under (a model it renamed), mapped as `v1Model` is when no model's `v1Model` is the name; absent when it has none.", "type": "array", "maxItems": 16, "items": { "type": "string", "minLength": 1, "maxLength": 64 } }
       }
     },
     "deviceEntry": {
@@ -1995,7 +2035,7 @@
         "reason": { "description": "Why it is `failed`, `starting` and waiting, or `off` because its driver is, or null.", "oneOf": [{ "$ref": "#/$defs/deviceReason" }, { "type": "null" }] },
         "settings": { "$ref": "#/$defs/deviceSettings" },
         "supports": {
-          "description": "The names of the settings its family honours (a change of any other is refused); `enabled`, `profileId`, `rotation` and `brightness` for a BeadaPanel, none for a family the engine doesn't drive.",
+          "description": "The names of the settings its family honours (a change of any other is refused); `enabled`, `profileId`, `rotation`, `brightness` and `frameRate` for a BeadaPanel and every family a panel package declares, none for a family the engine doesn't drive.",
           "type": "array",
           "items": { "type": "string", "minLength": 1, "maxLength": 64 },
           "uniqueItems": true
@@ -2005,7 +2045,8 @@
         "v1": { "$ref": "#/$defs/v1DeviceIdentity", "description": "The 1.x device it was saved from, as the save gave it (createDeviceRequest.v1); absent when it has none." },
         "driver": { "description": "Its family's driver, as deviceFamily.driver names it: `builtIn`, or the panel package's folder name; absent when no driver the engine knows declares its family.", "type": "string", "minLength": 1, "maxLength": 128 },
         "familyName": { "description": "Its family's name from its panel package's panel.json; absent for a built-in family (a client words those). A client shows it for a family it doesn't know.", "type": "string", "minLength": 1, "maxLength": 64 },
-        "modelName": { "description": "Its model's name from its panel package's panel.json; absent for a built-in family, or a model the package doesn't declare. A client shows it for a family it doesn't know.", "type": "string", "minLength": 1, "maxLength": 64 }
+        "modelName": { "description": "Its model's name from its panel package's panel.json; absent for a built-in family, or a model the package doesn't declare (a model its handshake named that the family doesn't know: see docs/api.md#family-settings). A client shows it for a family it doesn't know.", "type": "string", "minLength": 1, "maxLength": 64 },
+        "familySettings": { "$ref": "#/$defs/familySettings", "description": "Its family's settings it has set (deviceFamily.settings; one it hasn't set has its default); absent when it has set none." }
       }
     },
     "deviceModel": {
@@ -2042,7 +2083,8 @@
         "enabled": { "description": "Whether it shows its profile (\"Show on this panel\"). A new panel is saved off.", "type": "boolean" },
         "profileId": { "description": "The profile it shows, or null. A profile deleted since is kept: the panel is off until a profile with that id can be shown again. A value in the devices file that isn't a document's id is answered as null (and kept in the file).", "oneOf": [{ "$ref": "urn:infopanel:common:1#/$defs/documentId" }, { "type": "null" }] },
         "rotation": { "description": "Degrees clockwise the picture is turned on the panel. A client treats a rotation it doesn't know as 0.", "enum": [0, 90, 180, 270] },
-        "brightness": { "description": "The backlight, in percent.", "type": "integer", "minimum": 0, "maximum": 100 }
+        "brightness": { "description": "The backlight, in percent.", "type": "integer", "minimum": 0, "maximum": 100 },
+        "frameRate": { "description": "Its own frame rate, the most frames a second it is sent (1 to 60), in place of the engine's frameRate setting; it never runs past its own ceiling or what it is seen to keep up with. Absent: the engine's.", "type": "integer", "minimum": 1, "maximum": 60 }
       }
     },
     "deviceStats": {
@@ -2073,7 +2115,8 @@
       "required": ["settings"],
       "additionalProperties": false,
       "properties": {
-        "settings": { "$ref": "#/$defs/deviceSettingsChange" }
+        "settings": { "$ref": "#/$defs/deviceSettingsChange" },
+        "familySettings": { "$ref": "#/$defs/familySettings", "description": "Its family's settings to set, each checked against deviceFamily.settings (a setting the family doesn't declare, or a value not of its type, range or values, is refused: 422 `device.setting`); null puts one back to its default. A change of any closes the panel's session and opens it again with them. Absent: none changed." }
       }
     },
     "deviceSettingsChange": {
@@ -2084,7 +2127,8 @@
         "enabled": { "type": "boolean" },
         "profileId": { "oneOf": [{ "$ref": "urn:infopanel:common:1#/$defs/documentId" }, { "type": "null" }] },
         "rotation": { "enum": [0, 90, 180, 270] },
-        "brightness": { "type": "integer", "minimum": 0, "maximum": 100 }
+        "brightness": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "frameRate": { "description": "Its own frame rate, 1 to 60; null puts it back to the engine's.", "oneOf": [{ "type": "integer", "minimum": 1, "maximum": 60 }, { "type": "null" }] }
       }
     },
     "createDeviceRequest": {
@@ -2097,7 +2141,8 @@
         "model": { "description": "Its model's id within the family, as deviceModel.id names it (\"6C\"), one of its deviceFamily.models. A model the family doesn't have is refused (`device.model`).", "type": "string", "minLength": 1, "maxLength": 64 },
         "serial": { "description": "The serial number the panel reports, letters and digits; absent when it isn't known. A panel without one is matched to the first unknown panel of its model plugged in only when that can't be mistaken (docs/api.md#saving-a-device).", "type": "string", "pattern": "^[A-Za-z0-9]{1,128}$" },
         "v1": { "$ref": "#/$defs/v1DeviceIdentity", "description": "The 1.x device it is brought over from, when it is one: stored with it and answered in its deviceEntry. A saved panel with the same `deviceId` (ignoring case) is 409 existsProblem." },
-        "settings": { "$ref": "#/$defs/deviceSettingsChange", "description": "Its settings, as a change gives them; a setting left out takes a new panel's: off, no profile, rotation 0, brightness 100." }
+        "settings": { "$ref": "#/$defs/deviceSettingsChange", "description": "Its settings, as a change gives them; a setting left out takes a new panel's: off, no profile, rotation 0, brightness 100, the engine's frame rate." },
+        "familySettings": { "$ref": "#/$defs/familySettings", "description": "Its family's settings (a 1.x panel's values, read from the elements deviceFamilySetting.v1Field names), checked as a change's are (422 `device.setting`); absent: none set." }
       }
     },
     "v1DeviceIdentity": {
