@@ -228,6 +228,11 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
+### Tmds.DBus.Protocol 0.95.2
+- **Licence**: MIT
+- **Copyright**: Tom Deseyn
+- **Project**: https://tmds.github.io/Tmds.DBus
+
 ### Topten.RichTextKit 0.6.170
 - **Licence**: Apache-2.0
 - **Copyright**: none stated in the package (authors: Topten Software)

@@ -32,6 +32,8 @@
     <PackageVersion Include="Svg.Skia" Version="5.2.3" />
     <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="10.0.6" />
     <PackageVersion Include="System.IO.Hashing" Version="10.0.14" />
+    <!-- The Now Playing source's Linux reader (LinuxNowPlayingReader) talks to the session bus (MPRIS) through it. -->
+    <PackageVersion Include="Tmds.DBus.Protocol" Version="0.95.2" />
     <PackageVersion Include="Topten.RichTextKit" Version="0.6.170" />
   </ItemGroup>
 

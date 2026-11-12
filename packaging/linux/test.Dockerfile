@@ -11,9 +11,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:212fe4cb74627d5adf9817a4088906ae3edff1bd853bb27565d4b46731efe61e
 
 # What the engine needs from the system on Linux: fontconfig (Skia's font manager), one font family (the system fonts
-# the engine lists beside its embedded ones; DejaVu, as on most desktops), libusb (USB panels).
+# the engine lists beside its embedded ones; DejaVu, as on most desktops), libusb (USB panels). And D-Bus, only for the
+# Now Playing check: a session bus a test's fake media player and the engine share (docs/agents/linux.md).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libfontconfig1 fonts-dejavu-core libusb-1.0-0 \
+ && apt-get install -y --no-install-recommends libfontconfig1 fonts-dejavu-core libusb-1.0-0 dbus \
  && rm -rf /var/lib/apt/lists/*
 
 # An ordinary user at uid 1000 (root ignores file modes, so tests of private files would pass for the wrong reason).

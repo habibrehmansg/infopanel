@@ -26,6 +26,8 @@
     <!-- RenderLoop hashes rendered frames with XxHash3. -->
     <PackageReference Include="System.IO.Hashing" />
     <PackageReference Include="Svg.Skia" />
+    <!-- The Now Playing source's Linux reader (LinuxNowPlayingReader) reads MPRIS players on the session bus. -->
+    <PackageReference Include="Tmds.DBus.Protocol" />
     <PackageReference Include="Topten.RichTextKit" />
   </ItemGroup>
 

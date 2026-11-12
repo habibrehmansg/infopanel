@@ -12,7 +12,7 @@ namespace InfoPanel.Sensors.NowPlaying;
 /// The Now Playing source, <c>infopanel.now-playing</c> ("Now Playing"): what the system's current media session plays,
 /// under <c>infopanel:/now-playing/{entry}</c> (<see cref="Entries"/>), a <see cref="PolledSensorSource"/> over
 /// <see cref="NowPlayingSampler"/> polled every second, the platform's reads behind <see cref="INowPlayingReader"/>
-/// (macOS: <see cref="MacNowPlayingReader"/>; Windows: <see cref="WinNowPlayingReader"/>).
+/// (macOS: <see cref="MacNowPlayingReader"/>; Windows: <see cref="WinNowPlayingReader"/>; Linux: <see cref="LinuxNowPlayingReader"/>).
 /// <para>
 /// It reads only while in use: while one of its keys was read (<see cref="TryRead"/>, <see cref="ReadState"/>: a shown
 /// profile's and a client's value reads) or its samples used (<see cref="NoteUse"/>, a graph's draw) within
@@ -94,15 +94,18 @@ public sealed class NowPlayingSource : ISensorSource, ISensorStatusSource, ISens
 
     /// <summary>
     /// The source over this computer's media session: on macOS through the media helper (<see cref="MacNowPlayingReader"/>),
-    /// on Windows through its media sessions (<see cref="WinNowPlayingReader"/>).
+    /// on Windows through its media sessions (<see cref="WinNowPlayingReader"/>), on Linux through MPRIS on the session bus
+    /// (<see cref="LinuxNowPlayingReader"/>).
     /// </summary>
     [SupportedOSPlatform("macos")]
     [SupportedOSPlatform("windows")]
+    [SupportedOSPlatform("linux")]
     public static NowPlayingSource CreateSystem(TimeProvider? time = null)
     {
         time ??= TimeProvider.System;
         INowPlayingReader reader = OperatingSystem.IsWindows() ? WinNowPlayingReader.CreateSystem(time)
             : OperatingSystem.IsMacOS() ? MacNowPlayingReader.CreateSystem(time)
+            : OperatingSystem.IsLinux() ? LinuxNowPlayingReader.CreateSystem(time)
             : throw new PlatformNotSupportedException();
         return Create(reader, time);
     }
