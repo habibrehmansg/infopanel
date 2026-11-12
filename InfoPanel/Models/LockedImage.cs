@@ -23,7 +23,7 @@ namespace InfoPanel.Models
     public partial class LockedImage : IDisposable
     {
         private static readonly ILogger Logger = Log.ForContext<LockedImage>();
-        
+
         public enum ImageType
         {
             SK, SVG, FFMPEG, PLUGIN
@@ -127,6 +127,21 @@ namespace InfoPanel.Models
         /// <summary>When this image was created/downloaded. Used for the URL refresh interval.</summary>
         public readonly DateTime LoadedAtUtc = DateTime.UtcNow;
 
+        // Consider sharing HttpClient instances to improve connection reuse and reduce TCP connection overhead.
+        private static readonly HttpClient HttpClient = new(
+            // Manage HTTP connections.
+            new SocketsHttpHandler
+            {
+                // Reuse the connection for up to one minute.
+                PooledConnectionLifetime = TimeSpan.FromMinutes(1)
+            })
+        {
+            DefaultRequestHeaders =
+            {
+                { "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3" }
+            }
+        };
+
         /// <summary>
         /// Creates a LockedImage backed by a plugin image proxy (shared memory).
         /// </summary>
@@ -177,7 +192,7 @@ namespace InfoPanel.Models
                         _config = new Config();
                         _config.Player.AutoPlay = true;
 
-                        if(ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) || ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
+                        if (ImagePath.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) || ImagePath.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase))
                         {
                             _config.Player.MaxLatency = TimeSpan.FromMilliseconds(100).Ticks; //100ms latency
                         }
@@ -219,6 +234,15 @@ namespace InfoPanel.Models
                             _backgroundVideoPlayer.Renderer.VideoProcessor,
                             _backgroundVideoPlayer.Renderer.SwapChain.CanPresent);
 
+                        // Set the target FPS for sourceImageDisplayItem.
+                        if (sourceImageDisplayItem is not null)
+                        {
+                            // FPS is handled by Flyleaf, which falls back to 25 FPS when frame rate information is unavailable.
+                            // Reference: https://github.com/SuRGeoNix/Flyleaf/blob/v3.10.3/FlyleafLib/MediaFramework/MediaStream/VideoStream.cs
+                            sourceImageDisplayItem.TargetFps = (int)Math.Ceiling(_backgroundVideoPlayer.VideoDecoder.VideoStream.FPS);
+                            ScreenRenderManager.SetProfilesOrSettingsDirty();
+                        }
+
                         Loaded = true;
                         return;
                     }
@@ -229,13 +253,11 @@ namespace InfoPanel.Models
                 }
                 else if (ImagePath.IsUrl())
                 {
-                    using HttpClient client = new();
-                    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3");
-
                     try
                     {
+                        // Consider sharing HttpClient instances to improve connection reuse and reduce TCP connection overhead.
                         using var request = new HttpRequestMessage(HttpMethod.Get, ImagePath);
-                        using var response = client.Send(request);
+                        using var response = HttpClient.Send(request);
                         response.EnsureSuccessStatusCode();
                         _stream = new MemoryStream();
                         response.Content.ReadAsStream().CopyTo(_stream);
@@ -310,6 +332,8 @@ namespace InfoPanel.Models
 
                     if (Frames > 1)
                     {
+                        // Initialize the frame delay to 10000 ms and find the minimum frame delay in the loop.
+                        int minDelay = 10000;
                         for (int i = 0; i < Frames; i++)
                         {
                             var frameDelay = _codec.FrameInfo[i].Duration;
@@ -321,6 +345,17 @@ namespace InfoPanel.Models
 
                             TotalFrameTime += frameDelay;
                             _cumulativeFrameTimes[i] = TotalFrameTime;
+
+                            if (frameDelay <= minDelay)
+                            {
+                                minDelay = frameDelay;
+                            }
+                        }
+                        // Set the target FPS for sourceImageDisplayItem.
+                        if (sourceImageDisplayItem is not null)
+                        {
+                            sourceImageDisplayItem.TargetFps = (int)Math.Ceiling(1000.0 / minDelay);
+                            ScreenRenderManager.SetProfilesOrSettingsDirty();
                         }
 
                         //start the stopwatch
@@ -864,9 +899,9 @@ namespace InfoPanel.Models
                 {
                     if (image.IsTextureBacked)
                     {
-                        if(DisplayWindowManager.Instance.Dispatcher is Dispatcher dispatcher)
+                        if (DisplayWindowManager.Instance.Dispatcher is Dispatcher dispatcher)
                         {
-                            if(dispatcher.CheckAccess())
+                            if (dispatcher.CheckAccess())
                             {
                                 image.Dispose();
                             }

@@ -1,4 +1,5 @@
-﻿using LibreHardwareMonitor.Hardware;
+﻿using InfoPanel.Models;
+using LibreHardwareMonitor.Hardware;
 using LibreHardwareMonitor.Hardware.Storage;
 using Serilog;
 using System;
@@ -95,7 +96,7 @@ namespace InfoPanel.Monitors
                             }
                         }
 
-                        await Task.Delay(2000, token);
+                        await Task.Delay(ScreenRenderManager.LibrePoolIntervalMilliseconds, token);
 
                     }
                 }

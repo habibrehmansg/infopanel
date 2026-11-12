@@ -121,6 +121,10 @@ namespace InfoPanel.Services
             var renderTask = Task.Run(async () =>
             {
                 Thread.CurrentThread.Name ??= $"Jl-Render-{_device.DeviceLocation}";
+
+                // Last sent render version; -1 ensures the initial frame is generated.
+                long sentVersion = -1;
+
                 try
                 {
                     var stopwatch = new Stopwatch();
@@ -128,9 +132,15 @@ namespace InfoPanel.Services
                     {
                         stopwatch.Restart();
 
-                        var frame = GenerateJpegBuffer();
-                        Interlocked.Exchange(ref latestFrame, frame);
-                        frameAvailable.Set();
+                        // If UpdateOnChange is true, a new frame is generated and sent whenever the profile version changes.
+                        var currentVersion = ScreenRenderManager.GetProfileVersion(_device.ProfileGuid);
+                        if (_device.UpdateOnChange != true || sentVersion != currentVersion)
+                        {
+                            var frame = GenerateJpegBuffer();
+                            Interlocked.Exchange(ref latestFrame, frame);
+                            frameAvailable.Set();
+                            sentVersion = currentVersion;
+                        }
 
                         var targetFrameTime = 1000 / Math.Max(1, _device.TargetFrameRate);
                         var elapsedMs = (int)stopwatch.ElapsedMilliseconds;
@@ -220,7 +230,8 @@ namespace InfoPanel.Services
 
                 using var bitmap = PanelDrawTask.RenderSK(profile, false,
                     colorType: SKColorType.Rgba8888,
-                    alphaType: SKAlphaType.Opaque);
+                    alphaType: SKAlphaType.Opaque,
+                    targetFps: _device.TargetFrameRate);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 

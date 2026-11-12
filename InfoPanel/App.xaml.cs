@@ -17,9 +17,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Management;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -37,6 +38,7 @@ namespace InfoPanel
     public partial class App : System.Windows.Application
     {
         private static readonly ILogger Logger = Log.ForContext<App>();
+        private readonly CancellationTokenSource _screenRenderCts = new();
 
         /// <summary>
         /// Switches the MahApps.Metro theme resource dictionary and brush overrides
@@ -251,6 +253,7 @@ namespace InfoPanel
         {
             Logger.Information("Application exiting");
             ConfigModel.Instance.Cleanup();
+            _screenRenderCts.Cancel();
             Log.CloseAndFlush();
             base.OnExit(e);
         }
@@ -375,7 +378,7 @@ namespace InfoPanel
                 SharedModel.Instance.SaveDisplayItems();
             }
 
-            HWHash.SetDelay(500);
+            HWHash.SetDelay(ScreenRenderManager.HWPoolIntervalMilliseconds);
             HWHash.Launch();
 
             // Check PawniO status before starting LibreHardwareMonitor
@@ -395,6 +398,8 @@ namespace InfoPanel
             _ = Task.Run(() => GetService<AccountViewModel>()?.TryRestoreSessionAsync());
 
             _ = Task.Run(() => Services.UpdateChecker.Instance.CheckAsync(showNotification: true));
+
+            _ = ScreenRenderManager.UpdateProfilesVersions(_screenRenderCts.Token);
         }
 
         void App_SessionEnding(object sender, SessionEndingCancelEventArgs e)

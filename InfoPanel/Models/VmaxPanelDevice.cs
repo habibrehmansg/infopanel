@@ -69,6 +69,9 @@ namespace InfoPanel.Models
         [ObservableProperty]
         [property: System.Xml.Serialization.XmlIgnore]
         private VmaxPanelDeviceRuntimeProperties _runtimeProperties;
+        
+        [ObservableProperty]
+        private bool _updateOnChange = false;
 
         public VmaxPanelDevice()
         {

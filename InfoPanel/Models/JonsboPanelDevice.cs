@@ -56,6 +56,9 @@ namespace InfoPanel.Models
         [property: System.Xml.Serialization.XmlIgnore]
         private JonsboPanelDeviceRuntimeProperties _runtimeProperties;
 
+        [ObservableProperty]
+        private bool _updateOnChange = false;
+
         public JonsboPanelDevice()
         {
             _runtimeProperties = new();

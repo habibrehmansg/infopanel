@@ -40,7 +40,7 @@ namespace InfoPanel
     public sealed class ConfigModel : ObservableObject
     {
         private static readonly ILogger Logger = Log.ForContext<ConfigModel>();
-        private const int CurrentVersion = 131;
+        private const int CurrentVersion = 132;
         private const string RegistryRunKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
         private static readonly Lazy<ConfigModel> lazy = new(() => new ConfigModel());
 
@@ -265,6 +265,12 @@ namespace InfoPanel
                     _ = SaveSettingsAsync(batch: false);
                 }
 
+                if (Settings.Version < 132)
+                {
+                    Upgrade_File_Structure_For_1_3_2();
+                    Settings.Version = 132;
+                    _ = SaveSettingsAsync(batch: false);
+                }
             }
 
             Settings.PropertyChanged += Settings_PropertyChanged;
@@ -588,6 +594,8 @@ namespace InfoPanel
 
         private async Task SaveSettingsInternalAsync()
         {
+            // Set the update flag when the configuration file changes.
+            ScreenRenderManager.SetProfilesOrSettingsDirty();
             using var _ = await _saveLock.LockAsync();
             try
             {
@@ -1006,6 +1014,8 @@ namespace InfoPanel
                 using var rd = XmlReader.Create(fileName);
                 try
                 {
+                    // Set the update flag when a profile is loaded.
+                    ScreenRenderManager.SetProfilesOrSettingsDirty();
                     return xs.Deserialize(rd) as List<Profile>;
                 }
                 catch { }
@@ -1014,6 +1024,22 @@ namespace InfoPanel
             return null;
         }
 
+        private void Upgrade_File_Structure_For_1_3_2()
+        {
+            //Preserve the legacy global target frame rate for BeadaPanel and COM-connected Turing panels. >1.3.1
+            foreach (BeadaPanelDevice device in Settings.BeadaPanelDevices)
+            {
+                device.TargetFrameRate = Settings.TargetFrameRate;
+            }
+
+            foreach (TuringPanelDevice device in Settings.TuringPanelDevices)
+            {
+                if (device.DeviceLocation.StartsWith("COM", StringComparison.OrdinalIgnoreCase))
+                {
+                    device.TargetFrameRate = Settings.TargetFrameRate;
+                }
+            }
+        }
         private void Upgrade_File_Structure_For_1_3_1()
         {
             //validate devices models for enum change in versions >1.3.0
@@ -1023,7 +1049,7 @@ namespace InfoPanel
                 {
                     device.Model = TuringPanelModel.REV_88INCH_USB.ToString();
                 }
-				else if (device.Model == "REV_46INCH_USB" && device.DeviceId.StartsWith(@"USB\VID_1CBE&PID_0046\"))
+                else if (device.Model == "REV_46INCH_USB" && device.DeviceId.StartsWith(@"USB\VID_1CBE&PID_0046\"))
                 {
                     device.Model = TuringPanelModel.REV_46INCH_USB.ToString();
                 }

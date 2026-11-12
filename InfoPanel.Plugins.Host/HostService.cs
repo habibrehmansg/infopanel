@@ -121,6 +121,7 @@ namespace InfoPanel.Plugins.Host
                             _imageWriters.Add(writer);
                             _writerMappings[writer] = (wrapper.Id, imgDescriptor.Id);
                             writer.Resized += OnWriterResized;
+                            writer.Invalidated += OnWriterInvalidated;
 
                             writers[imgDescriptor.Id] = writer;
 
@@ -205,6 +206,16 @@ namespace InfoPanel.Plugins.Host
             _perfUpdateTask = Task.Run(() => PerformanceLoopAsync(_updateCts.Token));
 
             return metadataList;
+        }
+        
+        // Forwards image update notifications to the main application.
+        private void OnWriterInvalidated(PluginImageWriter writer)
+        {
+            if (!_writerMappings.TryGetValue(writer, out var mapping))
+                return;
+
+            _jsonRpc?.NotifyAsync(
+                nameof(IPluginClientCallback.OnImageUpdate), mapping.PluginId, mapping.ImageId);
         }
 
         public Task<List<PluginConfigPropertyDto>> GetConfigPropertiesAsync(string pluginId)

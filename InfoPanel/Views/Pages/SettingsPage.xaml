@@ -624,7 +624,7 @@
                                 Margin="0,5,0,0"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="The rate at which panels (including LCD) are rendered (excluding Direct2D acceleration)."
+                                Text="The target frame rate for the profile preview window. Individual panel frame rates can be configured in each panel's Advanced Options."
                                 TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>

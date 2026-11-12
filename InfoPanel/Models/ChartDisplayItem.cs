@@ -265,7 +265,17 @@ namespace InfoPanel.Models
                 { }
             }
 
-    }
+        }
+        // Enabled by default to preserve the existing animation behavior.
+        private bool _animation = true;
+        public bool Animation
+        {
+            get { return _animation; }
+            set
+            {
+                SetProperty(ref _animation, value);
+            }
+        }
 
         public ChartDisplayItem() { }
 

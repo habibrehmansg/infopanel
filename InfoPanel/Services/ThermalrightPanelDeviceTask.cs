@@ -61,6 +61,9 @@ namespace InfoPanel.Services
 
 
         public ThermalrightPanelDevice Device => _device;
+        
+        // Tracks elapsed time for periodic keep-alive frames.
+        private readonly Stopwatch _keepAliveStopwatch = Stopwatch.StartNew();
 
         public ThermalrightPanelDeviceTask(ThermalrightPanelDevice device)
         {
@@ -151,7 +154,8 @@ namespace InfoPanel.Services
 
                 using var bitmap = PanelDrawTask.RenderSK(profile, false,
                     colorType: SKColorType.Rgba8888,
-                    alphaType: SKAlphaType.Opaque);
+                    alphaType: SKAlphaType.Opaque,
+                    targetFps: _device.TargetFrameRate);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
@@ -240,7 +244,8 @@ namespace InfoPanel.Services
 
                 using var bitmap = PanelDrawTask.RenderSK(profile, false,
                     colorType: SKColorType.Rgba8888,
-                    alphaType: SKAlphaType.Opaque);
+                    alphaType: SKAlphaType.Opaque,
+                    targetFps: _device.TargetFrameRate);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
@@ -1906,6 +1911,9 @@ namespace InfoPanel.Services
                     var stopwatch = new Stopwatch();
                     bool lastFlickerFix = _device.FlickerFix;
 
+                    // Last sent render version; -1 ensures the initial frame is generated.
+                    long sentVersion = -1;
+
                     while (!renderToken.IsCancellationRequested)
                     {
                         // Update display name if flicker fix toggle changed
@@ -1916,9 +1924,22 @@ namespace InfoPanel.Services
                         }
 
                         stopwatch.Restart();
-                        var frame = GenerateFrameBuffer();
-                        Interlocked.Exchange(ref _latestFrame, frame);
-                        _frameAvailable.Set();
+                        // If UpdateOnChange is true, a new frame is generated and sent whenever the profile version changes.
+                        var currentVersion = ScreenRenderManager.GetProfileVersion(_device.ProfileGuid);
+                        if (_device.UpdateOnChange != true || _keepAliveStopwatch.ElapsedMilliseconds >= 1500 || sentVersion != currentVersion)
+                        {
+                            byte[] frame = _latestFrame;
+                            // THERMALRIGHT panels revert to the default screen after about 3 seconds
+                            // without receiving data, so periodically resend the current frame.
+                            if (frame == null || sentVersion != currentVersion)
+                            {
+                                frame = GenerateFrameBuffer();
+                            }
+                            Interlocked.Exchange(ref _latestFrame, frame);
+                            _frameAvailable.Set();
+                            sentVersion = currentVersion;
+                            _keepAliveStopwatch.Restart();
+                        }
 
                         var targetFrameTime = 1000 / Math.Max(1, _device.TargetFrameRate);
                         var adaptiveFrameTime = 0;
@@ -1932,7 +1953,7 @@ namespace InfoPanel.Services
 
                         if (adaptiveFrameTime > 0)
                         {
-                            await Task.Delay(adaptiveFrameTime, token);
+                            await Task.Delay(adaptiveFrameTime, renderToken);
                         }
                     }
                 }

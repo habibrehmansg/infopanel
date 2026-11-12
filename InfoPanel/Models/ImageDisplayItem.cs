@@ -2,6 +2,7 @@
 using SkiaSharp;
 using System;
 using System.IO;
+using System.Xml.Serialization;
 
 namespace InfoPanel.Models
 {
@@ -67,8 +68,8 @@ namespace InfoPanel.Models
             set
             {
                 var previousValue = _rtspUrl;
-                if (string.IsNullOrEmpty(value) 
-                    || value.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase) 
+                if (string.IsNullOrEmpty(value)
+                    || value.StartsWith("rtsp://", StringComparison.OrdinalIgnoreCase)
                     || value.StartsWith("rtsps://"))
                 {
                     SetProperty(ref _rtspUrl, value);
@@ -220,6 +221,11 @@ namespace InfoPanel.Models
                 { }
             }
         }
+
+        // Add TargetFps to support animations (GIF, WebP) and videos (MKV, MP4, MOV, AVI) in addition to still images.
+        // By default, use MinFps (0 FPS) and treat the image as static; set TargetFps separately for animations and videos.
+        [XmlIgnore]
+        public int TargetFps { get; set; } = ScreenRenderManager.MinFps;
 
         //for serialisation only
         public ImageDisplayItem()

@@ -62,6 +62,9 @@ namespace InfoPanel.Models
 
         [ObservableProperty]
         private bool _flickerFix = false;
+        
+        [ObservableProperty]
+        private bool _updateOnChange = false;
 
         // Runtime properties
         [ObservableProperty]

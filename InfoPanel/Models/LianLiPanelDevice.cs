@@ -62,6 +62,9 @@ namespace InfoPanel.Models
         [property: System.Xml.Serialization.XmlIgnore]
         private LianLiPanelDeviceRuntimeProperties _runtimeProperties;
 
+        [ObservableProperty]
+        private bool _updateOnChange = false;
+
         public LianLiPanelDevice()
         {
             _runtimeProperties = new();

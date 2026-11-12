@@ -1,3 +1,10 @@
+using InfoPanel.Models;
+using InfoPanel.Monitors.PluginProxies;
+using InfoPanel.Plugins;
+using InfoPanel.Plugins.Ipc;
+using InfoPanel.Utils;
+using Serilog;
+using StreamJsonRpc;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -8,12 +15,6 @@ using System.IO.Pipes;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using InfoPanel.Monitors.PluginProxies;
-using InfoPanel.Plugins;
-using InfoPanel.Plugins.Ipc;
-using InfoPanel.Utils;
-using Serilog;
-using StreamJsonRpc;
 
 namespace InfoPanel.Monitors
 {
@@ -107,7 +108,15 @@ namespace InfoPanel.Monitors
             _hostProcess.EnableRaisingEvents = true;
             _hostProcess.Exited += (_, _) =>
             {
-                Logger.Warning("Plugin host process exited for {PluginPath}", _pluginDllPath);
+                if (_intentionalStop)
+                {
+                    // Record intentional shutdowns as debug logs.
+                    Logger.Debug("Plugin host process exited for {PluginPath}", _pluginDllPath);
+                }
+                else
+                {
+                    Logger.Warning("Plugin host process exited for {PluginPath}", _pluginDllPath);
+                }
                 RaiseDisconnectedOnce();
             };
 
@@ -132,7 +141,15 @@ namespace InfoPanel.Monitors
             _jsonRpc.AddLocalRpcTarget<IPluginClientCallback>(this, new JsonRpcTargetOptions { NotifyClientOfEvents = false });
             _jsonRpc.Disconnected += (_, _) =>
             {
-                Logger.Warning("JSON-RPC disconnected for {PluginPath}", _pluginDllPath);
+                if (_intentionalStop)
+                {
+                    // Record intentional shutdowns as debug logs.
+                    Logger.Debug("JSON-RPC disconnected for {PluginPath}", _pluginDllPath);
+                }
+                else
+                {
+                    Logger.Warning("JSON-RPC disconnected for {PluginPath}", _pluginDllPath);
+                }
                 RaiseDisconnectedOnce();
             };
             _jsonRpc.StartListening();
@@ -405,6 +422,8 @@ namespace InfoPanel.Monitors
                             }
                             break;
                     }
+                    // Increment the version of the updated item to trigger a redraw.
+                    ScreenRenderManager.IncProfileVersionByItem($"/{batch.PluginId}/{key}");
                 }
             }
         }
@@ -638,6 +657,12 @@ namespace InfoPanel.Monitors
                 _hostProcess.Dispose();
                 _hostProcess = null;
             }
+        }
+
+        // Updates the version of the image item to trigger a redraw.
+        public void OnImageUpdate(string pluginId, string imageId)
+        {
+            ScreenRenderManager.IncProfileVersionByItem($"/{pluginId}/__images_{pluginId}/{imageId}");
         }
     }
 }

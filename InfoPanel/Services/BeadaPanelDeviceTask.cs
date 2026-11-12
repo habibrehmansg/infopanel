@@ -37,7 +37,7 @@ namespace InfoPanel.Services
             if (ConfigModel.Instance.GetProfile(profileGuid) is Profile profile)
             {
                 var rotation = _device.Rotation;
-                using var bitmap = PanelDrawTask.RenderSK(profile, false, colorType: SKColorType.Rgb565, alphaType: SKAlphaType.Opaque);
+                using var bitmap = PanelDrawTask.RenderSK(profile, false, colorType: SKColorType.Rgb565, alphaType: SKAlphaType.Opaque, targetFps: _device.TargetFrameRate);
 
                 using var resizedBitmap = SKBitmapExtensions.EnsureBitmapSize(bitmap, _panelWidth, _panelHeight, rotation);
 
@@ -204,32 +204,53 @@ namespace InfoPanel.Services
                         Thread.CurrentThread.Name ??= $"BeadaPanel-Render-{_device.DeviceLocation}";
                         var stopwatch1 = new Stopwatch();
 
-                        while (!renderToken.IsCancellationRequested)
+                        // Last sent render version; -1 ensures the initial frame is generated.
+                        long sentVersion = -1;
+
+                        try
                         {
-                            stopwatch1.Restart();
-                            var frame = GenerateLcdBuffer();
-
-                            if (frame != null)
+                            while (!renderToken.IsCancellationRequested)
                             {
-                                var oldFrame = Interlocked.Exchange(ref _latestFrame, frame);
-                                _frameAvailable.Set();
+                                stopwatch1.Restart();
+                                // If UpdateOnChange is true, a new frame is generated and sent whenever the profile version changes.
+                                var currentVersion = ScreenRenderManager.GetProfileVersion(_device.ProfileGuid);
+                                if (_device.UpdateOnChange != true || sentVersion != currentVersion)
+                                {
+                                    var frame = GenerateLcdBuffer();
+
+                                    if (frame != null)
+                                    {
+                                        var oldFrame = Interlocked.Exchange(ref _latestFrame, frame);
+                                        _frameAvailable.Set();
+                                        sentVersion = currentVersion;
+                                    }
+                                }
+
+                                var targetFrameTime = 1000 / Math.Max(1, _device.TargetFrameRate);
+                                var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime * 0.9), targetFrameTime);
+                                var adaptiveFrameTime = 0;
+
+                                var elapsedMs = (int)stopwatch1.ElapsedMilliseconds;
+
+                                if (elapsedMs < desiredFrameTime)
+                                {
+                                    adaptiveFrameTime = desiredFrameTime - elapsedMs;
+                                }
+
+                                if (adaptiveFrameTime > 0)
+                                {
+                                    await Task.Delay(adaptiveFrameTime, renderToken);
+                                }
+
                             }
-
-                            var targetFrameTime = 1000 / ConfigModel.Instance.Settings.TargetFrameRate;
-                            var desiredFrameTime = Math.Max((int)(fpsCounter.FrameTime * 0.9), targetFrameTime);
-                            var adaptiveFrameTime = 0;
-
-                            var elapsedMs = (int)stopwatch1.ElapsedMilliseconds;
-
-                            if (elapsedMs < desiredFrameTime)
-                            {
-                                adaptiveFrameTime = desiredFrameTime - elapsedMs;
-                            }
-
-                            if (adaptiveFrameTime > 0)
-                            {
-                                await Task.Delay(adaptiveFrameTime, token);
-                            }
+                        }
+                        // Stop the render and send tasks if an error occurs during rendering.
+                        catch (OperationCanceledException) { }
+                        catch (Exception e)
+                        {
+                            Logger.Error(e, "BeadaPanelDevice {Device}: Render error", _device);
+                            _device.UpdateRuntimeProperties(errorMessage: e.Message);
+                            renderCts.Cancel();
                         }
                     }, renderToken);
 
