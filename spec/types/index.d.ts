@@ -59,7 +59,7 @@ export interface Session {
 /** The media the engine can show beyond stored assets (docs/api.md#session): `providers`, the media providers configured on it by name (docs/providers.md), each once. A scene's provider source names one of them; `media.provider` in the scene format's capabilities says only that providers exist. It changes only when the engine restarts. */
 export interface SessionMedia {
   /**
-   * Provider names, as a provider source's `provider` is written (`http`: web images; `rtsp`: camera streams, listed only by an engine that can decode video). A client ignores a name it doesn't know.
+   * Provider names, as a provider source's `provider` is written (`http`: web images; `now-playing`: the cover of what the computer plays; `rtsp`: camera streams, listed only by an engine that can decode video). A client ignores a name it doesn't know.
    * Unique items.
    */
   providers: string[];

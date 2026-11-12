@@ -112,7 +112,8 @@ public sealed class ChangeCutOffException(string reason) : Exception($"The chang
 /// The rule for web images from elsewhere (docs/2.0/relay.md): until the engine can hold a provider's fetches for such a
 /// change to public addresses, a change from elsewhere may not insert or set a scene that holds a media source with a
 /// <c>provider</c>, nor change the bindings of an item whose scene holds one (which could re-address it). Moving,
-/// hiding, renaming or removing such an item is fine.
+/// hiding, renaming or removing such an item is fine. The <c>now-playing</c> provider's sources are exempt: it reaches
+/// no address a scene gives, its <c>ref</c> only picks one of the covers the now-playing source read.
 /// </summary>
 public static class WebImageRule
 {
@@ -140,15 +141,16 @@ public static class WebImageRule
     };
 
     /// <summary>
-    /// Whether <paramref name="scene"/> has a media node whose source is a provider's (<c>{"provider", "ref"}</c>), among its
-    /// nodes or in its groups' children at any depth; nothing else in a scene names a provider (an input or a value
-    /// called <c>provider</c> is not one).
+    /// Whether <paramref name="scene"/> has a media node whose source is a provider's (<c>{"provider", "ref"}</c>) other than
+    /// the <c>now-playing</c> provider's, among its nodes or in its groups' children at any depth; nothing else in a scene
+    /// names a provider (an input or a value called <c>provider</c> is not one).
     /// </summary>
     public static bool HoldsProvider(JsonNode? scene) => scene is JsonObject o && NodesHoldProvider(o["nodes"]);
 
     private static bool NodesHoldProvider(JsonNode? nodes) => nodes is JsonArray array && array.Any(n => n is JsonObject node && Kind(node, "kind") switch
     {
-        "media" => node["source"] is JsonObject source && source.ContainsKey("provider"),
+        "media" => node["source"] is JsonObject source && source.ContainsKey("provider")
+            && !(source["provider"] is JsonValue provider && provider.TryGetValue<string>(out var name) && name == InfoPanel.Images.NowPlayingProvider.Name),
         "group" => NodesHoldProvider(node["children"]),
         _ => false,
     });

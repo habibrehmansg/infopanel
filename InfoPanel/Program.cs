@@ -515,13 +515,19 @@ try
             return rtsp;
         });
     }
+    // The now-playing provider (spec/docs/providers.md): the covers the now-playing source read, decoded from memory as
+    // fetched media are; it fetches nothing itself, a cover given as a web address going to the http provider. In an
+    // engine without the source (mock mode, a replay) it answers no cover.
+    builder.Services.AddSingleton(sp => new NowPlayingProvider(
+        sp.GetServices<ISensorSource>().OfType<InfoPanel.Sensors.NowPlaying.NowPlayingSource>().FirstOrDefault()?.Art,
+        sp.GetRequiredService<MediaSampleCache>(), fetched, sp.GetRequiredService<HttpMediaProvider>()));
     builder.Services.AddSingleton(sp => new SceneRuntimeOptions
     {
         Inputs = new SensorSceneInputs(sp.GetRequiredService<ISensorReader>(), sp.GetRequiredService<ISensorHistory>()),
         Media = sp.GetRequiredService<MediaSampleCache>(),
         Providers = sp.GetService<InfoPanel.Images.Video.RtspProvider>() is { } rtsp
-            ? new Dictionary<string, IMediaProvider> { [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>(), [InfoPanel.Images.Video.RtspProvider.Name] = rtsp }
-            : new Dictionary<string, IMediaProvider> { [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>() },
+            ? new Dictionary<string, IMediaProvider> { [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>(), [NowPlayingProvider.Name] = sp.GetRequiredService<NowPlayingProvider>(), [InfoPanel.Images.Video.RtspProvider.Name] = rtsp }
+            : new Dictionary<string, IMediaProvider> { [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>(), [NowPlayingProvider.Name] = sp.GetRequiredService<NowPlayingProvider>() },
         Limits = workspace.Limits,
         Support = workspace.Support,
         Locale = sp.GetRequiredService<RegionalFormat>(),

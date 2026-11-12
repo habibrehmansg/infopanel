@@ -7,7 +7,7 @@ namespace InfoPanel.Images;
 
 /// <summary>
 /// The bytes media providers fetched, in memory only (nothing is written to disk or the blob store), by a key of their
-/// own, <c>fetched:sha256:{64 hex}</c>, which no asset id can be, so the media cache decodes them like assets while a
+/// own, <c>fetched:sha256:{64 hex}</c> (or a provider's own under <c>fetched:</c>), which no asset id can be, so the media cache decodes them like assets while a
 /// document's asset reference never reaches them. Bounded by bytes, the least recently used dropped first; a provider
 /// whose bytes were dropped fetches them again.
 /// </summary>
@@ -43,6 +43,18 @@ public sealed class FetchedMediaStore(long maxBytes = FetchedMediaStore.DefaultM
     public string Put(byte[] bytes, out bool added)
     {
         var key = KeyOf(bytes);
+        Put(key, bytes, out added);
+        return key;
+    }
+
+    /// <summary>
+    /// Keeps <paramref name="bytes"/> (not copied) under <paramref name="key"/>, a key of the caller's own (it starts with
+    /// <see cref="Prefix"/>): a provider whose entries no other provider's content-derived key can name, so what it
+    /// removes is only ever its own.
+    /// </summary>
+    internal void Put(string key, byte[] bytes, out bool added)
+    {
+        if (!key.StartsWith(Prefix, StringComparison.Ordinal)) throw new ArgumentException($"A key starts with {Prefix}.", nameof(key));
         lock (_lock)
         {
             added = false;
@@ -50,7 +62,7 @@ public sealed class FetchedMediaStore(long maxBytes = FetchedMediaStore.DefaultM
             {
                 _lru.Remove(node);
                 _lru.AddFirst(node);
-                return key;
+                return;
             }
             added = true;
             _entries[key] = _lru.AddFirst((key, bytes));
@@ -62,7 +74,6 @@ public sealed class FetchedMediaStore(long maxBytes = FetchedMediaStore.DefaultM
                 _bytes -= last.Value.Bytes.Length;
             }
         }
-        return key;
     }
 
     /// <summary>Drops <paramref name="key"/>'s bytes (a stream's picture no longer shown).</summary>

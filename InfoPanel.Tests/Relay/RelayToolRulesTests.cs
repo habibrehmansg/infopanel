@@ -460,6 +460,50 @@ public sealed class RelayToolRulesTests
         Assert.Null(Assert.IsType<InfoPanel.Spec.SceneItem>(Assert.Single(document.Current.Document.Items)).Bindings);
     }
 
+    [Fact]
+    public async Task The_cover_of_what_plays_can_be_added_and_rebound_from_elsewhere_but_a_web_image_beside_it_still_cant()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        async Task<(string Text, bool IsError)> Call(string tool, JsonObject arguments)
+        {
+            await peer.SendAsync(rig.Call("c" + Guid.NewGuid().ToString("N")[..8], tool, arguments));
+            var result = (await peer.ExpectAsync("result", Ct))["result"]!;
+            return (result["content"]![0]!["text"]!.GetValue<string>(), result["isError"]!.GetValue<bool>());
+        }
+
+        // The now-playing provider reaches no address: its reference only picks one of the covers this computer plays.
+        var added = await Call("add_item", new JsonObject { ["profile"] = "P", ["name"] = "cover", ["scene"] = NowPlayingScene() });
+        Assert.False(added.IsError, added.Text);
+        var bound = await Call("update_item", new JsonObject { ["profile"] = "P", ["item"] = "cover", ["bindings"] = new JsonObject { ["art"] = "infopanel:/now-playing/art" } });
+        Assert.False(bound.IsError, bound.Text);
+
+        // A web image beside it, in the same scene, is refused as before.
+        var both = NowPlayingScene();
+        both["nodes"]!.AsArray().Add(WebImageScene("https://example.com/a.png")["nodes"]![0]!.DeepClone());
+        var refused = await Call("add_item", new JsonObject { ["profile"] = "P", ["scene"] = both });
+        Assert.True(refused.IsError, refused.Text);
+        Assert.Equal(WebImageRefusal, refused.Text);
+    }
+
+    /// <summary>A scene showing the cover of what plays: the <c>now-playing</c> provider with the input <c>art</c> as its reference.</summary>
+    private static JsonObject NowPlayingScene() => new()
+    {
+        ["format"] = "infopanel.scene/1",
+        ["requires"] = new JsonArray("media.provider"),
+        ["inputs"] = new JsonObject { ["art"] = new JsonObject { ["type"] = "text" } },
+        ["nodes"] = new JsonArray(new JsonObject
+        {
+            ["kind"] = "media",
+            ["w"] = 40,
+            ["h"] = 40,
+            ["source"] = new JsonObject { ["provider"] = "now-playing", ["ref"] = new JsonObject { ["op"] = "input", ["name"] = "art", ["field"] = "text" } },
+        }),
+    };
+
     internal static JsonObject WebImageScene(string address) => new()
     {
         ["format"] = "infopanel.scene/1",

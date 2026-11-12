@@ -93,12 +93,12 @@ public sealed class VideoPreviewTests : IAsyncLifetime
             .EnumerateArray().Select(c => c.GetString()!)];
 
     [Fact]
-    public async Task WithADecoder_TheSessionListsTheRtspProvider_AndWithoutOne_OnlyHttp()
+    public async Task WithADecoder_TheSessionListsTheRtspProvider_AndWithoutOne_Doesnt()
     {
         using var plain = Api(_base);
-        Assert.Equal(["http"], await Providers(plain));
+        Assert.Equal(["http", "now-playing"], await Providers(plain));
         using var video = Api(Video());
-        Assert.Equal(["http", "rtsp"], await Providers(video));
+        Assert.Equal(["http", "now-playing", "rtsp"], await Providers(video));
     }
 
     [Fact]

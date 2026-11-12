@@ -76,6 +76,9 @@ public sealed class HttpMediaProviderOptions
 
     /// <summary>The longest address taken, in characters.</summary>
     public int MaxAddressLength { get; init; } = 2048;
+
+    /// <summary>Tests: the log the provider writes to, else the engine's.</summary>
+    internal ILogger? Log { get; init; }
 }
 
 /// <summary>
@@ -98,8 +101,11 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     private readonly FetchedMediaStore _store;
     private readonly HttpMediaProviderOptions _options;
     private readonly Lock _lock = new();
-    /// <summary>The fetchers by address and reach: a marked source's never shares one with an unmarked source's.</summary>
-    private readonly Dictionary<(string Address, bool PublicOnly), Fetcher> _fetchers = new();
+    /// <summary>
+    /// The fetchers by address, reach and privacy: a marked source's never shares one with an unmarked source's, nor a
+    /// private address's (a cover's, <see cref="MediaRequest.Private"/>) with an ordinary item's of the same address.
+    /// </summary>
+    private readonly Dictionary<(string Address, bool PublicOnly, bool Private), Fetcher> _fetchers = new();
     private readonly SemaphoreSlim _slots;
     private readonly CancellationTokenSource _stop = new();
     private readonly HttpClient _client;
@@ -191,7 +197,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     internal int AskersOf(string reference, bool publicOnly = false)
     {
         if (!TryAddress(reference, _options.MaxAddressLength, out var address, out _, out _)) return 0;
-        lock (_lock) return _fetchers.TryGetValue((address, publicOnly), out var f) ? f.AskerCount : 0;
+        lock (_lock) return _fetchers.TryGetValue((address, publicOnly, false), out var f) ? f.AskerCount : 0;
     }
 
     /// <summary>The bytes the streams hold between them (<see cref="HttpMediaProviderOptions.StreamBytes"/>).</summary>
@@ -247,12 +253,12 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
             {
                 var now = Now();
                 dropped = Sweep(now);
-                if (!_fetchers.TryGetValue((address, request.PublicOnly), out fetcher))
+                if (!_fetchers.TryGetValue((address, request.PublicOnly, request.Private), out fetcher))
                 {
                     // A one-off render starts nothing: it shows what a live tick has fetched, else the placeholder.
                     if (!request.Live) return new ProvidedMedia(null, new MediaStatus("media.loading", "Not loaded yet."));
-                    fetcher = new Fetcher(address, request.PublicOnly, uri, credential, now);
-                    _fetchers[(address, request.PublicOnly)] = fetcher;
+                    fetcher = new Fetcher(address, request.PublicOnly, request.Private, uri, credential, now);
+                    _fetchers[(address, request.PublicOnly, request.Private)] = fetcher;
                 }
                 // An item joining a stream other items opened: it counts among the item's streams.
                 if (request.Live && item is not null && Joining(fetcher, item, now, ref closed) is { } over)
@@ -309,7 +315,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
             // A picture let go for good meanwhile (no tick holds it) is looked up again.
             if (chosen.Answers.TryGetValue(at, out var answered) && answered?.Retain() is { } same)
                 return new ProvidedMedia(same, chosen.Status);
-            var sample = _cache.Get(key, request.Seconds, request.Playback).Sample ?? first.Retain();
+            var sample = _cache.Get(key, request.Seconds, request.Playback, request.Private).Sample ?? first.Retain();
             chosen.Answers[at] = sample;
             return sample is not null
                 ? new ProvidedMedia(sample, chosen.Status)
@@ -336,7 +342,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         // A newer image fetched: it replaces the one shown only once it is decoded, and one that can't be decoded never does.
         if (pending is not null)
         {
-            var next = _cache.Get(pending, request.Seconds, request.Playback);
+            var next = _cache.Get(pending, request.Seconds, request.Playback, request.Private);
             if (next.Sample is { } decoded)
             {
                 string? replaced = null;
@@ -368,7 +374,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
                     _cache.Forget(replaced);
                 }
                 if (after is { } queued && TakePart(fetcher, queued.Part, queued.Fetch) is { } following)
-                    _cache.Get(following, request.Seconds, request.Playback).Sample?.Release();
+                    _cache.Get(following, request.Seconds, request.Playback, request.Private).Sample?.Release();
                 shown = pending;
                 return new ProvidedMedia(decoded, status);
             }
@@ -388,7 +394,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         }
 
         if (key is null) return new ProvidedMedia(null, status ?? new MediaStatus("media.loading", "Loading."));
-        var lookup = _cache.Get(key, request.Seconds, request.Playback);
+        var lookup = _cache.Get(key, request.Seconds, request.Playback, request.Private);
         if (lookup.Sample is { } sample)
         {
             shown = key;
@@ -442,7 +448,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         if (_disposed || !request.Live || !TryAddress(request.Reference, _options.MaxAddressLength, out var address, out _, out _)) return;
         lock (_lock)
         {
-            if (_fetchers.TryGetValue((address, request.PublicOnly), out var fetcher)) fetcher.Asked(request.Refresh, Now(), _options.IdleAfter);
+            if (_fetchers.TryGetValue((address, request.PublicOnly, request.Private), out var fetcher)) fetcher.Asked(request.Refresh, Now(), _options.IdleAfter);
         }
     }
 
@@ -560,8 +566,12 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         }
         catch (Exception e)
         {
-            Logger.Warning(e, "Fetching a web image failed");
             outcome = Outcome.Failed("media.provider", "The image couldn't be fetched.");
+            // A private address (a cover's) is never logged, nor a message that could name it: the type and the code only.
+            if (fetcher.Private)
+                (_options.Log ?? Logger).Warning("Fetching a private web image failed: {Type} ({Code})", e.GetType().FullName, outcome.Status!.Code);
+            else
+                (_options.Log ?? Logger).Warning(e, "Fetching a web image failed");
         }
         finally
         {
@@ -1167,12 +1177,18 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
     }
 
     /// <summary>One address's state: its newest image, when to fetch next, why the last fetch failed. Under the provider's lock.</summary>
-    private sealed class Fetcher(string address, bool publicOnly, Uri uri, NetworkCredential? credential, long created)
+    private sealed class Fetcher(string address, bool publicOnly, bool @private, Uri uri, NetworkCredential? credential, long created)
     {
         public readonly string Address = address;
 
         /// <summary>A marked source's fetcher: its connections reach only public addresses.</summary>
         public readonly bool PublicOnly = publicOnly;
+
+        /// <summary>
+        /// A private address's fetcher (<see cref="MediaRequest.Private"/>, a cover's): its fetches never log the address
+        /// or an exception's message. An ordinary item's ask for the same address has a fetcher of its own.
+        /// </summary>
+        public readonly bool Private = @private;
         public readonly Uri Uri = uri;
         public readonly NetworkCredential? Credential = credential;
         private readonly CancellationTokenSource _stopped = new();
@@ -1181,6 +1197,7 @@ public sealed class HttpMediaProvider : IMediaProvider, IDisposable
         public bool Busy;
         public bool Dropped;
         public bool Refetch;
+
         /// <summary>The image shown: the newest that was decoded.</summary>
         public string? Key;
 

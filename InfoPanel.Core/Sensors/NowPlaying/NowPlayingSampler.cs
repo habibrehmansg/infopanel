@@ -12,7 +12,8 @@ namespace InfoPanel.Sensors.NowPlaying;
 /// <c>Stopped</c> and every other entry unavailable. The position moves on from the system's last update by the
 /// playback rate while playing (none is 1), clamped to 0…duration; progress is position ÷ duration × 100, unavailable
 /// without a duration. What the player doesn't say (an empty text, a duration or track number of 0) is unavailable,
-/// never 0 or empty. Texts are cut at <see cref="NowPlayingSource.MaxTextChars"/> characters.
+/// never 0 or empty. Texts are cut at <see cref="NowPlayingSource.MaxTextChars"/> characters. The cover is kept in the
+/// source's <see cref="NowPlayingArt"/> and read as its token (<c>art</c>); stopping forgets the covers kept.
 /// <para>
 /// Its state: the reader's when it has one (<see cref="INowPlayingReader.State"/>), else <c>starting</c> until a round
 /// in use has read, then <c>running</c>. It logs starts, stops and states, never what plays.
@@ -34,6 +35,7 @@ public sealed class NowPlayingSampler : ISensorSampler
         Genre,
         Shuffle,
         Repeat,
+        Art,
     }
 
     private static readonly SensorDefinition[] Definitions = NowPlayingSource.Entries
@@ -41,6 +43,7 @@ public sealed class NowPlayingSampler : ISensorSampler
 
     private readonly INowPlayingReader _reader;
     private readonly NowPlayingSource.Demand _demand;
+    private readonly NowPlayingArt _art;
     private readonly TimeProvider _time;
     private readonly ILogger _log;
 
@@ -51,10 +54,11 @@ public sealed class NowPlayingSampler : ISensorSampler
     // The last texts handed out, cut, so an unchanged text is handed back as the same string.
     private readonly string?[] _texts = new string?[Definitions.Length];
 
-    internal NowPlayingSampler(INowPlayingReader reader, NowPlayingSource.Demand demand, TimeProvider time, ILogger? log = null)
+    internal NowPlayingSampler(INowPlayingReader reader, NowPlayingSource.Demand demand, NowPlayingArt art, TimeProvider time, ILogger? log = null)
     {
         _reader = reader;
         _demand = demand;
+        _art = art;
         _time = time;
         _log = (log ?? Log.Logger).ForContext<NowPlayingSampler>();
     }
@@ -87,6 +91,7 @@ public sealed class NowPlayingSampler : ISensorSampler
             _started = false;
             _log.Information("Now Playing: not read for {Minutes} minutes; reading stopped", NowPlayingSource.UseWindow.TotalMinutes);
             _reader.Stop();
+            _art.Clear();
         }
 
         NowPlayingSnapshot? snapshot = null;
@@ -162,6 +167,9 @@ public sealed class NowPlayingSampler : ISensorSampler
             case Entry.TrackNumber:
                 SetNumber(ref sample, s.TrackNumber is > 0 and var n ? n : null);
                 break;
+            case Entry.Art:
+                SetText(ref sample, entry, _art.Publish(s));
+                break;
         }
     }
 
@@ -214,6 +222,7 @@ public sealed class NowPlayingSampler : ISensorSampler
 
     public void Dispose()
     {
+        _art.Clear();
         if (!_started)
             return;
         _started = false;

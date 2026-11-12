@@ -7,10 +7,11 @@ using Xunit;
 namespace InfoPanel.Core.Tests.Sensors.NowPlaying;
 
 /// <summary>
-/// The Now Playing source (<c>infopanel.now-playing</c>) over a fake reader: its 12 entries, the position extrapolated
+/// The Now Playing source (<c>infopanel.now-playing</c>) over a fake reader: its 13 entries, the position extrapolated
 /// while playing and frozen while paused, what is unavailable (never 0 or empty), nothing playing, the demand (the
 /// reader started by a read and stopped 2 minutes after the last; a listing, a status and a peek start nothing), the
-/// reader's states, texts cut, and no title, artist, album or app in the log.
+/// reader's states, texts cut, the cover read as a token of what it keeps, and no title, artist, album, app or cover
+/// in the log.
 /// </summary>
 public sealed class NowPlayingSourceTests : IDisposable
 {
@@ -138,20 +139,20 @@ public sealed class NowPlayingSourceTests : IDisposable
     // ---- Entries ----
 
     [Fact]
-    public void It_lists_its_12_entries_with_their_names_kinds_and_units_under_infopanel_now_playing()
+    public void It_lists_its_13_entries_with_their_names_kinds_and_units_under_infopanel_now_playing()
     {
         var source = Open();
 
-        string[] ids = ["title", "artist", "album", "app", "state", "position", "duration", "progress", "track-number", "genre", "shuffle", "repeat"];
+        string[] ids = ["title", "artist", "album", "app", "state", "position", "duration", "progress", "track-number", "genre", "shuffle", "repeat", "art"];
         var sensors = source.GetSensors();
         Assert.Equal(ids.Select(id => $"infopanel:/now-playing/{id}"), sensors.Select(s => s.Key.ToString()));
-        Assert.Equal(["Title", "Artist", "Album", "App", "State", "Position", "Duration", "Progress", "Track Number", "Genre", "Shuffle", "Repeat"], sensors.Select(s => s.Name));
-        Assert.Equal(["", "", "", "", "", "s", "s", "%", "", "", "", ""], sensors.Select(s => s.Unit));
+        Assert.Equal(["Title", "Artist", "Album", "App", "State", "Position", "Duration", "Progress", "Track Number", "Genre", "Shuffle", "Repeat", "Cover Art"], sensors.Select(s => s.Name));
+        Assert.Equal(["", "", "", "", "", "s", "s", "%", "", "", "", "", ""], sensors.Select(s => s.Unit));
         Assert.All(sensors, s => Assert.Equal("infopanel.now-playing", s.SourceId));
         Assert.All(sensors, s => Assert.Equal(NowPlayingSource.Name, s.Group));
         Assert.Equal("infopanel.now-playing", source.Id);
         Assert.Equal(
-            [SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Number, SensorKind.Number, SensorKind.Number, SensorKind.Number, SensorKind.Text, SensorKind.Text, SensorKind.Text],
+            [SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Number, SensorKind.Number, SensorKind.Number, SensorKind.Number, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Text],
             ids.Select(id => source.PeekState(Key(id)).Type));
     }
 
@@ -392,6 +393,149 @@ public sealed class NowPlayingSourceTests : IDisposable
         _source!.Dispose();
         Assert.Equal(1, _reader.Stops);
         Assert.False(_reader.Running);
+    }
+
+    // ---- The cover ----
+
+    /// <summary>The token of <paramref name="bytes"/>, as the source reads a cover: 16 hex digits of their SHA-256.</summary>
+    private static string TokenOf(byte[] bytes) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))[..16];
+
+    [Fact]
+    public void The_cover_reads_as_a_token_of_its_bytes_kept_for_the_provider_and_unavailable_without_one()
+    {
+        byte[] cover = [1, 2, 3, 4, 5];
+        _reader.Snapshot = Song() with { Art = cover, ArtType = "image/png" };
+        var source = OpenInUse();
+
+        var token = Text("art");
+        Assert.Equal(TokenOf(cover), token);
+        Assert.True(source.Art.TryGet(token!, out var picture));
+        Assert.Equal(cover, picture.Bytes);
+        Assert.Null(picture.Address);
+
+        // The same cover in a later snapshot (a copy): the same token, one picture kept.
+        _reader.Snapshot = Song() with { Art = cover.ToArray() };
+        Round();
+        Assert.Equal(token, Text("art"));
+        Assert.Equal(1, source.Art.Count);
+
+        // None: unavailable, never empty; the cover before stays kept for a while (a picture held across a change).
+        _reader.Snapshot = Song();
+        Round();
+        Assert.Null(Text("art"));
+        Assert.Equal(SensorStatus.Unavailable, Status("art"));
+        Assert.True(source.Art.TryGet(token!, out _));
+        _reader.Snapshot = null;
+        Round();
+        Assert.Null(Text("art"));
+    }
+
+    [Fact]
+    public void A_cover_over_8_MiB_reads_unavailable_and_is_never_kept()
+    {
+        _reader.Snapshot = Song() with { Art = new byte[NowPlayingSource.MaxArtBytes + 1] };
+        var source = OpenInUse();
+
+        Assert.Null(Text("art"));
+        Assert.Equal(0, source.Art.Count);
+
+        _reader.Snapshot = Song() with { Art = new byte[NowPlayingSource.MaxArtBytes] };
+        Round();
+        Assert.NotNull(Text("art"));
+    }
+
+    [Fact]
+    public void At_most_four_covers_are_kept_the_oldest_going_first_so_together_at_most_32_MiB()
+    {
+        var source = OpenInUse();
+        var tokens = new List<string>();
+        for (byte i = 0; i < 5; i++)
+        {
+            var cover = new byte[NowPlayingSource.MaxArtBytes];
+            cover[0] = i;
+            _reader.Snapshot = Song() with { Art = cover };
+            Round();
+            tokens.Add(Text("art")!);
+        }
+
+        Assert.Equal(5, tokens.Distinct().Count());
+        Assert.Equal(NowPlayingArt.MaxKept, source.Art.Count);
+        Assert.False(source.Art.TryGet(tokens[0], out _));
+        Assert.All(tokens.Skip(1), t => Assert.True(source.Art.TryGet(t, out _)));
+        Assert.True(source.Art.Bytes <= 32L * 1024 * 1024);
+
+        // An older cover shown again is the current one again, and the oldest other goes next.
+        _reader.Snapshot = Song() with { Art = source.Art.TryGet(tokens[1], out var second) ? second.Bytes : null };
+        Round();
+        Assert.Equal(tokens[1], Text("art"));
+        _reader.Snapshot = Song() with { Art = new byte[] { 9 } };
+        Round();
+        Assert.True(source.Art.TryGet(tokens[1], out _));
+        Assert.False(source.Art.TryGet(tokens[2], out _));
+    }
+
+    [Theory]
+    [InlineData("https://covers.example/a.jpg", true)]
+    [InlineData("http://covers.example/a.jpg", true)]
+    [InlineData("file:///home/me/.cache/cover.png", false)]
+    [InlineData("covers/a.jpg", false)]
+    public void A_cover_given_as_a_web_address_reads_a_token_of_its_address_and_any_other_address_none(string address, bool web)
+    {
+        _reader.Snapshot = Song() with { ArtAddress = address };
+        var source = OpenInUse();
+
+        var token = Text("art");
+        if (!web)
+        {
+            Assert.Null(token);
+            Assert.Equal(0, source.Art.Count);
+            return;
+        }
+        Assert.Equal(TokenOf(System.Text.Encoding.UTF8.GetBytes(address)), token);
+        Assert.True(source.Art.TryGet(token!, out var picture));
+        Assert.Equal(address, picture.Address);
+        Assert.Null(picture.Bytes);
+    }
+
+    [Fact]
+    public void A_cover_address_over_2048_characters_reads_unavailable()
+    {
+        _reader.Snapshot = Song() with { ArtAddress = "https://covers.example/" + new string('a', NowPlayingArt.MaxAddressChars) };
+        var source = OpenInUse();
+
+        Assert.Null(Text("art"));
+        Assert.Equal(0, source.Art.Count);
+    }
+
+    [Fact]
+    public void When_it_stops_reading_it_forgets_the_covers_and_the_log_never_holds_one()
+    {
+        byte[] cover = [7, 7, 7];
+        _reader.Snapshot = Song() with { Art = cover };
+        var source = OpenInUse();
+        var token = Text("art")!;
+        Assert.Equal(1, source.Art.Count);
+
+        // Not read for 2 minutes: the reader stops and the covers go.
+        Round(TimeSpan.FromMinutes(3));
+        Assert.Equal(1, _reader.Stops);
+        Assert.Equal(0, source.Art.Count);
+        Assert.False(source.Art.TryGet(token, out _));
+
+        Assert.NotEmpty(_events);
+        foreach (var e in _events)
+        {
+            var text = e.RenderMessage() + " " + string.Join(" ", e.Properties.Values) + " " + e.Exception;
+            Assert.DoesNotContain(token, text, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Disposed: none kept either.
+        source.TryRead(Key("art"), out _);
+        Round();
+        Round();
+        Assert.Equal(1, source.Art.Count);
+        source.Dispose();
+        Assert.Equal(0, source.Art.Count);
     }
 
     // ---- Bounds and the log ----

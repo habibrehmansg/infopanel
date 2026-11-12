@@ -62,9 +62,12 @@ namespace InfoPanel.Images
     /// is <paramref name="Live"/>: a render loop's tick, which may start fetching, rather than a one-off render, which is
     /// answered with what the provider has. <paramref name="PublicOnly"/>: the source is marked <c>"reach": "public"</c>,
     /// so the provider connects only to public addresses for it, apart from anything it opened for an unmarked one
-    /// (spec/docs/providers.md, "Public addresses only").
+    /// (spec/docs/providers.md, "Public addresses only"). <paramref name="Private"/>: the address is private to what this
+    /// computer plays (a cover's, asked by the <c>now-playing</c> provider), so a fetch of it never logs it or a message
+    /// that could name it, nor does the decode of what it brings; it has a fetcher of its own, apart from an ordinary
+    /// item's of the same address.
     /// </summary>
-    public readonly record struct MediaRequest(string Reference, double Seconds, MediaPlayback Playback, int Refresh = 0, bool Live = true, bool PublicOnly = false);
+    public readonly record struct MediaRequest(string Reference, double Seconds, MediaPlayback Playback, int Refresh = 0, bool Live = true, bool PublicOnly = false, bool Private = false);
 
     /// <summary>
     /// Who asks a provider: the <paramref name="Tick"/> (every ask of one document's tick passes the same one) and the
@@ -162,6 +165,9 @@ namespace InfoPanel.Images
 
         /// <summary>How videos are decoded; none play without a decoder (<see cref="Video.VideoOptions.Decoder"/>).</summary>
         public Video.VideoOptions Video { get; init; } = new();
+
+        /// <summary>Tests: the log the cache writes to, else the engine's.</summary>
+        internal ILogger? Log { get; init; }
     }
 
     /// <summary>
@@ -316,9 +322,11 @@ namespace InfoPanel.Images
 
         /// <summary>
         /// The frame of <paramref name="hash"/> at <paramref name="seconds"/> into its animation, retained for the
-        /// caller. Never blocks (unless the cache is synchronous).
+        /// caller. Never blocks (unless the cache is synchronous). <paramref name="privateMedia"/>: media private to what
+        /// this computer plays (a cover, <see cref="MediaRequest.Private"/>), whose key or decode failure could name it:
+        /// a failure of its decode logs neither the key nor the exception's message, only the exception's type and the code.
         /// </summary>
-        public MediaLookup Get(string hash, double seconds, MediaPlayback playback)
+        public MediaLookup Get(string hash, double seconds, MediaPlayback playback, bool privateMedia = false)
         {
             if (_disposed) return new MediaLookup(MediaState.Failed, null, null, "The media cache is shut down.");
             Asset asset;
@@ -329,6 +337,8 @@ namespace InfoPanel.Images
                     asset = new Asset(hash);
                     _assets[hash] = asset;
                 }
+                // Before anything decodes it for this ask: once private, it stays so.
+                if (privateMedia) asset.Private = true;
                 asset.LastUsed = Now();
                 SweepLocked();
             }
@@ -499,8 +509,13 @@ namespace InfoPanel.Images
                 }
                 catch (Exception e)
                 {
-                    Logger.Warning(e, "Media {Hash} could not be decoded", asset.Hash);
-                    Fail(asset, "media.malformed", "The media could not be decoded.");
+                    const string Code = "media.malformed";
+                    // Private media (a cover's): neither its key nor a message that could carry what it holds (an SVG's text).
+                    if (asset.Private)
+                        (_options.Log ?? Logger).Warning("Private media could not be decoded: {Type} ({Code})", e.GetType().FullName, Code);
+                    else
+                        (_options.Log ?? Logger).Warning(e, "Media {Hash} could not be decoded", asset.Hash);
+                    Fail(asset, Code, "The media could not be decoded.");
                 }
                 finally
                 {
@@ -1089,6 +1104,8 @@ namespace InfoPanel.Images
             public volatile bool Opened;
             /// <summary>Removed from the cache (swept or shut down): a worker that still has it frees what it holds and stores nothing.</summary>
             public volatile bool Detached;
+            /// <summary>Asked for as private media (<see cref="MediaSampleCache.Get"/>): its decode's failure is logged without its key or message.</summary>
+            public volatile bool Private;
             /// <summary>The header, from the asset's inspection when it is opened. Read by lookups without the lock.</summary>
             public volatile MediaInfo? Info;
             public string? Problem;

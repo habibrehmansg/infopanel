@@ -80,6 +80,9 @@ add types without a new protocol. A protocol the relay can't serve, it closes wi
   re-address it: the answer is an error, `webImage`, "An AI app can't add or change a picture from a web address …
   add_asset stores a picture to show instead". Moving, hiding, renaming or removing such an item works.
   (`media.localNetwork` is on by default, so without the rule a call could make the engine fetch from the local network.)
+  The `now-playing` provider's cover of what plays is exempt: it reaches no address a scene names (its reference only
+  picks one of the covers the now-playing source read; a cover a player gives as a web address is fetched under the
+  `http` provider's rules), so a call may add it or change its item's bindings.
 - **Text fits the AI app:** with `maxChars`, `get_profile` lists items within it ("… and N more items: the list stops
   at N characters, the most this AI app takes"), an item's scene and source are cut at a quarter of it, and the whole
   answer is held within it, a picture counted by its data as sent: a picture is kept whole when it leaves 300

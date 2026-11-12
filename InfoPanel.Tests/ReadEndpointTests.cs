@@ -65,8 +65,9 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
             Assert.Equal(format.Name == "infopanel.scene/1" ? """["media.provider"]""" : "[]", format.Value.GetProperty("capabilities").GetRawText());
         }
 
-        // The media providers the engine has, by name: web images.
-        Assert.Equal("""{"providers":["http"]}""", session.GetProperty("media").GetRawText());
+        // The media providers the engine has, by name: web images, and the cover of what plays (in mock mode too, where
+        // it has no cover to show).
+        Assert.Equal("""{"providers":["http","now-playing"]}""", session.GetProperty("media").GetRawText());
         Assert.Equal(SpecLimits.Default.Nodes, support.GetProperty("infopanel.scene/1").GetProperty("limits").GetProperty("nodes").GetInt32());
         Assert.Equal(SpecLimits.Default.Items, support.GetProperty("infopanel.document/1").GetProperty("limits").GetProperty("items").GetInt32());
         // simulated.text: a simulated subscription makes up text and tables too, so a client can say every value is made up.

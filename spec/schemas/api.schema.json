@@ -56,7 +56,7 @@
       "additionalProperties": false,
       "properties": {
         "providers": {
-          "description": "Provider names, as a provider source's `provider` is written (`http`: web images; `rtsp`: camera streams, listed only by an engine that can decode video). A client ignores a name it doesn't know.",
+          "description": "Provider names, as a provider source's `provider` is written (`http`: web images; `now-playing`: the cover of what the computer plays; `rtsp`: camera streams, listed only by an engine that can decode video). A client ignores a name it doesn't know.",
           "type": "array",
           "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
           "uniqueItems": true

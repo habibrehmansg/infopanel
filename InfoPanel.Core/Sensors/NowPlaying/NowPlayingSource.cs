@@ -10,7 +10,8 @@ namespace InfoPanel.Sensors.NowPlaying;
 
 /// <summary>
 /// The Now Playing source, <c>infopanel.now-playing</c> ("Now Playing"): what the system's current media session plays,
-/// under <c>infopanel:/now-playing/{entry}</c> (<see cref="Entries"/>), a <see cref="PolledSensorSource"/> over
+/// under <c>infopanel:/now-playing/{entry}</c> (<see cref="Entries"/>; <c>art</c>, a token naming its cover in
+/// <see cref="Art"/>, the <c>now-playing</c> media provider's reference), a <see cref="PolledSensorSource"/> over
 /// <see cref="NowPlayingSampler"/> polled every second, the platform's reads behind <see cref="INowPlayingReader"/>
 /// (macOS: <see cref="MacNowPlayingReader"/>; Windows: <see cref="WinNowPlayingReader"/>; Linux: <see cref="LinuxNowPlayingReader"/>).
 /// <para>
@@ -68,6 +69,7 @@ public sealed class NowPlayingSource : ISensorSource, ISensorStatusSource, ISens
         ("genre", "Genre", SensorKind.Text, ""),
         ("shuffle", "Shuffle", SensorKind.Text, ""),
         ("repeat", "Repeat", SensorKind.Text, ""),
+        ("art", "Cover Art", SensorKind.Text, ""),
     ];
 
     private readonly PolledSensorSource _polled;
@@ -78,9 +80,15 @@ public sealed class NowPlayingSource : ISensorSource, ISensorStatusSource, ISens
     {
         _reader = reader;
         _demand = new Demand(time);
-        _polled = new PolledSensorSource(SourceId, () => new NowPlayingSampler(reader, _demand, time, log),
+        _polled = new PolledSensorSource(SourceId, () => new NowPlayingSampler(reader, _demand, Art, time, log),
             options ?? new PolledSensorSourceOptions { Interval = Interval }, time, log: log);
     }
+
+    /// <summary>
+    /// The cover art it read, by the <c>art</c> reading's token, for the <c>now-playing</c> media provider; emptied when
+    /// it stops reading.
+    /// </summary>
+    public NowPlayingArt Art { get; } = new();
 
     /// <summary>The key of the entry <paramref name="entryId"/>: <c>infopanel:/now-playing/{entryId}</c>.</summary>
     public static SensorKey KeyOf(string entryId) => Space.KeyOf(entryId);
