@@ -20,8 +20,9 @@ namespace InfoPanel.Shell.MacOS;
 /// host has stopped. Opening the app again while it runs (Finder or the Dock: <c>applicationShouldHandleReopen:hasVisibleWindows:</c>)
 /// raises <see cref="ReopenRequested"/>, which opens the editor; so does an <c>infopanel:</c> link (<c>application:openURLs:</c>,
 /// the URLs never read). The delegate is set before the AppKit loop runs (<see cref="InstallDelegate"/>), so a link that
-/// starts the app isn't lost; until the item shows, a system quit goes on at once. Everything AppKit runs on the main
-/// thread, inside <see cref="MacMainLoop"/>.
+/// starts the app isn't lost; until the item shows, a system quit goes on at once. The menu's own Start at Login line
+/// (<see cref="MacLoginItem"/>, only from an app bundle) is handled here, not by the engine. Everything AppKit runs on the
+/// main thread, inside <see cref="MacMainLoop"/>.
 /// </summary>
 [SupportedOSPlatform("macos")]
 internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
@@ -72,6 +73,7 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
     private IntPtr _menu;
     private Func<ShellMenu>? _menuSource;
     private Func<string, Task>? _invoked;
+    private MacLoginItem? _login;
     private readonly List<string> _ids = [];
 
     // Main thread only.
@@ -162,6 +164,7 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
         _shown = true;
         _menuSource = menu;
         _invoked = invoked;
+        _login = MacLoginItem.ForThisProcess();
 
         var bar = ObjC.Send(ObjC.Class("NSStatusBar"), ObjC.Sel("systemStatusBar"));
         _item = ObjC.SendIdDouble(bar, ObjC.Sel("statusItemWithLength:"), VariableLength);
@@ -352,11 +355,11 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
             _target = ObjC.Send(ObjC.Send(_targetClass, ObjC.Sel("alloc")), ObjC.Sel("init"));
     }
 
-    /// <summary>Rebuilds the menu from the engine's model as it opens.</summary>
+    /// <summary>Rebuilds the menu from the engine's model as it opens, with the platform's own Start at Login above Quit (<see cref="MacLoginItem"/>).</summary>
     private void Rebuild(IntPtr menu)
     {
         if (_menuSource is { } source)
-            Fill(menu, source());
+            Fill(menu, MacLoginItem.WithLine(source(), _login?.Line()));
         else
             Fill(menu, new ShellMenu([]));
     }
@@ -503,7 +506,11 @@ internal sealed unsafe class MacShellPlatform(MacMainLoop loop) : IShellPlatform
         if (_current is not { } shell || shell._invoked is not { } invoked)
             return;
         var tag = (int)ObjC.SendIntRet(sender, ObjC.Sel("tag"));
-        if (tag >= 0 && tag < shell._ids.Count)
+        if (tag < 0 || tag >= shell._ids.Count)
+            return;
+        if (shell._ids[tag] == MacLoginItem.Id)
+            shell._login?.Choose();
+        else
             _ = invoked(shell._ids[tag]);
     });
 

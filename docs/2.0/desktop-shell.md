@@ -52,6 +52,16 @@ Click the hexagon. The menu is built afresh from the engine's state each time it
    link, a profile, a reading or who is signed in.
 6. — **Quit InfoPanel** (⌘Q while the menu is open).
 
+**Start at Login**, in a group of its own above Quit, only when the engine runs from the app bundle (`InfoPanel.app`;
+never from `dotnet run` or a plain publish): the app itself as a login item through ServiceManagement
+(`SMAppService.mainAppService`, `Shell/MacOS/MacLoginItem.cs`, the framework loaded by path), so System Settings ›
+General › Login Items lists it and can turn it off. Read each time the menu opens: ticked while on; choosing it turns it
+on or off; "Start at Login (approve in System Settings…)" while the user has to allow it there, which opens that pane;
+greyed when it can't be read; greyed as "Move InfoPanel to Applications to start at login" while macOS runs the app
+from App Translocation's read-only copy (`/private/var/folders/…/AppTranslocation/…`). The engine handles the line
+itself (it isn't the model's); `MacLoginItemTests` cover its states with a fake status source, and no test registers
+anything. The bundle needs macOS 15 (`LSMinimumSystemVersion`), so `SMAppService` (macOS 13) is always there.
+
 Every line has a stable id (`ShellMenu`'s constants; a profile's line `desktop:show:{id}` or `desktop:hide:{id}`), so
 another platform maps its own words to the same lines. Updates come later. Starting the engine never opens the editor:
 it opens only when asked (below, "Opening the editor").
