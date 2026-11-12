@@ -1,0 +1,23 @@
+# InfoPanel: Turing Smart Screen / TURZX and Lian Li panels (the ids in this package's panel.json), readable and writable
+# by the user at the seat, so InfoPanel needs no root. The USB panels are claimed through libusb; the serial ones are
+# USB CDC ports (ttyACM or ttyUSB). Its name sorts before systemd's 73-seat-late.rules, which grants the user at the
+# seat access to every device tagged uaccess by then: a later rule's tag would come too late. Copy to /etc/udev/rules.d/, then:
+# sudo udevadm control --reload && sudo udevadm trigger
+# Turing USB panels: 8.8" Rev 1.1, 8", 9.2", 4.6", 5", 1.6", 2.1"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="0088", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="0080", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="0092", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="0046", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="0050", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="0016", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="0021", MODE="0660", TAG+="uaccess"
+# Lian Li: Universal Screen 8.8" and 9.2", HydroShift II OLED Curve and LCD
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="a088", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="a092", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="a068", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="a034", MODE="0660", TAG+="uaccess"
+# Turing 3.5" (a CH340 serial chip) and the serial 2.1", 5" and 8.8" Rev 1.0 (USB CDC ports)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="5722", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1d6b", ATTRS{idProduct}=="0121", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1d6b", ATTRS{idProduct}=="0106", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0525", ATTRS{idProduct}=="a4a7", MODE="0660", TAG+="uaccess"

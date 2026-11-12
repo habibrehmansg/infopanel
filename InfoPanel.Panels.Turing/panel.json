@@ -1,0 +1,58 @@
+{
+  "format": "infopanel.panel-package/1",
+  "sdk": "1.0",
+  "families": [
+    {
+      "id": "turing",
+      "name": "Turing Smart Screen / TURZX",
+      "match": [
+        { "usb": "1a86:5722", "transport": "serial" },
+        { "usb": "1d6b:0121", "transport": "serial" },
+        { "usb": "1d6b:0106", "transport": "serial" },
+        { "usb": "0525:a4a7", "transport": "serial" },
+        { "usb": "1cbe:0088", "transport": "usb", "interface": 0 },
+        { "usb": "1cbe:0080", "transport": "usb", "interface": 0 },
+        { "usb": "1cbe:0092", "transport": "usb", "interface": 0 },
+        { "usb": "1cbe:0046", "transport": "usb", "interface": 0 },
+        { "usb": "1cbe:0050", "transport": "usb", "interface": 0 },
+        { "usb": "1cbe:0016", "transport": "usb", "interface": 0 },
+        { "usb": "1cbe:0021", "transport": "usb", "interface": 0 }
+      ],
+      "detect": [{ "usb": "1cbe:00??" }],
+      "models": [
+        { "id": "turing35", "name": "Turing Smart Screen 3.5\"", "width": 320, "height": 480, "v1Model": "TURING_3_5", "usb": "1a86:5722", "transport": "serial", "revision": "A" },
+        { "id": "xuanfang35", "name": "XuanFang 3.5\"", "width": 320, "height": 480, "v1Model": "XUANFANG_3_5", "usb": "1a86:5722", "transport": "serial", "revision": "XuanFang" },
+        { "id": "rev2inch", "name": "Turing Smart Screen 2.1\"", "width": 480, "height": 480, "v1Model": "REV_2INCH", "usb": "1d6b:0121", "transport": "serial", "revision": "E" },
+        { "id": "rev5inch", "name": "Turing Smart Screen 5\"", "width": 800, "height": 480, "v1Model": "REV_5INCH", "usb": "1d6b:0106", "transport": "serial", "revision": "C" },
+        { "id": "rev8inch", "name": "Turing Smart Screen 8.8\" Rev 1.0", "width": 480, "height": 1920, "v1Model": "REV_8INCH", "usb": "0525:a4a7", "transport": "serial", "revision": "E" },
+        { "id": "rev88inchusb", "name": "Turing Smart Screen 8.8\" Rev 1.1", "width": 480, "height": 1920, "v1Model": "REV_88INCH_USB", "usb": "1cbe:0088", "transport": "usb" },
+        { "id": "rev8inchusb", "name": "Turing Smart Screen 8\"", "width": 800, "height": 1280, "v1Model": "REV_8INCH_USB", "usb": "1cbe:0080", "transport": "usb" },
+        { "id": "rev92inchusb", "name": "Turing Smart Screen 9.2\"", "width": 464, "height": 1920, "v1Model": "REV_92INCH_USB", "usb": "1cbe:0092", "transport": "usb" },
+        { "id": "rev46inchusb", "name": "Turing Smart Screen 4.6\"", "width": 320, "height": 960, "v1Model": "REV_46INCH_USB", "usb": "1cbe:0046", "transport": "usb" },
+        { "id": "rev5inchusb", "name": "Turing Smart Screen 5\"", "width": 720, "height": 1280, "v1Model": "REV_5INCH_USB", "usb": "1cbe:0050", "transport": "usb" },
+        { "id": "rev16inchusb", "name": "Turing Smart Screen 1.6\"", "width": 400, "height": 400, "v1Model": "REV_16INCH_USB", "usb": "1cbe:0016", "transport": "usb" },
+        { "id": "rev21inchusb", "name": "Turing Smart Screen 2.1\"", "width": 480, "height": 480, "v1Model": "REV_21INCH_USB", "usb": "1cbe:0021", "transport": "usb" }
+      ],
+      "settings": [
+        { "id": "model", "name": "Model", "type": "model", "default": null }
+      ]
+    },
+    {
+      "id": "lianli",
+      "name": "Lian Li",
+      "match": [
+        { "usb": "1cbe:a088", "transport": "usb", "interface": 0 },
+        { "usb": "1cbe:a092", "transport": "usb", "interface": 0 },
+        { "usb": "1cbe:a068", "transport": "usb", "interface": 0 },
+        { "usb": "1cbe:a034", "transport": "usb", "interface": 0 }
+      ],
+      "detect": [{ "usb": "1cbe:a0??" }],
+      "models": [
+        { "id": "universalscreen88inch", "name": "Lian Li Universal Screen 8.8\"", "width": 480, "height": 1920, "v1Model": "UniversalScreen88Inch", "usb": "1cbe:a088" },
+        { "id": "universalscreen92inch", "name": "Lian Li Universal Screen 9.2\"", "width": 464, "height": 1920, "v1Model": "UniversalScreen92Inch", "usb": "1cbe:a092" },
+        { "id": "hydroshiftiioledcurve", "name": "Lian Li HydroShift II OLED Curve", "width": 2288, "height": 1080, "v1Model": "HydroShiftIIOledCurve", "usb": "1cbe:a068" },
+        { "id": "hydroshiftiilcd", "name": "Lian Li HydroShift II LCD", "width": 480, "height": 480, "v1Model": "HydroShiftIILcd", "usb": "1cbe:a034" }
+      ]
+    }
+  ]
+}

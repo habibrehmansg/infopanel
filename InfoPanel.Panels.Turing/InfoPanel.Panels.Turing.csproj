@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Turing / TURZX and Lian Li panel package: two families in one panel.json, their one table of matches and
+       models. Turing's serial panels (revisions A, C and E, ported from TuringSmartScreenLib; its notice is in LICENSES.md),
+       Turing's USB panels and Lian Li's (one encrypted USB protocol, two variants as 1.4 drove them). It references the
+       panel SDK only (not copied: the host gives the package its own); a device is reached through the SDK alone, and
+       DES is .NET's own. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>InfoPanel.Panels.Turing</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InfoPanel.Panels.Sdk\InfoPanel.Panels.Sdk.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The driver's tests run its sessions without waiting out 1.4's pauses, on a fixed clock. -->
+    <InternalsVisibleTo Include="InfoPanel.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Beside the DLL in its build and its publish (the packaging scripts take a driver's publish with its panel.json);
+         the Core tests reference the package as a panel package (PanelPackage="true", not copied), so they run it from
+         here. Linux's access rule for the families' ids goes with it, shipped once a Linux package exists. -->
+    <None Update="panel.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="70-infopanel-turing.rules" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
