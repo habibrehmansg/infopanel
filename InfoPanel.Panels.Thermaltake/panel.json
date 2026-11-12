@@ -1,0 +1,19 @@
+{
+  "format": "infopanel.panel-package/1",
+  "sdk": "1.0",
+  "families": [
+    {
+      "id": "thermaltake",
+      "name": "Thermaltake / ASRock LCD",
+      "match": [
+        { "usb": "264a:2347", "transport": "hid" },
+        { "usb": "26ce:0a10", "transport": "hid" }
+      ],
+      "detect": [{ "usb": "264a:23??" }],
+      "models": [
+        { "id": "toughliquid6inch", "name": "Thermaltake 6\" LCD", "width": 1480, "height": 720, "v1Model": "ToughLiquid6Inch", "usb": "264a:2347" },
+        { "id": "asrockphantomgaming360lcd", "name": "ASRock Phantom Gaming 360 LCD", "width": 480, "height": 480, "v1Model": "AsrockPhantomGaming360LCD", "usb": "26ce:0a10" }
+      ]
+    }
+  ]
+}

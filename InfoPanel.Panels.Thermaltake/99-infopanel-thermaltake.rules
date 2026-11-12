@@ -1,0 +1,9 @@
+# InfoPanel: Thermaltake / ASRock LCD panels (the ids in this package's panel.json), readable and writable by the user at
+# the seat, so InfoPanel needs no root. Both are HID devices. Copy to /etc/udev/rules.d/, then:
+# sudo udevadm control --reload && sudo udevadm trigger
+# Thermaltake 6" LCD
+SUBSYSTEM=="usb", ATTRS{idVendor}=="264a", ATTRS{idProduct}=="2347", MODE="0660", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="264a", ATTRS{idProduct}=="2347", MODE="0660", TAG+="uaccess"
+# ASRock Phantom Gaming 360 LCD
+SUBSYSTEM=="usb", ATTRS{idVendor}=="26ce", ATTRS{idProduct}=="0a10", MODE="0660", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="26ce", ATTRS{idProduct}=="0a10", MODE="0660", TAG+="uaccess"

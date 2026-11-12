@@ -33,8 +33,8 @@ public sealed class PanelPackageOutputTests
         var written = typeof(PanelPackageOutputTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
             .Where(a => a.Key == PanelPackageOutput.MetadataKey).Select(a => a.Value).ToList();
 
-        var virtualDll = Assert.Single(written);
-        Assert.Equal("InfoPanel.Panels.Virtual.dll", Path.GetFileName(virtualDll));
+        // Every package the test project references with PanelPackage="true" is written; this test checks the virtual one's.
+        var virtualDll = Assert.Single(written, p => Path.GetFileName(p) == "InfoPanel.Panels.Virtual.dll");
         Assert.True(File.Exists(virtualDll), $"{virtualDll} is built");
         Assert.Equal(virtualDll, PanelPackageOutput.Dll("InfoPanel.Panels.Virtual"));
     }
