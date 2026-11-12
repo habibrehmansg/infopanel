@@ -12,7 +12,7 @@ using Xunit;
 namespace InfoPanel.Tests;
 
 // The engine's own sources (the clock, the drives, the network, the weather on every OS; the volume and the system
-// information on macOS and Windows, the system information on Linux too; what plays on macOS):
+// information on macOS and Windows, the system information on Linux too; what plays on macOS and Windows):
 // registered outside mock mode and a replay, none in either; the engine's own usage on every OS, in both too; the
 // network's public address lookup is left out under --offline, and follows the engine's settings
 // (sources.network.publicIp) as they change; the weather follows sources.weather.
@@ -31,7 +31,7 @@ public class BuiltInSourcesTests
 
         string[] expected = everywhere.Length == 0 ? everywhere
             : OperatingSystem.IsMacOS() ? [.. everywhere, "infopanel.volume", "infopanel.system-info", "infopanel.now-playing"]
-            : OperatingSystem.IsWindows() ? [.. everywhere, "infopanel.volume", "infopanel.system-info"]
+            : OperatingSystem.IsWindows() ? [.. everywhere, "infopanel.volume", "infopanel.system-info", "infopanel.now-playing"]
             : OperatingSystem.IsLinux() ? [.. everywhere, "infopanel.system-info"]
             : everywhere;
         // The engine's own usage last, in every mode (its own test below).
