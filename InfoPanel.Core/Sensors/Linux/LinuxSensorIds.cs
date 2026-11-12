@@ -89,13 +89,16 @@ public static class LinuxSensorIds
 
     public const string ThermalPrefix = "thermal/v1/";
 
+    /// <summary>The system readers' ids: <c>system/cpu/total</c>, <c>system/disk/{anchor}/read_speed</c>.</summary>
+    public const string SystemPrefix = "system/";
+
     /// <summary>A thermal zone's one channel.</summary>
     public const string ThermalChannel = "temp";
 
     /// <summary>The anchors' kinds, from the strongest identity to the weakest.</summary>
     public static IReadOnlySet<string> AnchorKinds { get; } = new[]
     {
-        "nvme-serial", "block-wwid", "block-serial", "usb-serial", "usb-port", "pci", "platform", "type", "i2c", "name",
+        "nvme-serial", "block-wwid", "block-serial", "gpu-uuid", "usb-serial", "usb-port", "pci", "platform", "type", "i2c", "name",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>The secondary anchors' kinds.</summary>
@@ -202,6 +205,35 @@ public static class LinuxSensorIds
     /// <exception cref="ArgumentException">A part the grammar has no place for.</exception>
     public static string Thermal(LinuxAnchor anchor, LinuxAnchor? secondary) =>
         ThermalPrefix + Anchors(anchor, secondary) + "/" + ThermalChannel;
+
+    /// <summary>
+    /// A device's metric among the system readers' ids: <c>system/{family}/{anchor}[~{secondary}]/{metric}</c>
+    /// (<c>system/disk/nvme-serial+S5GXNX0T/read_speed</c>,
+    /// <c>system/gpu/gpu-uuid+GPU-…~pci+0000-01-00.0/utilization</c>, <c>system/amdgpu/pci+0000-03-00.0/utilization</c>).
+    /// </summary>
+    /// <exception cref="ArgumentException">A part the grammar has no place for.</exception>
+    public static string SystemDevice(string family, LinuxAnchor anchor, LinuxAnchor? secondary, string metric)
+    {
+        if (!IsName(family))
+            throw new ArgumentException($"'{family}' is no system family.", nameof(family));
+        if (!IsName(metric))
+            throw new ArgumentException($"'{metric}' is no metric.", nameof(metric));
+        return SystemPrefix + family + "/" + Anchors(anchor, secondary) + "/" + metric;
+    }
+
+    // A family's or a metric's name: lower-case letters, digits and '_' (fan0_rpm, amdgpu).
+    private static bool IsName(string? name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return false;
+        foreach (var c in name)
+        {
+            if (!(char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '_'))
+                return false;
+        }
+
+        return true;
+    }
 
     /// <summary>Takes a hwmon or thermal id apart; false for anything else, or a form a build wouldn't give.</summary>
     public static bool TryParse([NotNullWhen(true)] string? id, [NotNullWhen(true)] out LinuxSensorId? parsed)

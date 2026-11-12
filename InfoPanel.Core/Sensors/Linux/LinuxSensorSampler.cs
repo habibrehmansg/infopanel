@@ -11,11 +11,19 @@ namespace InfoPanel.Sensors.Linux;
 /// kernel's value is divided by; its channel's kind and number, for the order; and the kernel's name for it now
 /// (<c>hwmon3/fan1</c>), which stays internal (logs only): it changes from boot to boot.
 /// </summary>
-internal sealed record LinuxChannel(string Id, string Group, string Name, string Unit, string Path, double Scale, string Kind, int Index, string Alias);
+internal sealed record LinuxChannel(string Id, string Group, string Name, string Unit, string Path, double Scale, string Kind, int Index, string Alias)
+{
+    /// <summary>The reader that reads it, for a sensor that isn't one file's number (null: <see cref="Path"/>'s number ÷ <see cref="Scale"/>).</summary>
+    public ILinuxReader? Reader { get; init; }
+
+    /// <summary>What the reader reads for it (its metric, its device's place among the reader's), the reader's own.</summary>
+    public int Slot { get; init; }
+}
 
 /// <summary>
 /// The Linux sensors as one <see cref="ISensorSampler"/>: hwmon channels (<see cref="HwmonReader"/>) and thermal zones
-/// (<see cref="ThermalReader"/>) read from <see cref="Sysfs"/>. Found at discovery, then again every
+/// (<see cref="ThermalReader"/>) read from <see cref="Sysfs"/>, and the system readers' sensors (<see cref="ILinuxReader"/>:
+/// the CPUs, memory, the disks' rates, the GPUs), each reader read once a round while one of its sensors is in use. Found at discovery, then again every
 /// <see cref="RescanInterval"/>: a scan whose catalogue differs bumps <see cref="CatalogueVersion"/> (a device added or
 /// removed), and every scan finds each sensor's file afresh, so a device the kernel numbers anew is read where it now is
 /// under the same key. Listed by device (ordinally by id), then by channel kind and number. Two sensors with one id
@@ -43,6 +51,9 @@ internal sealed class LinuxSensorSampler : ISensorSampler
     private readonly Sysfs _sysfs;
     private readonly LinuxDemand _demand;
     private readonly ILogger _log;
+    private readonly IReadOnlyList<ILinuxReader> _readers;
+    private readonly Dictionary<ILinuxReader, List<LinuxRead>> _inUse = [];
+    private long _round;
     private SensorDefinition[] _definitions = [];
     private Dictionary<string, LinuxChannel> _byId = new(StringComparer.Ordinal);
     private HashSet<string> _ambiguous = new(StringComparer.Ordinal);
@@ -54,13 +65,14 @@ internal sealed class LinuxSensorSampler : ISensorSampler
     private TimeSpan _sinceScan;
     private bool _scanned;
 
-    public LinuxSensorSampler(Sysfs sysfs, LinuxDemand demand, ILogger? log = null)
+    public LinuxSensorSampler(Sysfs sysfs, LinuxDemand demand, ILogger? log = null, IReadOnlyList<ILinuxReader>? readers = null)
     {
         ArgumentNullException.ThrowIfNull(sysfs);
         ArgumentNullException.ThrowIfNull(demand);
         _sysfs = sysfs;
         _demand = demand;
         _log = (log ?? Log.Logger).ForContext<LinuxSensorSampler>();
+        _readers = readers ?? [];
     }
 
     public long CatalogueVersion => _version;
@@ -87,6 +99,9 @@ internal sealed class LinuxSensorSampler : ISensorSampler
             Resolve();
         }
 
+        _round++;
+        foreach (var list in _inUse.Values)
+            list.Clear();
         for (var i = 0; i < samples.Length; i++)
         {
             if (i >= _reads.Length || _reads[i] is not { } channel)
@@ -98,6 +113,14 @@ internal sealed class LinuxSensorSampler : ISensorSampler
             // Not in use: not read (left Skipped), so a disk's drivetemp isn't woken and a slow chip costs nothing.
             if (!_demand.InUse(_keys[i]))
                 continue;
+
+            if (channel.Reader is { } reader)
+            {
+                if (!_inUse.TryGetValue(reader, out var list))
+                    _inUse[reader] = list = [];
+                list.Add(new LinuxRead(channel, i));
+                continue;
+            }
 
             switch (_sysfs.Read(channel.Path, out var text))
             {
@@ -115,10 +138,29 @@ internal sealed class LinuxSensorSampler : ISensorSampler
                     break;
             }
         }
+
+        // Each reader once, for its sensors in use; one with none in use isn't read at all.
+        foreach (var (reader, list) in _inUse)
+        {
+            if (list.Count == 0)
+                continue;
+            try
+            {
+                reader.Read(list, samples, elapsed, _round);
+            }
+            catch (Exception ex)
+            {
+                _log.Debug(ex, "Linux sensors: {Reader} failed to read", reader.GetType().Name);
+                foreach (var read in list)
+                    samples[read.Sample].Outcome = SampleOutcome.Failed;
+            }
+        }
     }
 
     public void Dispose()
     {
+        foreach (var reader in _readers)
+            reader.Dispose();
     }
 
     /// <summary>Each handed-out sensor as the latest scan found it.</summary>
@@ -131,6 +173,17 @@ internal sealed class LinuxSensorSampler : ISensorSampler
         var found = new List<LinuxChannel>();
         HwmonReader.Scan(_sysfs, found, _log);
         ThermalReader.Scan(_sysfs, found, _log);
+        foreach (var reader in _readers)
+        {
+            try
+            {
+                reader.Scan(found);
+            }
+            catch (Exception ex)
+            {
+                _log.Debug(ex, "Linux sensors: {Reader} can't list its sensors now", reader.GetType().Name);
+            }
+        }
 
         var byId = new Dictionary<string, LinuxChannel>(StringComparer.Ordinal);
         var ambiguous = new HashSet<string>(StringComparer.Ordinal);

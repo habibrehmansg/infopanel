@@ -44,26 +44,60 @@ public sealed class LinuxSensorSource : ISensorSource, ISensorStatusSource, ISen
     private readonly PolledSensorSource _polled;
     private readonly LinuxDemand _demand;
 
-    private LinuxSensorSource(Sysfs sysfs, TimeProvider time, PolledSensorSourceOptions? options, ILogger? log)
+    /// <summary>The <c>/proc</c> folder the CPU, memory and disk readers read.</summary>
+    public const string DefaultProc = "/proc";
+
+    private LinuxSensorSource(Sysfs sysfs, Sysfs? proc, Func<INvml?>? nvml, TimeProvider time, PolledSensorSourceOptions? options, ILogger? log)
     {
         _demand = new LinuxDemand(time);
-        _polled = new PolledSensorSource(SourceId, () => new LinuxSensorSampler(sysfs, _demand, log), options, time, log: log);
+        _polled = new PolledSensorSource(SourceId, () => new LinuxSensorSampler(sysfs, _demand, log, Readers(sysfs, proc, nvml, log)), options, time, log: log);
+    }
+
+    /// <summary>
+    /// The system readers: the CPUs' clocks (sysfs) and, over <paramref name="proc"/>, their load, memory and the disks'
+    /// rates; AMD GPUs (sysfs); NVIDIA GPUs through <paramref name="nvml"/>, when there is one.
+    /// </summary>
+    private static List<ILinuxReader> Readers(Sysfs sysfs, Sysfs? proc, Func<INvml?>? nvml, ILogger? log)
+    {
+        var readers = new List<ILinuxReader> { new CpuReader(sysfs, proc, log) };
+        if (proc != null)
+        {
+            readers.Add(new MemoryReader(proc));
+            readers.Add(new DiskIoReader(proc, sysfs, log));
+        }
+
+        readers.Add(new AmdGpuReader(sysfs));
+        if (nvml != null)
+            readers.Add(new NvidiaGpuReader(nvml, log ?? Log.Logger));
+        return readers;
     }
 
     /// <summary>The key of a sensor by its id (<c>hwmon/v1/…</c> → <c>infopanel:/linux/hwmon/v1/…</c>).</summary>
     public static SensorKey KeyOf(string id) => SensorKey.Plugin(KeyPrefix + id);
 
-    /// <summary>A source over <paramref name="sysfs"/> (a test's tree, or <see cref="Sysfs.Disk"/>).</summary>
-    public static LinuxSensorSource Create(Sysfs sysfs, TimeProvider? time = null, PolledSensorSourceOptions? options = null, ILogger? log = null)
+    /// <summary>
+    /// A source over <paramref name="sysfs"/> (a test's tree, or <see cref="Sysfs.Disk"/>), with the CPU's load, memory
+    /// and the disks' rates read from <paramref name="proc"/> (none without) and NVIDIA GPUs through the NVML
+    /// <paramref name="nvml"/> opens (none without, or when it gives none).
+    /// </summary>
+    internal static LinuxSensorSource Create(Sysfs sysfs, Sysfs? proc, Func<INvml?>? nvml, TimeProvider? time = null, PolledSensorSourceOptions? options = null, ILogger? log = null)
     {
         ArgumentNullException.ThrowIfNull(sysfs);
-        return new LinuxSensorSource(sysfs, time ?? TimeProvider.System, options, log);
+        return new LinuxSensorSource(sysfs, proc, nvml, time ?? TimeProvider.System, options, log);
     }
 
-    /// <summary>The source over this computer's sysfs: <c>/sys</c>, or the folder <see cref="SysfsVariable"/> names.</summary>
+    /// <summary>A source over <paramref name="sysfs"/> (a test's tree, or <see cref="Sysfs.Disk"/>).</summary>
+    public static LinuxSensorSource Create(Sysfs sysfs, TimeProvider? time = null, PolledSensorSourceOptions? options = null, ILogger? log = null) =>
+        Create(sysfs, proc: null, nvml: null, time, options, log);
+
+    /// <summary>
+    /// The source over this computer: sysfs at <c>/sys</c>, or the folder <see cref="SysfsVariable"/> names;
+    /// <c>/proc</c>; NVML (<c>libnvidia-ml.so.1</c>) when the NVIDIA driver installed it.
+    /// </summary>
     [SupportedOSPlatform("linux")]
     public static LinuxSensorSource CreateSystem(TimeProvider? time = null) =>
-        Create(Sysfs.Disk(SysfsRoot(Environment.GetEnvironmentVariable(SysfsVariable), Log.Logger)), time);
+        Create(Sysfs.Disk(SysfsRoot(Environment.GetEnvironmentVariable(SysfsVariable), Log.Logger)),
+            Sysfs.Disk(DefaultProc, Sysfs.MaxProcRead), NvidiaGpuReader.Retrying(l => NvmlLibrary.TryOpen(l), Log.Logger), time);
 
     /// <summary>The sysfs folder: <paramref name="variable"/> when it is a full path (logged), else <see cref="DefaultSysfs"/>.</summary>
     internal static string SysfsRoot(string? variable, ILogger log)
