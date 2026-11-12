@@ -1933,7 +1933,44 @@
         },
         "version": { "description": "How many times the list has changed in this run of the engine (the `devices` message's): 0 when it starts, greater for a later change. A change of the running panels' `stats` alone counts at most once a second.", "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
         "devices": { "description": "The saved panels.", "type": "array", "items": { "$ref": "#/$defs/deviceEntry" } },
-        "families": { "description": "Every panel family the engine knows this run: its built-in families, then those its panel packages declare (bundled ones first, then those in its data folder's `plugins/`, each in folder-name order), whether their package is on, off or failed; empty when `supported` is false. Absent from an engine without panel packages: a client then knows only the families it knows itself.", "type": "array", "items": { "$ref": "#/$defs/deviceFamily" } }
+        "families": { "description": "Every panel family the engine knows this run: its built-in families, then those its panel packages declare (bundled ones first, then those in its data folder's `plugins/`, each in folder-name order), whether their package is on, off or failed; empty when `supported` is false. Absent from an engine without panel packages: a client then knows only the families it knows itself.", "type": "array", "items": { "$ref": "#/$defs/deviceFamily" } },
+        "detected": { "description": "The USB devices plugged in now that look like a panel of a family the engine knows but that no family drives (docs/api.md#detected-devices), in the order the system lists them, at most 64. Detection reads only the descriptors the USB stack has already cached; it never opens, claims or sends anything to a detected device. (Listing USB devices at all goes through libusb's enumeration, which on some systems reads a new device's descriptors once, as it does for every panel family.) Absent when `supported` is false, and from an engine that doesn't list them.", "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/deviceDetected" } }
+      }
+    },
+    "deviceDetected": {
+      "description": "A USB device that looks like a panel of a family the engine knows (one of the family's detect patterns names its ids) but that no family drives, as the system's cached descriptors give it (docs/api.md#detected-devices).",
+      "type": "object",
+      "required": ["family", "usb", "port", "bcdDevice", "interfaces"],
+      "additionalProperties": false,
+      "properties": {
+        "family": { "description": "The family whose patterns name it, as deviceFamily.id names it.", "type": "string", "pattern": "^[a-z][a-z0-9]{0,31}$" },
+        "usb": { "description": "Its USB vendor and product ids, four lower-case hexadecimal digits each, as \"4e58:1002\".", "type": "string", "pattern": "^[0-9a-f]{4}:[0-9a-f]{4}$" },
+        "port": { "description": "The USB port path it is plugged in at, as the system numbers it (\"0-1.2\").", "type": "string", "minLength": 1, "maxLength": 64 },
+        "bcdDevice": { "description": "Its release number as its device descriptor gives it, binary-coded decimal (256 is 1.00).", "type": "integer", "minimum": 0, "maximum": 65535 },
+        "interfaces": { "description": "Its interfaces (each one's first alternate setting) in its active configuration, else its first, at most 32.", "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/deviceDetectedInterface" } }
+      }
+    },
+    "deviceDetectedInterface": {
+      "description": "An interface of a detected device: its class codes and endpoints.",
+      "type": "object",
+      "required": ["class", "subclass", "protocol", "endpoints"],
+      "additionalProperties": false,
+      "properties": {
+        "class": { "description": "Its bInterfaceClass (255: vendor-specific; 3: HID).", "type": "integer", "minimum": 0, "maximum": 255 },
+        "subclass": { "description": "Its bInterfaceSubClass.", "type": "integer", "minimum": 0, "maximum": 255 },
+        "protocol": { "description": "Its bInterfaceProtocol.", "type": "integer", "minimum": 0, "maximum": 255 },
+        "endpoints": { "description": "Its endpoints but endpoint 0, at most 30.", "type": "array", "maxItems": 30, "items": { "$ref": "#/$defs/deviceDetectedEndpoint" } }
+      }
+    },
+    "deviceDetectedEndpoint": {
+      "description": "An endpoint of a detected device's interface.",
+      "type": "object",
+      "required": ["address", "type", "maxPacketSize"],
+      "additionalProperties": false,
+      "properties": {
+        "address": { "description": "Its bEndpointAddress: its number, with 128 added for an in endpoint (129 is endpoint 1 in).", "type": "integer", "minimum": 0, "maximum": 255 },
+        "type": { "description": "Its transfer type: `control`, `isochronous`, `bulk` or `interrupt`. A client shows a type it doesn't know as it is.", "enum": ["control", "isochronous", "bulk", "interrupt"] },
+        "maxPacketSize": { "description": "The largest packet it takes, in bytes.", "type": "integer", "minimum": 0, "maximum": 65535 }
       }
     },
     "deviceFamily": {

@@ -62,6 +62,12 @@ public sealed record PanelPackageFamily(string Id, string Name, IReadOnlyList<Pa
 {
     public IReadOnlyList<PanelFamilySetting> Settings { get; init; } = [];
 
+    /// <summary>
+    /// Its <c>detect</c> patterns: the ids beyond its matches its vendor's panels may have, a device one names (and no
+    /// driver's matches do) listed as detected (<see cref="PanelDetection"/>); none by default.
+    /// </summary>
+    public IReadOnlyList<UsbIdPattern> Detect { get; init; } = [];
+
     /// <summary>Whether its matches name the device's ids.</summary>
     public bool Names(ushort vendorId, ushort productId) => Matches.Any(m => m.VendorId == vendorId && m.ProductId == productId);
 
@@ -273,7 +279,8 @@ public static partial class PanelPackages
     /// <see cref="MaxMatches"/>: <c>usb</c> <c>vvvv:pppp</c> in lower-case hex, an optional <c>transport</c>, <c>usb</c>,
     /// <c>serial</c> or <c>hid</c>, and an optional <c>interface</c>, 0 to 255) and <c>models</c> (at most
     /// <see cref="MaxModels"/>, each <c>id</c> and <c>name</c> of 1 to 64 characters, unique ids, <c>width</c> and
-    /// <c>height</c> 1 to 16384, an optional <c>v1Model</c> of 1 to 64). Members it doesn't know are ignored. Null, with
+    /// <c>height</c> 1 to 16384, an optional <c>v1Model</c> of 1 to 64) and an optional <c>detect</c> (at most
+    /// <see cref="PanelDetection.MaxPatterns"/>, each <c>usb</c> a <see cref="UsbIdPattern"/>). Members it doesn't know are ignored. Null, with
     /// <paramref name="error"/> saying why, for anything else. Never throws.
     /// </summary>
     public static Manifest? ReadManifest(string directory, out string? error)
@@ -409,7 +416,19 @@ public static partial class PanelPackages
                     return null;
                 settings = read;
             }
-            parsed.Add(new PanelPackageFamily(id, name, matches, models) { Settings = settings });
+            var detect = new List<UsbIdPattern>();
+            if (family.TryGetProperty("detect", out var patterns))
+            {
+                if (patterns.ValueKind != JsonValueKind.Array || patterns.GetArrayLength() > PanelDetection.MaxPatterns)
+                    return Fail($"{at}.detect isn't a list of at most {PanelDetection.MaxPatterns} patterns", out error);
+                foreach (var p in patterns.EnumerateArray())
+                {
+                    if (p.ValueKind != JsonValueKind.Object || Text(p, "usb") is not { } text || InfoPanel.Panels.UsbIdPattern.Parse(text) is not { } pattern)
+                        return Fail($"{at}.detect has a pattern that isn't {{\"usb\": \"vvvv:pppp\"}} in lower-case hexadecimal, with ? for any digit of the product or * for any product", out error);
+                    detect.Add(pattern);
+                }
+            }
+            parsed.Add(new PanelPackageFamily(id, name, matches, models) { Settings = settings, Detect = detect });
         }
         return new Manifest(sdk, parsed);
     }

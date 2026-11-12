@@ -1,0 +1,1 @@
+{"supported": true, "reason": null, "version": 1, "devices": [], "detected": [{"family": "beadapanel", "usb": "4E58:1002", "port": "0-3", "bcdDevice": 256, "interfaces": []}]}

@@ -113,6 +113,9 @@ public sealed class PanelManager : IAsyncDisposable
     private IReadOnlyList<PanelStatus> _published; // the list as the version last counted it (the manager's thread)
     private IReadOnlyList<PanelDriverProblem?> _publishedProblems; // each hosted driver's package problem as the version last counted it
     private long? _statsCountedAt; // when a change of the stats alone was last counted
+    private readonly Dictionary<UsbDeviceId, DetectedDevice?> _looked = []; // listed devices looked at for detection: detected, or null (not), while listed (this thread)
+    private IReadOnlyList<DetectedDevice> _detected = []; // the devices detected at the last pass (this thread)
+    private IReadOnlyList<DetectedDevice> _publishedDetected = []; // as the version last counted them
 
     /// <param name="sinceBoot">
     /// A monotonic clock that keeps counting while the computer sleeps (<see cref="Power.PowerEvents.SinceBoot"/>), for
@@ -422,10 +425,12 @@ public sealed class PanelManager : IAsyncDisposable
         List<PanelStatus> now = [.. _devices.Select(StatusOf)];
         // The packages' state is the list's too (its families' state and reason): a change counts with no saved panel.
         List<PanelDriverProblem?> problems = [.. _drivers.OfType<HostedPanelDriver>().Select(d => d.Link.Problem)];
-        var familiesChanged = !problems.SequenceEqual(_publishedProblems);
+        // So are the devices detected (a device looked at is the same instance while it stays listed).
+        var familiesChanged = !problems.SequenceEqual(_publishedProblems) || !_detected.SequenceEqual(_publishedDetected);
         if (!familiesChanged && now.SequenceEqual(_published))
             return;
         _publishedProblems = problems;
+        _publishedDetected = _detected;
         if (!familiesChanged && now.Select(WithoutStats).SequenceEqual(_published.Select(WithoutStats)))
         {
             if (_statsCountedAt is { } counted && _time.GetElapsedTime(counted) < StatsInterval)
@@ -441,6 +446,12 @@ public sealed class PanelManager : IAsyncDisposable
 
     /// <summary>The saved panels and their state now.</summary>
     public Task<IReadOnlyList<PanelStatus>> ListAsync() => Ask<IReadOnlyList<PanelStatus>>(() => [.. _devices.Select(StatusOf)]);
+
+    /// <summary>
+    /// The devices detected at the last pass, in the listing's order (<see cref="Detect"/>): each a family's <c>detect</c>
+    /// names and no driver's matches do, at most <see cref="PanelDetection.MaxDetected"/>.
+    /// </summary>
+    public Task<IReadOnlyList<DetectedDevice>> ListDetectedAsync() => Ask(() => _detected);
 
     private PanelStatus StatusOf(SavedPanel saved)
     {
@@ -524,6 +535,8 @@ public sealed class PanelManager : IAsyncDisposable
         foreach (var link in _drivers.OfType<HostedPanelDriver>().GroupBy(d => d.Link))
             link.Key.SetPresent(listed.Any(u => link.Any(d => Names(d, u))));
 
+        Detect(listed);
+
         // Only the devices some driver's matches name: no other is ever opened.
         var panels = listed.Where(d => DriversOf(d).Any()).ToList();
         foreach (var gone in _forgottenJpegEnds.Keys.Where(u => !panels.Contains(u)).ToList())
@@ -557,6 +570,50 @@ public sealed class PanelManager : IAsyncDisposable
 
         foreach (var saved in _devices)
             Reconcile(saved);
+    }
+
+    /// <summary>
+    /// "Detected, not supported": the listed devices a family's <c>detect</c> names and no driver's matches do (not of a
+    /// left-out vendor, <see cref="PanelDetection.FamilyOf"/>), each looked at once while it stays listed, through its
+    /// cached descriptors only (<see cref="IUsbBackend.Describe"/>: never opened, claimed or written); a hub or a boot
+    /// keyboard or mouse, or one whose descriptors the backend can't give, isn't detected. A detected device is logged once
+    /// while it stays plugged in.
+    /// </summary>
+    private void Detect(IReadOnlyList<UsbDeviceId> listed)
+    {
+        foreach (var gone in _looked.Keys.Where(u => !listed.Contains(u)).ToList())
+            _looked.Remove(gone);
+        foreach (var usb in listed)
+        {
+            if (_looked.ContainsKey(usb))
+                continue;
+            if (PanelDetection.FamilyOf(usb, _drivers) is not { } family)
+            {
+                _looked[usb] = null;
+                continue;
+            }
+            UsbStatus status;
+            UsbDescriptor? descriptor;
+            try
+            {
+                status = _backend.Describe(usb, out descriptor);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "The USB device {Ids:l} at {Port}: its descriptors couldn't be read, so it isn't listed as detected",
+                    $"{usb.VendorId:x4}:{usb.ProductId:x4}", usb.PortPath);
+                _looked[usb] = null;
+                continue;
+            }
+            if (status == UsbStatus.NoDevice)
+                continue; // gone since the listing: looked at again if it is listed again
+            var detected = status == UsbStatus.Ok && descriptor != null ? PanelDetection.Of(family, usb, descriptor) : null;
+            _looked[usb] = detected;
+            if (detected != null)
+                _logger.Information("The USB device {Ids:l} at {Port} looks like a {Family:l} panel, but no driver drives it: listed as detected",
+                    $"{usb.VendorId:x4}:{usb.ProductId:x4}", usb.PortPath, NameOf(family));
+        }
+        _detected = [.. listed.Select(u => _looked.GetValueOrDefault(u)).OfType<DetectedDevice>().Take(PanelDetection.MaxDetected)];
     }
 
     /// <summary>

@@ -1784,6 +1784,80 @@ export interface DeviceList {
   devices: DeviceEntry[];
   /** Every panel family the engine knows this run: its built-in families, then those its panel packages declare (bundled ones first, then those in its data folder's `plugins/`, each in folder-name order), whether their package is on, off or failed; empty when `supported` is false. Absent from an engine without panel packages: a client then knows only the families it knows itself. */
   families?: DeviceFamily[];
+  /**
+   * The USB devices plugged in now that look like a panel of a family the engine knows but that no family drives (docs/api.md#detected-devices), in the order the system lists them, at most 64. Detection reads only the descriptors the USB stack has already cached; it never opens, claims or sends anything to a detected device. (Listing USB devices at all goes through libusb's enumeration, which on some systems reads a new device's descriptors once, as it does for every panel family.) Absent when `supported` is false, and from an engine that doesn't list them.
+   * Items: ≤ 64.
+   */
+  detected?: DeviceDetected[];
+}
+
+/** A USB device that looks like a panel of a family the engine knows (one of the family's detect patterns names its ids) but that no family drives, as the system's cached descriptors give it (docs/api.md#detected-devices). */
+export interface DeviceDetected {
+  /**
+   * The family whose patterns name it, as deviceFamily.id names it.
+   * Pattern: `^[a-z][a-z0-9]{0,31}$`.
+   */
+  family: string;
+  /**
+   * Its USB vendor and product ids, four lower-case hexadecimal digits each, as "4e58:1002".
+   * Pattern: `^[0-9a-f]{4}:[0-9a-f]{4}$`.
+   */
+  usb: string;
+  /**
+   * The USB port path it is plugged in at, as the system numbers it ("0-1.2").
+   * Length: 1–64.
+   */
+  port: string;
+  /**
+   * Its release number as its device descriptor gives it, binary-coded decimal (256 is 1.00).
+   * Range: 0–65535.
+   */
+  bcdDevice: number;
+  /**
+   * Its interfaces (each one's first alternate setting) in its active configuration, else its first, at most 32.
+   * Items: ≤ 32.
+   */
+  interfaces: DeviceDetectedInterface[];
+}
+
+/** An interface of a detected device: its class codes and endpoints. */
+export interface DeviceDetectedInterface {
+  /**
+   * Its bInterfaceClass (255: vendor-specific; 3: HID).
+   * Range: 0–255.
+   */
+  class: number;
+  /**
+   * Its bInterfaceSubClass.
+   * Range: 0–255.
+   */
+  subclass: number;
+  /**
+   * Its bInterfaceProtocol.
+   * Range: 0–255.
+   */
+  protocol: number;
+  /**
+   * Its endpoints but endpoint 0, at most 30.
+   * Items: ≤ 30.
+   */
+  endpoints: DeviceDetectedEndpoint[];
+}
+
+/** An endpoint of a detected device's interface. */
+export interface DeviceDetectedEndpoint {
+  /**
+   * Its bEndpointAddress: its number, with 128 added for an in endpoint (129 is endpoint 1 in).
+   * Range: 0–255.
+   */
+  address: number;
+  /** Its transfer type: `control`, `isochronous`, `bulk` or `interrupt`. A client shows a type it doesn't know as it is. */
+  type: "control" | "isochronous" | "bulk" | "interrupt";
+  /**
+   * The largest packet it takes, in bytes.
+   * Range: 0–65535.
+   */
+  maxPacketSize: number;
 }
 
 /** A panel family the engine knows (docs/api.md#panel-families): built in, or declared by a panel package's panel.json. */

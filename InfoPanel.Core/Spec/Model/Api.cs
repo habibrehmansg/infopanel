@@ -1277,6 +1277,38 @@ public sealed record DeviceList
     public required IReadOnlyList<DeviceEntryBody> Devices { get; init; }
     /// <summary>Every panel family the engine knows: the built-in ones, then each panel package's; absent from an engine without them.</summary>
     public IReadOnlyList<DeviceFamilyBody>? Families { get; init; }
+    /// <summary>The USB devices that look like a known family's panel but that no family drives; absent where panels are off, and from an engine that doesn't list them.</summary>
+    public IReadOnlyList<DeviceDetectedBody>? Detected { get; init; }
+}
+
+/// <summary>A USB device that looks like a panel of a family the engine knows, which no family drives: its ids, port and cached descriptors.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceDetected")]
+public sealed record DeviceDetectedBody
+{
+    public required string Family { get; init; }
+    public required string Usb { get; init; }
+    public required string Port { get; init; }
+    public required int BcdDevice { get; init; }
+    public required IReadOnlyList<DeviceDetectedInterfaceBody> Interfaces { get; init; }
+}
+
+/// <summary>An interface of a detected device: its class codes and its endpoints.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceDetectedInterface")]
+public sealed record DeviceDetectedInterfaceBody
+{
+    public required int Class { get; init; }
+    public required int Subclass { get; init; }
+    public required int Protocol { get; init; }
+    public required IReadOnlyList<DeviceDetectedEndpointBody> Endpoints { get; init; }
+}
+
+/// <summary>An endpoint of a detected device's interface: its address, transfer type and largest packet.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/deviceDetectedEndpoint")]
+public sealed record DeviceDetectedEndpointBody
+{
+    public required int Address { get; init; }
+    public required string Type { get; init; }
+    public required int MaxPacketSize { get; init; }
 }
 
 /// <summary>A panel family the engine knows: built in or a package's, its state, its models, the settings it honours and its transports.</summary>

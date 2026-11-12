@@ -39,6 +39,7 @@ public static class DeviceEndpoints
             // reads again on the next devices message misses nothing.
             var version = manager.Version;
             var list = await manager.ListAsync();
+            var detected = await manager.ListDetectedAsync();
             return Json(new DeviceList
             {
                 Supported = true,
@@ -46,6 +47,7 @@ public static class DeviceEndpoints
                 Version = version,
                 Devices = [.. list.Select(s => EntryOf(s, panels.Families))],
                 Families = [.. panels.Families.Select(FamilyOf)],
+                Detected = [.. detected.Select(DetectedOf)],
             });
         }).RequireScope(ApiScope.Read);
 
@@ -275,6 +277,27 @@ public static class DeviceEndpoints
         Supports = BeadaPanelSettings,
         Transports = family.Transports,
         Settings = family.Settings.Count > 0 ? [.. family.Settings.Select(SettingOf)] : null,
+    };
+
+    /// <summary>A detected device as the list gives it: its family, ids, port, release and its interfaces with their endpoints.</summary>
+    private static DeviceDetectedBody DetectedOf(DetectedDevice device) => new()
+    {
+        Family = device.Family,
+        Usb = $"{device.Usb.VendorId:x4}:{device.Usb.ProductId:x4}",
+        Port = device.Usb.PortPath,
+        BcdDevice = device.BcdDevice,
+        Interfaces = [.. device.Interfaces.Select(i => new DeviceDetectedInterfaceBody
+        {
+            Class = i.Class,
+            Subclass = i.SubClass,
+            Protocol = i.Protocol,
+            Endpoints = [.. i.Endpoints.Select(e => new DeviceDetectedEndpointBody
+            {
+                Address = e.Address,
+                Type = e.Type switch { 0 => "control", 1 => "isochronous", 2 => "bulk", _ => "interrupt" },
+                MaxPacketSize = e.MaxPacketSize,
+            })],
+        })],
     };
 
     /// <summary>The settings given, over the saved ones; a member left out keeps its value. The body is checked already.</summary>

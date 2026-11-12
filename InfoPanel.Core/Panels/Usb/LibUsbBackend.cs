@@ -161,7 +161,18 @@ public sealed unsafe class LibUsbBackend : IUsbBackend
                                 var endpoint = setting.endpoint[e];
                                 endpoints.Add((endpoint.bEndpointAddress, endpoint.bmAttributes & 0x3, endpoint.wMaxPacketSize & 0x7FF));
                             }
-                            interfaces.Add(new UsbInterfaceDescriptor(setting.bInterfaceNumber, setting.bInterfaceClass, setting.bInterfaceSubClass, setting.bInterfaceProtocol, endpoints));
+                            // The later alternate settings' class codes too: a setting the device could be switched to
+                            // (a boot keyboard behind a vendor-specific setting 0) counts for what the device is.
+                            var later = new List<(byte, byte, byte)>();
+                            for (var a = 1; a < alternates.num_altsetting; a++)
+                            {
+                                var other = alternates.altsetting[a];
+                                later.Add((other.bInterfaceClass, other.bInterfaceSubClass, other.bInterfaceProtocol));
+                            }
+                            interfaces.Add(new UsbInterfaceDescriptor(setting.bInterfaceNumber, setting.bInterfaceClass, setting.bInterfaceSubClass, setting.bInterfaceProtocol, endpoints)
+                            {
+                                LaterSettings = later,
+                            });
                         }
                         descriptor = new UsbDescriptor(d.bDeviceClass, d.bDeviceSubClass, d.bDeviceProtocol, d.bcdDevice, interfaces);
                         return UsbStatus.Ok;

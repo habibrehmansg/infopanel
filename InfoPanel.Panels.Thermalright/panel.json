@@ -12,6 +12,14 @@
         {"usb":"0416:5409","transport":"usb","interface":0},
         {"usb":"0416:5406","transport":"usb","interface":0}
       ],
+      "detect": [
+        {"usb":"87ad:*"},
+        {"usb":"87cd:*"},
+        {"usb":"0416:53??"},
+        {"usb":"0416:54??"},
+        {"usb":"0418:53??"},
+        {"usb":"0402:39??"}
+      ],
       "models": [
         {"id":"peerlessvision360","name":"Grand / Hydro / Hyper / Peerless Vision 240/360","width":480,"height":480,"v1Model":"PeerlessVision360","usb":"87ad:70db","transport":"usb","protocol":"chiZhu","pixels":"jpeg","identifier":"SSCRM-V1"},
         {"id":"wondervision360","name":"Wonder Vision 360 6.67\"","width":1600,"height":720,"v1Model":"WonderVision360","nativeWidth":2400,"nativeHeight":1080,"usb":"87ad:70db","transport":"usb","protocol":"chiZhu","pixels":"jpeg","identifier":"SSCRM-V3","sub":1,"displayMask":true},

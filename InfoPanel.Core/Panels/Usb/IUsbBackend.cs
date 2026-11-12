@@ -68,8 +68,18 @@ public interface IUsbBackend : IDisposable
 /// <summary>A device's cached descriptors (<see cref="IUsbBackend.Describe"/>).</summary>
 public sealed record UsbDescriptor(byte DeviceClass, byte DeviceSubClass, byte DeviceProtocol, ushort BcdDevice, IReadOnlyList<UsbInterfaceDescriptor> Interfaces);
 
-/// <summary>An interface's first alternate setting: its number, class codes and endpoints (address, transfer type 0–3 as bmAttributes' low bits, largest packet).</summary>
-public sealed record UsbInterfaceDescriptor(int Number, byte Class, byte SubClass, byte Protocol, IReadOnlyList<(byte Address, int Type, int MaxPacketSize)> Endpoints);
+/// <summary>
+/// An interface's first alternate setting: its number, class codes and endpoints (address, transfer type 0–3 as
+/// bmAttributes' low bits, largest packet); <see cref="LaterSettings"/>, the class codes of its other alternate settings.
+/// </summary>
+public sealed record UsbInterfaceDescriptor(int Number, byte Class, byte SubClass, byte Protocol, IReadOnlyList<(byte Address, int Type, int MaxPacketSize)> Endpoints)
+{
+    /// <summary>
+    /// The class codes of the interface's alternate settings after the first, in order (none when it has only one):
+    /// what the device could become, which "detected, not supported" looks at too (<see cref="PanelDetection.IsHubOrInput"/>).
+    /// </summary>
+    public IReadOnlyList<(byte Class, byte SubClass, byte Protocol)> LaterSettings { get; init; } = [];
+}
 
 /// <summary>An opened USB device. Its calls block; one thread uses it at a time.</summary>
 public interface IUsbDevice : IDisposable

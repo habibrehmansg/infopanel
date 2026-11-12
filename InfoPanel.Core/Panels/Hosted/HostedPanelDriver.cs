@@ -29,13 +29,16 @@ public sealed record HostedPanelOptions
 /// reason <c>driver</c>), so the manager starts it again on the new host. A session's frames go through its two-slot
 /// file (<see cref="PanelSlotFile"/>), one copy a frame (none for a keep-alive's re-send while its slot is free).
 /// </summary>
-public sealed class HostedPanelDriver(PanelPackageFamily family, IPanelHostLink link, ILogger logger, HostedPanelOptions? options = null) : IPanelDriver
+public sealed class HostedPanelDriver(PanelPackageFamily family, IPanelHostLink link, ILogger logger, HostedPanelOptions? options = null) : IPanelDriver, IDetectsPanels
 {
     private readonly HostedPanelOptions _options = options ?? new HostedPanelOptions();
 
     public string Family => family.Id;
 
     public IReadOnlyList<PanelMatch> Matches => family.Matches;
+
+    /// <summary>Its <c>panel.json</c>'s <c>detect</c>: whatever its package's state, a device it names is the family's, detected.</summary>
+    public IReadOnlyList<UsbIdPattern> Detect => family.Detect;
 
     /// <summary>What its package's <c>panel.json</c> declares of the family.</summary>
     public PanelPackageFamily Declared => family;

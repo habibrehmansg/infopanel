@@ -590,11 +590,14 @@ try
     builder.Services.AddSingleton<DisplayLister>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<DisplayWindowManager>());
     // A spare engine with the virtual panel package (development and tests, a setting and never a flag): that many virtual
-    // USB devices in place of the computer's own, so no real device is listed or opened.
-    if (int.TryParse(builder.Configuration[$"{EngineOptions.Section}:VirtualPanels"], out var virtualPanels) && virtualPanels > 0)
+    // USB devices in place of the computer's own, so no real device is listed or opened; with Engine:VirtualDetected, the
+    // device 1209:0002 too, which no family drives and the virtual package detects ("detected, not supported").
+    var virtualDetected = bool.TryParse(builder.Configuration[$"{EngineOptions.Section}:VirtualDetected"], out var detectedOn) && detectedOn;
+    if ((int.TryParse(builder.Configuration[$"{EngineOptions.Section}:VirtualPanels"], out var virtualPanels) && virtualPanels > 0) || virtualDetected)
     {
-        Log.Information("USB panels: {Count} virtual devices in place of this computer's (Engine:VirtualPanels)", Math.Min(virtualPanels, InfoPanel.Panels.VirtualUsbBackend.MaxDevices));
-        builder.Services.AddSingleton(new InfoPanel.Panels.PanelServiceOptions { Backend = () => new InfoPanel.Panels.VirtualUsbBackend(virtualPanels) });
+        Log.Information("USB panels: {Count} virtual devices in place of this computer's (Engine:VirtualPanels){Detected:l}",
+            Math.Clamp(virtualPanels, 0, InfoPanel.Panels.VirtualUsbBackend.MaxDevices), virtualDetected ? ", and the detected device 1209:0002 (Engine:VirtualDetected)" : "");
+        builder.Services.AddSingleton(new InfoPanel.Panels.PanelServiceOptions { Backend = () => new InfoPanel.Panels.VirtualUsbBackend(virtualPanels, virtualDetected) });
     }
     // USB panels (docs/2.0/panels.md): after the render service, so the host stops them, each screen turned off, first.
     builder.Services.AddSingleton(sp => new InfoPanel.Panels.PanelService(options, paths, sp.GetRequiredService<Workspace>(),

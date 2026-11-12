@@ -89,6 +89,9 @@ public sealed class FakeUsbDevice(UsbDeviceId id)
     /// <summary>The USB descriptor's serial number string.</summary>
     public string? UsbSerial { get; set; }
 
+    /// <summary>Its cached descriptors, as <see cref="IUsbBackend.Describe"/> answers them (no call is recorded: the OS's cache, no I/O); null: the backend can't tell.</summary>
+    public UsbDescriptor? Descriptor { get; set; }
+
     /// <summary>What a read on an in endpoint answers; none: the read times out.</summary>
     public byte[]? Reply { get; set; }
 
@@ -206,6 +209,9 @@ public sealed class FakeUsbBackend(FakeUsbClock? clock = null) : IUsbBackend
 
     public bool Disposed { get; private set; }
 
+    /// <summary>How many times <see cref="Describe"/> was called, on any device.</summary>
+    public int Describes { get; private set; }
+
     public FakeUsbDevice Add(FakeUsbDevice device)
     {
         lock (_lock)
@@ -247,6 +253,22 @@ public sealed class FakeUsbBackend(FakeUsbClock? clock = null) : IUsbBackend
             found.OpenHandles++;
         opened = new Handle(this, found);
         return UsbStatus.Ok;
+    }
+
+    /// <summary>A listed device's <see cref="FakeUsbDevice.Descriptor"/>; <see cref="UsbStatus.NotSupported"/> when it has none.</summary>
+    public UsbStatus Describe(UsbDeviceId device, out UsbDescriptor? descriptor)
+    {
+        descriptor = null;
+        FakeUsbDevice? found;
+        lock (_lock)
+        {
+            Describes++;
+            found = _devices.Find(d => d.Id == device && d.Connected);
+        }
+        if (found is null)
+            return UsbStatus.NoDevice;
+        descriptor = found.Descriptor;
+        return descriptor is null ? UsbStatus.NotSupported : UsbStatus.Ok;
     }
 
     public void Dispose() => Disposed = true;

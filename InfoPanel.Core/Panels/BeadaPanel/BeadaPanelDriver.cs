@@ -14,7 +14,7 @@ namespace InfoPanel.Panels.BeadaPanel;
 /// the table doesn't hold is not its own; its sessions are <see cref="BeadaPanelSession.Start"/>'s, raw or JPEG as the
 /// format asked for and the panel say, and their stop is the screen-off within its bound.
 /// </summary>
-public sealed class BeadaPanelDriver(IUsbBackend backend, TimeProvider time) : IPanelDriver
+public sealed class BeadaPanelDriver(IUsbBackend backend, TimeProvider time) : IPanelDriver, IDetectsPanels
 {
     /// <summary>The info reply behind each identity this driver's probes answered, for the engine's API.</summary>
     private readonly ConditionalWeakTable<PanelIdentity, BeadaPanelInfo> _infos = new();
@@ -22,6 +22,9 @@ public sealed class BeadaPanelDriver(IUsbBackend backend, TimeProvider time) : I
     public string Family => SavedPanel.BeadaPanelFamily;
 
     public IReadOnlyList<PanelMatch> Matches { get; } = [new PanelMatch(BeadaPanelProtocol.VendorId, BeadaPanelProtocol.ProductId, BeadaPanelProtocol.Interface)];
+
+    /// <summary>Every product of BeadaPanel's vendor (<c>4e58:*</c>): one beyond its match is detected, never opened.</summary>
+    public IReadOnlyList<UsbIdPattern> Detect { get; } = [new UsbIdPattern(BeadaPanelProtocol.VendorId, 0, 0)];
 
     /// <summary>
     /// The info query, and the panel's serial: the info reply's, else the USB descriptor's when it is letters and digits
