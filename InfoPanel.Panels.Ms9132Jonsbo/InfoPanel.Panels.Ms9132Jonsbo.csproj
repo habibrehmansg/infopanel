@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Jonsbo and VMAX panel package: two families, jonsbo (the DS916 on a USB CDC serial port; the DS339 on a
+       MacroSilicon MS9132) and vmax (the VMAX 4.6" on the same MS9132, 345f:9132), so one package owns the shared USB id
+       and tells the two apart by the EDID the MS9132 reads from its panel. InfoPanel 1.4's protocols as pure code, every
+       model in panel.json, the families' one table. It references the panel SDK only (not copied: the host gives the
+       package its own); a device is reached through the SDK alone. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>InfoPanel.Panels.Ms9132Jonsbo</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The engine's panel SDK, not copied: the host gives the package its own. -->
+    <ProjectReference Include="..\InfoPanel.Panels.Sdk\InfoPanel.Panels.Sdk.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The drivers' tests run their sessions without waiting out 1.4's delays (the drivers' Wait and Time). -->
+    <InternalsVisibleTo Include="InfoPanel.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Beside the DLL in its build and its publish (the packaging scripts take a driver's publish with its panel.json);
+         the Core tests reference the package as a panel package (PanelPackage="true", not copied), so they run it from
+         here. Linux's access rule for the families' USB, HID and serial ids goes with it, shipped once a Linux package
+         exists. -->
+    <None Update="panel.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="70-infopanel-ms9132jonsbo.rules" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

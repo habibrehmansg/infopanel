@@ -1,0 +1,10 @@
+# InfoPanel: Jonsbo and VMAX panels (the ids in this package's panel.json), readable and writable by the user at the
+# seat, so InfoPanel needs no root (numbered 70 so the tag is set before systemd's 73-seat-late.rules reads it).
+# Copy to /etc/udev/rules.d/, then:
+# sudo udevadm control --reload && sudo udevadm trigger
+# Jonsbo DS916: a USB CDC serial port
+SUBSYSTEM=="usb", ATTRS{idVendor}=="33c3", ATTRS{idProduct}=="f101", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="33c3", ATTRS{idProduct}=="f101", MODE="0660", TAG+="uaccess"
+# Jonsbo DS339 and VMAX 4.6" (MacroSilicon MS9132): HID control, USB bulk frames on interface 3
+SUBSYSTEM=="usb", ATTRS{idVendor}=="345f", ATTRS{idProduct}=="9132", MODE="0660", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="345f", ATTRS{idProduct}=="9132", MODE="0660", TAG+="uaccess"

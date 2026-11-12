@@ -1,0 +1,38 @@
+{
+  "format": "infopanel.panel-package/1",
+  "sdk": "1.0",
+  "families": [
+    {
+      "id": "jonsbo",
+      "name": "Jonsbo displays",
+      "match": [
+        { "usb": "33c3:f101", "transport": "serial" },
+        { "usb": "345f:9132", "transport": "usb", "interface": 3 }
+      ],
+      "detect": [
+        { "usb": "33c3:f1??" },
+        { "usb": "345f:91??" }
+      ],
+      "models": [
+        { "id": "ds916", "name": "Jonsbo DS916", "width": 462, "height": 1920, "v1Model": "DS916", "usb": "33c3:f101", "transport": "serial", "maxJpegBytes": 262144, "defaultFrameRate": 25, "defaultRotation": 90 },
+        { "id": "ds339", "name": "Jonsbo DS339", "width": 376, "height": 960, "v1Model": "DS339", "usb": "345f:9132", "transport": "ms9132", "vic": 171, "defaultFrameRate": 15, "defaultRotation": 90 }
+      ],
+      "settings": [
+        { "id": "model", "name": "Model", "type": "model", "default": null }
+      ]
+    },
+    {
+      "id": "vmax",
+      "name": "VMAX displays",
+      "match": [
+        { "usb": "345f:9132", "transport": "usb", "interface": 3 }
+      ],
+      "models": [
+        { "id": "vmax46inch", "name": "VMAX 4.6\" LCD", "width": 320, "height": 960, "v1Model": "Vmax46Inch", "usb": "345f:9132", "transport": "ms9132", "vic": 178, "defaultFrameRate": 1, "defaultRotation": 0 }
+      ],
+      "settings": [
+        { "id": "screenSwitch", "name": "Screen on", "type": "boolean", "default": true, "v1Field": "ScreenSwitch" }
+      ]
+    }
+  ]
+}
