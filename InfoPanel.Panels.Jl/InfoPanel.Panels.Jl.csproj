@@ -22,7 +22,7 @@
 
   <ItemGroup>
     <None Update="panel.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="99-infopanel-jl.rules" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="70-infopanel-jl.rules" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

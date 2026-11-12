@@ -31,7 +31,7 @@ JPEG quality is 85, 1.4's default for these panels; the most frames a second is 
 
 - **Windows**: HID needs no driver.
 - **macOS**: no driver needed.
-- **Linux**: `99-infopanel-thermaltake.rules` (in the package) gives the user at the seat access to the family's devices and their `hidraw` nodes: copy it to `/etc/udev/rules.d/` and reload udev.
+- **Linux**: `70-infopanel-thermaltake.rules` (in the package) gives the user at the seat access to the family's devices and their `hidraw` nodes: copy it to `/etc/udev/rules.d/` and reload udev.
 
 ## Testing on a panel
 

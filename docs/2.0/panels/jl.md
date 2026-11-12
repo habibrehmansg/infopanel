@@ -32,7 +32,7 @@ JPEG quality is 80, 1.4's default for these panels. A frame over the model's 80 
 
 - **Windows**: a CDC port needs no driver. The port is the device's own, found by its USB location.
 - **macOS**: no driver needed. Whether the platform takes 2,000,000 baud for a CDC port isn't known yet; the package falls back to 115,200 if it doesn't.
-- **Linux**: `99-infopanel-jl.rules` (in the package) gives the user at the seat access to the device and its `ttyACM` port: copy it to `/etc/udev/rules.d/` and reload udev.
+- **Linux**: `70-infopanel-jl.rules` (in the package) gives the user at the seat access to the device and its `ttyACM` port: copy it to `/etc/udev/rules.d/` and reload udev.
 
 ## Testing on a panel
 

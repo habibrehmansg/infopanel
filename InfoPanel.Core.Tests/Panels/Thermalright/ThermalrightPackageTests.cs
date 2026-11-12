@@ -43,7 +43,7 @@ public sealed class ThermalrightPackageTests
         Assert.Equal(dll, assembly.Location);
         Assert.Equal(ThermalrightCatalog.FamilyId, PanelManifest.Read(assembly).Family(ThermalrightCatalog.FamilyId).Id);
         Assert.False(File.Exists(Path.Combine(AppContext.BaseDirectory, "InfoPanel.Panels.Thermalright.dll")), "no package's DLL beside the test assembly");
-        Assert.False(File.Exists(Path.Combine(AppContext.BaseDirectory, "99-infopanel-thermalright.rules")), "no package's rule beside the test assembly");
+        Assert.False(File.Exists(Path.Combine(AppContext.BaseDirectory, "70-infopanel-thermalright.rules")), "no package's rule beside the test assembly");
     }
 
     [Fact]

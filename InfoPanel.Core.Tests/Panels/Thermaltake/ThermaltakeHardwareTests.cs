@@ -1,6 +1,8 @@
+using InfoPanel.Panels.Devices;
 using InfoPanel.Panels.Sdk;
 using InfoPanel.Panels.Testing;
 using InfoPanel.Panels.Thermaltake;
+using InfoPanel.Panels.Usb;
 using SkiaSharp;
 using Xunit;
 
@@ -10,17 +12,27 @@ namespace InfoPanel.Core.Tests.Panels.Thermaltake;
 /// A tester's run on a real Thermaltake or ASRock panel (§2.2 (9)), skipped unless <c>INFOPANEL_PANEL_HW=thermaltake</c>:
 /// the panel is probed and opened through the engine's device seam, shown colour bars, then a gradient, and stopped with
 /// realtime display off; every transfer is recorded to <c>INFOPANEL_PANEL_TRACE</c> (a file) through the kit's recorder,
-/// so the trace can become a vector. The engine's seam over the OS's HID comes with the engine side of the device seam;
-/// until then the test skips there too.
+/// so the trace can become a vector. The seam is the one the panel host gives a package's drivers: the engine's
+/// <see cref="EnginePanelDevices"/> over HID (and libusb and serial, as the host wires them). Without the opt-in it skips;
+/// opted in, a run whose setup can't complete (no panel named, no seam) fails.
 /// </summary>
 public sealed class ThermaltakeHardwareTests
 {
-    /// <summary>The engine's own device seam, once it has one (found by type, so this test needs no change when it lands).</summary>
-    private static IPanelDevices? EngineDevices()
+    /// <summary>The engine's own device seam, built as the panel host builds it (libusb only when <paramref name="usb"/> and it loads).</summary>
+    internal static EnginePanelDevices EngineDevices(Serilog.ILogger logger, out IUsbBackend? backend, bool usb = true)
     {
-        var type = typeof(InfoPanel.Panels.PanelTransform).Assembly.GetTypes()
-            .FirstOrDefault(t => t is { IsClass: true, IsAbstract: false } && typeof(IPanelDevices).IsAssignableFrom(t) && t.GetConstructor(Type.EmptyTypes) != null);
-        return type == null ? null : (IPanelDevices)Activator.CreateInstance(type)!;
+        backend = null;
+        if (usb && LibUsb.LoadAndLog(LibUsb.DefaultCandidates(), logger) is { } library)
+            backend = LibUsbBackend.Create(library, out _);
+        return new EnginePanelDevices(backend, new HidSharpSystem(logger), new SerialPorts(logger), logger);
+    }
+
+    [Fact]
+    public void TheHardwareTest_BuildsThePanelHostsSeam_WithoutTouchingADevice()
+    {
+        // No device is touched: the seam is only built (without libusb), as the hardware run builds it.
+        Assert.IsType<EnginePanelDevices>(EngineDevices(Serilog.Core.Logger.None, out var backend, usb: false));
+        Assert.Null(backend);
     }
 
     private static byte[] Jpeg(int width, int height, int quality, Action<SKCanvas> draw)
@@ -37,12 +49,13 @@ public sealed class ThermaltakeHardwareTests
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("INFOPANEL_PANEL_HW") == ThermaltakeDriver.FamilyId,
             "A real Thermaltake or ASRock panel: set INFOPANEL_PANEL_HW=thermaltake (and INFOPANEL_PANEL_TRACE=<file> to record it).");
-        var engine = EngineDevices();
-        Assert.SkipWhen(engine == null, "The engine has no device seam over the OS's HID yet.");
+        // Opted in: a setup that can't complete is a failure, not a skip (the tester asked for a hardware run).
+        var engine = EngineDevices(Serilog.Log.Logger, out var backend);
+        using var usb = backend; // null when libusb isn't there (a HID family needs none)
         var named = Environment.GetEnvironmentVariable("INFOPANEL_PANEL_CANDIDATE"); // vvvv:pppp@bus:address:port
-        Assert.SkipWhen(string.IsNullOrEmpty(named), "Name the panel: INFOPANEL_PANEL_CANDIDATE=vvvv:pppp@bus:address:port (as the engine's log lists it).");
+        Assert.False(string.IsNullOrEmpty(named), "INFOPANEL_PANEL_HW=thermaltake is set, but no panel is named: INFOPANEL_PANEL_CANDIDATE=vvvv:pppp@bus:address:port (as the engine's log lists it).");
         var trace = Environment.GetEnvironmentVariable("INFOPANEL_PANEL_TRACE");
-        var devices = string.IsNullOrEmpty(trace) ? engine! : new RecordingPanelDevices(engine!, trace);
+        IPanelDevices devices = string.IsNullOrEmpty(trace) ? engine : new RecordingPanelDevices(engine, trace);
         var parts = named!.Split('@', ':');
         var candidate = new PanelCandidate(Convert.ToUInt16(parts[0], 16), Convert.ToUInt16(parts[1], 16), byte.Parse(parts[2]), byte.Parse(parts[3]), parts[4]);
         var driver = new ThermaltakeDriver(devices);

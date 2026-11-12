@@ -40,7 +40,7 @@ They are declared in `panel.json`'s `settings`, `displayMask` and `flickerFix` w
 
 - **Windows**: the bulk panels (ChiZhu, TrofeoBulk, ALi) need the WinUSB driver bound, as in 1.4. HID panels need nothing.
 - **macOS**: no driver needed.
-- **Linux**: `99-infopanel-thermalright.rules` (in the package) gives the user at the seat access to the family's ids: copy it to `/etc/udev/rules.d/` and reload udev.
+- **Linux**: `70-infopanel-thermalright.rules` (in the package) gives the user at the seat access to the family's ids: copy it to `/etc/udev/rules.d/` and reload udev.
 - **SCSI panels**: `0416:5406` as mass storage is listed and not driven: macOS and Linux can't reach it ("Windows only"); on Windows it comes later, with the other two SCSI ids (`87cd:70db`, `0402:3922`), which aren't matched yet.
 
 ## Testing on a panel

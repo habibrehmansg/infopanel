@@ -26,7 +26,7 @@ InfoPanel.Panels.Acme/
   InfoPanel.Panels.Acme.csproj
   panel.json
   AcmeDriver.cs
-  99-infopanel-acme.rules
+  70-infopanel-acme.rules
 ```
 
 The project targets **.NET 10** (the engine's runtime; sensor plugins stay on .NET 8, so one project can't be both) and references the panel SDK without copying it, since the host gives the package its own:
@@ -43,7 +43,7 @@ The project targets **.NET 10** (the engine's runtime; sensor plugins stay on .N
   </ItemGroup>
   <ItemGroup>
     <None Update="panel.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="99-infopanel-acme.rules" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="70-infopanel-acme.rules" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
 ```
@@ -76,6 +76,8 @@ The udev rule lets a Linux user's session open the family's devices without root
 ```
 SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="000a", TAG+="uaccess"
 ```
+
+Name the rule file with a number below 73 (`70-infopanel-acme.rules`): systemd applies the `uaccess` tag to the user at the seat in `73-seat-late.rules`, and a rule that sorts after it (`99-…`) sets the tag too late, so an ordinary user still can't open the device.
 
 ## `panel.json`
 

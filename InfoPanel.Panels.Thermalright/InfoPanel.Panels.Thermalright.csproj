@@ -25,7 +25,7 @@
     <!-- Beside the DLL in its build and its publish (the packaging scripts take a driver's publish with its panel.json);
          the Core tests reference the package as a panel package (PanelPackage="true", not copied), so they run it from
          here. Linux's access rule for the family's USB and HID ids goes with it, shipped once a Linux package exists. -->
-    <None Update="99-infopanel-thermalright.rules" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="70-infopanel-thermalright.rules" CopyToOutputDirectory="PreserveNewest" />
     <None Update="panel.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- The same file, read by ThermalrightCatalog.Default, so the code never holds a second table. -->
     <EmbeddedResource Include="panel.json" LogicalName="InfoPanel.Panels.Thermalright.panel.json" />
