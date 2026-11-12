@@ -36,16 +36,25 @@ namespace InfoPanel.Sensors.NowPlaying;
 /// at most once a minute.
 /// </para>
 /// <para>
-/// The stream can give a track without its cover while the helper's <c>get</c> has it (the stream sends a cover only
-/// when MediaRemote's answer to a change carries it). So while the current track has none, the helper's <c>get</c> is
-/// run (<see cref="GetOf"/>) at <see cref="ArtAskTimes"/> after the stream's first line of that track, one at a time,
-/// each killed when it hasn't ended within <see cref="ArtAskLimit"/>; its cover is taken for that same track only (the
-/// same app, process, title, artist, album, ids and duration, <see cref="TrackOf"/>) and kept with the stream's later
-/// lines of it that lack one, as a cover the stream gave is. A track with none of a title, the player's ids or a duration
-/// can't be told from the app's next one: nothing is asked for it and no cover kept. A <c>get</c> is started outside the
-/// lock, so <see cref="Stop"/> never waits on a start; a new track, nothing playing, the stream's end and
-/// <see cref="Stop"/> end the tries and kill a <c>get</c> under way (or the one a start under way returns), never waiting
-/// for it; once a try or the stream has given the cover, or the last try has run, that track asks no more.
+/// The stream can go quiet after its first track (on macOS 27 it writes the current session once and then nothing at a
+/// change of track, whatever its options: MediaRemote's change notifications don't reach it), and it can give a track
+/// without its cover while the helper's <c>get</c> has it (it sends a cover only when MediaRemote's answer to a change
+/// carries it). So while the stream runs, the helper's <c>get</c> (<see cref="GetOf"/>) is run every
+/// <see cref="PollInterval"/>, one at a time, across the stream's runs too (a poll that finds one under way starts none,
+/// an earlier run's included, its start too, until it has exited and both its streams have ended), each killed when it
+/// hasn't ended within <see cref="GetLimit"/> (its answer then never taken), its first line bounded as the stream's are,
+/// its standard error counted, never kept. A <c>get</c> killed, abandoned, or exited with its output ended has
+/// <see cref="PipeLimit"/> for its pipes to end (a child of the helper can hold one); then their reads are cut, so it
+/// is retired once it has exited, whatever holds them. Its answer, known once it has exited and both its streams have
+/// ended or been cut, is the reading, as a stream line is (another track, its state, position and cover, or nothing
+/// playing: not when it came with anything on its standard error, a standard error cut at that deadline, or an exit
+/// other than 0, as the helper's own timeout does; nor an output cut there), unless the stream gave a line while it
+/// ran: then only its cover is taken, for the track that line gave and still without one.
+/// A cover is the reading's own track's only (the same app, process, title, artist, album, ids and duration,
+/// <see cref="TrackOf"/>) and kept with that track's later lines that lack one; a track with none of a title, the
+/// player's ids or a duration can't be told from the app's next one, so no cover is kept for it. A <c>get</c> is started
+/// outside the lock, so <see cref="Stop"/> never waits on a start; the stream's end and <see cref="Stop"/> end the polls
+/// and kill a <c>get</c> under way (or the one a start under way returns), never waiting for it.
 /// </para>
 /// <para>
 /// Each run's two streams are read on threads of their own, each taking its stream once and disposing it at its end; the
@@ -84,11 +93,17 @@ public sealed class MacNowPlayingReader : INowPlayingReader
 
     public static readonly TimeSpan ErrorLogInterval = TimeSpan.FromMinutes(1);
 
-    /// <summary>When a track's cover is asked of the helper's <c>get</c>, after the stream's first line of it without one.</summary>
-    public static IReadOnlyList<TimeSpan> ArtAskTimes { get; } = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)];
+    /// <summary>How often the helper's <c>get</c> is run while the stream runs: the stream can go quiet after its first track.</summary>
+    public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
     /// <summary>A <c>get</c> that hasn't ended this long after its start is killed.</summary>
-    public static readonly TimeSpan ArtAskLimit = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan GetLimit = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// A <c>get</c> killed, abandoned, or exited with its output ended has this long for its pipes to end (a child of the
+    /// helper can hold one open); then their reads are cut and it is let go of once it has exited.
+    /// </summary>
+    public static readonly TimeSpan PipeLimit = TimeSpan.FromSeconds(3);
 
     /// <summary>Variables that would make Perl load other code, left out of the helper's environment.</summary>
     public static IReadOnlyList<string> RemovedVariables { get; } = ["PERL5LIB", "PERL5OPT", "PERLLIB", "PERL5DB"];
@@ -116,7 +131,11 @@ public sealed class MacNowPlayingReader : INowPlayingReader
     private long _lastErrorLog = long.MinValue;
     private (string Script, string Framework)? _paths;
     private string? _latestTrack;
-    private ArtAsk? _ask;
+    private ITimer? _poll;
+    // The stream's lines the current run has taken: a get's answer is the reading only when none came while it ran.
+    private long _lines;
+    private GetRun? _get;
+    private bool _getWarned;
     // The current track's cover, from a get or the stream: kept with its lines that lack one.
     private (string Track, ReadOnlyMemory<byte> Art, string? Type)? _keptArt;
 
@@ -217,7 +236,7 @@ public sealed class MacNowPlayingReader : INowPlayingReader
             _run = null;
             _hasData = false;
             _latest = null;
-            asking = ForgetTrack();
+            asking = ForgetRun();
         }
 
         // A get under way is killed, never waited for.
@@ -281,7 +300,11 @@ public sealed class MacNowPlayingReader : INowPlayingReader
         var held = new HeldRun(run, this);
         _run = held;
         _hasData = false;
-        _lineWarned = _jsonWarned = _artWarned = false;
+        _lineWarned = _jsonWarned = _artWarned = _getWarned = false;
+        _lines = 0;
+        // While this run is current, the helper's get every PollInterval: the readings follow a stream gone quiet.
+        _poll?.Dispose();
+        _poll = _time.CreateTimer(_ => Poll(generation), null, PollInterval, PollInterval);
         _log.Information("Now Playing: the media helper started");
         new Thread(() => ReadOutput(held, generation)) { IsBackground = true, Name = "Now Playing output" }.Start();
         new Thread(() => ReadErrors(held)) { IsBackground = true, Name = "Now Playing errors" }.Start();
@@ -290,9 +313,10 @@ public sealed class MacNowPlayingReader : INowPlayingReader
 
     /// <summary>
     /// A run and who holds it: its owner (until it has ended or been stopped) and its two readers (until each has read its
-    /// stream to its end). The last to let go disposes it, so it is never disposed under a reader.
+    /// stream to its end). The last to let go disposes it, so it is never disposed under a reader; a get's run first calls
+    /// <paramref name="retired"/>, once its exit and both its streams' ends are known.
     /// </summary>
-    private sealed class HeldRun(IMediaHelperRun run, MacNowPlayingReader reader)
+    private sealed class HeldRun(IMediaHelperRun run, MacNowPlayingReader reader, Action? retired = null)
     {
         private int _holders = 3;
 
@@ -302,6 +326,18 @@ public sealed class MacNowPlayingReader : INowPlayingReader
         {
             if (Interlocked.Decrement(ref _holders) != 0)
                 return;
+            if (retired is not null)
+            {
+                try
+                {
+                    retired();
+                }
+                catch (Exception ex)
+                {
+                    reader.ReaderFailed("get's answer", ex);
+                }
+            }
+
             try
             {
                 run.Dispose();
@@ -346,7 +382,7 @@ public sealed class MacNowPlayingReader : INowPlayingReader
             _run = null;
             _hasData = false;
             _latest = null;
-            asking = ForgetTrack();
+            asking = ForgetRun();
             if (code != 0)
             {
                 _failed = true;
@@ -431,8 +467,6 @@ public sealed class MacNowPlayingReader : INowPlayingReader
         }
 
         bool warnJson = false, warnArt = false;
-        IMediaHelperRun? asking = null;
-        PendingAsk? pending = null;
         lock (_lock)
         {
             // Only the current run's lines are taken: none once it has exited or been stopped (skipped, Parsed still told).
@@ -444,23 +478,13 @@ public sealed class MacNowPlayingReader : INowPlayingReader
             }
             else if (current)
             {
-                // The cover a get or the stream gave for this track, kept with its lines that lack one.
-                if (snapshot is { Art: null } && !artTooBig && _keptArt is { } kept && kept.Track == track)
-                    snapshot = snapshot with { Art = kept.Art, ArtType = kept.Type };
-                else if (snapshot is { Art: { } art } && track is not null)
-                    _keptArt = (track, art, snapshot.ArtType);
-                _latest = snapshot;
-                _latestTrack = snapshot is null ? null : track;
-                _hasData = true;
+                _lines++;
+                Take(snapshot, track, artTooBig);
                 warnArt = artTooBig && !_artWarned;
                 _artWarned |= artTooBig;
-                asking = Track(snapshot, track, artTooBig, out pending);
             }
         }
 
-        // A get for a track no longer current is killed, never waited for.
-        KillQuietly(asking);
-        StartAsk(pending);
         if (warnJson)
             _log.Warning("Now Playing: a line of the media helper's output wasn't the JSON expected and was skipped");
         if (warnArt)
@@ -471,210 +495,284 @@ public sealed class MacNowPlayingReader : INowPlayingReader
     /// <summary>Called after each line of the helper's output is taken (or skipped). For tests.</summary>
     internal Action? Parsed { get; set; }
 
-    /// <summary>The tries to have the current track's cover from the helper's <c>get</c>. All under <see cref="_lock"/>.</summary>
-    private sealed class ArtAsk(string track, long lineAt)
+    /// <summary>
+    /// Under the lock, a reading taken (a stream line, or a get's answer when no stream line came while it ran): the cover
+    /// kept for its track is put on it when it has none; a cover it has is kept for its track; a cover of another track
+    /// is dropped. A cover never goes to another track than its own.
+    /// </summary>
+    private void Take(NowPlayingSnapshot? snapshot, string? track, bool artTooBig)
     {
-        /// <summary>The track's identity (<see cref="TrackOf"/>).</summary>
-        public readonly string Track = track;
+        if (snapshot is { Art: null } && !artTooBig && _keptArt is { } kept && kept.Track == track)
+            snapshot = snapshot with { Art = kept.Art, ArtType = kept.Type };
+        else if (snapshot is { Art: { } art } && track is not null)
+            _keptArt = (track, art, snapshot.ArtType);
+        else if (_keptArt is { } other && other.Track != track)
+            _keptArt = null;
+        _latest = snapshot;
+        _latestTrack = snapshot is null ? null : track;
+        _hasData = true;
+    }
 
-        /// <summary>When the stream's first line of the track without its cover was taken (a timestamp).</summary>
-        public readonly long LineAt = lineAt;
+    /// <summary>
+    /// A run of the helper's <c>get</c>: at most one at a time, across the stream's runs too (<see cref="_get"/>, held from
+    /// its poll until it is retired: its start failed, or its run has exited and both its streams have ended or been cut
+    /// at its deadline).
+    /// </summary>
+    private sealed class GetRun(long generation, long lines)
+    {
+        /// <summary>The stream's run it was asked for.</summary>
+        public readonly long Generation = generation;
 
-        /// <summary>The next try's index in <see cref="ArtAskTimes"/>.</summary>
-        public int Next;
+        /// <summary>The stream's lines taken when it was asked for: when more have been since, its answer is older.</summary>
+        public readonly long Lines = lines;
 
-        /// <summary>The next try's timer, or the running get's limit.</summary>
-        public ITimer? Timer;
+        // Under _lock.
 
-        /// <summary>The get under way, if one is.</summary>
+        /// <summary>Its run once started; null while its start is under way, outside the lock (<see cref="StartGet"/>).</summary>
         public IMediaHelperRun? Running;
 
-        /// <summary>A get's start is under way, outside the lock (<see cref="StartAsk"/>).</summary>
-        public bool Starting;
+        /// <summary>Kills it <see cref="GetLimit"/> after its start.</summary>
+        public ITimer? Limit;
 
-        /// <summary>No more tries: the cover was had, the last try ran, or the track isn't current any more.</summary>
-        public bool Ended;
+        /// <summary>Its stream's run ended or was stopped: killed (or its run, once its start returns), its answer never taken.</summary>
+        public bool Abandoned;
+
+        /// <summary>Killed at <see cref="GetLimit"/>: whatever it wrote before, its answer is never taken.</summary>
+        public bool TimedOut;
+
+        /// <summary>Its exit and its output's end are known (each told before it lets go of the run).</summary>
+        public bool HasExited, OutputEnded;
+
+        /// <summary>Cuts its pipes' reads <see cref="PipeLimit"/> after it was killed, abandoned, or exited with its output ended.</summary>
+        public ITimer? Deadline;
+
+        /// <summary>Retired: the reservation it held has ended.</summary>
+        public bool Done;
+
+        /// <summary>Cancelled at its deadline: its pipes' reads end there, whatever holds the pipes.</summary>
+        public readonly CancellationTokenSource Reads = new();
+
+        // Written by its output thread, its error thread and its exit, each before it lets go of the run; read once all
+        // have (HeldRun's last release orders them).
+
+        /// <summary>Its first line was read whole and was the JSON expected: <see cref="Answer"/> (null: nothing plays).</summary>
+        public bool Taken;
+        public NowPlayingSnapshot? Answer;
+        public string? Track;
+        public bool TooLong;
+        public bool Malformed;
+        public bool ArtTooBig;
+
+        /// <summary>It wrote to its standard error (only counted, never kept), or reading that failed.</summary>
+        public bool WroteError;
+
+        /// <summary>Its standard error hadn't ended at its deadline: whether it failed isn't known.</summary>
+        public bool ErrorCut;
+
+        /// <summary>Its exit code; -1 when unknown.</summary>
+        public int ExitCode = -1;
     }
-
-    /// <summary>A try reserved under the lock (<see cref="ArtAsk.Starting"/>), its get to start outside it.</summary>
-    private readonly record struct PendingAsk(ArtAsk Ask, MediaHelperStart Start);
 
     /// <summary>
-    /// Under the lock, once a line is taken: a track without its cover starts its tries (none when its tries have started
-    /// already, its cover is over the bounds, or it has no identity); any other line ends those of the track before.
-    /// Answers a get to kill, and in <paramref name="pending"/> a try due at once.
+    /// Under the lock: the stream ended or was stopped: no polls, no track, no cover kept. Answers a get to kill: the get
+    /// under way is abandoned but stays reserved until it is retired, so no poll of a later run starts one beside it.
     /// </summary>
-    private IMediaHelperRun? Track(NowPlayingSnapshot? snapshot, string? track, bool artTooBig, out PendingAsk? pending)
+    private IMediaHelperRun? ForgetRun()
     {
-        pending = null;
-        if (snapshot is { Art: null } && !artTooBig && track is not null)
-        {
-            if (_ask is { } ask && ask.Track == track)
-                return null;
-            var asking = EndAsk();
-            _keptArt = null;
-            _ask = new ArtAsk(track, _time.GetTimestamp());
-            _log.Debug("Now Playing: the stream gave a track without its cover; it is asked of the media helper's get");
-            pending = Schedule(_ask);
-            return asking;
-        }
-
-        if (_keptArt is { } kept && kept.Track != track)
-            _keptArt = null;
-        return EndAsk();
-    }
-
-    /// <summary>Under the lock: ends the tries, if any; answers the get under way, to kill.</summary>
-    private IMediaHelperRun? EndAsk()
-    {
-        if (_ask is not { } ask)
-            return null;
-        _ask = null;
-        ask.Ended = true;
-        ask.Timer?.Dispose();
-        ask.Timer = null;
-        var running = ask.Running;
-        ask.Running = null;
-        return running;
-    }
-
-    /// <summary>Under the lock: the stream ended or was stopped: no track, no tries, no cover kept. Answers a get to kill.</summary>
-    private IMediaHelperRun? ForgetTrack()
-    {
+        _poll?.Dispose();
+        _poll = null;
         _latestTrack = null;
         _keptArt = null;
-        return EndAsk();
+        if (_get is not { Abandoned: false } get)
+            return null;
+        get.Abandoned = true;
+        get.Limit?.Dispose();
+        get.Limit = null;
+        if (get.Running is not null)
+            ArmDeadline(get);
+        return get.Running;
     }
 
     /// <summary>
-    /// Under the lock: the next try's timer at its time after the line; when that has passed (or the timer is
-    /// <paramref name="due"/>), the try reserved and answered, its get to start outside the lock (<see cref="StartAsk"/>).
-    /// None after the last, nor while a get is starting or under way.
+    /// Under the lock: a get killed, abandoned, or exited with its output ended gets <see cref="PipeLimit"/> for its pipes
+    /// to end, once; then their reads are cut (<see cref="CutReads"/>), so its run is retired once it has exited, whatever
+    /// holds its pipes.
     /// </summary>
-    private PendingAsk? Schedule(ArtAsk ask, bool due = false)
+    private void ArmDeadline(GetRun get)
     {
-        if (ask.Ended || ask.Starting || ask.Running != null)
-            return null;
-        if (ask.Next >= ArtAskTimes.Count)
+        if (get.Done || get.Deadline is not null || get.Reads.IsCancellationRequested)
+            return;
+        get.Deadline = _time.CreateTimer(_ => CutReads(get), null, PipeLimit, Timeout.InfiniteTimeSpan);
+    }
+
+    /// <summary>A get's deadline: its pipes' reads end now (each reader then lets go of the run as at its stream's end).</summary>
+    private void CutReads(GetRun get)
+    {
+        lock (_lock)
         {
-            ask.Ended = true;
-            return null;
+            // Kept (disposed) until its retirement, so the gap before the cancel below can't arm it again.
+            get.Deadline?.Dispose();
+            if (get.Done)
+                return;
         }
 
-        if (!due)
+        _log.Debug("Now Playing: the media helper's get's pipes didn't end within {Seconds} s; their reads are cut", PipeLimit.TotalSeconds);
+        try
         {
-            var wait = ArtAskTimes[ask.Next] - _time.GetElapsedTime(ask.LineAt);
-            if (wait > TimeSpan.Zero)
+            get.Reads.Cancel();
+        }
+        catch (Exception ex)
+        {
+            ReaderFailed("get's pipes", ex);
+        }
+    }
+
+    /// <summary>
+    /// One read of a get's pipe that ends when <paramref name="cut"/> is cancelled, whether or not the pipe does (a read
+    /// left under way is let go of, what it meets observed); then <see cref="OperationCanceledException"/>.
+    /// </summary>
+    private static int ReadUntil(Stream stream, byte[] buffer, int offset, int count, CancellationToken cut)
+    {
+        cut.ThrowIfCancellationRequested();
+        var read = stream.ReadAsync(buffer, offset, count, cut);
+        if (!read.IsCompleted)
+        {
+            try
             {
-                ask.Timer = _time.CreateTimer(_ => Due(ask), null, wait, Timeout.InfiniteTimeSpan);
-                return null;
+                read.Wait(cut);
+            }
+            catch (OperationCanceledException)
+            {
+                read.ContinueWith(static t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                throw;
+            }
+            catch (AggregateException)
+            {
+                // The read failed or was cancelled: its own exception, below.
             }
         }
 
-        ask.Next++;
-        if (_run is null || _paths is not { } paths)
-        {
-            ask.Ended = true;
-            return null;
-        }
-
-        ask.Starting = true;
-        return new PendingAsk(ask, GetOf(paths.Script, paths.Framework));
+        return read.GetAwaiter().GetResult();
     }
 
-    private void Due(ArtAsk ask)
+    /// <summary>
+    /// The poll, every <see cref="PollInterval"/> while the stream's run <paramref name="generation"/> is current: one get,
+    /// reserved under the lock and started outside it; none while one is under way, an earlier run's included.
+    /// </summary>
+    private void Poll(long generation)
     {
-        PendingAsk? pending;
+        GetRun get;
+        MediaHelperStart start;
         lock (_lock)
         {
-            if (_ask != ask || ask.Ended || ask.Starting || ask.Running != null)
+            if (generation != _generation || _run is null || _get is not null || _paths is not { } paths)
                 return;
-            ask.Timer?.Dispose();
-            ask.Timer = null;
-            pending = Schedule(ask, due: true);
+            get = new GetRun(generation, _lines);
+            _get = get;
+            start = GetOf(paths.Script, paths.Framework);
         }
 
-        StartAsk(pending);
+        StartGet(get, start);
     }
 
     /// <summary>
     /// Outside the lock, so that a start that blocks never holds <see cref="Stop"/> or the stream's lines: starts the get
-    /// <paramref name="pending"/> reserved, then hands it its run under the lock, with its limit. A run returned after its
-    /// track's tries ended (a new track, nothing playing, the stream's end, <see cref="Stop"/>) is killed at once, never
-    /// waited for; a start that fails goes on to the next try.
+    /// <paramref name="get"/> reserved, then hands it its run under the lock, with its limit. A run returned after its
+    /// stream's run ended (the stream's end, <see cref="Stop"/>) is killed at once, never waited for, and still holds the
+    /// reservation until it is retired; a start that fails ends the reservation and leaves it to the next poll.
     /// </summary>
-    private void StartAsk(PendingAsk? pending)
+    private void StartGet(GetRun get, MediaHelperStart start)
     {
-        while (pending is { } next)
+        IMediaHelperRun? run = null;
+        Exception? failed = null;
+        try
         {
-            var ask = next.Ask;
-            pending = null;
-            IMediaHelperRun? run = null;
-            try
-            {
-                run = _process.Start(next.Start);
-            }
-            catch (Exception ex)
-            {
-                _log.Debug("Now Playing: the media helper's get couldn't be started ({Error})", ex.GetType().Name);
-            }
+            run = _process.Start(start);
+        }
+        catch (Exception ex)
+        {
+            failed = ex;
+        }
 
-            var late = false;
+        var late = false;
+        var warn = false;
+        lock (_lock)
+        {
+            get.Running = run;
+            if (run is null)
+            {
+                if (_get == get)
+                    _get = null;
+                warn = !get.Abandoned && !_getWarned;
+                _getWarned |= warn;
+            }
+            else if (get.Abandoned)
+            {
+                late = true;
+                ArmDeadline(get);
+            }
+            else
+            {
+                get.Limit = _time.CreateTimer(_ => Limit(get, run), null, GetLimit, Timeout.InfiniteTimeSpan);
+            }
+        }
+
+        if (warn)
+            _log.Warning("Now Playing: the media helper's get couldn't be started ({Error}); it is tried at each poll", failed?.GetType().Name ?? "none");
+        if (run is null)
+            return;
+        if (late)
+            KillQuietly(run);
+        // Read and let go of as any get's run; retired once it has exited and both its streams have ended (a late one's
+        // answer is never taken).
+        var held = new HeldRun(run, this, () => Retired(get));
+        new Thread(() => ReadGet(held, get)) { IsBackground = true, Name = "Now Playing get" }.Start();
+        new Thread(() => DrainGet(held, get)) { IsBackground = true, Name = "Now Playing get errors" }.Start();
+        run.Exited.ContinueWith(t =>
+        {
+            get.ExitCode = t.IsCompletedSuccessfully ? t.Result : -1;
             lock (_lock)
             {
-                ask.Starting = false;
-                if (run is null)
-                {
-                    if (_ask == ask)
-                        pending = Schedule(ask);
-                }
-                else if (_ask != ask || ask.Ended)
-                {
-                    late = true;
-                }
-                else
-                {
-                    ask.Running = run;
-                    ask.Timer?.Dispose();
-                    ask.Timer = _time.CreateTimer(_ => Limit(ask, run), null, ArtAskLimit, Timeout.InfiniteTimeSpan);
-                }
+                get.HasExited = true;
+                if (get.OutputEnded)
+                    ArmDeadline(get);
             }
 
-            if (run is null)
-                continue;
-            if (late)
-                KillQuietly(run);
-            // Read and let go of as any get's run; a late one's answer is never taken (Answered: not its ask's run).
-            var held = new HeldRun(run, this);
-            new Thread(() => ReadAsk(held, ask)) { IsBackground = true, Name = "Now Playing cover" }.Start();
-            new Thread(() => DrainAsk(held)) { IsBackground = true, Name = "Now Playing cover errors" }.Start();
-            run.Exited.ContinueWith(_ => held.Release(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-        }
+            held.Release();
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
-    /// <summary>A get still under way <see cref="ArtAskLimit"/> after its start is killed: its output's end is its answer.</summary>
-    private void Limit(ArtAsk ask, IMediaHelperRun run)
+    /// <summary>
+    /// A get still under way <see cref="GetLimit"/> after its start is marked timed out under the lock, then killed:
+    /// whatever it wrote before (a whole answer, even "nothing plays") is never taken.
+    /// </summary>
+    private void Limit(GetRun get, IMediaHelperRun run)
     {
         lock (_lock)
         {
-            if (ask.Running != run)
+            if (_get != get || get.Running != run || get.Abandoned || get.TimedOut)
                 return;
+            get.TimedOut = true;
+            get.Limit?.Dispose();
+            get.Limit = null;
+            ArmDeadline(get);
         }
 
-        _log.Debug("Now Playing: the media helper's get didn't end within {Seconds} s; killed", ArtAskLimit.TotalSeconds);
+        _log.Debug("Now Playing: the media helper's get didn't end within {Seconds} s; killed", GetLimit.TotalSeconds);
         KillQuietly(run);
     }
 
-    /// <summary>A get's output thread: takes its first line (bounded as the stream's), reads on to its end, then answers.</summary>
-    private void ReadAsk(HeldRun held, ArtAsk ask)
+    /// <summary>A get's output thread: takes its first line (bounded as the stream's) and reads on to its end.</summary>
+    private void ReadGet(HeldRun held, GetRun get)
     {
         NowPlayingSnapshot? answer = null;
         string? track = null;
-        bool seen = false, tooLong = false, malformed = false, artTooBig = false;
+        bool seen = false, tooLong = false, malformed = false, artTooBig = false, cut = false;
         try
         {
             using var output = held.Run.Output;
-            ReadLines(output, MaxLineBytes, line =>
+            var reads = get.Reads.Token;
+            ReadLines((buffer, offset, count) => ReadUntil(output, buffer, offset, count, reads), MaxLineBytes, line =>
             {
                 if (seen || line.IsEmpty)
                     return;
@@ -699,6 +797,11 @@ public sealed class MacNowPlayingReader : INowPlayingReader
         {
             // The pipe broke or closed under it: its end.
         }
+        catch (OperationCanceledException)
+        {
+            // Its deadline cut the read: its output never ended.
+            cut = true;
+        }
         catch (Exception ex)
         {
             ReaderFailed("get's output", ex);
@@ -707,11 +810,29 @@ public sealed class MacNowPlayingReader : INowPlayingReader
         {
             try
             {
-                Answered(ask, held.Run, malformed ? null : answer, track, tooLong, malformed, artTooBig);
+                // An answer only when its first line was read whole and was the JSON expected, and its output ended; a get
+                // that wrote nothing answers nothing (never "nothing playing").
+                var taken = seen && !tooLong && !malformed && !cut;
+                if (taken && answer is { App: { } id })
+                    answer = answer with { App = AppName(id) };
+                get.Answer = taken ? answer : null;
+                get.Taken = taken;
+                get.Track = track;
+                get.TooLong = tooLong;
+                get.Malformed = malformed;
+                get.ArtTooBig = artTooBig;
             }
             catch (Exception ex)
             {
                 ReaderFailed("get's output", ex);
+            }
+
+            // Its output is done with: once it has exited too, its standard error has PipeLimit to end.
+            lock (_lock)
+            {
+                get.OutputEnded = true;
+                if (get.HasExited)
+                    ArmDeadline(get);
             }
 
             held.Release();
@@ -719,73 +840,90 @@ public sealed class MacNowPlayingReader : INowPlayingReader
     }
 
     /// <summary>
-    /// A get's answer: its cover, for the track the stream gives now and still without one, is taken; else the next try.
-    /// Nothing once its tries have ended.
+    /// A get retired, once: it has exited and both its streams have ended, or their reads were cut at its deadline
+    /// (<see cref="PipeLimit"/>). The reservation ends. Its answer, when its stream's run is still current and it was
+    /// neither abandoned nor killed at its limit, is the reading when no stream line came while it ran; else only its
+    /// cover, for the track that line gave and still without one. "Nothing plays" that came with anything on its standard
+    /// error, a standard error still open at its deadline, or an exit other than 0 isn't taken: the helper answers so when
+    /// it failed, its own timeout included (its MediaRemote callbacks not answering within 2 s: a line on its standard
+    /// error, then <c>null</c>, exit 0).
     /// </summary>
-    private void Answered(ArtAsk ask, IMediaHelperRun run, NowPlayingSnapshot? answer, string? track, bool tooLong, bool malformed, bool artTooBig)
+    private void Retired(GetRun get)
     {
-        bool warnLine, warnJson, warnArt;
-        PendingAsk? pending = null;
+        bool warnLine, warnJson, warnArt, failedNull;
         lock (_lock)
         {
-            if (_ask != ask || ask.Running != run)
+            if (_get == get)
+                _get = null;
+            get.Done = true;
+            get.Limit?.Dispose();
+            get.Limit = null;
+            get.Deadline?.Dispose();
+            get.Deadline = null;
+            get.Running = null;
+            if (get.Abandoned || get.TimedOut || get.Generation != _generation || _run is null)
                 return;
-            ask.Running = null;
-            ask.Timer?.Dispose();
-            ask.Timer = null;
-            warnLine = tooLong && !_lineWarned;
-            _lineWarned |= tooLong;
-            warnJson = malformed && !_jsonWarned;
-            _jsonWarned |= malformed;
-            warnArt = artTooBig && !_artWarned;
-            _artWarned |= artTooBig;
-            if (answer is { Art: { } art } && track == ask.Track && _latestTrack == ask.Track && _latest is { Art: null } latest)
+            warnLine = get.TooLong && !_lineWarned;
+            _lineWarned |= get.TooLong;
+            warnJson = get.Malformed && !_jsonWarned;
+            _jsonWarned |= get.Malformed;
+            warnArt = get.ArtTooBig && !_artWarned;
+            _artWarned |= get.ArtTooBig;
+            failedNull = get.Taken && get.Answer is null && (get.WroteError || get.ErrorCut || get.ExitCode != 0);
+            if (get.Taken && !failedNull)
             {
-                _keptArt = (ask.Track, art, answer.ArtType);
-                _latest = latest with { Art = art, ArtType = answer.ArtType };
-                ask.Ended = true;
-            }
-            else if (artTooBig && track == ask.Track)
-            {
-                // Its cover is over the bounds: so it will be at the next try.
-                ask.Ended = true;
-            }
-            else
-            {
-                pending = Schedule(ask);
+                if (get.Lines == _lines)
+                {
+                    Take(get.Answer, get.Track, get.ArtTooBig);
+                }
+                else if (get.Answer is { Art: { } art } answer && get.Track is { } track && track == _latestTrack && _latest is { Art: null } latest)
+                {
+                    _keptArt = (track, art, answer.ArtType);
+                    _latest = latest with { Art = art, ArtType = answer.ArtType };
+                }
             }
         }
 
-        StartAsk(pending);
         if (warnLine)
             _log.Warning("Now Playing: a line of the media helper's output was over {Max} bytes and was dropped", MaxLineBytes);
         if (warnJson)
             _log.Warning("Now Playing: a line of the media helper's output wasn't the JSON expected and was skipped");
         if (warnArt)
             _log.Warning("Now Playing: cover art over {Max} bytes was left out", NowPlayingSource.MaxArtBytes);
+        if (failedNull)
+            _log.Debug("Now Playing: the media helper's get said nothing plays with an error or exit code {Code}; not taken", get.ExitCode);
     }
 
-    /// <summary>A get's standard error, read to its end and never kept (it can name what plays).</summary>
-    private void DrainAsk(HeldRun held)
+    /// <summary>A get's standard error, read to its end, its bytes counted and never kept (it can name what plays).</summary>
+    private void DrainGet(HeldRun held, GetRun get)
     {
+        bool wrote = false, cut = false;
         try
         {
             using var error = held.Run.Error;
+            var reads = get.Reads.Token;
             var chunk = new byte[4096];
-            while (error.Read(chunk, 0, chunk.Length) > 0)
-            {
-            }
+            while (ReadUntil(error, chunk, 0, chunk.Length, reads) > 0)
+                wrote = true;
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
             // The pipe broke or closed under it: its end.
         }
+        catch (OperationCanceledException)
+        {
+            // Its deadline cut the read: a child of the helper holds it.
+            cut = true;
+        }
         catch (Exception ex)
         {
+            wrote = true;
             ReaderFailed("get's standard error", ex);
         }
         finally
         {
+            get.WroteError = wrote;
+            get.ErrorCut = cut;
             held.Release();
         }
     }
@@ -905,13 +1043,17 @@ public sealed class MacNowPlayingReader : INowPlayingReader
     /// <paramref name="onLine"/>; a line longer than <paramref name="maxBytes"/> is dropped whole, with
     /// <paramref name="onTooLong"/>. A last line without its <c>\n</c> is handed over too.
     /// </summary>
-    internal static void ReadLines(Stream stream, int maxBytes, SpanAction onLine, Action onTooLong)
+    internal static void ReadLines(Stream stream, int maxBytes, SpanAction onLine, Action onTooLong) =>
+        ReadLines(stream.Read, maxBytes, onLine, onTooLong);
+
+    /// <summary><see cref="ReadLines(Stream, int, SpanAction, Action)"/> through <paramref name="readInto"/>, a stream's read.</summary>
+    private static void ReadLines(Func<byte[], int, int, int> readInto, int maxBytes, SpanAction onLine, Action onTooLong)
     {
         var chunk = new byte[64 * 1024];
         var line = new ArrayBufferWriter<byte>(64 * 1024);
         var dropping = false;
         int read;
-        while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
+        while ((read = readInto(chunk, 0, chunk.Length)) > 0)
         {
             var span = chunk.AsSpan(0, read);
             while (!span.IsEmpty)

@@ -12,7 +12,9 @@ namespace InfoPanel.Core.Tests.Sensors.NowPlaying;
 /// nothing playing, missing and null keys, base64 art and its type, art over the bound left out, malformed lines skipped
 /// with one warning, a line over the bound dropped), its process (started on use with absolute paths and Perl's own
 /// variables removed, SIGTERM then kill, an exit of 0 started again, any other <c>helperFailed</c> and not started again,
-/// no helper <c>helperMissing</c>), app names resolved once per id, and no title in the log. No real helper runs here.
+/// no helper <c>helperMissing</c>), app names resolved once per id, the helper's get every 2 s while in use (the readings
+/// follow a stream gone quiet, a cover only with its own track, one get at a time, bounded, never waited for), and no
+/// title in the log. No real helper runs here.
 /// </summary>
 public sealed class MacNowPlayingReaderTests : IDisposable
 {
@@ -51,10 +53,15 @@ public sealed class MacNowPlayingReaderTests : IDisposable
 
         public readonly ManualResetEventSlim GetEntered = new();
 
+        /// <summary>How many gets' starts began, those still blocked by <see cref="GetGate"/> included.</summary>
+        public int GetAttempts;
+
         public IMediaHelperRun Start(MediaHelperStart start)
         {
             if (Throws is { } e)
                 throw e;
+            if (start.Arguments.Contains("get"))
+                Interlocked.Increment(ref GetAttempts);
             if (GetGate is { } gate && start.Arguments.Contains("get"))
             {
                 GetEntered.Set();
@@ -86,17 +93,25 @@ public sealed class MacNowPlayingReaderTests : IDisposable
 
         public FakeRun()
         {
-            _output = new AnonymousPipeClientStream(PipeDirection.In, _out.ClientSafePipeHandle);
+            _output = new EndSignalingStream(new AnonymousPipeClientStream(PipeDirection.In, _out.ClientSafePipeHandle), OutputRead);
             _error = new AnonymousPipeClientStream(PipeDirection.In, _err.ClientSafePipeHandle);
         }
 
         public Stream Output => _disposed || Broken ? throw new InvalidOperationException("The run is disposed") : _output;
         public Stream Error => _disposed || Broken ? throw new InvalidOperationException("The run is disposed") : _error;
 
+        /// <summary>Set once its reader has read its standard output to its end.</summary>
+        public readonly ManualResetEventSlim OutputRead = new();
+
         /// <summary>Its streams throw what a reader doesn't expect.</summary>
         public volatile bool Broken;
         public Task<int> Exited => _exited.Task;
         public bool Disposed => _disposed;
+
+        /// <summary>How many times it was disposed.</summary>
+        public int Disposals => Volatile.Read(ref _disposals);
+
+        private int _disposals;
         public int Terminates;
         public int Kills;
 
@@ -126,6 +141,9 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         /// <summary>It exits while what it started still holds its pipes open: its readers read on.</summary>
         public void Exit(int code) => _exited.TrySetResult(code);
 
+        /// <summary>Its standard output's last writer is gone, its standard error still open.</summary>
+        public void CloseOutput() => _out.Dispose();
+
         /// <summary>The pipes' last writer is gone: its readers reach their end.</summary>
         public void ClosePipes()
         {
@@ -146,13 +164,57 @@ public sealed class MacNowPlayingReaderTests : IDisposable
                 End(0);
         }
 
+        /// <summary>Whether a kill ends it at once; when not, it runs on until <see cref="End"/>.</summary>
+        public bool EndsOnKill = true;
+
         public void Kill()
         {
             Kills++;
-            End(137);
+            if (EndsOnKill)
+                End(137);
         }
 
-        public void Dispose() => _disposed = true;
+        public void Dispose()
+        {
+            Interlocked.Increment(ref _disposals);
+            _disposed = true;
+        }
+    }
+
+    /// <summary>A stream that sets <paramref name="ended"/> once a read of it has met its end: its reader read it whole.</summary>
+    private sealed class EndSignalingStream(Stream inner, ManualResetEventSlim ended) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override int Read(byte[] buffer, int offset, int count) => Ended(inner.Read(buffer, offset, count));
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            Ended(await inner.ReadAsync(buffer, cancellationToken));
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        private int Ended(int read)
+        {
+            if (read == 0)
+                ended.Set();
+            return read;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                inner.Dispose();
+            base.Dispose(disposing);
+        }
     }
 
     private sealed class CollectingSink(List<LogEvent> events) : Serilog.Core.ILogEventSink
@@ -691,7 +753,7 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         }
     }
 
-    // ---- A cover the stream leaves out: asked of the helper's get ----
+    // ---- A cover the stream leaves out: from the helper's get, run every 2 s ----
 
     /// <summary>A track as the stream gives it without its cover (the helper's stream can, while its get has it).</summary>
     private const string NoArt = """
@@ -701,6 +763,11 @@ public sealed class MacNowPlayingReaderTests : IDisposable
     /// <summary>The same track as the helper's get gives it: the payload alone, with its cover.</summary>
     private const string GetWithArt = """
         {"processIdentifier":4242,"playing":true,"title":"A Secret Song","artist":"Secret Band","album":"Secret Album","uniqueIdentifier":"u-1","contentItemIdentifier":"c-1","durationMicros":200000000,"elapsedTimeMicros":3000000,"artworkData":"iVBORw0KGgo=","artworkMimeType":"image/png"}
+        """;
+
+    /// <summary>That track as the helper's get gives it without its cover.</summary>
+    private const string GetNoArt = """
+        {"processIdentifier":4242,"playing":true,"title":"A Secret Song","artist":"Secret Band","album":"Secret Album","uniqueIdentifier":"u-1","contentItemIdentifier":"c-1","durationMicros":200000000,"elapsedTimeMicros":3000000}
         """;
 
     /// <summary>Prints <paramref name="line"/> on <paramref name="run"/>, a stream's, and waits until the reader has taken it.</summary>
@@ -754,20 +821,27 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         run.Print(GetWithArt);
         Answered(run);
 
-        // Its cover, with the rest as the stream gave it.
+        // Its cover, with the rest as the get gave it (no stream line came while it ran, so its answer is the reading).
         Assert.True(reader.TryRead(out s));
         Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s!.Art!.Value.ToArray());
         Assert.Equal("image/png", s.ArtType);
         Assert.Equal("A Secret Song", s.Title);
-        Assert.Equal(1, s.Position);
+        Assert.Equal(3, s.Position);
 
-        // The stream's next lines for that track, still without it, keep it; nothing more is asked.
+        // The stream's next lines for that track, still without it, keep it.
         PrintOn(stream, NoArt.Replace("1000000", "4000000", StringComparison.Ordinal));
         Assert.True(reader.TryRead(out s));
         Assert.Equal(4, s!.Position);
         Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s.Art!.Value.ToArray());
-        _time.Advance(TimeSpan.FromSeconds(30));
-        Assert.Equal(2, StartCount);
+
+        // So does the next poll's get when it gives that track without it.
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(3, StartCount);
+        _process.Runs[2].Print(GetNoArt);
+        Answered(_process.Runs[2]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal(3, s!.Position);
+        Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s.Art!.Value.ToArray());
 
         // Neither what plays nor the get's standard error reaches the log.
         foreach (var e in _events)
@@ -778,60 +852,57 @@ public sealed class MacNowPlayingReaderTests : IDisposable
     }
 
     [Fact]
-    public void A_get_gives_its_cover_only_for_the_same_track_and_the_tries_end_with_the_one_10_s_after_the_line()
+    public void A_gets_cover_goes_only_with_its_own_track_and_a_get_that_answers_nothing_changes_nothing()
     {
         var reader = Reader();
         reader.Start();
         var stream = _process.Runs[0];
-
-        // A track with its cover asks nothing.
-        PrintOn(stream, Full);
-        _time.Advance(TimeSpan.FromSeconds(30));
-        Assert.Equal(1, StartCount);
-
         PrintOn(stream, NoArt);
-        _time.Advance(TimeSpan.FromSeconds(2.1));
+
+        // The player moved on: the get gives another track with its cover. That track is the reading, with its own
+        // cover; the cover never goes to the track the stream gave.
+        _time.Advance(TimeSpan.FromSeconds(2));
         Assert.Equal(2, StartCount);
-        // The player moved on: another track's cover isn't taken.
         _process.Runs[1].Print(GetWithArt.Replace("A Secret Song", "Another Secret Song", StringComparison.Ordinal));
         Answered(_process.Runs[1]);
         Assert.True(reader.TryRead(out var s));
-        Assert.Null(s!.Art);
-
-        // The next 5 s after the line: nothing plays, it says.
-        _time.Advance(TimeSpan.FromSeconds(2.8));
-        Assert.Equal(2, StartCount);
-        _time.Advance(TimeSpan.FromSeconds(0.2));
-        Assert.Equal(3, StartCount);
-        _process.Runs[2].Print("null");
-        Answered(_process.Runs[2]);
-
-        // The last 10 s after the line: no answer at all. Then no more.
-        _time.Advance(TimeSpan.FromSeconds(4.8));
-        Assert.Equal(3, StartCount);
-        _time.Advance(TimeSpan.FromSeconds(0.2));
-        Assert.Equal(4, StartCount);
-        Answered(_process.Runs[3]);
-        _time.Advance(TimeSpan.FromSeconds(60));
-        Assert.Equal(4, StartCount);
+        Assert.Equal("Another Secret Song", s!.Title);
+        Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s.Art!.Value.ToArray());
+        PrintOn(stream, NoArt);
         Assert.True(reader.TryRead(out s));
-        Assert.Null(s!.Art);
+        Assert.Equal("A Secret Song", s!.Title);
+        Assert.Null(s.Art);
 
-        // The same track again asks nothing more: the tries were its own.
-        PrintOn(stream, NoArt.Replace("1000000", "9000000", StringComparison.Ordinal));
-        _time.Advance(TimeSpan.FromSeconds(30));
+        // A get that ends without a line, or with one that isn't a payload, changes nothing (it is never "nothing plays").
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(3, StartCount);
+        Answered(_process.Runs[2]);
+        _time.Advance(TimeSpan.FromSeconds(2));
         Assert.Equal(4, StartCount);
+        _process.Runs[3].Print("{ broken");
+        Answered(_process.Runs[3]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal("A Secret Song", s!.Title);
+        Assert.Equal(1, Warnings("wasn't the JSON expected"));
+
+        // Nothing plays, the next one says.
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(5, StartCount);
+        _process.Runs[4].Print("null");
+        Answered(_process.Runs[4]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Null(s);
     }
 
     [Fact]
-    public async Task A_get_is_killed_5_s_on_and_a_new_track_nothing_playing_or_Stop_end_the_tries_killing_the_get_never_waiting()
+    public async Task A_get_is_killed_5_s_on_and_the_streams_end_or_Stop_kill_the_get_under_way_never_waiting()
     {
         var reader = Reader();
         reader.Start();
         var stream = _process.Runs[0];
         PrintOn(stream, NoArt);
 
-        // A get that doesn't answer is killed 5 s after it started; the try due at 5 s after the line goes at once.
+        // A get that doesn't answer is killed 5 s after it started; the next poll runs after it.
         _time.Advance(TimeSpan.FromSeconds(2.1));
         Assert.Equal(2, StartCount);
         var hung = _process.Runs[1];
@@ -839,30 +910,32 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         Assert.Equal(0, hung.Kills);
         _time.Advance(TimeSpan.FromSeconds(0.2));
         Assert.Equal(1, hung.Kills);
-        Assert.True(SpinWait.SpinUntil(() => StartCount == 3, TimeSpan.FromSeconds(10)), "the next try went at once");
+        Assert.True(SpinWait.SpinUntil(() => hung.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the killed get");
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(3, StartCount);
         var second = _process.Runs[2];
 
-        // A new track: the get under way is killed, and the tries start again for it.
-        PrintOn(stream, NoArt.Replace("u-1", "u-2", StringComparison.Ordinal).Replace("A Secret Song", "Next Secret Song", StringComparison.Ordinal));
+        // The stream ends (exit 0): the get under way is killed, and none runs while the stream waits its 2 s to start again.
+        stream.End(0);
         Assert.Equal(1, second.Kills);
-        _time.Advance(TimeSpan.FromSeconds(2.1));
-        Assert.True(SpinWait.SpinUntil(() => StartCount == 4, TimeSpan.FromSeconds(10)));
-        var third = _process.Runs[3];
-
-        // Nothing playing ends them too.
-        PrintOn(stream, """{"type":"data","diff":false,"payload":{}}""");
-        Assert.Equal(1, third.Kills);
-        _time.Advance(TimeSpan.FromSeconds(30));
+        // It holds its reservation until its readers have let go of it, on threads of their own: the next run's poll
+        // below must find it retired.
+        Assert.True(SpinWait.SpinUntil(() => second.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the killed get");
+        _time.Advance(TimeSpan.FromSeconds(1.9));
+        Assert.Equal(3, StartCount);
+        _time.Advance(TimeSpan.FromSeconds(0.2));
         Assert.Equal(4, StartCount);
-
-        // And so does Stop: the get is killed at once, while the stream still has its 3 s to end.
+        Assert.Contains("stream", _process.Starts[3].Arguments);
+        stream = _process.Runs[3];
         PrintOn(stream, NoArt);
-        _time.Advance(TimeSpan.FromSeconds(2.1));
+
+        // Stop: the get is killed at once, while the stream still has its 3 s to end.
+        _time.Advance(TimeSpan.FromSeconds(2));
         Assert.Equal(5, StartCount);
-        var fourth = _process.Runs[4];
+        var third = _process.Runs[4];
         stream.EndsOnTerminate = false;
         var stopped = reader.StopAsync();
-        Assert.Equal(1, fourth.Kills);
+        Assert.Equal(1, third.Kills);
         Assert.Equal(0, stream.Kills);
         Assert.False(stopped.IsCompleted);
         _time.Advance(TimeSpan.FromSeconds(3.1));
@@ -948,40 +1021,54 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         $$"""{"processIdentifier":4242,"playing":true,"durationMicros":{{durationMicros}},"elapsedTimeMicros":2000000,"artworkData":"iVBORw0KGgo=","artworkMimeType":"image/png"}""";
 
     [Fact]
-    public void A_track_without_enough_identity_asks_nothing_and_untagged_clips_of_one_app_keep_their_own_covers()
+    public void A_track_without_enough_identity_keeps_no_cover_and_untagged_clips_of_one_app_keep_their_own_covers()
     {
         var reader = Reader();
         reader.Start();
         var stream = _process.Runs[0];
 
-        // No title, no ids, no duration: nothing tells this clip from the app's next one, so no get is run for it.
+        // No title, no ids, no duration: nothing tells this clip from the app's next one. The get's answer is read with
+        // the cover it gives, but that cover isn't kept: the stream's next line of it has none.
         PrintOn(stream, """{"type":"data","diff":false,"payload":{"processIdentifier":4242,"playing":true,"elapsedTimeMicros":1000000}}""");
-        _time.Advance(TimeSpan.FromSeconds(30));
-        Assert.Equal(1, StartCount);
-
-        // Two untagged clips, told apart by their durations: a get answering with the other clip gives this one nothing.
-        PrintOn(stream, Clip(30_000_000));
-        _time.Advance(TimeSpan.FromSeconds(2.1));
+        _time.Advance(TimeSpan.FromSeconds(2));
         Assert.Equal(2, StartCount);
-        _process.Runs[1].Print(ClipGet(45_000_000));
+        _process.Runs[1].Print("""{"processIdentifier":4242,"playing":true,"elapsedTimeMicros":2000000,"artworkData":"iVBORw0KGgo=","artworkMimeType":"image/png"}""");
         Answered(_process.Runs[1]);
         Assert.True(reader.TryRead(out var s));
+        Assert.NotNull(s!.Art);
+        PrintOn(stream, """{"type":"data","diff":false,"payload":{"processIdentifier":4242,"playing":true,"elapsedTimeMicros":3000000}}""");
+        Assert.True(reader.TryRead(out s));
         Assert.Null(s!.Art);
 
-        // Its own cover is taken at the next try, and isn't carried over to the next clip.
-        _time.Advance(TimeSpan.FromSeconds(2.9));
+        // Two untagged clips, told apart by their durations: the get gives the other clip with its cover, and the
+        // stream's line of this one doesn't take it.
+        PrintOn(stream, Clip(30_000_000));
+        _time.Advance(TimeSpan.FromSeconds(2));
         Assert.Equal(3, StartCount);
-        _process.Runs[2].Print(ClipGet(30_000_000));
+        _process.Runs[2].Print(ClipGet(45_000_000));
         Answered(_process.Runs[2]);
         Assert.True(reader.TryRead(out s));
-        Assert.NotNull(s!.Art);
+        Assert.Equal(45, s!.Duration);
+        Assert.NotNull(s.Art);
+        PrintOn(stream, Clip(30_000_000));
+        Assert.True(reader.TryRead(out s));
+        Assert.Null(s!.Art);
+
+        // Its own cover comes with the next get, and isn't carried over to the next clip.
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(4, StartCount);
+        _process.Runs[3].Print(ClipGet(30_000_000));
+        Answered(_process.Runs[3]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal(30, s!.Duration);
+        Assert.NotNull(s.Art);
         PrintOn(stream, Clip(45_000_000));
         Assert.True(reader.TryRead(out s));
         Assert.Null(s!.Art);
     }
 
     [Fact]
-    public void A_cover_the_stream_gives_is_kept_across_its_lines_of_that_track_without_one_and_nothing_is_asked_again()
+    public void A_cover_the_stream_gives_is_kept_across_its_lines_and_the_gets_answers_of_that_track_without_one()
     {
         var reader = Reader();
         reader.Start();
@@ -991,20 +1078,390 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         _time.Advance(TimeSpan.FromSeconds(2.1));
         Assert.Equal(2, StartCount);
 
-        // The stream gives the cover: the get under way is killed.
+        // The stream gives the cover while a get runs: the get isn't killed, and its answer, older than that line, isn't
+        // the reading.
         PrintOn(stream, withArt);
-        Assert.Equal(1, _process.Runs[1].Kills);
+        Assert.Equal(0, _process.Runs[1].Kills);
+        _process.Runs[1].Print(GetNoArt);
+        Answered(_process.Runs[1]);
+        Assert.True(reader.TryRead(out var s));
+        Assert.Equal(1, s!.Position);
 
-        // The stream drops it and gives it again, over and over: the cover stays, and no get is run again.
+        // The stream drops it and gives it again, over and over, and the polls' gets give that track without it: the
+        // cover stays.
         for (var i = 0; i < 3; i++)
         {
             PrintOn(stream, NoArt);
-            Assert.True(reader.TryRead(out var s));
+            Assert.True(reader.TryRead(out s));
             Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s!.Art!.Value.ToArray());
             Assert.Equal("image/png", s.ArtType);
-            _time.Advance(TimeSpan.FromSeconds(30));
-            Assert.Equal(2, StartCount);
+            _time.Advance(TimeSpan.FromSeconds(2));
+            Assert.Equal(3 + i, StartCount);
+            _process.Runs[^1].Print(GetNoArt);
+            Answered(_process.Runs[^1]);
+            Assert.True(reader.TryRead(out s));
+            Assert.Equal(3, s!.Position);
+            Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s.Art!.Value.ToArray());
             PrintOn(stream, withArt);
         }
+    }
+
+    // ---- The helper's get every 2 s while in use: the readings follow a stream that goes quiet ----
+
+    /// <summary>The next track as the helper's get gives it: another title, artist, album, id, state, position and cover.</summary>
+    private const string GetNext = """
+        {"bundleIdentifier":"com.apple.Music","playing":false,"title":"Next Secret Song","artist":"Next Secret Band","album":"Next Secret Album","uniqueIdentifier":"u-2","durationMicros":180000000,"elapsedTimeMicros":7000000,"timestampEpochMicros":1794474100000000,"playbackRate":0,"artworkData":"R0lGODdh","artworkMimeType":"image/gif"}
+        """;
+
+    /// <summary>The track <see cref="Full"/> is, as the helper's get gives it, with its cover.</summary>
+    private const string GetFull = """
+        {"bundleIdentifier":"com.apple.Music","parentApplicationBundleIdentifier":null,"playing":true,"title":"A Secret Song","artist":"Secret Band","album":"Secret Album","durationMicros":200000000,"elapsedTimeMicros":14500000,"timestampEpochMicros":1794474002000000,"playbackRate":1,"trackNumber":1,"totalTrackCount":5,"genre":"Secret Genre","composer":"Someone","shuffleMode":3,"repeatMode":2,"artworkData":"iVBORw0KGgo=","artworkMimeType":"image/png","processIdentifier":4242}
+        """;
+
+    /// <summary>Another track as the stream gives it, without its cover.</summary>
+    private const string StreamOther = """
+        {"type":"data","diff":false,"payload":{"processIdentifier":4242,"playing":true,"title":"Other Secret Song","artist":"Other Secret Band","album":"Other Secret Album","uniqueIdentifier":"u-3","durationMicros":150000000,"elapsedTimeMicros":2000000}}
+        """;
+
+    /// <summary>The track <see cref="StreamOther"/> is, as the helper's get gives it, still without its cover.</summary>
+    private const string GetOther = """
+        {"processIdentifier":4242,"playing":true,"title":"Other Secret Song","artist":"Other Secret Band","album":"Other Secret Album","uniqueIdentifier":"u-3","durationMicros":150000000,"elapsedTimeMicros":4000000}
+        """;
+
+    [Fact]
+    public void When_the_stream_goes_quiet_the_helpers_get_2_s_on_gives_the_next_track_with_its_cover()
+    {
+        var reader = Reader();
+        reader.Start();
+        var stream = _process.Runs[0];
+        PrintOn(stream, Full);
+
+        // The stream says nothing more, as it does on this macOS. The poll 2 s after the start: one get, run as the stream is.
+        _time.Advance(TimeSpan.FromSeconds(1.9));
+        Assert.Equal(1, StartCount);
+        _time.Advance(TimeSpan.FromSeconds(0.1));
+        Assert.Equal(2, StartCount);
+        var get = _process.Starts[1];
+        Assert.Equal("/usr/bin/perl", get.FileName);
+        Assert.Equal([Path.Combine(_folder, "mediaremote-adapter.pl"), Path.Combine(_folder, "MediaRemoteAdapter.framework"), "get", "--micros", "--allow-missing-title"], get.Arguments);
+        Assert.Equal(["PERL5LIB", "PERL5OPT", "PERLLIB", "PERL5DB"], get.RemovedVariables);
+
+        // It answers the next track: every reading is that track's, its cover too.
+        _process.Runs[1].PrintError("Sentinel Secret Title");
+        _process.Runs[1].Print(GetNext);
+        Answered(_process.Runs[1]);
+        Assert.True(reader.TryRead(out var s));
+        Assert.Equal("Next Secret Song", s!.Title);
+        Assert.Equal("Next Secret Band", s.Artist);
+        Assert.Equal("Next Secret Album", s.Album);
+        Assert.Equal("Music", s.App);
+        Assert.Equal(NowPlayingState.Paused, s.State);
+        Assert.Equal(7, s.Position);
+        Assert.Equal(180, s.Duration);
+        Assert.Equal(Convert.FromBase64String("R0lGODdh"), s.Art!.Value.ToArray());
+        Assert.Equal("image/gif", s.ArtType);
+
+        // The player quits, and the stream still says nothing: the next poll's get says nothing plays.
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(3, StartCount);
+        _process.Runs[2].Print("null");
+        Answered(_process.Runs[2]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Null(s);
+
+        foreach (var e in _events)
+        {
+            Assert.DoesNotContain("Secret", e.RenderMessage() + " " + e.Exception, StringComparison.Ordinal);
+            Assert.DoesNotContain("Sentinel", e.RenderMessage() + " " + e.Exception, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void A_get_that_hangs_is_killed_5_s_on_none_overlaps_it_and_the_next_poll_still_runs()
+    {
+        var reader = Reader();
+        reader.Start();
+        PrintOn(_process.Runs[0], Full);
+
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(2, StartCount);
+        var hung = _process.Runs[1];
+
+        // One at a time: the polls 4 and 6 s on start nothing while it runs; it is killed 5 s after its start.
+        _time.Advance(TimeSpan.FromSeconds(4.9));
+        Assert.Equal(2, StartCount);
+        Assert.Equal(0, hung.Kills);
+        _time.Advance(TimeSpan.FromSeconds(0.1));
+        Assert.Equal(1, hung.Kills);
+        Assert.True(SpinWait.SpinUntil(() => hung.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the killed get");
+        Assert.True(reader.TryRead(out var s));
+        Assert.Equal("A Secret Song", s!.Title);
+
+        // The next poll runs, and its answer is taken.
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(3, StartCount);
+        _process.Runs[2].Print(GetNext);
+        Answered(_process.Runs[2]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal("Next Secret Song", s!.Title);
+    }
+
+    [Fact]
+    public void Gets_run_only_while_in_use_and_Stop_with_one_under_way_returns_at_once_and_kills_it()
+    {
+        var reader = Reader();
+        _time.Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(0, StartCount);
+
+        reader.Start();
+        var stream = _process.Runs[0];
+        PrintOn(stream, Full);
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(2, StartCount);
+        var get = _process.Runs[1];
+        // A get that doesn't end even when killed.
+        get.EndsOnKill = false;
+
+        var stopped = reader.StopAsync();
+        Assert.True(stopped.Wait(TimeSpan.FromSeconds(1)), "Stop returned while the get still ran");
+        Assert.Equal(1, get.Kills);
+        Assert.False(get.Exited.IsCompleted);
+        Assert.Equal(1, stream.Terminates);
+
+        // Not in use: no more gets.
+        _time.Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, StartCount);
+        get.End(137);
+        Assert.True(SpinWait.SpinUntil(() => get.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the get");
+        Assert.False(reader.TryRead(out _));
+    }
+
+    [Fact]
+    public void A_cover_never_crosses_tracks_and_a_stream_line_taken_while_a_get_runs_wins_over_its_answer()
+    {
+        var reader = Reader();
+        reader.Start();
+        var stream = _process.Runs[0];
+        PrintOn(stream, Full);
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(2, StartCount);
+
+        // While the get runs, the stream gives another track without its cover: the get's answer, the track before
+        // with its cover, is older than that line and isn't taken.
+        PrintOn(stream, StreamOther);
+        _process.Runs[1].Print(GetFull);
+        Answered(_process.Runs[1]);
+        Assert.True(reader.TryRead(out var s));
+        Assert.Equal("Other Secret Song", s!.Title);
+        Assert.Null(s.Art);
+
+        // The next poll gives that track, still without its cover: the cover before isn't carried over.
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(3, StartCount);
+        _process.Runs[2].Print(GetOther);
+        Answered(_process.Runs[2]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal("Other Secret Song", s!.Title);
+        Assert.Equal(4, s.Position);
+        Assert.Null(s.Art);
+
+        // The next gives the next track with its own cover; a late stream line of the track before doesn't take it.
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(4, StartCount);
+        _process.Runs[3].Print(GetNext);
+        Answered(_process.Runs[3]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal(Convert.FromBase64String("R0lGODdh"), s!.Art!.Value.ToArray());
+        PrintOn(stream, StreamOther);
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal("Other Secret Song", s!.Title);
+        Assert.Null(s.Art);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_get_killed_at_its_limit_never_publishes_what_it_wrote_before_it_hung(bool aTrack)
+    {
+        var reader = Reader();
+        reader.Start();
+        PrintOn(_process.Runs[0], Full);
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(2, StartCount);
+        var hung = _process.Runs[1];
+
+        // It writes a whole answer (another track, or nothing playing), then hangs. Killed 5 s after its start, it ends
+        // with 0: only its limit tells its answer apart.
+        hung.EndsOnKill = false;
+        hung.Print(aTrack ? GetNext : "null");
+        _time.Advance(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, hung.Kills);
+        hung.End(0);
+        Assert.True(SpinWait.SpinUntil(() => hung.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the killed get");
+        Assert.True(reader.TryRead(out var s));
+        Assert.NotNull(s);
+        Assert.Equal("A Secret Song", s.Title);
+
+        // The next poll runs, and its answer is taken.
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(3, StartCount);
+        _process.Runs[2].Print(GetNext);
+        Answered(_process.Runs[2]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal("Next Secret Song", s!.Title);
+    }
+
+    /// <summary>How a get says "nothing plays" while it failed.</summary>
+    public enum FailedNull
+    {
+        /// <summary>The helper's own timeout (its MediaRemote callbacks over 2 s): a line on its standard error, <c>null</c>, exit 0.</summary>
+        HelperTimeout,
+
+        /// <summary>The same, its standard error written after its output has ended.</summary>
+        ErrorAfterOutput,
+
+        /// <summary><c>null</c> with no standard error and an exit other than 0.</summary>
+        FailedExit,
+    }
+
+    [Theory]
+    [InlineData(FailedNull.HelperTimeout)]
+    [InlineData(FailedNull.ErrorAfterOutput)]
+    [InlineData(FailedNull.FailedExit)]
+    public void A_get_that_says_nothing_plays_with_an_error_or_a_failed_exit_changes_nothing(FailedNull how)
+    {
+        var reader = Reader();
+        reader.Start();
+        PrintOn(_process.Runs[0], Full);
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(2, StartCount);
+        var get = _process.Runs[1];
+        switch (how)
+        {
+            case FailedNull.HelperTimeout:
+                get.PrintError("Reading now playing information timed out after 2000 milliseconds");
+                get.Print("null");
+                get.End(0);
+                break;
+            case FailedNull.ErrorAfterOutput:
+                get.Print("null");
+                get.CloseOutput();
+                Assert.True(get.OutputRead.Wait(TimeSpan.FromSeconds(10)), "the reader read its output to its end first");
+                get.PrintError("Reading now playing information timed out after 2000 milliseconds");
+                get.End(0);
+                break;
+            default:
+                get.Print("null");
+                get.End(1);
+                break;
+        }
+
+        Assert.True(SpinWait.SpinUntil(() => get.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the get");
+        Assert.True(reader.TryRead(out var s));
+        Assert.NotNull(s);
+        Assert.Equal("A Secret Song", s.Title);
+
+        // A get that says so with no error and exit 0 is still "nothing plays".
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(3, StartCount);
+        _process.Runs[2].Print("null");
+        Answered(_process.Runs[2]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Null(s);
+    }
+
+    [Fact]
+    public void A_get_whose_standard_error_a_child_holds_open_is_let_go_of_3_s_on_and_the_next_poll_runs()
+    {
+        var reader = Reader();
+        reader.Start();
+        PrintOn(_process.Runs[0], Full);
+        _time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(2, StartCount);
+        var held = _process.Runs[1];
+
+        // It says nothing plays, its output ends and it exits with 0, while what it started holds its standard error
+        // open for good; a kill doesn't end that pipe either.
+        held.EndsOnKill = false;
+        var timers = _time.TimerCount;
+        held.Print("null");
+        held.CloseOutput();
+        Assert.True(held.OutputRead.Wait(TimeSpan.FromSeconds(10)), "the reader read its output to its end");
+        held.Exit(0);
+
+        // Its pipes' deadline (3 s on) is installed once it has exited with its output ended; the clock moves only to it,
+        // so no poll (6 s) runs before the reader has let go of the get.
+        Assert.True(SpinWait.SpinUntil(() => _time.TimerCount == timers + 1, TimeSpan.FromSeconds(10)), "the pipes' deadline was installed");
+        _time.Advance(TimeSpan.FromSeconds(3));
+
+        // At that deadline it is let go of, once, and its answer, with its standard error unfinished, isn't taken.
+        Assert.True(SpinWait.SpinUntil(() => held.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the held get");
+        Assert.Equal(2, StartCount);
+        Assert.True(reader.TryRead(out var s));
+        Assert.Equal("A Secret Song", s!.Title);
+
+        // The next poll (6 s) starts a new get, and its answer is taken.
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(3, StartCount);
+        _process.Runs[2].Print(GetNext);
+        Answered(_process.Runs[2]);
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal("Next Secret Song", s!.Title);
+
+        // Its standard error ending at last retires nothing again.
+        held.ClosePipes();
+        Assert.Equal(1, held.Disposals);
+        Assert.Equal(0, reader.ReaderFailures);
+    }
+
+    [Fact]
+    public async Task A_gets_start_that_blocks_across_the_streams_restart_keeps_the_next_poll_from_starting_another()
+    {
+        var reader = Reader();
+        reader.Start();
+        var stream = _process.Runs[0];
+        PrintOn(stream, Full);
+        var gate = new ManualResetEventSlim();
+        _process.GetGate = gate;
+        Task advancing;
+        try
+        {
+            // The poll 2 s on: its get's start blocks, on the timer's thread (which then runs on to 6.1 s).
+            advancing = Task.Run(() => _time.Advance(TimeSpan.FromSeconds(6.1)));
+            Assert.True(_process.GetEntered.Wait(TimeSpan.FromSeconds(10)), "the get's start began");
+            // Only that start blocks.
+            _process.GetGate = null;
+
+            // The stream ends (exit 0) and starts again 2 s on; the new run's poll 2 s after that starts no get while the
+            // first one's start is still under way.
+            stream.End(0);
+            _time.Advance(TimeSpan.FromSeconds(2));
+            Assert.Equal(2, StartCount);
+            Assert.Contains("stream", _process.Starts[1].Arguments);
+            _time.Advance(TimeSpan.FromSeconds(2));
+            Assert.Equal(1, Volatile.Read(ref _process.GetAttempts));
+            Assert.Equal(2, StartCount);
+        }
+        finally
+        {
+            gate.Set();
+        }
+
+        await advancing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // The run the first start returns is killed at once (its stream run has ended) and let go of; the next poll
+        // starts the next get, whose answer is the reading.
+        Assert.Equal(3, StartCount);
+        var late = _process.Runs[2];
+        Assert.Equal(1, late.Kills);
+        Assert.True(SpinWait.SpinUntil(() => late.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the late get");
+        Assert.Equal(1, Volatile.Read(ref _process.GetAttempts));
+        _time.Advance(TimeSpan.FromSeconds(1.9));
+        Assert.Equal(2, Volatile.Read(ref _process.GetAttempts));
+        Assert.Equal(4, StartCount);
+        _process.Runs[3].Print(GetNext);
+        Answered(_process.Runs[3]);
+        Assert.True(reader.TryRead(out var s));
+        Assert.Equal("Next Secret Song", s!.Title);
     }
 }
