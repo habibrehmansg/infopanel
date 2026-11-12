@@ -46,13 +46,28 @@ public sealed class MacNowPlayingReaderTests : IDisposable
 
         public bool Broken;
 
+        /// <summary>When set, a get's start blocks until it is set (after setting <see cref="GetEntered"/>).</summary>
+        public ManualResetEventSlim? GetGate;
+
+        public readonly ManualResetEventSlim GetEntered = new();
+
         public IMediaHelperRun Start(MediaHelperStart start)
         {
             if (Throws is { } e)
                 throw e;
-            Starts.Add(start);
+            if (GetGate is { } gate && start.Arguments.Contains("get"))
+            {
+                GetEntered.Set();
+                gate.Wait(TimeSpan.FromSeconds(30));
+            }
+
             var run = new FakeRun { Broken = Broken };
-            Runs.Add(run);
+            // Under a lock: a get starts on a reader's thread.
+            lock (Starts)
+            {
+                Starts.Add(start);
+                Runs.Add(run);
+            }
             return run;
         }
     }
@@ -673,6 +688,323 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         {
             Assert.DoesNotContain("Sentinel", e.RenderMessage() + " " + e.Exception, StringComparison.Ordinal);
             Assert.DoesNotContain("Hidden", e.RenderMessage() + " " + e.Exception, StringComparison.Ordinal);
+        }
+    }
+
+    // ---- A cover the stream leaves out: asked of the helper's get ----
+
+    /// <summary>A track as the stream gives it without its cover (the helper's stream can, while its get has it).</summary>
+    private const string NoArt = """
+        {"type":"data","diff":false,"payload":{"processIdentifier":4242,"playing":true,"title":"A Secret Song","artist":"Secret Band","album":"Secret Album","uniqueIdentifier":"u-1","contentItemIdentifier":"c-1","durationMicros":200000000,"elapsedTimeMicros":1000000}}
+        """;
+
+    /// <summary>The same track as the helper's get gives it: the payload alone, with its cover.</summary>
+    private const string GetWithArt = """
+        {"processIdentifier":4242,"playing":true,"title":"A Secret Song","artist":"Secret Band","album":"Secret Album","uniqueIdentifier":"u-1","contentItemIdentifier":"c-1","durationMicros":200000000,"elapsedTimeMicros":3000000,"artworkData":"iVBORw0KGgo=","artworkMimeType":"image/png"}
+        """;
+
+    /// <summary>Prints <paramref name="line"/> on <paramref name="run"/>, a stream's, and waits until the reader has taken it.</summary>
+    private void PrintOn(FakeRun run, string line)
+    {
+        var taken = new TaskCompletionSource();
+        _reader!.Parsed = () => taken.TrySetResult();
+        run.Print(line);
+        Assert.True(taken.Task.Wait(TimeSpan.FromSeconds(10)), "the reader took the line");
+        _reader.Parsed = null;
+    }
+
+    /// <summary>Ends a get's <paramref name="run"/> (exit 0) and waits until the reader has let go of it.</summary>
+    private static void Answered(FakeRun run)
+    {
+        run.End(0);
+        Assert.True(SpinWait.SpinUntil(() => run.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the get");
+    }
+
+    private int StartCount
+    {
+        get
+        {
+            lock (_process.Starts)
+                return _process.Starts.Count;
+        }
+    }
+
+    [Fact]
+    public void A_track_the_stream_gives_without_its_cover_takes_the_cover_the_helpers_get_gives_for_that_same_track()
+    {
+        var reader = Reader();
+        reader.Start();
+        var stream = _process.Runs[0];
+        PrintOn(stream, NoArt);
+        Assert.True(reader.TryRead(out var s));
+        Assert.Null(s!.Art);
+
+        // 2 s after the line, one get, run as the stream is: Apple's Perl, absolute paths, Perl's variables removed.
+        _time.Advance(TimeSpan.FromSeconds(1.9));
+        Assert.Equal(1, StartCount);
+        _time.Advance(TimeSpan.FromSeconds(0.2));
+        Assert.Equal(2, StartCount);
+        var get = _process.Starts[1];
+        Assert.Equal("/usr/bin/perl", get.FileName);
+        Assert.Equal([Path.Combine(_folder, "mediaremote-adapter.pl"), Path.Combine(_folder, "MediaRemoteAdapter.framework"), "get", "--micros", "--allow-missing-title"], get.Arguments);
+        Assert.Equal(["PERL5LIB", "PERL5OPT", "PERLLIB", "PERL5DB"], get.RemovedVariables);
+
+        var run = _process.Runs[1];
+        run.PrintError("Sentinel Secret Title");
+        run.Print(GetWithArt);
+        Answered(run);
+
+        // Its cover, with the rest as the stream gave it.
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s!.Art!.Value.ToArray());
+        Assert.Equal("image/png", s.ArtType);
+        Assert.Equal("A Secret Song", s.Title);
+        Assert.Equal(1, s.Position);
+
+        // The stream's next lines for that track, still without it, keep it; nothing more is asked.
+        PrintOn(stream, NoArt.Replace("1000000", "4000000", StringComparison.Ordinal));
+        Assert.True(reader.TryRead(out s));
+        Assert.Equal(4, s!.Position);
+        Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s.Art!.Value.ToArray());
+        _time.Advance(TimeSpan.FromSeconds(30));
+        Assert.Equal(2, StartCount);
+
+        // Neither what plays nor the get's standard error reaches the log.
+        foreach (var e in _events)
+        {
+            Assert.DoesNotContain("Secret", e.RenderMessage() + " " + e.Exception, StringComparison.Ordinal);
+            Assert.DoesNotContain("Sentinel", e.RenderMessage() + " " + e.Exception, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void A_get_gives_its_cover_only_for_the_same_track_and_the_tries_end_with_the_one_10_s_after_the_line()
+    {
+        var reader = Reader();
+        reader.Start();
+        var stream = _process.Runs[0];
+
+        // A track with its cover asks nothing.
+        PrintOn(stream, Full);
+        _time.Advance(TimeSpan.FromSeconds(30));
+        Assert.Equal(1, StartCount);
+
+        PrintOn(stream, NoArt);
+        _time.Advance(TimeSpan.FromSeconds(2.1));
+        Assert.Equal(2, StartCount);
+        // The player moved on: another track's cover isn't taken.
+        _process.Runs[1].Print(GetWithArt.Replace("A Secret Song", "Another Secret Song", StringComparison.Ordinal));
+        Answered(_process.Runs[1]);
+        Assert.True(reader.TryRead(out var s));
+        Assert.Null(s!.Art);
+
+        // The next 5 s after the line: nothing plays, it says.
+        _time.Advance(TimeSpan.FromSeconds(2.8));
+        Assert.Equal(2, StartCount);
+        _time.Advance(TimeSpan.FromSeconds(0.2));
+        Assert.Equal(3, StartCount);
+        _process.Runs[2].Print("null");
+        Answered(_process.Runs[2]);
+
+        // The last 10 s after the line: no answer at all. Then no more.
+        _time.Advance(TimeSpan.FromSeconds(4.8));
+        Assert.Equal(3, StartCount);
+        _time.Advance(TimeSpan.FromSeconds(0.2));
+        Assert.Equal(4, StartCount);
+        Answered(_process.Runs[3]);
+        _time.Advance(TimeSpan.FromSeconds(60));
+        Assert.Equal(4, StartCount);
+        Assert.True(reader.TryRead(out s));
+        Assert.Null(s!.Art);
+
+        // The same track again asks nothing more: the tries were its own.
+        PrintOn(stream, NoArt.Replace("1000000", "9000000", StringComparison.Ordinal));
+        _time.Advance(TimeSpan.FromSeconds(30));
+        Assert.Equal(4, StartCount);
+    }
+
+    [Fact]
+    public async Task A_get_is_killed_5_s_on_and_a_new_track_nothing_playing_or_Stop_end_the_tries_killing_the_get_never_waiting()
+    {
+        var reader = Reader();
+        reader.Start();
+        var stream = _process.Runs[0];
+        PrintOn(stream, NoArt);
+
+        // A get that doesn't answer is killed 5 s after it started; the try due at 5 s after the line goes at once.
+        _time.Advance(TimeSpan.FromSeconds(2.1));
+        Assert.Equal(2, StartCount);
+        var hung = _process.Runs[1];
+        _time.Advance(TimeSpan.FromSeconds(4.8));
+        Assert.Equal(0, hung.Kills);
+        _time.Advance(TimeSpan.FromSeconds(0.2));
+        Assert.Equal(1, hung.Kills);
+        Assert.True(SpinWait.SpinUntil(() => StartCount == 3, TimeSpan.FromSeconds(10)), "the next try went at once");
+        var second = _process.Runs[2];
+
+        // A new track: the get under way is killed, and the tries start again for it.
+        PrintOn(stream, NoArt.Replace("u-1", "u-2", StringComparison.Ordinal).Replace("A Secret Song", "Next Secret Song", StringComparison.Ordinal));
+        Assert.Equal(1, second.Kills);
+        _time.Advance(TimeSpan.FromSeconds(2.1));
+        Assert.True(SpinWait.SpinUntil(() => StartCount == 4, TimeSpan.FromSeconds(10)));
+        var third = _process.Runs[3];
+
+        // Nothing playing ends them too.
+        PrintOn(stream, """{"type":"data","diff":false,"payload":{}}""");
+        Assert.Equal(1, third.Kills);
+        _time.Advance(TimeSpan.FromSeconds(30));
+        Assert.Equal(4, StartCount);
+
+        // And so does Stop: the get is killed at once, while the stream still has its 3 s to end.
+        PrintOn(stream, NoArt);
+        _time.Advance(TimeSpan.FromSeconds(2.1));
+        Assert.Equal(5, StartCount);
+        var fourth = _process.Runs[4];
+        stream.EndsOnTerminate = false;
+        var stopped = reader.StopAsync();
+        Assert.Equal(1, fourth.Kills);
+        Assert.Equal(0, stream.Kills);
+        Assert.False(stopped.IsCompleted);
+        _time.Advance(TimeSpan.FromSeconds(3.1));
+        await stopped.WaitAsync(TimeSpan.FromSeconds(10));
+        _time.Advance(TimeSpan.FromSeconds(30));
+        Assert.Equal(5, StartCount);
+    }
+
+    [Fact]
+    public void Through_the_real_process_a_cover_the_stream_left_out_comes_from_the_helpers_get()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows() || !File.Exists(MacNowPlayingReader.Perl), "Unix with /usr/bin/perl: the media helper's process.");
+        var folder = Path.Combine(_folder, "stand-in");
+        Directory.CreateDirectory(Path.Combine(folder, MacNowPlayingReader.FrameworkName));
+        File.WriteAllText(Path.Combine(folder, MacNowPlayingReader.FrameworkName, MacNowPlayingReader.LibraryName), "library");
+        // A stand-in, never the helper: its stream gives a track without its cover and runs on; its get gives the cover.
+        File.WriteAllText(Path.Combine(folder, MacNowPlayingReader.ScriptName), """
+            $| = 1;
+            if ($ARGV[1] eq 'get') {
+              print '{"processIdentifier":4242,"playing":true,"title":"Secret Title","artworkData":"iVBORw0KGgo=","artworkMimeType":"image/png"}', "\n";
+              exit 0;
+            }
+            print '{"type":"data","diff":false,"payload":{"processIdentifier":4242,"playing":true,"title":"Secret Title"}}', "\n";
+            sleep 60;
+            """);
+        var reader = Reader(new MediaHelperProcess(), folder);
+
+        reader.Start();
+        Assert.True(SpinWait.SpinUntil(() => reader.TryRead(out var s) && s is not null, TimeSpan.FromSeconds(10)), "the stream's line was taken");
+        Assert.True(reader.TryRead(out var first));
+        Assert.Null(first!.Art);
+
+        _time.Advance(TimeSpan.FromSeconds(2.1));
+        Assert.True(SpinWait.SpinUntil(() => reader.TryRead(out var s) && s?.Art is not null, TimeSpan.FromSeconds(10)), "the get's cover was taken");
+        Assert.True(reader.TryRead(out var withArt));
+        Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), withArt!.Art!.Value.ToArray());
+        Assert.Equal("Secret Title", withArt.Title);
+    }
+
+    [Fact]
+    public async Task A_gets_start_that_blocks_never_holds_Stop_and_the_run_it_returns_is_killed_at_once()
+    {
+        var reader = Reader();
+        reader.Start();
+        var stream = _process.Runs[0];
+        PrintOn(stream, NoArt);
+        var gate = new ManualResetEventSlim();
+        _process.GetGate = gate;
+        Task advancing;
+        try
+        {
+            // The try 2 s after the line: its start blocks, on the timer's thread.
+            advancing = Task.Run(() => _time.Advance(TimeSpan.FromSeconds(2.1)));
+            Assert.True(_process.GetEntered.Wait(TimeSpan.FromSeconds(10)), "the get's start began");
+
+            // Stop doesn't wait on it: the stream ends at SIGTERM and Stop completes while the start still blocks.
+            var stopped = Task.Run(() => reader.StopAsync());
+            Assert.True(stopped.Wait(TimeSpan.FromSeconds(5)), "Stop completed while the get's start blocked");
+            Assert.Equal(1, stream.Terminates);
+        }
+        finally
+        {
+            gate.Set();
+        }
+
+        await advancing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // The run the start returned is killed at once (its track was stopped meanwhile) and let go of; no more tries.
+        Assert.Equal(2, StartCount);
+        var late = _process.Runs[1];
+        Assert.Equal(1, late.Kills);
+        Assert.True(SpinWait.SpinUntil(() => late.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the late get");
+        _time.Advance(TimeSpan.FromSeconds(30));
+        Assert.Equal(2, StartCount);
+    }
+
+    /// <summary>An untagged clip as the stream gives it: its app's process and its duration alone, without its cover.</summary>
+    private static string Clip(long durationMicros) =>
+        $$$"""{"type":"data","diff":false,"payload":{"processIdentifier":4242,"playing":true,"durationMicros":{{{durationMicros}}},"elapsedTimeMicros":1000000}}""";
+
+    /// <summary>An untagged clip as the helper's get gives it, with its cover.</summary>
+    private static string ClipGet(long durationMicros) =>
+        $$"""{"processIdentifier":4242,"playing":true,"durationMicros":{{durationMicros}},"elapsedTimeMicros":2000000,"artworkData":"iVBORw0KGgo=","artworkMimeType":"image/png"}""";
+
+    [Fact]
+    public void A_track_without_enough_identity_asks_nothing_and_untagged_clips_of_one_app_keep_their_own_covers()
+    {
+        var reader = Reader();
+        reader.Start();
+        var stream = _process.Runs[0];
+
+        // No title, no ids, no duration: nothing tells this clip from the app's next one, so no get is run for it.
+        PrintOn(stream, """{"type":"data","diff":false,"payload":{"processIdentifier":4242,"playing":true,"elapsedTimeMicros":1000000}}""");
+        _time.Advance(TimeSpan.FromSeconds(30));
+        Assert.Equal(1, StartCount);
+
+        // Two untagged clips, told apart by their durations: a get answering with the other clip gives this one nothing.
+        PrintOn(stream, Clip(30_000_000));
+        _time.Advance(TimeSpan.FromSeconds(2.1));
+        Assert.Equal(2, StartCount);
+        _process.Runs[1].Print(ClipGet(45_000_000));
+        Answered(_process.Runs[1]);
+        Assert.True(reader.TryRead(out var s));
+        Assert.Null(s!.Art);
+
+        // Its own cover is taken at the next try, and isn't carried over to the next clip.
+        _time.Advance(TimeSpan.FromSeconds(2.9));
+        Assert.Equal(3, StartCount);
+        _process.Runs[2].Print(ClipGet(30_000_000));
+        Answered(_process.Runs[2]);
+        Assert.True(reader.TryRead(out s));
+        Assert.NotNull(s!.Art);
+        PrintOn(stream, Clip(45_000_000));
+        Assert.True(reader.TryRead(out s));
+        Assert.Null(s!.Art);
+    }
+
+    [Fact]
+    public void A_cover_the_stream_gives_is_kept_across_its_lines_of_that_track_without_one_and_nothing_is_asked_again()
+    {
+        var reader = Reader();
+        reader.Start();
+        var stream = _process.Runs[0];
+        var withArt = NoArt.Replace("\"elapsedTimeMicros\":1000000", "\"elapsedTimeMicros\":1000000,\"artworkData\":\"iVBORw0KGgo=\",\"artworkMimeType\":\"image/png\"", StringComparison.Ordinal);
+        PrintOn(stream, NoArt);
+        _time.Advance(TimeSpan.FromSeconds(2.1));
+        Assert.Equal(2, StartCount);
+
+        // The stream gives the cover: the get under way is killed.
+        PrintOn(stream, withArt);
+        Assert.Equal(1, _process.Runs[1].Kills);
+
+        // The stream drops it and gives it again, over and over: the cover stays, and no get is run again.
+        for (var i = 0; i < 3; i++)
+        {
+            PrintOn(stream, NoArt);
+            Assert.True(reader.TryRead(out var s));
+            Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s!.Art!.Value.ToArray());
+            Assert.Equal("image/png", s.ArtType);
+            _time.Advance(TimeSpan.FromSeconds(30));
+            Assert.Equal(2, StartCount);
+            PrintOn(stream, withArt);
         }
     }
 }

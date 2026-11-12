@@ -555,7 +555,8 @@ public sealed class NowPlayingProviderTests : IDisposable
         Assert.NotNull(tick);
         Assert.True(tick.Join(Wait));
         provider.Admitting = null;
-        again.Wait(Wait, Ct);
+        // The renewal decodes the cover afresh: an expiry that forgot its frames after it was renewed never lets this end.
+        Assert.True(again.Wait(Wait, Ct), "the renewed cover was decoded again");
 
         // The next tick draws it: nothing the expiry did after the renewal undid it.
         var next = Ask(provider, token);
