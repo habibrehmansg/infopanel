@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using InfoPanel.Sensors.NowPlaying;
+using SkiaSharp;
 
 namespace InfoPanel.Images;
 
@@ -10,7 +11,9 @@ namespace InfoPanel.Images;
 /// The <c>now-playing</c> media provider (spec/docs/providers.md): the cover art of what this computer plays, as the
 /// now-playing source read it (<see cref="NowPlayingArt"/>). A source's <c>ref</c> is the <c>art</c> reading's text, a
 /// token naming one of the covers the source keeps; any other reference, and every reference in an engine without the
-/// source, is answered nothing with <c>media.provider</c>, "No cover art.". It fetches nothing and connects nowhere: a
+/// source, is answered no cover with <c>media.provider</c>, "No cover art.": a sample that draws nothing, so an item with
+/// nothing playing is transparent rather than the missing-media placeholder, which a cover that fails still draws. It
+/// fetches nothing and connects nowhere: a
 /// cover's bytes are the reader's, kept in memory in the fetched media's store and decoded by the engine's
 /// <see cref="MediaSampleCache"/> as fetched media are, under the media limits. A cover a player gives as a web address
 /// is asked of the web image provider (<c>http</c>) for that address, under its rules, as a private address (its fetch
@@ -46,6 +49,13 @@ public sealed class NowPlayingProvider : IMediaProvider, IDisposable
     internal const string Failed = "Couldn't load the cover art.";
 
     private static readonly MediaStatus NoArt = new("media.provider", "No cover art.");
+
+    /// <summary>
+    /// What "no cover" draws: nothing. A picture with no content and no natural size, so the item keeps its box (as the
+    /// placeholder would) and stays transparent in it; never released (each answer retains it for its caller).
+    /// </summary>
+    private static readonly MediaSample Nothing = Empty();
+
     private static readonly MediaStatus Decoding = new("media.loading", "Decoding.");
     private static readonly MediaStatus Loading = new("media.loading", "Loading the cover art.");
     private static readonly MediaStatus ShutDown = new("media.provider", "The provider is shut down.");
@@ -130,22 +140,35 @@ public sealed class NowPlayingProvider : IMediaProvider, IDisposable
     private static MediaRequest Forwarded(in MediaRequest request, string address) =>
         request with { Reference = address, Refresh = 0, Private = true };
 
+    private static MediaSample Empty()
+    {
+        using var recorder = new SKPictureRecorder();
+        recorder.BeginRecording(new SKRect(0, 0, 1, 1));
+        return MediaSample.FromPicture(recorder.EndRecording(), 0, 0);
+    }
+
+    /// <summary>
+    /// No cover (nothing plays, or the reference names none it keeps): the item draws nothing, not the missing-media
+    /// placeholder, which stays for a cover that fails; its status still says "No cover art.".
+    /// </summary>
+    private static ProvidedMedia NoCover() => new(Nothing.Retain(), NoArt);
+
     private ProvidedMedia Answer(in MediaRequest request, MediaAsk? ask)
     {
         if (_disposed) return new ProvidedMedia(null, ShutDown);
         // Whether the source keeps the token, and its address: nothing holding a cover's bytes is taken outside the lock,
         // so an ask paused on its way keeps none alive while the source pushes the cover out.
-        if (_art is null || !_art.Keeps(request.Reference, out var address)) return new ProvidedMedia(null, NoArt);
+        if (_art is null || !_art.Keeps(request.Reference, out var address)) return NoCover();
         if (address is not null)
         {
-            if (_web is null) return new ProvidedMedia(null, NoArt);
+            if (_web is null) return NoCover();
             var web = Forwarded(request, address);
             return Covered(ask is { } by ? _web.Get(web, by) : _web.Get(web));
         }
 
         Admitting?.Invoke();
         var token = request.Reference;
-        if (Admit(token, request.Live, out var key, out var admission) is { } refused) return new ProvidedMedia(null, refused);
+        if (Admit(token, request.Live, out var key, out var admission) is { } refused) return refused == NoArt ? NoCover() : new ProvidedMedia(null, refused);
 
         Admitted?.Invoke();
         var lookup = _cache.Get(key, request.Seconds, request.Playback, privateMedia: true);
@@ -159,7 +182,7 @@ public sealed class NowPlayingProvider : IMediaProvider, IDisposable
                 lookup.Sample?.Release();
                 var current = !_disposed && _held.ContainsKey(token);
                 if (!current) _cache.Forget(key);
-                return new ProvidedMedia(null, _disposed ? ShutDown : current ? Decoding : NoArt);
+                return _disposed ? new ProvidedMedia(null, ShutDown) : current ? new ProvidedMedia(null, Decoding) : NoCover();
             }
         }
         if (lookup.Sample is { } sample) return new ProvidedMedia(sample);

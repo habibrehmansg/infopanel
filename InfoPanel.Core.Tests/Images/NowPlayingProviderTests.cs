@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Text.Json;
 using InfoPanel.Core.Tests.Scenes;
 using InfoPanel.Core.Tests.Sensors;
 using InfoPanel.Images;
@@ -87,6 +88,32 @@ public sealed class NowPlayingProviderTests : IDisposable
 
     private static readonly MediaStatus NoArt = new("media.provider", "No cover art.");
 
+    /// <summary>
+    /// Asserts <paramref name="answer"/> is no cover: <c>media.provider</c>, "No cover art.", with a sample that draws
+    /// nothing (no pixels, no natural size), released here.
+    /// </summary>
+    private static void AssertNoCover(ProvidedMedia answer)
+    {
+        Assert.Equal(NoArt, answer.Status);
+        var sample = Assert.IsType<MediaSample>(answer.Sample);
+        try
+        {
+            Assert.Null(sample.Image);
+            Assert.Equal((0f, 0f), (sample.Width, sample.Height));
+            using var bitmap = new SKBitmap(8, 8);
+            using (var canvas = new SKCanvas(bitmap))
+            {
+                canvas.Clear(SKColors.Transparent);
+                sample.Draw(canvas, new SKRect(0, 0, 8, 8), new SKSamplingOptions(SKFilterMode.Linear), null);
+            }
+            Assert.All(bitmap.Pixels, p => Assert.Equal(new SKColor(0), p));
+        }
+        finally
+        {
+            sample.Release();
+        }
+    }
+
     /// <summary>What every cover's failure says, whatever its code.</summary>
     private const string CoverFailed = "Couldn't load the cover art.";
 
@@ -150,10 +177,10 @@ public sealed class NowPlayingProviderTests : IDisposable
         var provider = Provider(Cache());
         var token = Publish(Red);
 
-        Assert.Equal(new ProvidedMedia(null, NoArt), Ask(provider, reference));
+        AssertNoCover(Ask(provider, reference));
         // A token's own case only, whole.
-        Assert.Equal(new ProvidedMedia(null, NoArt), Ask(provider, token.ToUpperInvariant()));
-        Assert.Equal(new ProvidedMedia(null, NoArt), Ask(provider, token + " "));
+        AssertNoCover(Ask(provider, token.ToUpperInvariant()));
+        AssertNoCover(Ask(provider, token + " "));
         Assert.Equal(0, provider.Held);
         Assert.Equal(0, _store.Bytes);
     }
@@ -164,7 +191,7 @@ public sealed class NowPlayingProviderTests : IDisposable
         var token = Publish(Red);
         using var provider = new NowPlayingProvider(null, Cache(), _store, null, _time);
 
-        Assert.Equal(new ProvidedMedia(null, NoArt), Ask(provider, token));
+        AssertNoCover(Ask(provider, token));
     }
 
     [Fact]
@@ -292,7 +319,7 @@ public sealed class NowPlayingProviderTests : IDisposable
 
         // Without a web image provider, no cover.
         var alone = Provider(Cache());
-        Assert.Equal(new ProvidedMedia(null, NoArt), Ask(alone, token));
+        AssertNoCover(Ask(alone, token));
     }
 
     [Fact]
@@ -599,8 +626,15 @@ public sealed class NowPlayingProviderTests : IDisposable
         };
         var answer = Ask(provider, token);
 
-        Assert.Null(answer.Sample);
-        Assert.Equal(dispose ? new MediaStatus("media.provider", "The provider is shut down.") : NoArt, answer.Status);
+        if (dispose)
+        {
+            Assert.Null(answer.Sample);
+            Assert.Equal(new MediaStatus("media.provider", "The provider is shut down."), answer.Status);
+        }
+        else
+        {
+            AssertNoCover(answer);
+        }
         Assert.Equal(0, provider.Held);
         Assert.Equal(0, _store.Bytes);
         Assert.Equal(0, cache.AssetCount);
@@ -629,7 +663,7 @@ public sealed class NowPlayingProviderTests : IDisposable
         // The paused ask held none of the oldest's bytes: the four covers kept are all the bytes there are.
         Assert.False(oldestHeld);
         Assert.Equal(NowPlayingArt.MaxKept * (long)NowPlayingSource.MaxArtBytes, _art.Bytes);
-        Assert.Equal(new ProvidedMedia(null, NoArt), answer);
+        AssertNoCover(answer);
         Assert.Equal(0, provider.Held);
         Assert.Equal(0, _store.Bytes);
     }
@@ -774,9 +808,108 @@ public sealed class NowPlayingProviderTests : IDisposable
         var label = simulated.Read(key, "text").Text;
         Assert.Equal("Cover Art", label);
         var provider = Provider(Cache(), source.Art);
-        Assert.Equal(new ProvidedMedia(null, NoArt), Ask(provider, label));
+        AssertNoCover(Ask(provider, label));
         var cover = Ask(provider, token);
         Assert.NotNull(cover.Sample);
         cover.Sample!.Release();
+    }
+
+    /// <summary>
+    /// The example scene (a 96 × 96 cover at 10, 10 on a 116 × 116 panel) bound to the <c>art</c> reading of a source over
+    /// <paramref name="reader"/>, with the provider decoding through <paramref name="cache"/>; the source in use and polled once.
+    /// </summary>
+    private (SceneRuntime Runtime, NowPlayingSource Source, JsonElement Document, SceneRuntimeOptions Options) CoverScene(FakeReader reader, MediaSampleCache cache)
+    {
+        var source = Own(NowPlayingSource.Create(reader, _time));
+        source.Open();
+        var inputs = new SensorSceneInputs(new SensorHub([source]), new FakeSensorHistory());
+        var provider = Provider(cache, source.Art);
+        var options = SceneKit.Options(inputs, cache, new Dictionary<string, IMediaProvider> { [NowPlayingProvider.Name] = provider });
+        var document = SceneKit.Doc(SceneKit.Example("scene/valid/provider-media.json"), 116, 116, 10, 10,
+            bindings: new Dictionary<string, string> { ["art"] = NowPlayingSource.KeyOf("art").ToString() });
+        var runtime = Own(new SceneRuntime(options));
+        runtime.Load(document);
+        // A read puts the source in use; the next poll reads what plays.
+        source.TryRead(NowPlayingSource.KeyOf("art"), out _);
+        _time.Advance(NowPlayingSource.Interval);
+        source.Poll();
+        return (runtime, source, document, options);
+    }
+
+    /// <summary>Whether every pixel of <paramref name="frame"/> is the panel's background (its top-left pixel, outside the item).</summary>
+    private static bool OnlyBackground(SKBitmap frame)
+    {
+        var background = frame.GetPixel(0, 0);
+        for (var y = 0; y < frame.Height; y++)
+            for (var x = 0; x < frame.Width; x++)
+                if (frame.GetPixel(x, y) != background) return false;
+        return true;
+    }
+
+    private static readonly ItemMedia NoCover = new() { Code = "media.provider", Message = "No cover art." };
+
+    [Fact]
+    public void With_nothing_playing_the_cover_draws_nothing_not_the_missing_media_placeholder_and_says_no_cover_art()
+    {
+        var reader = new FakeReader();
+        var cache = Cache(synchronous: false);
+        var (runtime, source, document, options) = CoverScene(reader, cache);
+
+        (bool Empty, SKColor Pixel, ItemMedia? Media) Tick(double elapsed)
+        {
+            using var s = runtime.Tick(elapsed, SceneKit.Now);
+            using var frame = s.Render();
+            return (OnlyBackground(frame), frame.GetPixel(58, 58), s.Bounds.Single().Media);
+        }
+
+        // Nothing plays: the item's area is the background, and its status is still the provider's "No cover art.".
+        var (empty, _, media) = Tick(0);
+        Assert.True(empty, "the item drew something with nothing playing");
+        Assert.Equal(NoCover, media);
+
+        // A one-off render (a thumbnail) the same.
+        using (var once = SceneRuntime.RenderOnce(document, SceneKit.Now, options))
+        {
+            using var frame = once.Render();
+            Assert.True(OnlyBackground(frame), "the one-off render drew something with nothing playing");
+            Assert.Equal(NoCover, once.Bounds.Single().Media);
+        }
+
+        // A song with a cover: while it decodes the item holds what it drew, nothing (no placeholder), loading; then
+        // the cover is drawn.
+        _media.Gated = KeyOf(Red);
+        _media.Gate.Reset();
+        reader.Snapshot = Song(Red);
+        _time.Advance(NowPlayingSource.Interval);
+        source.Poll();
+        var red = Decoded(cache, KeyOf(Red));
+        (empty, _, media) = Tick(1.5);
+        Assert.True(empty, "the item drew something while the first cover decoded");
+        Assert.Equal("media.loading", media?.Code);
+        _media.Gate.Set();
+        red.Wait(Wait, Ct);
+        Assert.Equal((false, SKColors.Red, (ItemMedia?)null), Tick(1.6));
+
+        // It stops: nothing again, no placeholder.
+        reader.Snapshot = null;
+        _time.Advance(NowPlayingSource.Interval);
+        source.Poll();
+        (empty, _, media) = Tick(3);
+        Assert.True(empty, "the item drew something once the song stopped");
+        Assert.Equal(NoCover, media);
+    }
+
+    [Fact]
+    public void A_cover_that_cant_be_shown_still_draws_the_missing_media_placeholder_with_its_code()
+    {
+        var reader = new FakeReader { Snapshot = Song(Red) };
+        var (runtime, _, _, _) = CoverScene(reader, Cache(limits: SpecLimits.Default with { MediaSide = 2 }));
+
+        using var s = runtime.Tick(0, SceneKit.Now);
+        using var frame = s.Render();
+        Assert.False(OnlyBackground(frame), "a cover over the media limits drew nothing");
+        // The placeholder's crossed lines meet at the box's centre.
+        Assert.NotEqual(frame.GetPixel(0, 0), frame.GetPixel(58, 58));
+        Assert.Equal(new ItemMedia { Code = "limit.mediaSide", Message = CoverFailed }, s.Bounds.Single().Media);
     }
 }
