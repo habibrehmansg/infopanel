@@ -152,6 +152,18 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "GET", "/api/sensors/values?history=2147483648", 400);
         await Send(session, "GET", "/api/sensors/values?history=-2147483648", 200);
         await Send(session, "GET", "/api/sensors/values?history=-2147483649", 400);
+        // An image sensor's picture: none on this engine (the mock has no image sensor), a bad query; an engine of its own
+        // with an image sensor answers its picture.
+        await Send(reader, "GET", "/api/sensors/image?key=infopanel%3A%2Fnow-playing%2Fart&ref=3fa9c1d2e4b5a6f7", 404);
+        await Send(session, "GET", "/api/sensors/image?ref=3fa9c1d2e4b5a6f7", 400);
+        var pictures = new PictureSource("cover", new() { ["cover"] = Mcp.McpEditToolTests.Encoded(SkiaSharp.SKEncodedImageFormat.Png, 8, 8) });
+        using (var picturing = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", Path.Combine(factory.Root, "pictures"))
+                   .ConfigureTestServices(s => s.AddSingleton<InfoPanel.Sensors.ISensorSource>(pictures))))
+        using (var picturingSession = picturing.CreateClient(new() { AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            picturingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
+            await Send(picturingSession, "GET", $"/api/sensors/image?key={Uri.EscapeDataString(PictureSource.Key.ToString())}&ref=cover", 200);
+        }
 
         // The engine settings, the session token's: read, changed, a change refused; refused while they can't be read
         // (an engine of their own, started on settings it can't read: its answers are checked and seen like this one's).

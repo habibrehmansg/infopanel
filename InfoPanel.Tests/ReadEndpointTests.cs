@@ -71,7 +71,8 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal(SpecLimits.Default.Nodes, support.GetProperty("infopanel.scene/1").GetProperty("limits").GetProperty("nodes").GetInt32());
         Assert.Equal(SpecLimits.Default.Items, support.GetProperty("infopanel.document/1").GetProperty("limits").GetProperty("items").GetInt32());
         // simulated.text: a simulated subscription makes up text and tables too, so a client can say every value is made up.
-        Assert.Equal("""["plugins","devices","simulated.text"]""", session.GetProperty("features").GetRawText());
+        // sensors.image: an image sensor's picture by request (GET /api/sensors/image).
+        Assert.Equal("""["plugins","devices","simulated.text","sensors.image"]""", session.GetProperty("features").GetRawText());
 
         // The PC's regional format as the engine read it at start-up (every test engine's is en-US).
         Assert.Equal("""{"tag":"en-US","decimalSeparator":".","groupSeparator":","}""", session.GetProperty("locale").GetRawText());

@@ -285,6 +285,57 @@ public class SensorHubTests
         Assert.Empty(hub.GetBackfill(LibreKey));
     }
 
+    /// <summary>A source of one image sensor, <c>/img/art</c>, holding one picture under one reference; it counts its reads.</summary>
+    private sealed class ImageSource : ISensorSource, ISensorImages
+    {
+        public static readonly SensorKey Art = SensorKey.Plugin("/img/art");
+
+        public readonly byte[] Picture = [0x89, 0x50, 0x4E, 0x47];
+
+        public int Reads;
+
+        public string Id => "img";
+
+        public bool Handles(SensorKey key) => key.Id.StartsWith("/img/", StringComparison.Ordinal);
+
+        public IReadOnlyList<SensorInfo> GetSensors() => [new(Art, Id, "G", "Art", "")];
+
+        public bool TryRead(SensorKey key, out SensorReading reading)
+        {
+            Reads++;
+            reading = new SensorReading("ref-1");
+            return true;
+        }
+
+        public bool TryGetImage(SensorKey key, string reference, out ReadOnlyMemory<byte> bytes)
+        {
+            bytes = key == Art && reference == "ref-1" ? Picture : default;
+            return key == Art && reference == "ref-1";
+        }
+
+        public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+
+    [Fact]
+    public void TryGetImage_AsksTheSourceThatHandlesTheKey_WhenItHoldsPictures_AndReadsNothing()
+    {
+        var images = new ImageSource();
+        var hub = new SensorHub([new PrefixSource("p", "/p/", 1), images], new SensorHubOptions { SimulateUnknown = true });
+
+        Assert.True(hub.TryGetImage(ImageSource.Art, "ref-1", out var bytes));
+        Assert.Equal(images.Picture, bytes.ToArray());
+        Assert.False(hub.TryGetImage(ImageSource.Art, "ref-2", out bytes));
+        Assert.True(bytes.IsEmpty);
+        Assert.False(hub.TryGetImage(SensorKey.Plugin("/img/other"), "ref-1", out _));
+        // A source without pictures, a key no source handles (simulated or not), a malformed key: none.
+        Assert.False(hub.TryGetImage(SensorKey.Plugin("/p/a"), "ref-1", out _));
+        Assert.False(hub.TryGetImage(SensorKey.Plugin("/nobody/a"), "ref-1", out _));
+        Assert.False(hub.TryGetImage(SensorKey.HwInfo(-1, 0, 0, 7), "ref-1", out _));
+        Assert.Equal(0, images.Reads);
+    }
+
     [Fact]
     public void StableHash_IsFnv1a()
     {

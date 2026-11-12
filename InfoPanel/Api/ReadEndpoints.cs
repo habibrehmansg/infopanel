@@ -209,7 +209,59 @@ public static partial class ReadEndpoints
 
             return ApiResults.Json(values);
         }).RequireScope(ApiScope.Read);
+
+        // An image sensor's picture (spec/docs/api.md, "Sensor pictures"): the bytes its source holds under the reference,
+        // inspected as an asset is and answered as they are. No read of the sensor (nothing is started for it), no fetch,
+        // no copy, nothing decoded, and nothing logged of the key, the reference or the bytes.
+        api.MapGet("/sensors/image", (HttpRequest request, SensorHub hub, HttpContext context) =>
+        {
+            if (QueryOf(request, "key", MaxImageKeyChars) is not { } keyText || QueryOf(request, "ref", PolledSensorSource.MaxReferenceChars) is not { } reference)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Bad Request",
+                    detail: $"Give key (1–{MaxImageKeyChars} characters) and ref (1–{PolledSensorSource.MaxReferenceChars} characters) once each: an image sensor's key and the reference its reading names.");
+            }
+
+            if (!SensorKey.TryParse(keyText, out var key) || !hub.TryGetImage(key, reference, out var bytes)
+                || bytes.Length > MaxImageBytes || ImageTypeOf(bytes.Span) is not { } type)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Not Found",
+                    detail: "No picture is held for this sensor under this reference.");
+            }
+
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Bytes(bytes, type);
+        }).RequireScope(ApiScope.Read);
     }
+
+    /// <summary>The longest key <c>GET /api/sensors/image</c> takes.</summary>
+    public const int MaxImageKeyChars = 512;
+
+    /// <summary>The largest picture <c>GET /api/sensors/image</c> answers: 8 MiB, a source's own cap (a cover's).</summary>
+    public const int MaxImageBytes = 8 * 1024 * 1024;
+
+    /// <summary>
+    /// The query parameter <paramref name="name"/>, given once, of 1 to <paramref name="maxChars"/> characters, counted as the
+    /// spec counts a <c>maxLength</c>, in Unicode code points; else null.
+    /// </summary>
+    private static string? QueryOf(HttpRequest request, string name, int maxChars) =>
+        request.Query.TryGetValue(name, out var values) && values.Count == 1 && values[0] is { Length: > 0 } value
+            && value.Length <= 2 * maxChars && value.EnumerateRunes().Count() <= maxChars ? value : null;
+
+    /// <summary>
+    /// The media type of a picture an image sensor's request answers: a PNG, JPEG, GIF or WebP within the media limits, as
+    /// an asset's bytes are inspected (from the header, nothing decoded); null for anything else.
+    /// </summary>
+    private static string? ImageTypeOf(ReadOnlySpan<byte> bytes) =>
+        MediaValidator.Check(bytes) is { Errors.Count: 0, Format: { } format }
+            ? format switch
+            {
+                MediaFormat.Png => "image/png",
+                MediaFormat.Jpeg => "image/jpeg",
+                MediaFormat.Gif => "image/gif",
+                MediaFormat.WebP => "image/webp",
+                _ => null,
+            }
+            : null;
 
     /// <summary>
     /// The optional API features the engine has (spec/docs/api.md, "Session"): every operation added after this version of
@@ -217,9 +269,9 @@ public static partial class ReadEndpoints
     /// not the engine hosts plugins; <c>devices</c>, the USB panel devices' requests and message (<see cref="DeviceEndpoints"/>),
     /// listed whether or not the engine drives panels; <c>simulated.text</c>, a <c>simulated</c> subscription that makes up
     /// text and tables as well as numbers (spec/docs/api.md, "Simulated sensors"), so a client can say every value is
-    /// made up.
+    /// made up; <c>sensors.image</c>, an image sensor's picture by request (<c>GET /api/sensors/image</c>).
     /// </summary>
-    public static IReadOnlyList<string> Features { get; } = ["plugins", "devices", "simulated.text"];
+    public static IReadOnlyList<string> Features { get; } = ["plugins", "devices", "simulated.text", "sensors.image"];
 
     /// <summary>What the engine reads, by format string: each format's newest minor version, its capabilities the engine has and its limits.</summary>
     public static IReadOnlyDictionary<string, SupportedFormat> FormatSupportOf(Workspace workspace) =>

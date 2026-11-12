@@ -51,6 +51,13 @@ public enum SensorKind
     Number,
     Text,
     Table,
+
+    /// <summary>
+    /// A picture, named by a reference: its reading is a text (<see cref="SensorReading.ValueText"/>), opaque and new
+    /// whenever the picture changes; the picture's bytes come from the source (<see cref="ISensorImages"/>). A
+    /// <c>text</c> input reads the reference (spec/docs/bindings.md).
+    /// </summary>
+    Image,
 }
 
 /// <summary>

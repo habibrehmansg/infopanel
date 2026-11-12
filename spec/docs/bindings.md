@@ -14,7 +14,7 @@ A scene says which **inputs** it reads; an item says which sensor feeds each one
 | `type` | Reads | Used by |
 |---|---|---|
 | `number` | A numeric sensor: its value (by the binding's statistic) and its now, min, max and average, its unit, its history | `input` fields `value`, `now`, `min`, `max`, `avg`, `unit`; `history`; `series` |
-| `text` | A text sensor's text | `input` field `text` |
+| `text` | A text sensor's text, or an image sensor's reference (the picture it names, [API](api.md#sensor-pictures)) | `input` field `text` |
 | `table` | A table sensor: rows and named columns of text cells, and a summary text | `table`; `input` field `text` |
 
 Every input also has a `status` and `available` ([expressions](expressions.md)). A scene declares at most 32 inputs, each named like other scene names (`^[a-z][A-Za-z0-9_]{0,31}$`), with an optional `label` (up to 64 characters) for a client to show next to its binding control.
@@ -38,7 +38,7 @@ A binding whose name the scene doesn't declare is kept and ignored, so an item c
 | `unavailable` | No reading: unknown key, the source isn't running, or the sensor is of another type than the input | false |
 | `denied` | The operating system refused the engine access to the sensor | false |
 
-An input bound to a sensor reads the sensor's status in the sensor list ([API](api.md#fonts-and-sensors)) as follows: `live` and `simulated` as `live`, `stale` as `stale`, `denied` as `denied`, and `unavailable` and `missing` as `unavailable`. A sensor of another type than the input is `unavailable`, whatever its status. A `stale` input keeps the sensor's last reading.
+An input bound to a sensor reads the sensor's status in the sensor list ([API](api.md#fonts-and-sensors)) as follows: `live` and `simulated` as `live`, `stale` as `stale`, `denied` as `denied`, and `unavailable` and `missing` as `unavailable`. A sensor of another type than the input is `unavailable`, whatever its status; an `image` sensor is a `text` input's type (it reads the picture's reference with the sensor's status), and a `number` or `table` input's other type. A `stale` input keeps the sensor's last reading.
 
 An input without a reading reads 0 (numbers), "" (text) and an empty table; a scene shows something else by testing `available` or `status`.
 

@@ -23,7 +23,7 @@
         "instance": { "$ref": "#/$defs/instanceId", "description": "This run of the engine: new every time the engine starts, so a client that sees another knows the engine restarted (and that every document tag it read before is stale). Not a document's tag: a commit names its document's (documentResponse)." },
         "started": { "$ref": "#/$defs/timestamp", "description": "When this run of the engine started, in UTC to the second. The same for the whole run, like `instance`." },
         "features": {
-          "description": "The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels, and `simulated.text` (a `simulated` subscription makes up text and tables as well as numbers, docs/api.md#simulated-sensors). A client ignores a name it doesn't know.",
+          "description": "The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels, `simulated.text` (a `simulated` subscription makes up text and tables as well as numbers, docs/api.md#simulated-sensors), and `sensors.image` (GET /api/sensors/image, an image sensor's picture, docs/api.md#sensor-pictures). A client ignores a name it doesn't know.",
           "type": "array",
           "items": { "$ref": "#/$defs/apiFeature" },
           "uniqueItems": true
@@ -1106,8 +1106,8 @@
           "enum": ["live", "stale", "unavailable", "denied", "simulated", "missing"]
         },
         "type": {
-          "description": "The type of value the sensor reads, as a scene input's type names it (docs/bindings.md): `number`, `text` or `table`; `number` when the engine can't tell. Taken with `status`, from one read. Known without a reading. A client treats a type it doesn't know as `number`.",
-          "enum": ["number", "text", "table"]
+          "description": "The type of value the sensor reads, as a scene input's type names it (docs/bindings.md): `number`, `text` or `table`; or `image`, a picture, named by a reference (its reading's `text`), whose bytes GET /api/sensors/image answers (docs/api.md#sensor-pictures), and which a `text` input reads as its reference; `number` when the engine can't tell. Taken with `status`, from one read. Known without a reading. A client treats a type it doesn't know as `number`.",
+          "enum": ["number", "text", "table", "image"]
         }
       }
     },
@@ -1123,10 +1123,10 @@
         "max": { "description": "The highest value the source has reported.", "type": "number" },
         "avg": { "description": "The average of the values the source has reported.", "type": "number" },
         "unit": { "description": "The unit of its values, for people; empty when it has none.", "type": "string" },
-        "text": { "description": "A text or table sensor's text (\"\" for a table without one); absent for a number sensor.", "type": "string" },
-        "table": { "$ref": "#/$defs/sensorTable", "description": "A table sensor's table; absent for a number or text sensor." },
+        "text": { "description": "A text, table or image sensor's text (\"\" for a table without one); an image sensor's is the reference naming its picture, opaque, 1–2,048 characters, new whenever the picture changes. Absent for a number sensor.", "type": "string" },
+        "table": { "$ref": "#/$defs/sensorTable", "description": "A table sensor's table; absent for a number, text or image sensor." },
         "history": {
-          "description": "With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one every `graphRate` milliseconds (engineSettings; one a second by default, docs/bindings.md#history). Absent otherwise, and for a text or table sensor.",
+          "description": "With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one every `graphRate` milliseconds (engineSettings; one a second by default, docs/bindings.md#history). Absent otherwise, and for a text, table or image sensor.",
           "type": "array",
           "items": { "type": "number" },
           "maxItems": 4096

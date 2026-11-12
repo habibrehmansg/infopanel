@@ -631,7 +631,8 @@ public sealed record ProblemBody
 
 /// <summary>
 /// A listed sensor (<c>GET /api/sensors</c>); <see cref="Status"/> is its status now and <see cref="Type"/> the type of
-/// value it reads (<c>number</c>, <c>text</c>, <c>table</c>), both from one read. A binding names it by <see cref="Key"/>.
+/// value it reads (<c>number</c>, <c>text</c>, <c>table</c>, <c>image</c>), both from one read. A binding names it by
+/// <see cref="Key"/>.
 /// </summary>
 [SpecDef("urn:infopanel:api:1#/$defs/sensorEntry")]
 public sealed record SensorEntry
@@ -644,18 +645,19 @@ public sealed record SensorEntry
     public required InfoPanel.Sensors.SensorStatus Status { get; init; }
     public required string Type { get; init; }
 
-    /// <summary>The spelling of a sensor's type, as a scene input's type names it.</summary>
+    /// <summary>The spelling of a sensor's type, as a scene input's type names it; <c>image</c>, a picture named by a reference.</summary>
     public static string TypeName(InfoPanel.Sensors.SensorKind kind) => kind switch
     {
         InfoPanel.Sensors.SensorKind.Text => "text",
         InfoPanel.Sensors.SensorKind.Table => "table",
+        InfoPanel.Sensors.SensorKind.Image => "image",
         _ => "number",
     };
 }
 
 /// <summary>
 /// A listed sensor that has a reading (<c>GET /api/sensors/values</c>); <see cref="Status"/> is <c>live</c> or
-/// <c>stale</c> (the last value). <see cref="Text"/> is set for a text or table sensor, <see cref="Table"/> for a table
+/// <c>stale</c> (the last value). <see cref="Text"/> is set for a text, table or image sensor (an image's reference), <see cref="Table"/> for a table
 /// sensor, <see cref="History"/> for a number sensor when asked for.
 /// </summary>
 [SpecDef("urn:infopanel:api:1#/$defs/sensorValue")]

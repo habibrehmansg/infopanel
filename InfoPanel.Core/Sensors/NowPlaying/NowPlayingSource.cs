@@ -10,8 +10,9 @@ namespace InfoPanel.Sensors.NowPlaying;
 
 /// <summary>
 /// The Now Playing source, <c>infopanel.now-playing</c> ("Now Playing"): what the system's current media session plays,
-/// under <c>infopanel:/now-playing/{entry}</c> (<see cref="Entries"/>; <c>art</c>, a token naming its cover in
-/// <see cref="Art"/>, the <c>now-playing</c> media provider's reference), a <see cref="PolledSensorSource"/> over
+/// under <c>infopanel:/now-playing/{entry}</c> (<see cref="Entries"/>; <c>art</c>, an image sensor whose reference is a
+/// token naming its cover in <see cref="Art"/>, the <c>now-playing</c> media provider's reference, its bytes answered by
+/// <see cref="TryGetImage"/>), a <see cref="PolledSensorSource"/> over
 /// <see cref="NowPlayingSampler"/> polled every second, the platform's reads behind <see cref="INowPlayingReader"/>
 /// (macOS: <see cref="MacNowPlayingReader"/>; Windows: <see cref="WinNowPlayingReader"/>; Linux: <see cref="LinuxNowPlayingReader"/>).
 /// <para>
@@ -25,7 +26,7 @@ namespace InfoPanel.Sensors.NowPlaying;
 /// Titles, artists, albums and apps are personal: the source logs its state changes, errors and counts only, never them.
 /// </para>
 /// </summary>
-public sealed class NowPlayingSource : ISensorSource, ISensorStatusSource, ISensorSourceState, IDisposable
+public sealed class NowPlayingSource : ISensorSource, ISensorStatusSource, ISensorSourceState, ISensorImages, IDisposable
 {
     public const string SourceId = "infopanel.now-playing";
 
@@ -69,8 +70,10 @@ public sealed class NowPlayingSource : ISensorSource, ISensorStatusSource, ISens
         ("genre", "Genre", SensorKind.Text, ""),
         ("shuffle", "Shuffle", SensorKind.Text, ""),
         ("repeat", "Repeat", SensorKind.Text, ""),
-        ("art", "Cover Art", SensorKind.Text, ""),
+        ("art", "Cover Art", SensorKind.Image, ""),
     ];
+
+    private static readonly SensorKey ArtKey = Space.KeyOf("art");
 
     private readonly PolledSensorSource _polled;
     private readonly INowPlayingReader _reader;
@@ -154,6 +157,20 @@ public sealed class NowPlayingSource : ISensorSource, ISensorStatusSource, ISens
     {
         if (_polled.Handles(key))
             _demand.Note();
+    }
+
+    /// <summary>
+    /// The cover <see cref="Art"/> keeps under <paramref name="reference"/>, the <c>art</c> reading's token, as its bytes
+    /// (no copy); none for a cover given as a web address, which the engine holds no bytes of. Not a use: it starts no
+    /// reader and keeps no cover longer.
+    /// </summary>
+    public bool TryGetImage(SensorKey key, string reference, out ReadOnlyMemory<byte> bytes)
+    {
+        bytes = default;
+        if (key != ArtKey || !Art.TryGet(reference, out var picture) || picture.Bytes is not { } held)
+            return false;
+        bytes = held;
+        return true;
     }
 
     public Task StartAsync(CancellationToken ct) => _polled.StartAsync(ct);

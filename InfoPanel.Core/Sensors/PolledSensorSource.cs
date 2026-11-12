@@ -27,7 +27,8 @@ public sealed class PolledSensorSourceOptions
 /// (off the caller's thread) and polls them every <see cref="PolledSensorSourceOptions.Interval"/> (the source's own)
 /// on the thread pool, keeping now/min/max/avg per number sensor, or the source's own statistics when a sample carries
 /// them, the last good text per text sensor (no statistics; cut at <see cref="MaxTextChars"/> characters, with one
-/// warning per key while it is listed: a key that returns after it was unlisted may warn again), and the last good table
+/// warning per key while it is listed: a key that returns after it was unlisted may warn again), the last good reference
+/// per image sensor (a text of 1 to <see cref="MaxReferenceChars"/> characters, never cut), and the last good table
 /// per table sensor, with its format and, as its text, its first row (as a plugin's table reads; no statistics, and no
 /// history: <see cref="SensorHistory"/> keeps numbers only).
 /// Keys are the source's <see cref="SensorKeySpace"/>'s (the plugin key <c>{KeyPrefix}{definition id}</c> by default,
@@ -137,6 +138,12 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
     /// <summary>A text is cut to this many characters (4 KiB, as a plugin's).</summary>
     public const int MaxTextChars = 4096;
 
+    /// <summary>
+    /// An image sensor's reference (its reading's text) is at most this many Unicode code points, as the spec counts a maxLength (spec/docs/api.md, "Fonts and
+    /// sensors"); a longer or empty one names no picture, and its sample reads as a failed read.
+    /// </summary>
+    public const int MaxReferenceChars = 2048;
+
     /// <summary>Polls taken since start. For tests and diagnostics.</summary>
     public long Polls { get; private set; }
 
@@ -178,7 +185,7 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                 return SensorState.Without(status, slot.Kind);
             return slot.Kind switch
             {
-                SensorKind.Text => new SensorState(status, SensorKind.Text, new SensorReading(slot.Text!)),
+                SensorKind.Text or SensorKind.Image => new SensorState(status, slot.Kind, new SensorReading(slot.Text!)),
                 SensorKind.Table => new SensorState(status, SensorKind.Table, new SensorReading(slot.Table!, slot.TableFormat!, slot.Text!)),
                 _ => new SensorState(status, SensorKind.Number, new SensorReading(slot.Min, slot.Max, slot.Avg, slot.Now, _units[i])),
             };
@@ -387,10 +394,10 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                 continue;
             }
 
-            if (d.Kind is not (SensorKind.Number or SensorKind.Text or SensorKind.Table))
+            if (d.Kind is not (SensorKind.Number or SensorKind.Text or SensorKind.Table or SensorKind.Image))
             {
                 map[i] = -1;
-                _log.Warning("Sensor source {Source} skipped the sensor {Key}: a polled source reads numbers, text and tables, not {Kind}", Id, key, d.Kind);
+                _log.Warning("Sensor source {Source} skipped the sensor {Key}: a polled source reads numbers, text, tables and pictures' references, not {Kind}", Id, key, d.Kind);
                 continue;
             }
 
@@ -554,6 +561,13 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                     case SampleOutcome.Ok when slot.Kind == SensorKind.Text && sample.Text is { } text:
                         slot.Count++;
                         slot.Text = Cut(text, ref slot, s);
+                        slot.LastGood = sampled;
+                        slot.Latest = sample.Stale ? SampleOutcome.Failed : SampleOutcome.Ok;
+                        break;
+                    case SampleOutcome.Ok when slot.Kind == SensorKind.Image && sample.Text is { Length: > 0 } reference && reference.Length <= 2 * MaxReferenceChars && reference.EnumerateRunes().Count() <= MaxReferenceChars:
+                        // A picture's reference, kept whole (never cut: a cut one would name another picture).
+                        slot.Count++;
+                        slot.Text = reference;
                         slot.LastGood = sampled;
                         slot.Latest = sample.Stale ? SampleOutcome.Failed : SampleOutcome.Ok;
                         break;

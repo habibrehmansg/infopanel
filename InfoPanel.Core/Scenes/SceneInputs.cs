@@ -63,7 +63,8 @@ public sealed class NoSceneInputs : ISceneInputSource
 
 /// <summary>
 /// The engine's sensors (<see cref="ISensorReader"/>, <see cref="ISensorHistory"/>) as scene inputs. Keys are
-/// <see cref="SensorKey"/> strings. A sensor of another type than the input is <c>unavailable</c>, whatever its status;
+/// <see cref="SensorKey"/> strings. A sensor of another type than the input is <c>unavailable</c>, whatever its status
+/// (an image sensor is a text input's: it reads the picture's reference);
 /// otherwise its status maps to the input's as spec/docs/bindings.md states: <c>live</c> and <c>simulated</c> read
 /// <c>live</c>, <c>stale</c> <c>stale</c>, <c>denied</c> <c>denied</c>, <c>unavailable</c> and <c>missing</c>
 /// <c>unavailable</c>. An <see cref="ISensorStatusReader"/> gives the status, type and reading from one snapshot
@@ -86,7 +87,8 @@ public sealed class SensorSceneInputs(ISensorReader sensors, ISensorHistory hist
             ?? (sensors.TryRead(parsed, out var plain)
                 ? new SensorState(SensorStatus.Live, SensorState.TypeOf(plain), plain)
                 : SensorState.Without(SensorStatus.Unavailable));
-        // The type first: a sensor of another type is unavailable whatever its status (spec/docs/bindings.md).
+        // The type first: a sensor of another type is unavailable whatever its status (spec/docs/bindings.md). An image
+        // sensor reads as a text one: a text input reads its reference.
         SensorKind? expected = inputType switch
         {
             "number" => SensorKind.Number,
@@ -94,7 +96,8 @@ public sealed class SensorSceneInputs(ISensorReader sensors, ISensorHistory hist
             "table" => SensorKind.Table,
             _ => null,
         };
-        if (state.Type != expected) return SceneReading.Unavailable;
+        var type = state.Type == SensorKind.Image ? SensorKind.Text : state.Type;
+        if (type != expected) return SceneReading.Unavailable;
         var status = state.Status switch
         {
             SensorStatus.Live or SensorStatus.Simulated => SceneInputStatus.Live,
@@ -105,7 +108,7 @@ public sealed class SensorSceneInputs(ISensorReader sensors, ISensorHistory hist
         if (status is SceneInputStatus.Denied) return Denied;
         if (status is not (SceneInputStatus.Live or SceneInputStatus.Stale) || !state.HasReading) return SceneReading.Unavailable;
         var reading = state.Reading;
-        return state.Type switch
+        return type switch
         {
             SensorKind.Number => new SceneReading
             {

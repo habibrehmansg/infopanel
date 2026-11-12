@@ -26,7 +26,7 @@ export interface Session {
   /** When this run of the engine started, in UTC to the second. The same for the whole run, like `instance`. */
   started: Timestamp;
   /**
-   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels, and `simulated.text` (a `simulated` subscription makes up text and tables as well as numbers, docs/api.md#simulated-sensors). A client ignores a name it doesn't know.
+   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels, `simulated.text` (a `simulated` subscription makes up text and tables as well as numbers, docs/api.md#simulated-sensors), and `sensors.image` (GET /api/sensors/image, an image sensor's picture, docs/api.md#sensor-pictures). A client ignores a name it doesn't know.
    * Unique items.
    */
   features: ApiFeature[];
@@ -1020,8 +1020,8 @@ export interface SensorEntry {
   unit: string;
   /** `live` (a current reading), `stale` (a reading older than the source normally updates, the last value kept), `unavailable` (no reading), `denied` (the operating system refused the engine access to the sensor), `simulated` (no source handles the key; the engine simulates it, in mock mode only) or `missing` (the key isn't well formed). A scene input bound to the sensor reads it as docs/bindings.md#status maps it. A client treats a status it doesn't know as no reading. */
   status: "live" | "stale" | "unavailable" | "denied" | "simulated" | "missing";
-  /** The type of value the sensor reads, as a scene input's type names it (docs/bindings.md): `number`, `text` or `table`; `number` when the engine can't tell. Taken with `status`, from one read. Known without a reading. A client treats a type it doesn't know as `number`. */
-  type: "number" | "text" | "table";
+  /** The type of value the sensor reads, as a scene input's type names it (docs/bindings.md): `number`, `text` or `table`; or `image`, a picture, named by a reference (its reading's `text`), whose bytes GET /api/sensors/image answers (docs/api.md#sensor-pictures), and which a `text` input reads as its reference; `number` when the engine can't tell. Taken with `status`, from one read. Known without a reading. A client treats a type it doesn't know as `number`. */
+  type: "number" | "text" | "table" | "image";
 }
 
 /** One reading in GET /api/sensors/values, an array of these: every listed sensor (sensorEntry) that has a reading now, in list order. A sensor without one is left out. */
@@ -1041,12 +1041,12 @@ export interface SensorValue {
   avg: number;
   /** The unit of its values, for people; empty when it has none. */
   unit: string;
-  /** A text or table sensor's text ("" for a table without one); absent for a number sensor. */
+  /** A text, table or image sensor's text ("" for a table without one); an image sensor's is the reference naming its picture, opaque, 1–2,048 characters, new whenever the picture changes. Absent for a number sensor. */
   text?: string;
-  /** A table sensor's table; absent for a number or text sensor. */
+  /** A table sensor's table; absent for a number, text or image sensor. */
   table?: SensorTable;
   /**
-   * With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one every `graphRate` milliseconds (engineSettings; one a second by default, docs/bindings.md#history). Absent otherwise, and for a text or table sensor.
+   * With `?history=n` (n of 1 or more): a number sensor's last n samples at most, oldest first, one every `graphRate` milliseconds (engineSettings; one a second by default, docs/bindings.md#history). Absent otherwise, and for a text, table or image sensor.
    * Items: ≤ 4096.
    */
   history?: number[];
@@ -4841,6 +4841,31 @@ export interface ApiOperations {
       400: Problem;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
+    };
+  };
+  /**
+   * getSensorImage: The picture an image sensor's reading names, as its source holds it (the sensors.image feature).
+   *
+   * docs/api.md#sensor-pictures.
+   */
+  "GET /api/sensors/image": {
+    params: { [key: string]: never };
+    query: {
+      /** The image sensor's key (sensorEntry), once. */
+      key: string;
+      /** The reference the sensor's reading names (sensorValue.text), once. */
+      ref: string;
+    };
+    request: never;
+    responses: {
+      /** The picture's bytes exactly as the source holds them, at most 8 MiB, in its format's media type; Cache-Control: no-store. */
+      200: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+      /** `key` or `ref` absent, empty or given more than once, `key` over 512 characters or `ref` over 2,048. */
+      400: Problem;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** No picture to answer: no image sensor under `key`, no picture held under `ref`, or one that isn't a PNG, JPEG, GIF or WebP within the media limits and 8 MiB. */
+      404: Problem;
     };
   };
   /**

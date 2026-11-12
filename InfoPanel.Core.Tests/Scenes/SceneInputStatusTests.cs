@@ -46,8 +46,9 @@ public sealed class SceneInputStatusTests
         {
             Calls.Add(nameof(ReadState));
             var status = StatusOf(key);
+            // An image sensor's reading is a text: its type is the source's (Types), as a polled source lists it.
             return status is SensorStatus.Live or SensorStatus.Stale
-                ? new SensorState(status, SensorState.TypeOf(Keys[key.Id].Reading), Keys[key.Id].Reading)
+                ? new SensorState(status, Types.GetValueOrDefault(key.Id) is SensorKind.Image ? SensorKind.Image : SensorState.TypeOf(Keys[key.Id].Reading), Keys[key.Id].Reading)
                 : SensorState.Without(status, Types.GetValueOrDefault(key.Id, SensorKind.Number));
         }
 
@@ -295,6 +296,38 @@ public sealed class SceneInputStatusTests
         source.Types["/test.status/a"] = SensorKind.Text;
 
         Assert.Equal(expected, inputs.Read(Key("a"), type).Status);
+    }
+
+    [Theory]
+    [InlineData(SensorStatus.Live, SceneInputStatus.Live)]
+    [InlineData(SensorStatus.Stale, SceneInputStatus.Stale)]
+    public void A_text_input_reads_an_image_sensors_reference_with_its_status_and_number_and_table_inputs_read_it_unavailable(SensorStatus status, SceneInputStatus expected)
+    {
+        // An image sensor (a picture named by a reference): a text input reads the reference, as a saved cover binds it.
+        var (source, inputs) = Hub();
+        source.Keys["/test.status/art"] = (status, new SensorReading("3fa9c1d2e4b5a6f7"));
+        source.Types["/test.status/art"] = SensorKind.Image;
+
+        var text = inputs.Read(Key("art"), "text");
+        Assert.Equal((expected, "3fa9c1d2e4b5a6f7"), (text.Status, text.Text));
+        Assert.True(text.Available);
+        Assert.Equal(SceneInputStatus.Unavailable, inputs.Read(Key("art"), "number").Status);
+        Assert.Equal(SceneInputStatus.Unavailable, inputs.Read(Key("art"), "table").Status);
+    }
+
+    [Theory]
+    [InlineData(SensorStatus.Unavailable, "text", SceneInputStatus.Unavailable)]
+    [InlineData(SensorStatus.PermissionDenied, "text", SceneInputStatus.Denied)]
+    [InlineData(SensorStatus.PermissionDenied, "number", SceneInputStatus.Unavailable)]
+    [InlineData(SensorStatus.PermissionDenied, "table", SceneInputStatus.Unavailable)]
+    public void An_image_sensor_without_a_reading_reads_as_a_text_sensor_does(SensorStatus status, string type, SceneInputStatus expected)
+    {
+        var (source, inputs) = Hub();
+        source.Keys["/test.status/art"] = (status, default);
+        source.Types["/test.status/art"] = SensorKind.Image;
+
+        var reading = inputs.Read(Key("art"), type);
+        Assert.Equal((expected, ""), (reading.Status, reading.Text));
     }
 
     [Fact]

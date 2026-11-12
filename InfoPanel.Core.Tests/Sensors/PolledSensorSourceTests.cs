@@ -960,6 +960,63 @@ public class PolledSensorSourceTests
     }
 
     [Fact]
+    public void AnImageSensor_ReadsItsReferenceAsItsText_TypedImage_ThroughTheHubToo_AndAReferenceOver2048CharactersOrEmptyFails()
+    {
+        var (source, sampler, time) = CreateText(null, ("art", SensorKind.Image), ("never", SensorKind.Image));
+        sampler.Values["art"] = "3fa9c1d2e4b5a6f7";
+        source.Open();
+        var art = source.KeyOf("art");
+        var hub = new SensorHub([source]);
+
+        // Listed with its type, a reading or not; its reading a text, with no statistics.
+        var state = source.ReadState(art);
+        Assert.Equal((SensorStatus.Live, SensorKind.Image, "3fa9c1d2e4b5a6f7"), (state.Status, state.Type, state.Reading.ValueText));
+        Assert.Equal((0, 0, 0, 0), (state.Reading.ValueNow, state.Reading.ValueMin, state.Reading.ValueMax, state.Reading.ValueAvg));
+        Assert.Equal((SensorStatus.Unavailable, SensorKind.Image), (source.ReadState(source.KeyOf("never")).Status, source.ReadState(source.KeyOf("never")).Type));
+        var listed = hub.PeekState(art);
+        Assert.Equal((SensorStatus.Live, SensorKind.Image, "3fa9c1d2e4b5a6f7"), (listed.Status, listed.Type, listed.Reading.ValueText));
+        Assert.Equal(SensorKind.Image, hub.ReadState(art).Type);
+        Assert.Equal(SensorKind.Image, hub.ReadState(source.KeyOf("never")).Type);
+
+        // A reference of 2,048 characters reads; one over them, or an empty one, names no picture: a failed read, the last kept.
+        var longest = new string('r', 2048);
+        sampler.Values["art"] = longest;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.Equal((SensorStatus.Live, longest), (source.ReadState(art).Status, source.ReadState(art).Reading.ValueText));
+        foreach (var refused in new[] { new string('r', 2049), "" })
+        {
+            sampler.Values["art"] = refused;
+            time.Advance(TimeSpan.FromSeconds(1));
+            source.Poll();
+            state = source.ReadState(art);
+            Assert.Equal((SensorStatus.Stale, SensorKind.Image, longest), (state.Status, state.Type, state.Reading.ValueText));
+        }
+    }
+
+    [Fact]
+    public void AnImageReferenceLimit_CountsCodePoints_NotUtf16Units()
+    {
+        var (source, sampler, time) = CreateText(null, ("art", SensorKind.Image));
+        sampler.Values["art"] = "first";
+        source.Open();
+        var art = source.KeyOf("art");
+
+        // Supplementary characters are two UTF-16 units but one code point: 2,048 of them read, one more is a failed read.
+        var longest = string.Concat(Enumerable.Repeat("\U0001F600", 2048));
+        sampler.Values["art"] = longest;
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        Assert.Equal((SensorStatus.Live, longest), (source.ReadState(art).Status, source.ReadState(art).Reading.ValueText));
+
+        sampler.Values["art"] = longest + "\U0001F600";
+        time.Advance(TimeSpan.FromSeconds(1));
+        source.Poll();
+        var state = source.ReadState(art);
+        Assert.Equal((SensorStatus.Stale, longest), (state.Status, state.Reading.ValueText));
+    }
+
+    [Fact]
     public void ATextSensor_ReadsItsText_TypedText_WithNoStatistics()
     {
         var (source, sampler, time) = CreateText(null, ("ip", SensorKind.Text), ("load", SensorKind.Number));

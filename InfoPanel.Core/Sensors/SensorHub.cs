@@ -157,7 +157,7 @@ public sealed class SensorHub : ISensorStatusReader
     /// <see cref="ISensorStatusSource"/>'s <see cref="ISensorStatusSource.ReadState"/> (its statuses narrowed as
     /// <see cref="GetStatus"/> does), another source's <see cref="ISensorReader.TryRead"/> (<c>live</c> with a reading,
     /// else <c>unavailable</c>), or the simulated walk, as <see cref="TryRead"/> starts it. With a reading, the type is
-    /// the reading's.
+    /// the reading's, but an image sensor's (its reading a text, the picture's reference) stays the source's.
     /// </summary>
     public SensorState ReadState(SensorKey key) => State(key, peek: false);
 
@@ -179,6 +179,8 @@ public sealed class SensorHub : ISensorStatusReader
                 var state = peek ? statusSource.PeekState(key) : statusSource.ReadState(key);
                 return state.Status switch
                 {
+                    // An image sensor's reading is a text: its type is the source's.
+                    SensorStatus.Live or SensorStatus.Stale when state.Type == SensorKind.Image && SensorState.TypeOf(state.Reading) == SensorKind.Text => state,
                     SensorStatus.Live or SensorStatus.Stale => state with { Type = SensorState.TypeOf(state.Reading) },
                     SensorStatus.PermissionDenied => SensorState.Without(SensorStatus.PermissionDenied, state.Type),
                     _ => SensorState.Without(SensorStatus.Unavailable, state.Type),
@@ -196,6 +198,17 @@ public sealed class SensorHub : ISensorStatusReader
         return TrySimulate(key, out var simulated)
             ? new SensorState(SensorStatus.Simulated, SensorKind.Number, simulated)
             : SensorState.Without(SensorStatus.Unavailable);
+    }
+
+    /// <summary>
+    /// The bytes of the picture <paramref name="reference"/> names for the image sensor <paramref name="key"/>, from the
+    /// source that handles the key when it holds pictures (<see cref="ISensorImages"/>); false otherwise. Not a use: no
+    /// source is asked to read.
+    /// </summary>
+    public bool TryGetImage(SensorKey key, string reference, out ReadOnlyMemory<byte> bytes)
+    {
+        bytes = default;
+        return IsWellFormed(key) && FindSource(key) is ISensorImages images && images.TryGetImage(key, reference, out bytes);
     }
 
     /// <summary>Recent values from the source that handles <paramref name="key"/>, when it keeps any.</summary>

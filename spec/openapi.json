@@ -102,6 +102,45 @@
         }
       }
     },
+    "/api/sensors/image": {
+      "get": {
+        "operationId": "getSensorImage",
+        "summary": "The picture an image sensor's reading names, as its source holds it (the sensors.image feature).",
+        "description": "docs/api.md#sensor-pictures.",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "description": "The image sensor's key (sensorEntry), once.",
+            "schema": {"type": "string", "minLength": 1, "maxLength": 512}
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "required": true,
+            "description": "The reference the sensor's reading names (sensorValue.text), once.",
+            "schema": {"type": "string", "minLength": 1, "maxLength": 2048}
+          }
+        ],
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {
+            "description": "The picture's bytes exactly as the source holds them, at most 8 MiB, in its format's media type; Cache-Control: no-store.",
+            "content": {"image/png": {}, "image/jpeg": {}, "image/gif": {}, "image/webp": {}}
+          },
+          "400": {
+            "description": "`key` or `ref` absent, empty or given more than once, `key` over 512 characters or `ref` over 2,048.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "404": {
+            "description": "No picture to answer: no image sensor under `key`, no picture held under `ref`, or one that isn't a PNG, JPEG, GIF or WebP within the media limits and 8 MiB.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
     "/api/settings": {
       "get": {
         "operationId": "getSettings",
