@@ -75,6 +75,8 @@
   "api/deviceList/invalid/without-version.json": {"code": "schema", "path": ""},
   "api/deviceEntry/invalid/brightness-over-100.json": {"code": "schema", "path": "/settings/brightness"},
   "api/deviceEntry/invalid/driver-empty.json": {"code": "schema", "path": "/driver"},
+  "api/deviceEntry/invalid/max-fps-0.json": {"code": "schema", "path": "/stats/maxFps"},
+  "api/deviceEntry/invalid/max-fps-61.json": {"code": "schema", "path": "/stats/maxFps"},
   "api/deviceEntry/invalid/rotation-45.json": {"code": "schema", "path": "/settings/rotation"},
   "api/deviceEntry/invalid/unknown-state.json": {"code": "schema", "path": "/state"},
   "api/deviceEntry/invalid/v1-unknown-member.json": {"code": "schema", "path": "/v1/model"},

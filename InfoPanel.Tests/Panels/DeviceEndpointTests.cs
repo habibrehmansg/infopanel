@@ -330,6 +330,32 @@ public sealed class DeviceEndpointTests
         }
     }
 
+    [Theory]
+    [InlineData(5, 15)] // a T113 with PanelLink 2 streams JPEG: its pacer's ceiling, 15
+    [InlineData(3, 60)] // a panel the pacer bounds by no ceiling of its own: 60
+    public async Task A_running_BeadaPanel_answers_its_pacers_ceiling_in_its_stats_and_none_once_it_stops(byte platform, int maxFps)
+    {
+        await using var engine = new EngineFactory();
+        var backend = new FakeUsbBackend();
+        backend.Add(new FakeUsbDevice(new UsbDeviceId(BeadaPanelProtocol.VendorId, BeadaPanelProtocol.ProductId, 0, 4, "0-1"))
+        {
+            Reply = PanelReplies.Info(2, platform, 21, 1920, 480, Serial),
+        });
+        await using var factory = WithPanels(engine, backend);
+        using var api = Client(factory);
+        var off = await Until(api, d => d.GetProperty("state").GetString() == "off");
+        var id = off.GetProperty("id").GetString();
+        Assert.Equal(JsonValueKind.Null, off.GetProperty("stats").ValueKind);
+
+        var profile = await ProfileNamed(api, "Wide bar");
+        Assert.Equal(HttpStatusCode.OK, (await Send(api, HttpMethod.Patch, $"/api/devices/{id}", $$$"""{"settings":{"enabled":true,"profileId":"{{{profile}}}"}}""")).Status);
+        var running = await Until(api, d => d.GetProperty("state").GetString() == "running");
+
+        Assert.Equal(maxFps, running.GetProperty("stats").GetProperty("maxFps").GetInt32());
+        Assert.Equal(HttpStatusCode.OK, (await Send(api, HttpMethod.Patch, $"/api/devices/{id}", """{"settings":{"enabled":false}}""")).Status);
+        Assert.Equal(JsonValueKind.Null, (await Until(api, d => d.GetProperty("state").GetString() == "off")).GetProperty("stats").ValueKind);
+    }
+
     [Fact]
     public async Task A_value_out_of_range_or_a_setting_the_family_doesnt_take_is_422_and_changes_nothing()
     {

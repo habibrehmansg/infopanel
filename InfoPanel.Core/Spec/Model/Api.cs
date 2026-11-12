@@ -1384,12 +1384,14 @@ public sealed record DeviceSettingsBody
     public int? FrameRate { get; init; }
 }
 
-/// <summary>A running panel's frames a second and milliseconds a frame.</summary>
+/// <summary>A running panel's frames a second and milliseconds a frame, and the most frames a second its session takes.</summary>
 [SpecDef("urn:infopanel:api:1#/$defs/deviceStats")]
 public sealed record DeviceStatsBody
 {
     public required double Fps { get; init; }
     public required double FrameTimeMs { get; init; }
+    /// <summary>Its session's ceiling, 1 to 60, which its frame rate never passes; absent when the engine doesn't say.</summary>
+    public int? MaxFps { get; init; }
 }
 
 /// <summary>A panel's USB vendor and product ids, port path, serial and firmware.</summary>

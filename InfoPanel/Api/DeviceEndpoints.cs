@@ -325,7 +325,9 @@ public static class DeviceEndpoints
                 FrameRate = saved.FrameRate,
             },
             Supports = SupportsOf(saved.Family, families),
-            Stats = status.Fps is { } fps && status.FrameTimeMs is { } frameTime ? new DeviceStatsBody { Fps = fps, FrameTimeMs = frameTime } : null,
+            Stats = status.Fps is { } fps && status.FrameTimeMs is { } frameTime
+                ? new DeviceStatsBody { Fps = fps, FrameTimeMs = frameTime, MaxFps = status.MaxFps is >= 1 and <= 60 ? status.MaxFps : null }
+                : null,
             Details = new DeviceDetailsBody
             {
                 UsbId = beadaPanel ? $"{BeadaPanelProtocol.VendorId:x4}:{BeadaPanelProtocol.ProductId:x4}"

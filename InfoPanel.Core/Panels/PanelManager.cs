@@ -18,9 +18,10 @@ namespace InfoPanel.Panels;
 /// What the manager knows of a saved panel now (the API's entry, and tests). <see cref="Jpeg"/>: whether a running panel
 /// streams JPEG. <see cref="ReasonCode"/>: the failure's code (<c>busy</c>, <c>access</c>, <c>notSupported</c>,
 /// <c>timeout</c>, <c>io</c>), or <c>settling</c> while a start waits out <see cref="PanelManager.JpegSettle"/>.
+/// <see cref="MaxFps"/>: a running panel's ceiling, its session's (<see cref="PanelRunner.MaxFps"/>); null otherwise.
 /// </summary>
 public sealed record PanelStatus(SavedPanel Saved, bool Connected, string State, string? Reason, BeadaPanelInfo? Info, double? Fps, double? FrameTimeMs, bool? Jpeg = null,
-    string? ReasonCode = null, PanelIdentity? Identity = null);
+    string? ReasonCode = null, PanelIdentity? Identity = null, int? MaxFps = null);
 
 /// <summary>
 /// What <see cref="PanelManager.SaveAsync"/> did: the panel's state as saved, or, when nothing was saved, the
@@ -468,7 +469,7 @@ public sealed class PanelManager : IAsyncDisposable
         }
         return new PanelStatus(saved, runtime.Usb != null, state, reason, runtime.Info,
             runner is { Running: true } ? runner.Fps : null, runner is { Running: true } ? runner.FrameTimeMs : null,
-            runner is { Running: true } ? runner.Jpeg : null, code, runtime.Identity);
+            runner is { Running: true } ? runner.Jpeg : null, code, runtime.Identity, runner is { Running: true } ? runner.MaxFps : null);
     }
 
     /// <summary>

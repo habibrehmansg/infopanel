@@ -243,6 +243,23 @@ public sealed class PanelHostProcessTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task A_running_package_panel_answers_its_hosted_sessions_ceiling_and_a_raw_T113_BeadaPanel_its_pacers()
+    {
+        PlugBeada();
+        PlugVirtual();
+        var runner = Runner(_launcher);
+        Manager(runner, Virtual(), Beada());
+
+        var hosted = await Until(VirtualId, s => s.State == "running", "the virtual panel never ran");
+        var bead = await Until(BeadaId, s => s.State == "running", "the BeadaPanel never ran");
+
+        Assert.Equal(30, hosted.MaxFps); // its session's MaxFps, over the host's pipe
+        Assert.Equal(12, bead.MaxFps); // a T113 streaming raw: PanelPacer.CeilingOf
+        var entry = global::InfoPanel.Api.DeviceEndpoints.EntryOf(hosted, []); // the devices answer's entry
+        Assert.Equal(30, entry.Stats!.MaxFps);
+    }
+
+    [Fact]
     public async Task After_three_restarts_in_a_minute_the_package_fails_and_its_panel_is_failed_with_the_driver_reason()
     {
         PlugVirtual();

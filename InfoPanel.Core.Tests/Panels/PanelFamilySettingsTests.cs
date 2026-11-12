@@ -212,6 +212,27 @@ public sealed class PanelFamilySettingsTests : IAsyncDisposable
         Assert.Equal(intervalMs, session.Writes[1] - session.Writes[0]);
     }
 
+    [Theory]
+    [InlineData(30, 30)] // its session's ceiling
+    [InlineData(1, 1)]
+    [InlineData(60, 60)]
+    [InlineData(120, 60)] // above 60, as its pace keeps to it: 60
+    public async Task A_running_panel_answers_its_sessions_ceiling_and_none_before_it_runs(int sessionMaxFps, int answered)
+    {
+        var driver = new Driver(_backend.Clock) { MaxFps = sessionMaxFps };
+        var manager = Manager(driver);
+        var found = await Found(manager);
+        Assert.Equal(("off", (int?)null), (found.State, found.MaxFps));
+
+        await manager.UpdateAsync(found.Saved.Id, s => s with { Enabled = true, ProfileId = "p-1", FrameRate = 60 });
+        await Until(async () => (await manager.ListAsync())[0].State == "running", "the panel never ran");
+
+        Assert.Equal(answered, (await manager.ListAsync())[0].MaxFps);
+        await manager.UpdateAsync(found.Saved.Id, s => s with { Enabled = false });
+        await Until(async () => (await manager.ListAsync())[0].State == "off", "the panel never stopped");
+        Assert.Null((await manager.ListAsync())[0].MaxFps);
+    }
+
     private void Deliver(long frameId)
     {
         using var pixels = new SkiaSharp.SKBitmap(new SkiaSharp.SKImageInfo(8, 2, SkiaSharp.SKColorType.Rgba8888, SkiaSharp.SKAlphaType.Premul));
@@ -408,6 +429,9 @@ public sealed class PanelFamilySettingsTests : IAsyncDisposable
         /// <summary>The one format its sessions take.</summary>
         public PanelFrameFormat Format { get; init; } = PanelFrameFormat.Rgb565Le;
 
+        /// <summary>Its sessions' <see cref="PanelCapabilities.MaxFps"/>.</summary>
+        public int MaxFps { get; init; } = 30;
+
         public string Family => "set";
 
         public IReadOnlyList<PanelMatch> Matches { get; } = [new(Vendor, Product)];
@@ -441,18 +465,18 @@ public sealed class PanelFamilySettingsTests : IAsyncDisposable
                 _opened.Add(options);
                 if (model != "wonder-360")
                     return new PanelOpen(null, PanelDeviceStatus.NotSupported, $"model {identity.Model} isn't one this family knows");
-                var session = new Session(clock, Format);
+                var session = new Session(clock, Format, MaxFps);
                 _sessions.Add(session);
                 return new PanelOpen(session, PanelDeviceStatus.Ok, "");
             }
         }
     }
 
-    private sealed class Session(FakeUsbClock clock, PanelFrameFormat format) : IPanelSession
+    private sealed class Session(FakeUsbClock clock, PanelFrameFormat format, int maxFps = 30) : IPanelSession
     {
         private readonly List<long> _writes = [];
 
-        public PanelCapabilities Capabilities { get; } = new(8, 2, [format], MaxFps: 30);
+        public PanelCapabilities Capabilities { get; } = new(8, 2, [format], MaxFps: maxFps);
 
         public bool Closed { get; private set; }
 

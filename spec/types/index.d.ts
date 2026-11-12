@@ -2036,6 +2036,11 @@ export interface DeviceStats {
    * Range: ≥ 0.
    */
   frameTimeMs: number;
+  /**
+   * The most frames a second this session of the panel takes, 1 to 60: its own ceiling (its driver's), or 60 when it has none under that. A frame rate above it is sent at most this many. Absent from an engine that doesn't say.
+   * Range: 1–60.
+   */
+  maxFps?: number;
 }
 
 /** What identifies a panel, for people and bug reports; each null when the engine doesn't know it. */

@@ -2094,7 +2094,8 @@
       "additionalProperties": false,
       "properties": {
         "fps": { "description": "Frames written a second, over the last second or so.", "type": "number", "minimum": 0 },
-        "frameTimeMs": { "description": "Milliseconds a frame takes to write (and encode), on average.", "type": "number", "minimum": 0 }
+        "frameTimeMs": { "description": "Milliseconds a frame takes to write (and encode), on average.", "type": "number", "minimum": 0 },
+        "maxFps": { "description": "The most frames a second this session of the panel takes, 1 to 60: its own ceiling (its driver's), or 60 when it has none under that. A frame rate above it is sent at most this many. Absent from an engine that doesn't say.", "type": "integer", "minimum": 1, "maximum": 60 }
       }
     },
     "deviceDetails": {

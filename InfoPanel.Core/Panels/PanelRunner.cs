@@ -75,6 +75,7 @@ public sealed class PanelRunner
     private readonly PanelEncoding _encoding;
     private readonly System.Text.Json.JsonElement _familySettings;
     private volatile bool _jpeg;
+    private volatile int _maxFps;
     private volatile StrongBox<UsbStatus>? _jpegRefused;
     private long _encodes;
     private PanelSink? _attached;
@@ -146,6 +147,12 @@ public sealed class PanelRunner
 
     /// <summary>True once the session has started as a JPEG stream, and still after it ends (false before, and on a raw stream).</summary>
     public bool Jpeg => _jpeg;
+
+    /// <summary>
+    /// The session's frame-rate ceiling as its pace keeps to it: its <see cref="PanelCapabilities.MaxFps"/> within 1 to
+    /// 60 (a BeadaPanel's is <see cref="PanelPacer.CeilingOf"/>, else 60); null until the session has started.
+    /// </summary>
+    public int? MaxFps => _maxFps is var fps and > 0 ? fps : null;
 
     /// <summary>Why the panel didn't take the JPEG start tag, so this session went raw; null otherwise.</summary>
     public UsbStatus? JpegRefused => _jpegRefused?.Value;
@@ -386,6 +393,7 @@ public sealed class PanelRunner
         // The panel's own ceiling; none at 60 or more, which the pace never passes anyway.
         int? ceiling = capabilities.MaxFps < 60 ? Math.Max(1, capabilities.MaxFps) : null;
         _pacer = new PanelPacer(ceiling);
+        _maxFps = ceiling ?? 60; // answered while the session runs (the frame rate is 1 to 60)
         var profileId = ProfileId;
         if (AttachSink(profileId) is not { } sink)
             return new PanelRunEnd(true, UsbStatus.Ok, $"profile {profileId} can't be rendered", FrameSinkClosedReason.ProfileDeleted);
