@@ -20,7 +20,9 @@
 # Contents/Resources/engine, its Mach-O files (the executable, the runtime's and SkiaSharp's libraries) move to
 # Contents/MacOS, and each side links to the other's entries by relative symlinks: the executable finds its libraries
 # and its managed files beside it, and .NET, which takes the app's folder from InfoPanel.dll's real path, finds the
-# libraries in Contents/Resources/engine. libusb-1.0.dylib (USB panels), built here from libusb's pinned source and
+# libraries in Contents/Resources/engine. The media helper's library (Now Playing, in the publish's mediaremote-adapter/)
+# moves to Contents/Frameworks, linked from its place; any other Mach-O file below the publish's top level stops the
+# script. libusb-1.0.dylib (USB panels), built here from libusb's pinned source and
 # checked (native/libusb/build.sh --verify: arm64, its install name, a minimum macOS no newer than Info.plist's
 # LSMinimumSystemVersion), joins the publish's top level first, so it takes the same way into Contents/MacOS, where the
 # engine finds it beside itself. The icon and the licences (LICENSE, LICENSES.md and libusb's licence text from its
@@ -163,7 +165,26 @@ engine="$app/Contents/Resources/engine"
 mkdir -p "$macos" "$app/Contents/Resources"
 ditto "$publish" "$engine"
 is_macho() { file -b "$1" | grep -q '^Mach-O'; }
-# A Mach-O file below the publish's top level would stay in Resources, sealed as a resource rather than signed as code.
+# A symlink below the publish's top level could point at a Mach-O outside the app, which the checks below (regular files
+# only) and the signing would miss; the one link the layout makes, the media helper's, is created after this.
+while IFS= read -r -d '' link; do
+  echo "build.sh: a symlink below the publish's top level, which this layout doesn't allow: $link" >&2
+  exit 1
+done < <(find "$engine" -mindepth 2 -type l -print0)
+# The media helper's library (Now Playing; native/mediaremote-adapter/build.sh, checked again here) is the one Mach-O
+# file the publish has below its top level: it moves to Contents/Frameworks, where it is signed as code, and a relative
+# symlink takes its place, where the engine (MacNowPlayingReader) and the helper's script find it.
+media_lib="mediaremote-adapter/MediaRemoteAdapter.framework/MediaRemoteAdapter"
+[ -f "$engine/$media_lib" ] && [ ! -L "$engine/$media_lib" ] || {
+  echo "build.sh: the publish has no media helper ($media_lib): Now Playing would read helperMissing" >&2
+  exit 1
+}
+"$root/native/mediaremote-adapter/build.sh" --verify "$engine/mediaremote-adapter"
+mkdir -p "$app/Contents/Frameworks"
+mv "$engine/$media_lib" "$app/Contents/Frameworks/MediaRemoteAdapter.dylib"
+ln -s "../../../../Frameworks/MediaRemoteAdapter.dylib" "$engine/$media_lib"
+# Any other Mach-O file below the publish's top level would stay in Resources, sealed as a resource rather than signed as
+# code.
 while IFS= read -r -d '' file; do
   if is_macho "$file"; then
     echo "build.sh: a Mach-O file below the publish's top level, which this layout doesn't place: $file" >&2

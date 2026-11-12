@@ -50,8 +50,12 @@ and 27). The icon is `packaging/macos/AppIcon.icns`, made from `Images/logo.png`
 `Contents/Resources/engine`, its Mach-O files (the executable, the .NET runtime's and SkiaSharp's libraries) move to
 `Contents/MacOS`, and each side links to the other's entries with relative symlinks. The executable finds its libraries
 and managed files beside it; .NET takes the app's folder from `InfoPanel.dll`'s real path, `Contents/Resources/engine`,
-and finds the libraries there through the links. A Mach-O file below
-the publish's top level stops the script: this layout would seal it as a resource rather than sign it as code.
+and finds the libraries there through the links. The one Mach-O file below the publish's top level, the media helper's
+library (Now Playing's `mediaremote-adapter/MediaRemoteAdapter.framework/MediaRemoteAdapter`, checked with
+`native/mediaremote-adapter/build.sh --verify`), moves to `Contents/Frameworks/MediaRemoteAdapter.dylib`, and a relative
+symlink takes its place, where the engine and the helper's script find it; a publish without it stops the script. Any
+other Mach-O file below the publish's top level stops it too: this layout would seal it as a resource rather than sign
+it as code.
 
 **libusb.** `native/libusb/build.sh` downloads libusb's release tarball (the version in `native/libusb/pins.txt`), refuses
 it unless its SHA-256 is the pinned one, builds it for arm64 and leaves one regular file, `libusb-1.0.dylib`, whose
