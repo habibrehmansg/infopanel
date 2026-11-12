@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Jungle Leopard / Hongtai panel package (family jl): the cooler displays on the Hongtai reference firmware, a USB
+       CDC serial port (33c3:7788), JPEG frames. Its driver reaches its devices through the panel SDK's device seam only;
+       panel.json is its one model table. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>InfoPanel.Panels.Jl</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The engine's panel SDK, not copied: the host gives the package its own. -->
+    <ProjectReference Include="..\InfoPanel.Panels.Sdk\InfoPanel.Panels.Sdk.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="InfoPanel.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="panel.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="99-infopanel-jl.rules" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

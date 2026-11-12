@@ -1,0 +1,31 @@
+{
+  "format": "infopanel.panel-package/1",
+  "sdk": "1.0",
+  "families": [
+    {
+      "id": "jl",
+      "name": "Jungle Leopard / Hongtai displays",
+      "match": [
+        { "usb": "33c3:7788", "transport": "serial" }
+      ],
+      "detect": [
+        { "usb": "33c3:779?" },
+        { "usb": "33c3:77a?" },
+        { "usb": "33c3:77b?" },
+        { "usb": "33c3:77c?" },
+        { "usb": "33c3:77d?" },
+        { "usb": "33c3:77e?" },
+        { "usb": "33c3:77f?" },
+        { "usb": "33c3:780?" },
+        { "usb": "33c3:7810" }
+      ],
+      "models": [
+        { "id": "chillarc360", "name": "JL Chill Arc 360", "width": 480, "height": 960, "v1Model": "ChillArc360", "usb": "33c3:7788", "maxJpegBytes": 81920, "defaultFrameRate": 30 },
+        { "id": "stripdisplay", "name": "JL Strip Display", "width": 1920, "height": 462, "v1Model": "StripDisplay", "usb": "33c3:7788", "maxJpegBytes": 81920, "defaultFrameRate": 60 }
+      ],
+      "settings": [
+        { "id": "model", "name": "Model", "type": "model", "default": null }
+      ]
+    }
+  ]
+}

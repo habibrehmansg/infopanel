@@ -517,6 +517,33 @@ public sealed class EnginePanelDevicesTests : IDisposable
     }
 
     [Fact]
+    public void A_serial_dispose_lets_queued_output_go_first_within_its_drain_and_still_returns_within_its_bound()
+    {
+        // A screen-off written just before the dispose goes out though the line takes 40 ms to send it.
+        var slow = new FakeLine { DrainTime = TimeSpan.FromMilliseconds(40) };
+        var port = new OpenedSerial(slow);
+        Assert.Equal(PanelDeviceStatus.Ok, port.Write(new byte[7], 1000));
+
+        port.Dispose();
+
+        Assert.True(SpinWait.SpinUntil(() => slow.Steps.Contains("close"), 1000));
+        Assert.Equal(0, slow.Dropped);
+        Assert.Equal(["write", "discardOut", "discardIn", "close"], slow.Steps.Take(4));
+
+        // A line that never sends it: the drain gives up, what is queued is thrown away, and the dispose keeps its bound.
+        var stuck = new FakeLine { DrainTime = Timeout.InfiniteTimeSpan };
+        var other = new OpenedSerial(stuck);
+        Assert.Equal(PanelDeviceStatus.Ok, other.Write(new byte[7], 1000));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        other.Dispose();
+
+        Assert.True(watch.Elapsed < EnginePanelDevices.DisposeWait + TimeSpan.FromMilliseconds(150), $"{watch.ElapsedMilliseconds} ms");
+        Assert.True(SpinWait.SpinUntil(() => stuck.Steps.Contains("close"), 1000));
+        Assert.Equal(7, stuck.Dropped);
+    }
+
+    [Fact]
     public void A_serial_call_waiting_behind_another_keeps_to_its_deadline_and_a_cancel_while_it_waits_throws()
     {
         var line = new FakeLine();
@@ -1283,15 +1310,40 @@ public sealed class EnginePanelDevicesTests : IDisposable
 
     /// <summary>
     /// A raw serial port: a read waits a slice for nothing, or ends once it is closed; the close waits (up to 3 s) for the
-    /// queued output to be thrown away, as System.IO.Ports' flush waits for it to go, or hangs 3 s whatever is done.
+    /// queued output to be thrown away, as System.IO.Ports' flush waits for it to go, or hangs 3 s whatever is done. What a
+    /// write queues goes out <see cref="DrainTime"/> after it (none: at once; infinite: never); what is still queued at
+    /// a discard is <see cref="Dropped"/>.
     /// </summary>
     private sealed class FakeLine : ISerialLine
     {
         private readonly ManualResetEventSlim _discarded = new();
         private readonly ManualResetEventSlim _closed = new();
         private readonly List<string> _steps = [];
+        private readonly System.Diagnostics.Stopwatch _sinceWrite = new();
+        private int _queued;
+        private int _dropped;
 
         public bool CloseWaitsForDiscard { get; init; } = true;
+
+        public TimeSpan DrainTime { get; init; }
+
+        public int BytesToWrite
+        {
+            get
+            {
+                lock (_steps)
+                    return BytesToWriteLocked();
+            }
+        }
+
+        public int Dropped
+        {
+            get
+            {
+                lock (_steps)
+                    return _dropped;
+            }
+        }
 
         public string[] Steps
         {
@@ -1312,7 +1364,17 @@ public sealed class EnginePanelDevicesTests : IDisposable
 
         public bool IsOpen => !_closed.IsSet;
 
-        public void Write(byte[] data, int timeoutMs) => Step("write");
+        public void Write(byte[] data, int timeoutMs)
+        {
+            Step("write");
+            lock (_steps)
+            {
+                _queued = BytesToWriteLocked() + data.Length;
+                _sinceWrite.Restart();
+            }
+        }
+
+        private int BytesToWriteLocked() => DrainTime != Timeout.InfiniteTimeSpan && _sinceWrite.IsRunning && _sinceWrite.Elapsed >= DrainTime ? 0 : _queued;
 
         public int Read(byte[] buffer, int timeoutMs)
         {
@@ -1327,6 +1389,11 @@ public sealed class EnginePanelDevicesTests : IDisposable
         public void DiscardOutput()
         {
             Step("discardOut");
+            lock (_steps)
+            {
+                _dropped += BytesToWriteLocked();
+                _queued = 0;
+            }
             _discarded.Set();
         }
 

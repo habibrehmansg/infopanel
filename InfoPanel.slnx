@@ -6,6 +6,7 @@
   <Project Path="InfoPanel.Panels.Testing/InfoPanel.Panels.Testing.csproj" />
   <Project Path="InfoPanel.Panels.Thermaltake/InfoPanel.Panels.Thermaltake.csproj" />
   <Project Path="InfoPanel.Panels.Thermalright/InfoPanel.Panels.Thermalright.csproj" />
+  <Project Path="InfoPanel.Panels.Jl/InfoPanel.Panels.Jl.csproj" />
   <Project Path="InfoPanel.Plugins.Graphics/InfoPanel.Plugins.Graphics.csproj" />
   <Project Path="InfoPanel.Plugins.Host/InfoPanel.Plugins.Host.csproj" />
   <Project Path="InfoPanel.Plugins.Ipc/InfoPanel.Plugins.Ipc.csproj" />

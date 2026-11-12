@@ -117,7 +117,10 @@ public sealed record PanelCapabilities(
 {
     // Never a positional parameter: a new constructor or Deconstruct signature breaks every driver built before it.
 
-    /// <summary>Whether the engine dims the frame itself, for a panel without a light of its own (<see cref="Brightness"/> stays null).</summary>
+    /// <summary>
+    /// Whether the engine dims the frame itself, for a panel without a light of its own (<see cref="Brightness"/> stays
+    /// null); a panel whose 1.x driver both set its light and dimmed the frame (JL) declares both.
+    /// </summary>
     public bool DimInSoftware { get; init; }
 
     /// <summary>The PNG overlays drawn over the turned frame before it is encoded, by rotation (0, 90, 180 or 270); each the frame's size as turned, its alpha kept. Null: none.</summary>

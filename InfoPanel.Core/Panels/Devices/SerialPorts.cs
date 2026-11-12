@@ -319,6 +319,9 @@ internal interface ISerialLine
     /// <summary>Reads what has come, at least a byte; <see cref="TimeoutException"/> past <paramref name="timeoutMs"/>.</summary>
     int Read(byte[] buffer, int timeoutMs);
 
+    /// <summary>The bytes written that haven't gone out yet (the OS's output queue).</summary>
+    int BytesToWrite { get; }
+
     void DiscardInput();
 
     void DiscardOutput();
@@ -332,12 +335,16 @@ internal interface ISerialLine
 /// <summary>
 /// An open port: one call at a time, each within its one deadline (taken at the call's start: the wait for another call
 /// included, a cancel while it waits throws, and the port gets only what is left); a read in slices; a dispose answers
-/// the calls waiting for their turn <see cref="PanelDeviceStatus.Io"/> at once, throws
-/// away what is queued both ways and closes the port on a worker, ending the call under way, and returns within
-/// <see cref="EnginePanelDevices.DisposeWait"/> whatever the close does (the port is unusable after).
+/// the calls waiting for their turn <see cref="PanelDeviceStatus.Io"/> at once, gives what was written
+/// <see cref="DrainWait"/> to go out (a screen-off written just before), throws away what is still queued both ways and
+/// closes the port on a worker, ending the call under way, and returns within <see cref="EnginePanelDevices.DisposeWait"/>
+/// whatever the close does (the port is unusable after).
 /// </summary>
 internal sealed class OpenedSerial(ISerialLine port, Func<int, DeviceDeadline>? deadlines = null) : IOpenedSerial
 {
+    /// <summary>How long a dispose waits for the output queue to empty before it throws away what is left: within <see cref="EnginePanelDevices.DisposeWait"/>.</summary>
+    internal static readonly TimeSpan DrainWait = TimeSpan.FromMilliseconds(100);
+
     private readonly SemaphoreSlim _call = new(1, 1);
     private readonly CancellationTokenSource _disposing = new();
     private readonly Func<int, DeviceDeadline> _deadlines = deadlines ?? (ms => new DeviceDeadline(ms));
@@ -460,11 +467,13 @@ internal sealed class OpenedSerial(ISerialLine port, Func<int, DeviceDeadline>? 
             return;
         _disposing.Cancel(); // the calls waiting for their turn answer Io at once
         var bound = new DeviceDeadline((int)EnginePanelDevices.DisposeWait.TotalMilliseconds);
-        // What is queued either way is thrown away first, so the close has nothing to flush to a device that stalls; the
-        // close (System.IO.Ports flushes before it closes) runs on a thread of its own (one that hangs holds no pool
-        // thread), ending the call under way, and is waited for only within the bound.
+        // What was written gets a short drain (the last write, a screen-off, may still be queued), then what is queued
+        // either way is thrown away, so the close has nothing to flush to a device that stalls; the close (System.IO.Ports
+        // flushes before it closes) runs on a thread of its own (one that hangs holds no pool thread), ending the call
+        // under way, and is waited for only within the bound.
         var closing = new Thread(() =>
         {
+            Drain();
             try
             {
                 port.DiscardOutput();
@@ -488,6 +497,28 @@ internal sealed class OpenedSerial(ISerialLine port, Func<int, DeviceDeadline>? 
         closing.Join(bound.RemainingMs);
         if (bound.RemainingMs > 0 && _call.Wait(bound.RemainingMs))
             _call.Release();
+    }
+
+    /// <summary>Waits, at most <see cref="DrainWait"/>, for the output queue to empty; a port that can't say ends it.</summary>
+    private void Drain()
+    {
+        var drain = new DeviceDeadline((int)DrainWait.TotalMilliseconds);
+        while (true)
+        {
+            try
+            {
+                if (port.BytesToWrite <= 0)
+                    return;
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException or NotSupportedException)
+            {
+                return;
+            }
+            var left = drain.RemainingMs;
+            if (left <= 0)
+                return;
+            Thread.Sleep(Math.Min(left, 5));
+        }
     }
 }
 
@@ -688,6 +719,8 @@ public sealed class SerialPorts(ILogger logger) : ISerialSystem
             port.ReadTimeout = timeoutMs;
             return port.Read(buffer, 0, buffer.Length);
         }
+
+        public int BytesToWrite => port.BytesToWrite;
 
         public void DiscardInput() => port.DiscardInBuffer();
 

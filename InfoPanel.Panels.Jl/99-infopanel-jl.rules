@@ -1,0 +1,6 @@
+# InfoPanel: Jungle Leopard / Hongtai cooler displays (the ids in this package's panel.json), readable and writable by the
+# user at the seat, so InfoPanel needs no root. They are USB CDC serial devices (ttyACM). Copy to /etc/udev/rules.d/, then:
+# sudo udevadm control --reload && sudo udevadm trigger
+# JL Chill Arc 360 and the Hongtai reference firmware's other displays on 33c3:7788
+SUBSYSTEM=="usb", ATTRS{idVendor}=="33c3", ATTRS{idProduct}=="7788", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="33c3", ATTRS{idProduct}=="7788", MODE="0660", TAG+="uaccess"
