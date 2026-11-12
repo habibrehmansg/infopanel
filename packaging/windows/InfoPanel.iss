@@ -10,6 +10,9 @@
 #define AppExeName "InfoPanel.exe"
 #define AppPublisher "Habib Rehman"
 #define AppURL "https://infopanel.net"
+; Start when I sign in (the tray's, WinStartup): the Run value AppName under the user's Run key, and Task Manager's switch.
+#define RunKey "Software\Microsoft\Windows\CurrentVersion\Run"
+#define ApprovedKey "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 #define RepoRoot AddBackslash(SourcePath) + "..\.."
 #define RuntimeFile ExtractFileName(RuntimeInstaller)
 
@@ -98,12 +101,18 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 ; Started as the user who ran Setup, never with administrator rights (only the sensor helper's task runs elevated): offered
 ; only when that user's token is unelevated. Setup started elevated (Run as administrator, an elevated prompt) offers none.
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runasoriginaluser; Check: OriginalUserUnelevated
-
+; Start when I sign in, ticked: the tray's Run value ("C:\Program Files\InfoPanel 2\InfoPanel.exe"), written by reg.exe as
+; the user who ran Setup, into that user's HKCU (Setup's own is the administrator's when another user elevated it).
+; Offered, as the launch, only when that user's token is unelevated: Setup started elevated (Run as administrator, maybe
+; with another administrator's credentials) can't run anything as the user who started it, so it writes nothing.
+; Unticked, nothing changes.
+; A silent install writes it too, unless /STARTATSIGNIN=no.
+Filename: "{sys}\reg.exe"; Parameters: "add ""HKCU\{#RunKey}"" /v ""{#AppName}"" /t REG_SZ /d ""\""{app}\{#AppExeName}\"""" /f"; Description: "Start {#AppName} when I sign in"; Flags: postinstall runasoriginaluser runhidden; Check: OriginalUserUnelevated and StartAtSignInAsked; BeforeInstall: ClearStartupSwitch
 
 [Code]
 const
-  RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
-  ApprovedKey = 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run';
+  RunKey = '{#RunKey}';
+  ApprovedKey = '{#ApprovedKey}';
   RunValue = '{#AppName}';
   TaskFolder = '{#AppName}';
   HelperTaskPrefix = 'Sensor helper ';
@@ -176,11 +185,28 @@ begin
       '/d /c ' + Sys + '\whoami.exe /groups /fo csv /nh | ' + Sys + '\findstr.exe /c:",\"S-1-16-8192\"," >nul', '', SW_HIDE, ewWaitUntilTerminated, Code)
       and (Code = 0);
     if OriginalUnelevated then
-      Log('The user who started Setup is unelevated: the finish page offers the launch')
+      Log('The user who started Setup is unelevated: the finish page offers the launch and Start when I sign in')
     else
-      Log(Format('The user who started Setup is elevated (or unknown, %d): the finish page offers no launch', [Code]));
+      Log(Format('The user who started Setup is elevated (or unknown, %d): the finish page offers no launch and no Start when I sign in', [Code]));
   end;
   Result := OriginalUnelevated;
+end;
+
+{ Start when I sign in is offered (ticked) unless the command line says /STARTATSIGNIN=no. }
+function StartAtSignInAsked: Boolean;
+begin
+  Result := CompareText(ExpandConstant('{param:STARTATSIGNIN|yes}'), 'no') <> 0;
+end;
+
+{ Before the Run value is written: Task Manager's switch for it cleared, as the tray's Start when I sign in clears it, as
+  the user who ran Setup. reg.exe answers 1 when there is none. }
+procedure ClearStartupSwitch;
+var
+  Code: Integer;
+begin
+  if not ExecAsOriginalUser(ExpandConstant('{sys}\reg.exe'), 'delete "HKCU\{#ApprovedKey}" /v "{#AppName}" /f', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+    Code := -1;
+  Log(Format('Task Manager''s switch for the Run value {#AppName} cleared: reg.exe exited %d', [Code]));
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -543,22 +569,37 @@ begin
     Result := Copy(Rest, 1, Last - 1);
 end;
 
-{ The user's Start when I sign in, when its program is this install's (the resolved path; its arguments don't count). }
-procedure RemoveRunValue;
+{ One user's Start when I sign in (Root and Hive: HKCU and '', or HKU and a loaded hive's name and a backslash), when its
+  program is this install's (the resolved path; its arguments don't count). Read here and checked here, whichever hive. }
+procedure RemoveRunValueIn(const Root: Integer; const Hive: String);
 var
   Command: String;
 begin
-  if RegQueryStringValue(HKCU, RunKey, RunValue, Command) then
+  if RegQueryStringValue(Root, Hive + RunKey, RunValue, Command) then
   begin
     if SamePath(CommandProgram(Command), ExpandConstant('{app}\{#AppExeName}')) then
     begin
-      RegDeleteValue(HKCU, RunKey, RunValue);
-      RegDeleteValue(HKCU, ApprovedKey, RunValue);
-      Log('Removed the Run value ' + RunValue);
+      RegDeleteValue(Root, Hive + RunKey, RunValue);
+      RegDeleteValue(Root, Hive + ApprovedKey, RunValue);
+      Log('Removed the Run value ' + RunValue + ' (' + Hive + RunKey + ')');
     end
     else
-      Log('Left alone: the Run value ' + RunValue + ' starts ' + CommandProgram(Command));
+      Log('Left alone: the Run value ' + RunValue + ' (' + Hive + RunKey + ') starts ' + CommandProgram(Command));
   end;
+end;
+
+{ Start when I sign in, removed from every hive loaded under HKEY_USERS (each signed-in user's: the uninstalling user's
+  too when another administrator elevated the uninstall, which then runs as that administrator, and the uninstaller can
+  run nothing as the user who started it) and from the uninstaller's own HKCU. A user who isn't signed in keeps theirs. }
+procedure RemoveRunValues;
+var
+  Hives: TArrayOfString;
+  I: Integer;
+begin
+  if RegGetSubkeyNames(HKU, '', Hives) then
+    for I := 0 to GetArrayLength(Hives) - 1 do
+      RemoveRunValueIn(HKU, Hives[I] + '\');
+  RemoveRunValueIn(HKCU, '');
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -575,6 +616,6 @@ begin
       Abort;
     end;
     HelperTasks(True);
-    RemoveRunValue;
+    RemoveRunValues;
   end;
 end;

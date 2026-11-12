@@ -191,6 +191,14 @@ The Task Scheduler can't hold a task and a folder of one name at its root: with 
   rights, and is offered only when that user's token is unelevated (integrity Medium). Setup started elevated (Run as
   administrator, an elevated prompt, UAC off) offers no launch, since it would start the engine elevated. A silent
   install (`/VERYSILENT`) launches nothing.
+- The finish page's "Start InfoPanel 2 when I sign in", ticked, turns on the tray's Start when I sign in for the user
+  who started Setup: `reg.exe`, run as that user, writes the Run value `InfoPanel 2`,
+  `"C:\Program Files\InfoPanel 2\InfoPanel.exe"`, into that user's `HKCU` and clears its Task Manager switch, as the
+  tray does (not through Setup's own `HKCU`, the administrator's when another user than the one who started it
+  elevated it). Unticked, nothing changes. A silent install writes it too, unless `/STARTATSIGNIN=no`. Offered, as the
+  launch, only when that user's token is unelevated: Setup started elevated (Run as administrator, maybe with another
+  administrator's credentials) can't run anything as the user who started it, so it offers and writes nothing; then
+  turn it on from the tray's Start when I sign in.
 - **Over a running InfoPanel 2** (an update or a repair): Setup first stops this install's running sensor helper
   tasks (the helper runs as SYSTEM in session 0), then stops the engine as it stops at a sign-out (below). The Restart
   Manager then closes, without forcing, anything else holding a file (`CloseApplications=yes`), and Setup restarts
@@ -218,9 +226,12 @@ The uninstaller (Settings › Apps, or Uninstall InfoPanel 2 in the Start menu):
   `Sensor helper <SID>`, with one action, exactly this install's helper (its path resolved: `..` doesn't pass) with
   `--serve --user <SID>`; any other is left alone. Then the `\InfoPanel 2` folder once empty. Through the Task
   Scheduler: the helper isn't run, since a .NET program run elevated would take the user's environment;
-- removes the uninstalling user's Run value `InfoPanel 2` (and its Task Manager switch) when its program (the command
-  line's first part, its path resolved; the arguments don't count) is this install's `InfoPanel.exe`; another user's
-  stays, starting a program that is gone;
+- removes the Run value `InfoPanel 2` (and its Task Manager switch) from the uninstaller's own `HKCU` and from every
+  user hive loaded under `HKEY_USERS` (each signed-in user's, so the user who started the uninstall too when another
+  administrator's credentials elevated it: the uninstaller can run nothing as that user), each read and checked by the
+  uninstaller itself: removed only when its program (the command line's first part, its path resolved; the arguments
+  don't count) is this install's `InfoPanel.exe`. The value of a user who isn't signed in stays, starting a program
+  that is gone;
 - removes the program folder and the shortcuts, and the `infopanel:` link's key, `HKLM\Software\Classes\infopanel`
   (`uninsdeletekey`);
 - **keeps** `%LOCALAPPDATA%\InfoPanel\v2` (profiles, settings, logs), and touches nothing of 1.x's.
