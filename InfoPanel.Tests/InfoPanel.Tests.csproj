@@ -29,8 +29,10 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel\InfoPanel.csproj" />
-    <!-- The plugin host (net8.0), a library the engine runs in its host mode; its internals are visible to these tests. -->
+    <!-- The plugin host (net10.0), a library the engine runs in its host mode; its internals are visible to these tests. -->
     <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
+    <!-- The plugin simulator, run in process by its tests (SimulatorTests). -->
+    <ProjectReference Include="..\InfoPanel.Plugins.Simulator\InfoPanel.Plugins.Simulator.csproj" />
   </ItemGroup>
 
   <!-- The plugin the tests run in hosts, built and copied into plugin-fixtures/InfoPanel.TestFixture/. Not into plugins/, so
@@ -46,6 +48,18 @@
       <_FixturePluginFile Include="$(_FixturePluginDir)\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(_FixturePluginFile)" DestinationFiles="@(_FixturePluginFile->'$(OutDir)plugin-fixtures\InfoPanel.TestFixture\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <!-- The plugin built as 1.x plugins are (net8.0, against 1.x's SDK, which it carries), into
+         plugin-fixtures/InfoPanel.V1Fixture/. -->
+    <MSBuild Projects="..\InfoPanel.Plugins.TestFixture.V1\InfoPanel.Plugins.TestFixture.V1.csproj" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained">
+      <Output TaskParameter="TargetOutputs" PropertyName="_V1FixturePluginPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <_V1FixturePluginDir>$([System.IO.Path]::GetDirectoryName($(_V1FixturePluginPath)))</_V1FixturePluginDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_V1FixturePluginFile Include="$(_V1FixturePluginDir)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_V1FixturePluginFile)" DestinationFiles="@(_V1FixturePluginFile->'$(OutDir)plugin-fixtures\InfoPanel.V1Fixture\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

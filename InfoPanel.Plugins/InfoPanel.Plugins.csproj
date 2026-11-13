@@ -1,9 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- The plugin SDK, net10.0. Plugins bind to it by name (no version set, not strong-named), and a plugin host hands
+       every plugin the host's copy, whatever copy the plugin carries, so a plugin built against an older SDK (1.x's, on
+       net8.0) keeps loading while every type and member it may use stays: additions only. -->
   <PropertyGroup>
-	<TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- PluginLog.Attach: the plugin host wires plugins' log lines to its own log. -->
+    <InternalsVisibleTo Include="InfoPanel.Plugins.Host" />
+  </ItemGroup>
 
 </Project>

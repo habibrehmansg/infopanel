@@ -2,7 +2,7 @@
 
   <!-- A library: the engine executable runs it as its plugin host mode (the plugin-host flag, PluginHostEntry). -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

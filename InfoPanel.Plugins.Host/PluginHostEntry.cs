@@ -11,7 +11,8 @@ namespace InfoPanel.Plugins.Host;
 /// The engine executable's plugin host mode: <c>InfoPanel --plugin-host --pipe &lt;name&gt; --plugin &lt;dll&gt;
 /// --log-dir &lt;dir&gt; --settings-dir &lt;dir&gt; --log-level &lt;level&gt;</c>. It connects to the engine's pipe, loads
 /// the plugin DLL and serves <see cref="HostService"/> until the engine shuts it down or the pipe ends. It writes only its
-/// log (<c>{log-dir}/{plugin folder}-{yyyyMMdd}.log</c>, daily, three kept, 10 MiB a file, never to the console) and the
+/// log (<c>{log-dir}/{plugin folder}-{yyyyMMdd}.log</c>, daily, three kept, 10 MiB a file, never to the console; its
+/// plugins' <see cref="PluginLog"/> lines go there too, at the same level) and the
 /// plugins' settings (<c>{settings-dir}/{plugin id}.json</c>). When the pipe ends without a shutdown (the engine
 /// stopped or died) its plugins get 2 s to close; then the process exits, and one still alive 5 s after the pipe ended
 /// ends itself, whatever threads or process-exit handlers a plugin left running: that end is the operating system's own
@@ -91,6 +92,7 @@ public static class PluginHostEntry
                 retainedFileCountLimit: LogFilesKept,
                 fileSizeLimitBytes: LogFileBytes)
             .CreateLogger();
+        AttachPluginLog(Log.Logger);
 
         try
         {
@@ -104,8 +106,25 @@ public static class PluginHostEntry
         finally
         {
             Log.Information("Plugin host stopped");
+            PluginLog.Attach(null);
             await Log.CloseAndFlushAsync().ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Sends the plugins' <see cref="PluginLog"/> lines to <paramref name="logger"/>, the package's log, at its level, each
+    /// marked as the plugin's (<c>SourceContext</c> <c>PluginLog</c>), its text a value, never a template.
+    /// </summary>
+    private static void AttachPluginLog(ILogger logger)
+    {
+        var plugins = logger.ForContext(Serilog.Core.Constants.SourceContextPropertyName, nameof(PluginLog));
+        PluginLog.Attach((level, message, exception) => plugins.Write(level switch
+        {
+            PluginLogLevel.Debug => LogEventLevel.Debug,
+            PluginLogLevel.Warning => LogEventLevel.Warning,
+            PluginLogLevel.Error => LogEventLevel.Error,
+            _ => LogEventLevel.Information,
+        }, exception, "Plugin: {PluginMessage:l}", message));
     }
 
     private static async Task<int> ServeAsync(string pipeName, string pluginPath, string settingsDir)

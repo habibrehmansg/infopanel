@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A plugin built as 1.x plugins are, for the engine's tests, never shipped: net8.0, against 1.x's SDK
+       (InfoPanel.Plugins.V1Sdk), whose InfoPanel.Plugins.dll it carries beside it, as a plugin built with a plain
+       reference does. Built as InfoPanel.V1Fixture.dll, the name a plugin folder InfoPanel.V1Fixture holds; the tests
+       get it in their plugin-fixtures/. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>InfoPanel.V1Fixture</AssemblyName>
+    <RootNamespace>InfoPanel.V1Fixture</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InfoPanel.Plugins.V1Sdk\InfoPanel.Plugins.V1Sdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="PluginInfo.ini">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

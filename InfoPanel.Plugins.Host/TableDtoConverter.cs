@@ -57,12 +57,13 @@ namespace InfoPanel.Plugins.Host
                         cell.Type = "sensor";
                         cell.SensorName = Cut(name, IpcLimits.CellChars);
                         cell.SensorUnit = unit;
+                        var read = PluginSensorReading.Of(cellSensor);
                         cell.SensorValue = new SensorValueDto
                         {
-                            Value = cellSensor.Value,
-                            ValueMin = cellSensor.ValueMin,
-                            ValueMax = cellSensor.ValueMax,
-                            ValueAvg = cellSensor.ValueAvg,
+                            Value = read.Value,
+                            ValueMin = read.ValueMin,
+                            ValueMax = read.ValueMax,
+                            ValueAvg = read.ValueAvg,
                             Unit = unit
                         };
                     }

@@ -373,7 +373,13 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
                             (admitted ??= []).Add(new Admitted(entry, entry.Turn, text));
                         continue;
                     }
-                    if (ReadingOf(package, entry.Info.Key, entry.Kind, update.SensorValue, update.TextValue, update.TableValue) is { } reading)
+                    if (entry.Kind == SensorKind.Number && update.SensorValue is { } number && !float.IsFinite(number.Value))
+                    {
+                        // The plugin doesn't know this number now: no reading, until a finite value comes.
+                        entry.Reading = default;
+                        entry.HasReading = false;
+                    }
+                    else if (ReadingOf(package, entry.Info.Key, entry.Kind, update.SensorValue, update.TextValue, update.TableValue) is { } reading)
                     {
                         entry.Reading = reading;
                         entry.HasReading = true;
@@ -721,7 +727,11 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
         switch (kind)
         {
             case SensorKind.Number when sensor != null:
-                return new SensorReading(Finite(sensor.ValueMin), Finite(sensor.ValueMax), Finite(sensor.ValueAvg), Finite(sensor.Value),
+                // A value that isn't finite is no reading (the plugin doesn't know the number); a minimum, maximum or
+                // average that isn't finite beside a finite value reads as the value.
+                if (!float.IsFinite(sensor.Value))
+                    return null;
+                return new SensorReading(Or(sensor.ValueMin, sensor.Value), Or(sensor.ValueMax, sensor.Value), Or(sensor.ValueAvg, sensor.Value), sensor.Value,
                     Cut(sensor.Unit ?? "", _limits.NameChars));
             case SensorKind.Text when text != null:
                 if (text.Length > _limits.TextChars)
@@ -803,6 +813,9 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
     }
 
     private static double Finite(double value) => double.IsFinite(value) ? value : 0;
+
+    /// <summary><paramref name="value"/> when it is finite, else <paramref name="otherwise"/>.</summary>
+    private static double Or(float value, float otherwise) => float.IsFinite(value) ? value : otherwise;
 
     private static string Cut(string value, int chars) => value.Length <= chars ? value : value[..chars];
 }

@@ -115,6 +115,59 @@ public class SensorSnapshotManagerTests
         Assert.Contains("temp", Deliver(manager, wrapper).Select(u => u.EntryId));
     }
 
+    // A plugin sets its sensor on its own thread while the host reads it: each read is one value with the minimum, maximum
+    // and average set with it, never a value beside the statistics of another. Rising values make a torn read visible: a
+    // whole read's value is its maximum, its minimum stays the first value and its average is below the value.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_sensor_set_while_the_host_reads_it_is_read_whole(bool inATable)
+    {
+        var sensor = new PluginSensor("rising", "Rising", 0);
+        var wrapper = inATable ? Wrap(new PluginTable("table", "Table", OneCell(sensor), "")) : Wrap(sensor);
+        var manager = new SensorSnapshotManager();
+        using var stop = new CancellationTokenSource();
+        var writer = Task.Run(() =>
+        {
+            // Below 2^24, where every whole number is a float.
+            for (var value = 1f; value < 16_000_000 && !stop.IsCancellationRequested; value++)
+                sensor.Value = value;
+        }, TestContext.Current.CancellationToken);
+
+        SensorValueDto? torn = null;
+        var reads = 0;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            while (torn == null && clock.Elapsed < TimeSpan.FromSeconds(1))
+            {
+                foreach (var update in Deliver(manager, wrapper))
+                {
+                    var read = inATable ? update.TableValue!.Rows.Single().Single().SensorValue! : update.SensorValue!;
+                    reads++;
+                    if (read.Value != read.ValueMax || read.ValueMin != 0 || read.ValueAvg > read.Value)
+                        torn = read;
+                }
+            }
+        }
+        finally
+        {
+            stop.Cancel();
+            await writer;
+        }
+
+        Assert.True(torn == null, $"A torn read after {reads}: value {torn?.Value}, minimum {torn?.ValueMin}, maximum {torn?.ValueMax}, average {torn?.ValueAvg}");
+        Assert.True(reads > 0);
+    }
+
+    private static DataTable OneCell(PluginSensor sensor)
+    {
+        var table = new DataTable();
+        table.Columns.Add("value", typeof(PluginSensor));
+        table.Rows.Add(sensor);
+        return table;
+    }
+
     [Fact]
     public void An_update_the_host_did_not_deliver_is_sent_again_on_the_next_cycle()
     {

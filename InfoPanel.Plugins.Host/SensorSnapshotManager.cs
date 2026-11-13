@@ -352,7 +352,8 @@ namespace InfoPanel.Plugins.Host
 
             if (entry is IPluginSensor sensor)
             {
-                var reading = new SensorReading(sensor.Value, sensor.ValueMin, sensor.ValueMax, sensor.ValueAvg,
+                var read = PluginSensorReading.Of(sensor);
+                var reading = new SensorReading(read.Value, read.ValueMin, read.ValueMax, read.ValueAvg,
                     TableDtoConverter.Cut(sensor.Unit, IpcLimits.NameChars));
                 state = reading;
                 update = new EntryUpdateDto

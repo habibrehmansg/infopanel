@@ -3,7 +3,7 @@
   <!-- A plugin for the engine's tests, never shipped: built as InfoPanel.TestFixture.dll, the name a plugin folder
        InfoPanel.TestFixture holds. Its behaviour is chosen per test by a fixture-mode.txt next to the DLL. -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>InfoPanel.TestFixture</AssemblyName>
     <RootNamespace>InfoPanel.TestFixture</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>

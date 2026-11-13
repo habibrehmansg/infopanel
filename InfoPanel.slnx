@@ -14,7 +14,9 @@
   <Project Path="InfoPanel.Plugins.Ipc/InfoPanel.Plugins.Ipc.csproj" />
   <Project Path="InfoPanel.Plugins.Loader/InfoPanel.Plugins.Loader.csproj" />
   <Project Path="InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj" />
+  <Project Path="InfoPanel.Plugins.TestFixture.V1/InfoPanel.Plugins.TestFixture.V1.csproj" />
   <Project Path="InfoPanel.Plugins.TestFixture/InfoPanel.Plugins.TestFixture.csproj" />
+  <Project Path="InfoPanel.Plugins.V1Sdk/InfoPanel.Plugins.V1Sdk.csproj" />
   <Project Path="InfoPanel.Plugins/InfoPanel.Plugins.csproj" />
   <Project Path="InfoPanel.SensorHelper.TestHost/InfoPanel.SensorHelper.TestHost.csproj" />
   <Project Path="InfoPanel.SensorHelper/InfoPanel.SensorHelper.csproj" />

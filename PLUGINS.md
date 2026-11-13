@@ -8,6 +8,9 @@
   - [Base Plugin](#base-plugin)
   - [Plugin Containers](#plugin-containers)
   - [Plugin Data Types](#plugin-data-types)
+  - [Numbers a Plugin Can't Read](#numbers-a-plugin-cant-read)
+  - [Threads](#threads)
+- [Logging](#logging)
 - [Image Providers](#image-providers)
   - [SkiaSharp 4](#skiasharp-4)
 - [Plugin Actions](#plugin-actions)
@@ -24,31 +27,46 @@
 
 ## Introduction
 
-InfoPanel features a plugin system that enables developers to extend its capabilities with custom data sources, visualizations, and images. Plugins can provide sensors, text values, tables, and rendered images that are displayed in InfoPanel's overlays and panels.
+InfoPanel's plugins add data sources of their own: sensors, texts, tables and pictures, which panels and desktop windows show like any other sensor. A plugin is a .NET 10 class library built against InfoPanel's plugin SDK, `InfoPanel.Plugins`.
 
-Each plugin runs in an isolated host process, communicating with the main application over named pipes. This ensures that a misbehaving plugin cannot crash InfoPanel. For details on how the host system works internally, see [PLUGIN-ARCHITECTURE.md](PLUGIN-ARCHITECTURE.md).
+Each plugin package runs in a host process of its own, which talks to the engine over a named pipe, so a misbehaving plugin can't crash InfoPanel. How the engine finds, runs and bounds plugins: [docs/2.0/plugins.md](docs/2.0/plugins.md); how the hosts work inside: [PLUGIN-ARCHITECTURE.md](PLUGIN-ARCHITECTURE.md).
 
 ## InfoPanel 1.x and 2.0
 
-This guide was written for InfoPanel 1.x, the Windows app (branch `1.4.x`). The SDK (`InfoPanel.Plugins`, .NET 8) is the same in 2.0, whose engine runs 1.x plugins as they are, on Windows and macOS; on macOS it skips plugin types marked for Windows only, and a plugin type that provides [images](#image-providers) doesn't start there at all (its image channel needs Windows' shared memory), so its sensors don't show either. What 2.0 does differently ([docs/2.0/plugins.md](docs/2.0/plugins.md)):
+This guide is for InfoPanel 2.0, whose engine runs on Windows, macOS and Linux. Its SDK is the SDK 1.x plugins were built with, on .NET 10, with additions only (`PluginImage`, `PluginLog`), so **a 1.x plugin loads as it is**: it binds the SDK by name, and the host hands it the engine's copy. Rebuilding one for 2.0 is one line, `<TargetFramework>net10.0</TargetFramework>`, and needs the .NET 10 SDK. What 2.0 does ([docs/2.0/plugins.md](docs/2.0/plugins.md)):
 
-- **What the engine reads:** sensors, texts and tables, under 1.x's keys, and [pictures](#pluginimage) (`PluginImage`, 2.0 only: 1.x lists none). It doesn't show drawn [images](#image-providers), offer [actions](#plugin-actions) or let a user change a plugin's [settings](#plugin-configuration) yet.
-- **Where plugins go:** a package is a folder `InfoPanel.{Name}` holding `InfoPanel.{Name}.dll`. The engine reads its bundled plugins from `plugins/` beside itself and the user's from `plugins/` in its data folder (`%LOCALAPPDATA%\InfoPanel\v2\plugins\` on Windows, `~/Library/Application Support/InfoPanel/v2/plugins/` on macOS), when it starts. There is no plugin browser and no "Add Plugin from ZIP" yet: copy the folder there and start the engine again.
+- **What the engine reads:** sensors, texts and tables, under 1.x's keys (`plugin:/{plugin id}/{container id}/{entry id}`), and [pictures](#pluginimage) (`PluginImage`, 2.0 only). It doesn't show drawn [images](#image-providers) yet, and on macOS and Linux a plugin type that provides them doesn't start at all (its image channel needs Windows' shared memory). Types marked `[SupportedOSPlatform]` for other operating systems are skipped; a package can say where it runs with `Platforms=` in its [PluginInfo.ini](#3-create-plugininfoini).
+- **Actions and settings:** InfoPanel's Plugins page lists a plugin's [actions](#plugin-actions) as buttons and its [settings](#plugin-configuration) by type, through the engine's API.
+- **Where plugins go:** a package is a folder `InfoPanel.{Name}` holding `InfoPanel.{Name}.dll`. The engine reads its bundled plugins from `plugins/` beside itself and the user's from `plugins/` in its data folder (`%LOCALAPPDATA%\InfoPanel\v2\plugins\` on Windows, `~/Library/Application Support/InfoPanel/v2/plugins/` on macOS), when it starts: copy the folder there and start the engine again.
 - **Settings:** stored in the data folder, `plugin-settings/{package}/{plugin id}.json`, and applied when the plugin starts. 2.0 never writes to 1.x's folders.
-- **Logs:** `logs/plugins/{package}-{yyyyMMdd}.log` in the data folder.
+- **Logs:** `logs/plugins/{package}-{yyyyMMdd}.log` in the data folder, with your plugin's own lines ([Logging](#logging)).
 - **The host:** the engine's own executable, started as `InfoPanel --plugin-host` ([PLUGIN-ARCHITECTURE.md](PLUGIN-ARCHITECTURE.md)).
 
 ## Quick Start
 
 ### 1. Create a .NET Class Library
 
-Create a new .NET 8.0 class library project:
+Create a .NET 10 class library (the .NET 10 SDK builds it), named as its package folder will be, `InfoPanel.{Name}`:
 
 ```
-MyPlugin/
-  |- MyPlugin.csproj
+InfoPanel.MyPlugin/
+  |- InfoPanel.MyPlugin.csproj
   |- MyPlugin.cs
   |- PluginInfo.ini
+```
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="PluginInfo.ini" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+</Project>
 ```
 
 ### 2. Add Project References
@@ -92,9 +110,10 @@ Description=A description of what your plugin does
 Author=Your Name
 Version=1.0.0
 Website=https://yourwebsite.com
+Platforms=windows, macos, linux
 ```
 
-> **Important:** The section header must be `[PluginInfo]`, not `[Plugin]`.
+> **Important:** The section header must be `[PluginInfo]`, not `[Plugin]`. `Platforms` is optional (without it the package runs anywhere); a plugin built on a Windows-only library says `Platforms=windows`.
 
 ### 4. Implement Your Plugin
 
@@ -206,7 +225,8 @@ var sensor = new PluginSensor("sensor-id", "Sensor Name", 0f, "°C");
 container.Entries.Add(sensor);
 
 // Update later:
-sensor.Value = 65.5f;  // Min, Max, Avg are computed automatically
+sensor.Value = 65.5f;      // Min, Max, Avg are computed automatically
+sensor.Value = float.NaN;  // Not known now: shows as "–" until the next number
 ```
 
 #### PluginTable
@@ -244,6 +264,27 @@ cover.Clear();                    // no picture: the sensor has no reading
 ```
 
 Set a new picture only when it changes: the host sends one only when its bytes changed, at most one a second per entry, and holds all of a host's pictures to a rate ([docs/2.0/plugins.md](docs/2.0/plugins.md#bounds)), so a picture set many times a second goes only as the newest one. A picture over 8 MiB is left out, as no picture, with one warning, and the engine refuses bytes that aren't one of the four formats within the media limits.
+
+### Numbers a Plugin Can't Read
+
+When your plugin doesn't know a number (a device not answering, a file not there yet), set its sensor's value to `float.NaN`, never a made-up 0: InfoPanel shows that sensor as unavailable ("–") while your plugin's other sensors stay live, and reads it again with the next number. An infinity reads the same. `PluginSensor` leaves values that aren't finite out of its minimum, maximum and average, so one unknown reading doesn't spoil them. A sensor can start that way: `new PluginSensor("id", "Name", float.NaN, "%")`. 1.x showed such a number as 0.
+
+### Threads
+
+Set values from any thread: your own timer, an event handler, a background reader. The host reads every entry every 100 ms and sends what changed, so a value set at any time is on its way within 100 ms; `UpdateInterval` only says how often the host calls `UpdateAsync` (or, at zero or less, `Update` every 100 ms). `PluginSensor` is safe to set from several threads at once, and the host reads each value with the minimum, maximum and average set with it; for texts and tables, set a whole new value (a new `DataTable`) rather than changing the one you set before. Actions and setting changes are called on other threads than your updates: guard what they share.
+
+## Logging
+
+`PluginLog` writes to your package's log, `logs/plugins/{package}-{yyyyMMdd}.log` in the engine's data folder, at the engine's log level (a Debug line is kept only while the engine logs at Debug):
+
+```csharp
+PluginLog.Info("Connected to the device");
+PluginLog.Debug($"Read {count} values in {elapsed.TotalMilliseconds} ms");
+PluginLog.Warning("The device sent a reading the plugin doesn't know");
+PluginLog.Error("Reading the device failed", exception);
+```
+
+A message is cut at 4,096 characters, and a failing log never fails your plugin. Outside InfoPanel (the simulator, your own tests) the lines go nowhere. Never log a secret (a setting's value, a token) or your user's data. What your plugin writes to standard output is dropped, and of standard error only the end is kept, to explain a host that failed.
 
 ## Image Providers
 
@@ -331,14 +372,14 @@ Plugins can expose actions that appear as buttons in the InfoPanel UI. Decorate 
 ```csharp
 public class MyPlugin : BasePlugin
 {
-    [PluginAction(DisplayName = "Reset Counters")]
+    [PluginAction("Reset Counters")]
     public void ResetCounters()
     {
         _counter.Value = 0;
         _total.Value = 0;
     }
 
-    [PluginAction(DisplayName = "Refresh Data")]
+    [PluginAction("Refresh Data")]
     public void RefreshData()
     {
         // Force an immediate data refresh
@@ -348,7 +389,7 @@ public class MyPlugin : BasePlugin
 }
 ```
 
-Action methods must be `public`, take no parameters, and return `void`. The `DisplayName` is shown in the UI.
+Action methods must be `public`, take no parameters, and return `void`. The display name is shown in the UI. An action that throws is reported as the plugin's error, its message shown with it.
 
 ## Plugin Configuration
 
@@ -432,21 +473,21 @@ public class MyPlugin : BasePlugin, IPluginConfigurable
 
 ### Automatic Config Persistence
 
-Config values are automatically persisted by the host process. In 1.x, when a user changes a config value in the UI, the host saves all current `ConfigProperties` values to a JSON file under `%LOCALAPPDATA%\InfoPanel\plugins\` (e.g. `my-plugin-id.config.json`). On next startup, stored values are automatically restored via `ApplyConfig()` after `Initialize()` returns. 2.0's host keeps them in its data folder instead ([above](#infopanel-1x-and-20)).
+Config values are automatically persisted by the host process. When a user changes a config value, the host saves all current `ConfigProperties` values to `plugin-settings/{package}/{plugin id}.json` in the engine's data folder; at the next start, stored values are restored through `ApplyConfig()` after `Load()` returns. (1.x kept them under `%LOCALAPPDATA%\InfoPanel\plugins\`.) The engine logs a change by its key, never its value, so a setting may hold a secret such as an API key; don't log it yourself.
 
 **You do not need to implement any file I/O** — just keep your config state in memory and the host handles persistence transparently.
 
 ## Plugin Lifecycle
 
-1. **Discovery**: InfoPanel scans plugin directories for folders containing `{FolderName}/{FolderName}.dll`
-2. **Host Launch**: A separate host process is spawned for the plugin, connected via named pipe
+1. **Discovery**: when it starts, the engine looks for package folders `InfoPanel.{Name}/InfoPanel.{Name}.dll`
+2. **Host Launch**: a host process is started for each package, connected via named pipe
 3. **Loading**: The plugin assembly is loaded in an isolated `AssemblyLoadContext`
 4. **Initialization**: `Initialize()` is called once
-5. **Config Restore**: If the plugin implements `IPluginConfigurable`, stored config values are loaded and applied via `ApplyConfig()` calls
-6. **Container Setup**: `Load()` is called — register all containers and data items here
+5. **Container Setup**: `Load()` is called — register all containers and data items here
+6. **Config Restore**: If the plugin implements `IPluginConfigurable`, stored config values are applied via `ApplyConfig()` calls
 7. **Image Setup**: If `IPluginImageProvider` is implemented, `OnImageBuffersReady()` is called with writers
-8. **Updates**: `UpdateAsync()` is called periodically according to `UpdateInterval`
-9. **Shutdown**: `Close()` is called when InfoPanel exits or the plugin is disabled
+8. **Updates**: `UpdateAsync()` is called every `UpdateInterval` (or `Update()` every 100 ms when it is zero or less)
+9. **Shutdown**: `Close()` is called when InfoPanel exits or the plugin is turned off or reloaded
 
 ## Examples
 
@@ -559,14 +600,12 @@ public class ProcessInfoPlugin : BasePlugin
 ## Building and Deployment
 
 1. Build your plugin project in Release mode
-2. Copy the output folder (DLL, dependencies, and `PluginInfo.ini`) to:
-   - **External plugins:** `%ProgramData%\InfoPanel\plugins\YourPluginName\` (1.x)
-   - **2.0:** `plugins\InfoPanel.YourPluginName\` in the engine's data folder ([above](#infopanel-1x-and-20))
-3. The folder must follow the convention: `YourPluginName/YourPluginName.dll` (2.0: `InfoPanel.YourPluginName/InfoPanel.YourPluginName.dll`)
+2. Copy the output folder (DLL, dependencies, and `PluginInfo.ini`) to `plugins/InfoPanel.YourPluginName/` in the engine's data folder ([above](#infopanel-1x-and-20)), and start the engine again
+3. The folder must follow the convention: `InfoPanel.YourPluginName/InfoPanel.YourPluginName.dll` (1.x: `YourPluginName/YourPluginName.dll` under `%ProgramData%\InfoPanel\plugins\`)
 
 ### Listing in the Plugin Browser
 
-To make your plugin discoverable inside InfoPanel, add it to the community plugin registry. See the [Plugin Registry Guide](PLUGIN-REGISTRY.md) for instructions.
+To make your plugin discoverable inside InfoPanel 1.x, add it to the community plugin registry. See the [Plugin Registry Guide](PLUGIN-REGISTRY.md) for instructions. 2.0 has no plugin browser yet.
 
 ### Distributing Your Plugin
 
@@ -580,22 +619,26 @@ YourPluginName.zip
     └── PluginInfo.ini
 ```
 
-In 1.x, users can install by:
+In 2.0, users extract the ZIP into the data folder's `plugins/` and start the engine again. In 1.x, users can install by:
 - Extracting the ZIP to `%ProgramData%\InfoPanel\plugins\`
 - Or using the "Add Plugin from ZIP" option in InfoPanel's Plugins page
 
 ## Debugging
 
-Use the Plugin Simulator to test your plugin without launching the full InfoPanel application:
-
-1. Reference your plugin project from `InfoPanel.Plugins.Simulator`
-2. Modify the simulator's `Program.cs` to load your plugin
-3. Set the simulator as the startup project
-4. Run in debug mode
+Use the Plugin Simulator to run your plugin without InfoPanel. It loads your DLL as the host does, applies settings, runs actions and prints the readings, a number your plugin can't read as "–":
 
 ```bash
-dotnet run --project InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csproj
+dotnet run --project InfoPanel.Plugins.Simulator -- <path to your plugin's DLL> [plugin id] [options]
 ```
+
+| Option | What |
+|---|---|
+| `--set key=value` | Applies a setting (repeatable) to every plugin with it, after `Load()`, as the host does; the value as the setting's type takes it and InfoPanel would accept it (`true`/`false`, a whole number, a finite number with a `.`, either within the setting's `MinValue` and `MaxValue`; one of a choice's options; text of at most 4,096 characters) |
+| `--action <method>` | Shows the action (repeatable), by its method's name, and runs it only with `--yes` |
+| `--yes` | Runs the actions `--action` names |
+| `--once` | One round (each plugin's `UpdateAsync`, or `Update`, once), printed, then exits: 0, or 1 when a plugin failed to load, list or take a setting, run an action, update, give an entry's value or close (an entry that can't be read prints as failed, the rest as usual). For scripts and quick checks |
+
+Without `--once` the simulator prints the readings every round until you stop it. Arguments it can't take (a setting or action no plugin has, a value its setting can't take) exit 2, saying why, before any setting is applied. Your plugin's `PluginLog` lines go nowhere there. To step through your code, start the simulator from your IDE with the same arguments.
 
 ## Best Practices
 
@@ -603,9 +646,10 @@ dotnet run --project InfoPanel.Plugins.Simulator/InfoPanel.Plugins.Simulator.csp
 2. **Handle exceptions**: Wrap potentially problematic code in try-catch blocks — unhandled exceptions in `UpdateAsync` will be reported but won't crash the host
 3. **Clean up resources**: Dispose of resources in `Close()` — the host process will terminate, but clean shutdown is preferred
 4. **Optimize updates**: Keep `UpdateAsync()` fast — long-running updates block the next cycle
-5. **Thread safety**: `UpdateAsync()` runs on a single thread, but image writers may be read concurrently — always call `Invalidate()` after completing a frame
-6. **Minimize allocations**: Reuse data objects where possible; avoid allocating new `PluginSensor`/`PluginText` instances every update
-7. **Use delta-friendly data**: The host only transmits changed values — keep sensor values stable when unchanged to reduce IPC overhead
+5. **Thread safety**: values may be set from any thread ([Threads](#threads)); image writers may be read concurrently — always call `Invalidate()` after completing a frame
+6. **Say what you don't know**: set `float.NaN`, never a made-up 0 ([Numbers a Plugin Can't Read](#numbers-a-plugin-cant-read))
+7. **Minimize allocations**: Reuse data objects where possible; avoid allocating new `PluginSensor`/`PluginText` instances every update
+8. **Use delta-friendly data**: The host only transmits changed values — keep sensor values stable when unchanged to reduce IPC overhead
 
 ---
 
@@ -615,7 +659,7 @@ For questions or help with plugin development, join the [InfoPanel Discord][disc
 
 ## Panel Drivers
 
-InfoPanel 2.0 drives USB panels through **panel drivers**, a kind of plugin of their own: everything above is about sensor plugins (.NET 8). A panel driver targets **.NET 10**, the engine's runtime, and references `InfoPanel.Panels.Sdk` (in this repository). One project can't be both, and a package holds one or the other. What the engine does with a driver: [docs/2.0/panels.md](docs/2.0/panels.md); how it finds, runs and bounds a panel package: [docs/2.0/plugins.md](docs/2.0/plugins.md#panel-packages).
+InfoPanel 2.0 drives USB panels through **panel drivers**, a kind of plugin of their own: everything above is about sensor plugins. A panel driver targets **.NET 10** too and references `InfoPanel.Panels.Sdk` (in this repository) instead of `InfoPanel.Plugins`; a project references one SDK, and a package holds one or the other. What the engine does with a driver: [docs/2.0/panels.md](docs/2.0/panels.md); how it finds, runs and bounds a panel package: [docs/2.0/plugins.md](docs/2.0/plugins.md#panel-packages).
 
 Adding a family, from the package and its `panel.json` to the tests without a device, the conformance suite and the pull request: [docs/2.0/panel-drivers.md](docs/2.0/panel-drivers.md).
 

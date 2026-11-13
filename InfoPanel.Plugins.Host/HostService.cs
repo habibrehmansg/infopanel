@@ -790,12 +790,13 @@ namespace InfoPanel.Plugins.Host
             if (entry is IPluginSensor sensor)
             {
                 dto.Type = "sensor";
+                var read = PluginSensorReading.Of(sensor);
                 dto.SensorValue = new SensorValueDto
                 {
-                    Value = sensor.Value,
-                    ValueMin = sensor.ValueMin,
-                    ValueMax = sensor.ValueMax,
-                    ValueAvg = sensor.ValueAvg,
+                    Value = read.Value,
+                    ValueMin = read.ValueMin,
+                    ValueMax = read.ValueMax,
+                    ValueAvg = read.ValueAvg,
                     Unit = TableDtoConverter.Cut(sensor.Unit, IpcLimits.NameChars)
                 };
             }

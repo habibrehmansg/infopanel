@@ -20,6 +20,10 @@ namespace InfoPanel.TestFixture;
 /// <item><c>throw-apply</c>: applying a setting throws, the value given in the exception's message.</item>
 /// <item><c>throw-settings</c>: once a setting has been applied, reading the settings throws, the value applied in the
 /// exception's message.</item>
+/// <item><c>throw-list-settings</c>: reading the settings always throws.</item>
+/// <item><c>throw-read</c>: one more sensor (<c>broken</c>, in a container of its own, <c>broken</c>) whose value can't
+/// be read: reading it throws.</item>
+/// <item><c>throw-close</c>: the main plugin's Close throws.</item>
 /// <item><c>table-rows=N</c>, <c>table-columns=N</c>, <c>table-cell-chars=N</c>: the Processes table is N rows by N
 /// columns (2 each by default) of text cells N characters long (16 by default), when any of the three is given.</item>
 /// <item><c>spew-bytes=N</c>: once started, N bytes to stdout and N to stderr with no newline, then <c>spew-end</c> on
@@ -48,6 +52,9 @@ public sealed class FixtureMode
     public bool SettingsHang { get; private init; }
     public bool ThrowApply { get; private init; }
     public bool ThrowSettings { get; private init; }
+    public bool ThrowListSettings { get; private init; }
+    public bool ThrowRead { get; private init; }
+    public bool ThrowClose { get; private init; }
     public int? TableRows { get; private init; }
     public int? TableColumns { get; private init; }
     public int? TableCellChars { get; private init; }
@@ -84,6 +91,9 @@ public sealed class FixtureMode
             SettingsHang = settings.ContainsKey("settings-hang"),
             ThrowApply = settings.ContainsKey("throw-apply"),
             ThrowSettings = settings.ContainsKey("throw-settings"),
+            ThrowListSettings = settings.ContainsKey("throw-list-settings"),
+            ThrowRead = settings.ContainsKey("throw-read"),
+            ThrowClose = settings.ContainsKey("throw-close"),
             TableRows = Number("table-rows"),
             TableColumns = Number("table-columns"),
             TableCellChars = Number("table-cell-chars"),

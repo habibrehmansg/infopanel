@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 1.x's plugin SDK as 1.x plugins were built against it: its source as branch 1.4.x has it (never edited here), on
+       net8.0, under the SDK's own assembly name and version. Compile-only, never shipped: the 1.x test plugin
+       (InfoPanel.Plugins.TestFixture.V1) is built against it, so the tests load a plugin built as 1.x plugins are in
+       the engine's plugin host, which hands it the current SDK (InfoPanel.Plugins) instead. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>InfoPanel.Plugins</AssemblyName>
+    <RootNamespace>InfoPanel.Plugins</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

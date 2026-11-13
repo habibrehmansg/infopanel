@@ -80,12 +80,63 @@ public class PluginSensorSourceTests
 
         Assert.True(source.TryRead(SensorKey.Plugin("/p/c/n"), out var n));
         Assert.Equal(30, n.ValueNow);
-        // Non-finite numbers read as 0.
-        Assert.True(source.TryRead(SensorKey.Plugin("/p/m"), out var m));
-        Assert.Equal((0d, 0d), (m.ValueNow, m.ValueMax));
+        // A number that isn't finite has no reading.
+        Assert.False(source.TryRead(SensorKey.Plugin("/p/m"), out _));
         Assert.False(source.Handles(SensorKey.Plugin("/q/c/n")));
         Assert.Equal(SensorStatus.Unavailable, source.GetStatus(SensorKey.Plugin("/p/c/unlisted")));
     }
+
+    // A plugin says it doesn't know a number with NaN (or an infinity): that key has no reading, unavailable ("–" on a
+    // panel), from the catalogue on and at any update, and reads again once a finite value comes; the package's other keys
+    // stay live. A finite value whose minimum, maximum or average isn't finite (a plugin's own sensor type) reads with the
+    // value in their place.
+    [Fact]
+    public void A_number_that_isnt_finite_reads_unavailable_while_the_packages_other_keys_stay_live()
+    {
+        var source = Running(Folder, Plugin("p", "P", Container("c", "C", eph: false,
+            Sensor("n", "N", float.NaN, "V"),
+            Sensor("m", "M", 4, "V"),
+            Text("t", "T", "hello"))));
+        var (n, m, t) = (SensorKey.Plugin("/p/c/n"), SensorKey.Plugin("/p/c/m"), SensorKey.Plugin("/p/c/t"));
+
+        Assert.Equal(SensorStatus.Unavailable, source.GetStatus(n));
+        Assert.False(source.TryRead(n, out _));
+        Assert.Equal(SensorStatus.Live, source.GetStatus(m));
+        Assert.Equal(SensorStatus.Live, source.GetStatus(t));
+
+        Send(source, ("n", new SensorValueDto { Value = 5, ValueMin = 5, ValueMax = 5, ValueAvg = 5, Unit = "V" }));
+        Assert.Equal(SensorStatus.Live, source.GetStatus(n));
+        Assert.True(source.TryRead(n, out var five));
+        Assert.Equal(5, five.ValueNow);
+
+        foreach (var unknown in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
+        {
+            Send(source,
+                ("n", new SensorValueDto { Value = unknown, ValueMin = 5, ValueMax = 5, ValueAvg = 5, Unit = "V" }),
+                ("m", new SensorValueDto { Value = 6, ValueMin = 4, ValueMax = 6, ValueAvg = 5, Unit = "V" }));
+            Assert.Equal(SensorStatus.Unavailable, source.GetStatus(n));
+            Assert.False(source.TryRead(n, out _));
+            Assert.Equal(SensorStatus.Live, source.GetStatus(m));
+            Assert.True(source.TryRead(m, out var six));
+            Assert.Equal((6d, 4d, 6d, 5d), (six.ValueNow, six.ValueMin, six.ValueMax, six.ValueAvg));
+            Assert.Equal(SensorStatus.Live, source.GetStatus(t));
+        }
+
+        Send(source, ("n", new SensorValueDto { Value = 7, ValueMin = float.NaN, ValueMax = float.PositiveInfinity, ValueAvg = float.NaN, Unit = "V" }));
+        Assert.Equal(SensorStatus.Live, source.GetStatus(n));
+        Assert.True(source.TryRead(n, out var seven));
+        Assert.Equal((7d, 7d, 7d, 7d), (seven.ValueNow, seven.ValueMin, seven.ValueMax, seven.ValueAvg));
+    }
+
+    private static void Send(PluginSensorSource source, params (string Entry, SensorValueDto Value)[] values) =>
+        source.Update(Folder,
+        [
+            new SensorUpdateBatchDto
+            {
+                PluginId = "p",
+                Updates = [.. values.Select(v => new EntryUpdateDto { ContainerId = "c", EntryId = v.Entry, Type = "sensor", SensorValue = v.Value })],
+            },
+        ]);
 
     [Fact]
     public void Statuses_follow_the_host_live_while_running_stale_while_restarting_unavailable_when_failed_or_stopped()

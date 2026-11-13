@@ -6,8 +6,8 @@ namespace InfoPanel.TestFixture;
 /// <summary>
 /// The engine tests' plugin: a sensor, a text and a table in a container, a sensor in an ephemeral container, two actions
 /// (Reset counter; Report an error, which throws), and a setting of each type, its Label setting, when applied, becoming
-/// its Status text (a setting changing a reading live); <see cref="FixtureMode"/> makes it misbehave on request, or adds a
-/// picture (<c>image</c>).
+/// its Status text (a setting changing a reading live); it logs two lines as it starts (<see cref="StartedLine"/> and, at
+/// Debug, <see cref="DebugLine"/>); <see cref="FixtureMode"/> makes it misbehave on request, or adds a picture (<c>image</c>).
 /// </summary>
 public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
 {
@@ -92,13 +92,15 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
     ];
 
     /// <summary>
-    /// Under <c>settings-hang</c>, once the plugin has updated, never returns; under <c>throw-settings</c>, once a setting
-    /// has been applied, throws with its value; else null.
+    /// Under <c>settings-hang</c>, once the plugin has updated, never returns; under <c>throw-list-settings</c> throws;
+    /// under <c>throw-settings</c>, once a setting has been applied, throws with its value; else null.
     /// </summary>
     private IReadOnlyList<PluginConfigProperty>? HangOnRequest()
     {
         if (FixtureMode.Current.SettingsHang && _updated)
             Thread.Sleep(Timeout.Infinite);
+        if (FixtureMode.Current.ThrowListSettings)
+            throw new InvalidOperationException(UnlistedSettings);
         if (FixtureMode.Current.ThrowSettings && _applied is { } applied)
             throw new InvalidOperationException($"fixture: can't list settings after {applied}");
         return null;
@@ -121,11 +123,24 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
 
     public const string ReportedError = "fixture: an error on request";
 
+    /// <summary>The failures of <c>throw-list-settings</c>, <c>throw-read</c> and <c>throw-close</c>.</summary>
+    public const string UnlistedSettings = "fixture: can't list settings";
+    public const string UnreadValue = "fixture: can't read the value";
+    public const string UnclosedPlugin = "fixture: can't close";
+
     [PluginAction("Report an error")]
     public void ReportError() => throw new InvalidOperationException(ReportedError);
 
+    /// <summary>The line the plugin logs at Information as it starts (<see cref="PluginLog"/>).</summary>
+    public const string StartedLine = "fixture: started";
+
+    /// <summary>The line the plugin logs at Debug as it starts.</summary>
+    public const string DebugLine = "fixture: a detail at debug";
+
     public override void Initialize()
     {
+        PluginLog.Info(StartedLine);
+        PluginLog.Debug(DebugLine);
         var mode = FixtureMode.Current;
         if (mode.Hang)
         {
@@ -189,6 +204,13 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
         ephemeral.Entries.Add(_ephemeral);
         containers.Add(ephemeral);
 
+        if (FixtureMode.Current.ThrowRead)
+        {
+            var broken = new PluginContainer("broken", "Broken");
+            broken.Entries.Add(new UnreadableSensor());
+            containers.Add(broken);
+        }
+
         if (FixtureMode.Current.Entries > 0)
         {
             var flood = new PluginContainer("flood", "Flood");
@@ -244,5 +266,17 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
         if (FixtureMode.Current.Hang)
             Thread.Sleep(Timeout.Infinite);
         _exit?.Dispose();
+        if (FixtureMode.Current.ThrowClose)
+            throw new InvalidOperationException(UnclosedPlugin);
+    }
+
+    /// <summary>The <c>throw-read</c> sensor: its value can't be read.</summary>
+    private sealed class UnreadableSensor : IPluginSensor
+    {
+        public string Id => "broken";
+        public string Name => "Broken";
+        public string? Unit => null;
+        public float Value { get => throw new InvalidOperationException(UnreadValue); set { } }
+        public override string ToString() => Name;
     }
 }

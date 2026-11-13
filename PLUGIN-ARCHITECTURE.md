@@ -23,7 +23,7 @@ Each plugin package (a folder `InfoPanel.{Name}` with its DLL) runs in a host pr
 
 | Project | Role |
 |---|---|
-| **InfoPanel.Plugins** | Public API for plugin authors: `IPlugin`, `BasePlugin`, data types (`PluginSensor`, `PluginText`, `PluginTable`), `IPluginContainer`, `PluginActionAttribute`, `IPluginConfigurable`, `PluginConfigProperty` |
+| **InfoPanel.Plugins** | Public API for plugin authors (net10.0, like every `InfoPanel.Plugins*` project): `IPlugin`, `BasePlugin`, data types (`PluginSensor`, `PluginText`, `PluginTable`, `PluginImage`), `IPluginContainer`, `PluginActionAttribute`, `IPluginConfigurable`, `PluginConfigProperty`, `PluginLog`. It keeps every type and member 1.x's SDK had (additions only), so a plugin built for 1.x (net8.0) loads as it is |
 | **InfoPanel.Plugins.Graphics** | Image provider API: `IPluginImageProvider`, `IPluginImageWriter`, `PluginImageDescriptor`. Contains `PluginImageWriter` — the MMF-backed double-buffer implementation |
 | **InfoPanel.Plugins.Ipc** | IPC contract: `IPluginHostService` (host-side methods), `IPluginClientCallback` (app-side notifications), and all DTO types for serialization |
 | **InfoPanel.Plugins.Host** | A library that hosts one plugin assembly, run by the engine executable as its plugin host mode (`InfoPanel --plugin-host`, `PluginHostEntry`). Connects to the engine's named pipe, loads the plugin via `PluginLoader`, and runs the update loop |
@@ -35,7 +35,7 @@ Each plugin package (a folder `InfoPanel.{Name}` with its DLL) runs in a host pr
 Each plugin is loaded in its own `PluginLoadContext` (inherits `AssemblyLoadContext`), which:
 
 - Uses `AssemblyDependencyResolver` to resolve the plugin's dependencies from its directory
-- Falls back to the host context for **shared assemblies**: `InfoPanel.Plugins.Graphics` and `SkiaSharp` — this is required so that types like `IPluginImageWriter` and `SKBitmap` are shared between the host and plugin without type-mismatch errors
+- Falls back to the host context for **shared assemblies**: `InfoPanel.Plugins`, `InfoPanel.Plugins.Graphics` and `SkiaSharp` — this is required so that types like `IPlugin`, `IPluginImageWriter` and `SKBitmap` are shared between the host and plugin without type-mismatch errors. A copy of one of them in the plugin's folder (a 1.x plugin built against 1.x's SDK carries its `InfoPanel.Plugins.dll`) is never loaded: the SDK binds by name, with no version set and no strong name, so a plugin built against an older SDK gets the host's
 - All other assemblies are isolated, preventing version conflicts between plugins
 
 ## IPC Protocol
@@ -95,7 +95,7 @@ PluginPerformanceDto
 `InfoPanel.Plugins.Host/PluginHostEntry.cs`, which the engine's `InfoPanel/Program.cs` runs when its first argument is `--plugin-host`:
 
 1. Parses the arguments: `--pipe <name>`, `--plugin <dll>`, `--log-dir <dir>` and `--settings-dir <dir>` (required), `--log-level <level>` (`information` by default)
-2. Configures Serilog logging to `{log-dir}/{plugin folder}-{yyyyMMdd}.log` (daily, three kept, 10 MiB a file)
+2. Configures Serilog logging to `{log-dir}/{plugin folder}-{yyyyMMdd}.log` (daily, three kept, 10 MiB a file), and sends the plugins' `PluginLog` lines there (`SourceContext` `PluginLog`, at the same level)
 3. Connects to the named pipe (30-second timeout)
 4. Attaches `HostService` as the JSON-RPC target; plugins' settings go to `{settings-dir}/{plugin id}.json`
 5. Waits for the RPC connection to complete; when the pipe ends without a shutdown, the plugins get 2 s to close and the process exits
