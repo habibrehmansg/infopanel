@@ -1,0 +1,14 @@
+Package: infopanel
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: InfoPanel
+Installed-Size: @SIZE@
+Depends: libc6, libgcc-s1, libstdc++6, libicu78 | libicu77 | libicu76 | libicu75 | libicu74 | libicu72 | libicu70, libssl3t64 | libssl3, ca-certificates, libuuid1, libfreetype6, libfontconfig1, libusb-1.0-0, tzdata
+Recommends: ffmpeg
+Section: utils
+Priority: optional
+Homepage: https://www.infopanel.net
+Description: sensor dashboards for USB panels, designed in the browser
+ InfoPanel reads the computer's sensors (hwmon and thermal zones, CPU,
+ memory, disks, AMD and NVIDIA GPUs) and draws them on small USB panels.
+ Its editor runs in the browser; the engine serves it on this computer only.

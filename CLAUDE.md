@@ -48,6 +48,8 @@ dotnet run --project InfoPanel -- --help                       # all flags
 dotnet build InfoPanel -c Release -p:InfoPanelAllowOrigin=https://client.example
 # The macOS app and its disk image, ad hoc signed (macOS only; --out a new or empty folder; meson, ninja and pkg-config on PATH for FFmpeg; docs/2.0/packaging.md)
 packaging/macos/build.sh --version 2.0.0-beta.1 --allow-origin https://client.example --out <dir>
+# The Linux tarball and .deb (Linux only: on a Mac in packaging/linux/test.Dockerfile's image, on a copy; --print-rules prints the udev rules the panel drivers need, --check-rules checks the two rules files against them; packaging/linux/smoke.sh installs, starts and removes a .deb in a clean container; docs/2.0/packaging.md)
+packaging/linux/build.sh --version 2.0.0-beta.1 --allow-origin https://client.example --arch amd64 --out <dir>
 # FFmpeg's decode-only libraries alone, from the pinned sources (<dir>/bundle; windows-x64 in native/ffmpeg/windows-cross.Dockerfile's container)
 native/ffmpeg/build.sh --target macos-arm64 --out <dir> [--source ffmpeg-9.0.2.tar.xz] [--dav1d-source dav1d-1.5.4.tar.xz]
 INFOPANEL_FFMPEG_DIR=<dir>/bundle dotnet test InfoPanel.slnx --filter "FullyQualifiedName~Video|FullyQualifiedName~Rtsp|FullyQualifiedName~SceneGoldenTests"

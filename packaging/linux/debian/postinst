@@ -1,0 +1,9 @@
+#!/bin/sh
+# Applies the panels' udev rules (/usr/lib/udev/rules.d/70-infopanel.rules) to panels already plugged in. Where udev
+# doesn't run (a container, a chroot), there is nothing to apply.
+set -e
+if [ "$1" = configure ] && [ -d /run/udev ] && command -v udevadm >/dev/null 2>&1; then
+  udevadm control --reload-rules || true
+  udevadm trigger --action=change --subsystem-match=usb --subsystem-match=hidraw --subsystem-match=tty || true
+fi
+exit 0

@@ -11,8 +11,8 @@ version and SHA-256 in `native/libusb/pins.txt` and comes from libusb's own rele
 is built from its source by `native/libusb/build.sh`, the Windows installer carries the release's x64
 `libusb-1.0.dll`. FFmpeg 9.0.2 and dav1d 1.5.4 are pinned the same way in `native/ffmpeg/pins.txt` and built from their
 release sources by `native/ffmpeg/build.sh` without `--enable-gpl`, `--enable-nonfree` and `--enable-version3`
-(their terms: `LICENSES.md`), with dav1d linked into libavcodec. The Windows installer doesn't carry FFmpeg yet. Linux has no
-download here and uses the system's libraries.
+(their terms: `LICENSES.md`), with dav1d linked into libavcodec. The Windows installer doesn't carry FFmpeg yet. The Linux
+downloads carry neither: the `.deb` depends on the system's libusb and recommends its FFmpeg (below).
 
 ## macOS: the app and its disk image
 
@@ -277,6 +277,110 @@ The uninstaller (Settings › Apps, or Uninstall InfoPanel 2 in the Start menu):
 
 The beta's installer isn't signed: SmartScreen says "Windows protected your PC" (More info › Run anyway) and UAC shows
 "Publisher: Unknown". Signing comes before the public release.
+
+## Linux: the tarball and the .deb
+
+```bash
+packaging/linux/build.sh --version 2.0.0-beta.1 --allow-origin https://client.example --arch amd64 --out <a new or empty folder>
+```
+
+`--version` and `--allow-origin` are the macOS script's (`--check-args` only checks them and `--arch`); `--arch` is
+Debian's name for the architecture, `amd64` or `arm64` (the runtimes `linux-x64` and `linux-arm64`): any Linux machine
+builds either, since the publish takes the runtime's files from NuGet. On Linux with the .NET SDK `global.json` pins,
+`dpkg-deb` and coreutils, as `packaging/linux/test.Dockerfile`'s image has them. On a Mac, run it in that image on a copy
+of the repository without the projects' `bin/` and `obj/` (docs/agents/linux.md):
+
+```bash
+docker run --rm --user 1000:1000 -v <copy>:/src -v <nuget cache>:/nuget -v <out parent>:/out infopanel-linux-test \
+  packaging/linux/build.sh --version 2.0.0-beta.1 --allow-origin https://client.example --arch arm64 --out /out/arm64
+```
+
+It writes:
+
+- `<out>/publish/`: the self-contained Release publish for the runtime (`-p:Version`, `-p:InfoPanelAllowOrigin`, no
+  debug symbols), with every panel driver in `plugins/{folder}` as the macOS script publishes them;
+- `<out>/files.sha256`: every file of the tarball's folder, hashed once after the checks below;
+- `<out>/InfoPanel-<version>-linux-<arch>.tar.gz`: one folder, `InfoPanel-<version>-linux-<arch>/`, holding the publish,
+  `LICENSE`, `LICENSES.md` and `linux/` (`70-infopanel.rules`, `70-infopanel-opt-in.rules`, `infopanel.desktop`,
+  `infopanel-autostart.desktop` and the icon, `infopanel.png`, for an install by hand); run `InfoPanel` in it;
+- `<out>/InfoPanel-<version>-linux-<arch>.deb`: the package `infopanel`, made from that tarball; both SHA-256s are
+  printed last.
+
+**The checks.** Before anything is packed, the publish must hold the executable `InfoPanel`, `InfoPanel.dll` and the
+runtime's and Skia's libraries; every ELF file in it must be 64-bit and built for `--arch`; no Mach-O file, link or
+special file, and none of another platform's folders (`sensor-helper/`, `mediaremote-adapter/`, `wwwroot/`). The two
+rules files must hold exactly the lines the bundled panel drivers need, split as below: `packaging/linux/panel-matches.cs`
+(run with `dotnet run`) reads each published driver's `panel.json` with the engine's own reader (`PanelPackages`: only
+each `families[].match[]` entry's own members, `usb` when it names no transport; a package the engine would skip or not
+run, a family id taken twice included, stops the build with the engine's reason, and so does a file the driver's own
+`PanelManifest` refuses or reads other matches from), and BeadaPanel's built-in id is added; one line missing or one more in either file stops
+the build (`build.sh --print-rules` prints the lines, `--check-rules` checks the files against the drivers in the source
+without building). The tarball is unpacked again and checked file by file against `files.sha256`, and the `.deb` is
+staged from that unpacked copy, each file at its place (`linux/`'s each to its own, a file there without one stopping
+the build; every other under `/usr/lib/infopanel`); once `dpkg-deb` has built it, it is unpacked into a new folder, its
+listing (types, modes, link targets) must equal what was staged, and every file in it, the relocated ones and the
+copyright too, must have its hash in `files.sha256`, with no file more.
+
+**The panels' access.** `70-infopanel.rules` gives the user signed in at the computer only devices that are a panel's
+own: every id a bundled driver matches but the generic ones some panels share with other devices, the Linux
+Foundation's vendor id `1d6b` (Linux's USB gadgets), `0525:a4a7` (Linux's serial gadget) and `1a86:5722` (a WCH serial
+chip's id). A rule on these would give the user every device with them, such as a single-board computer's or a
+microcontroller's serial console, and a driver's `panel.json` names a device only by its id, transport and interface,
+nothing that tells a panel from those. So these panels need the owner's opt-in: the Turing Smart Screen 3.5" and the
+XuanFang 3.5" (`1a86:5722`), and the serial Turing Smart Screen 2.1", 5" and 8.8" Rev 1.0 (`1d6b:0121`, `1d6b:0106`,
+`0525:a4a7`); the Turing USB models, Lian Li, Thermalright, Thermaltake, JL, Jonsbo, VMAX and BeadaPanel need none.
+The package installs their lines, inactive, as `/usr/share/doc/infopanel/70-infopanel-opt-in.rules` (the tarball has it
+in `linux/`); to opt in, copy it into `/etc/udev/rules.d/` and replug the panel, or apply it at once:
+
+```bash
+sudo cp /usr/share/doc/infopanel/70-infopanel-opt-in.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger --action=change --subsystem-match=tty
+```
+
+Or, instead, add yourself to the `dialout` group (`sudo usermod -aG dialout $USER`, then sign out and in), which may use
+every serial port. A rules file in `/etc/udev/rules.d/` is the computer owner's: removing or purging the package leaves
+it.
+
+**What the .deb installs.**
+
+| Path | What |
+|---|---|
+| `/usr/lib/infopanel/` | the engine (the tarball's folder but `linux/`) |
+| `/usr/bin/infopanel` | a link to `/usr/lib/infopanel/InfoPanel` |
+| `/usr/lib/udev/rules.d/70-infopanel.rules` | the panels' access: `TAG+="uaccess"`, so the user signed in at the computer may use them (never a world-writable mode); USB device nodes for the `usb` transport, `hidraw` for `hid`, `tty` for `serial`; a panel's own ids only (above) |
+| `/usr/share/applications/infopanel.desktop` | the menu entry, which also opens `infopanel:` links |
+| `/etc/xdg/autostart/infopanel.desktop` | start at sign-in, **off** for every user (`Hidden=true`); a user turns it on with a copy in `~/.config/autostart/infopanel.desktop` without the `Hidden` line. Its one conffile |
+| `/usr/share/pixmaps/infopanel.png` | the icon (`Images/logo.png`) |
+| `/usr/share/doc/infopanel/copyright` | `LICENSE` |
+| `/usr/share/doc/infopanel/70-infopanel-opt-in.rules` | the generic ids' rules, inactive there: a user copies them into `/etc/udev/rules.d/` (above) |
+
+Its version is the release's with the prerelease after a `~` and the revision 1 (`2.0.0-beta.1` is `2.0.0~beta.1-1`), so
+a release sorts after its betas. It depends on what the self-contained engine loads from the system (glibc, libstdc++,
+ICU, OpenSSL, the CA certificates, libuuid, FreeType), `libfontconfig1` (Skia's fonts), `libusb-1.0-0` (panels) and
+`tzdata` (the time zones .NET reads, for the clock and every zone a document names; ICU doesn't carry them), and
+recommends `ffmpeg` (the preview's software H.264 encoder). After the install, `postinst` reloads udev's rules and
+replays the USB, `hidraw` and `tty` devices, so a panel already plugged in is the user's; where udev doesn't run (a
+container) it does nothing. Removing it removes every file but the conffile; purging removes that too. The user's data
+folder (`~/.local/share/InfoPanel/v2`) is kept, as on Windows.
+
+**The smoke test.** `packaging/linux/smoke.sh`, as root in a clean Ubuntu or Debian container, installs a `.deb` with
+apt (without its recommends), starts the engine from the `PATH` as uid 1000 (made when the image has none, as Debian's),
+headless on a data folder and a port of its own with `TZ=Europe/Berlin`, checks `GET /api/session`'s `engineVersion`
+(and `engineBuild`, when given), that the clock's 24-hour reading is 1 or 2 hours past UTC's (the zone found in the
+time zone data; without it .NET takes UTC) and a stop with exit code 0, then
+removes the package (only the conffile left), purges it and removes what it pulled in, and compares the file system
+and the packages with before: nothing that was there is gone, and nothing of InfoPanel's is left outside the user's
+home (its data folder and fontconfig's cache stay there; apt's autoremove keeps what an installed package recommends,
+such as `ca-certificates`, which apt itself recommends):
+
+```bash
+docker run --rm -v <out>:/pkg:ro -v <repository>/packaging/linux:/smoke:ro ubuntu:24.04 \
+  bash /smoke/smoke.sh /pkg/InfoPanel-2.0.0-beta.1-linux-arm64.deb 2.0.0-beta.1
+```
+
+`debian:12` runs the same in place of `ubuntu:24.04`. amd64 runs the same with `--platform linux/amd64` on an Apple
+silicon Mac (emulated). Docker proves the package, the
+install and a headless start; only a Linux desktop proves the menu entry, the sign-in entry and the panels' access.
 
 ## Releases
 

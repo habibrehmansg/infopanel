@@ -1,0 +1,13 @@
+# InfoPanel's serial panels whose USB ids aren't their own, which 70-infopanel.rules leaves out: the Turing Smart
+# Screen 3.5" and XuanFang 3.5" (1a86:5722, a WCH serial chip's id), and the serial Turing 2.1", 5" and 8.8" Rev 1.0
+# (1d6b:0121, 1d6b:0106 and 0525:a4a7, Linux's own USB gadget ids). Other devices have these ids too (a single-board
+# computer's or a microcontroller's serial console, say), so a rule on them gives the signed-in user every such device,
+# not only the panel. Not active as installed: to use such a panel, copy this file to /etc/udev/rules.d/ (its name sorts
+# before systemd's 73-seat-late.rules, which applies the tag), then run
+#   sudo udevadm control --reload-rules && sudo udevadm trigger --action=change --subsystem-match=tty
+# or, instead, add yourself to the dialout group, which may use every serial port (docs/2.0/packaging.md).
+# packaging/linux/build.sh refuses to package a copy that isn't exactly what the drivers need.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0525", ATTRS{idProduct}=="a4a7", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="5722", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1d6b", ATTRS{idProduct}=="0106", TAG+="uaccess"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1d6b", ATTRS{idProduct}=="0121", TAG+="uaccess"

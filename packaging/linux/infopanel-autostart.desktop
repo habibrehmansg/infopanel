@@ -1,0 +1,11 @@
+# Starts InfoPanel when a user signs in: off for everyone (Hidden=true). A user turns it on with a copy of this file
+# in ~/.config/autostart/infopanel.desktop without the Hidden line, which takes this one's place for that user.
+[Desktop Entry]
+Type=Application
+Name=InfoPanel
+Comment=Starts InfoPanel when you sign in
+Exec=/usr/bin/infopanel
+Icon=infopanel
+Terminal=false
+NoDisplay=true
+Hidden=true

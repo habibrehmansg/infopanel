@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=InfoPanel
+GenericName=Sensor Panels
+Comment=Draws your computer's sensors on USB panels
+Exec=/usr/bin/infopanel %u
+Icon=infopanel
+Terminal=false
+StartupNotify=false
+Categories=System;Monitor;
+Keywords=sensors;temperature;hwmon;panel;dashboard;
+MimeType=x-scheme-handler/infopanel;
