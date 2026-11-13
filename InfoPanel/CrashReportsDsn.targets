@@ -1,0 +1,14 @@
+<Project>
+
+  <!-- The crash-report address a release build sends its crash reports to: `-p:InfoPanelCrashReportsDsn=https://…`
+       records it as the assembly metadata InfoPanel.CrashReportsDsn, which the engine reads at start
+       (InfoPanel/CrashReports/CrashReports.cs). Empty by default: a build from source carries none and never starts
+       crash reports, whatever the telemetry.crashReports setting says. (docs/2.0/crash-reports.md) -->
+  <ItemGroup Condition="'$(InfoPanelCrashReportsDsn)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>InfoPanel.CrashReportsDsn</_Parameter1>
+      <_Parameter2>$(InfoPanelCrashReportsDsn)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

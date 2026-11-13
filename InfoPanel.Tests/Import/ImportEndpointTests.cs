@@ -190,6 +190,25 @@ public class ImportEndpointTests(V1FolderEngineFactory factory) : IClassFixture<
     }
 
     [Fact]
+    public async Task The1xImport_LeavesCrashReportsOn_As1xHadNoSwitchForThem()
+    {
+        using var engine = new V1FolderEngineFactory();
+        using var client = engine.CreateApiClient();
+
+        // The 1.x folder's settings name nothing about crash reports (1.4.x always sent them): the import has nothing to map.
+        var pending = await Expect(await client.GetAsync("/api/import/v1", Ct), HttpStatusCode.OK);
+        var v1Settings = pending.GetProperty("settings").GetRawText();
+        foreach (var word in new[] { "crash", "telemetry", "sentry" })
+            Assert.DoesNotContain(word, v1Settings, StringComparison.OrdinalIgnoreCase);
+        await Expect(await client.PostAsync($"/api/import/v1/profiles/{V1Fixture.Desk}", null, Ct), HttpStatusCode.OK);
+        await Expect(await client.PutAsync("/api/import/v1", Json(Request(outcomes: DeskOutcome)), Ct), HttpStatusCode.OK);
+
+        var settings = await Expect(await client.GetAsync("/api/settings", Ct), HttpStatusCode.OK);
+        Assert.True(settings.GetProperty("telemetry").GetProperty("crashReports").GetBoolean());
+        Assert.False(File.Exists(Path.Combine(engine.DataDir, "settings.json")));
+    }
+
+    [Fact]
     public async Task ARecord_IsCheckedAsEveryBody_AndARefusedOneStoresNothing()
     {
         using var engine = new V1FolderEngineFactory();

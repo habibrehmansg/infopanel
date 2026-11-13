@@ -58,6 +58,18 @@ public sealed class DataPaths
     public const string PairingsFileName = "pairings.json";
 
     /// <summary>
+    /// Crash reports' random id for this install (<c>{"installId": "…"}</c>), in the data folder: made only when crash
+    /// reports first start (a release build, the setting on). Their queue is the folder <see cref="CrashReportsFolderName"/>.
+    /// </summary>
+    public const string CrashReportsFileName = "crash-reports.json";
+
+    /// <summary>
+    /// Crash reports' queues of reports not yet sent, one folder per consent epoch (the reporting library's queue, session
+    /// and copy of the install's id), in the data folder.
+    /// </summary>
+    public const string CrashReportsFolderName = "crash-reports";
+
+    /// <summary>
     /// The credential a client provides for the configured service (<c>InfoPanel.Service.FileServiceCredentialStore</c>),
     /// in the data folder: macOS and Linux keep it here, 0600.
     /// </summary>
@@ -69,17 +81,17 @@ public sealed class DataPaths
     /// <summary>
     /// The top-level files the engine writes in its data folder: the folder's marker, the 2.0 store's profile order, the
     /// integration tokens, the paired clients, the engine settings, the service credential (either store's file), the runtime file, the lock, step-1's profile list (which this engine leaves
-    /// alone), the 1.x migration's run-once record, the plugin state, the saved panels and the update notified. The one list of them: <c>--fresh</c> wipes only a folder that holds
+    /// alone), the 1.x migration's run-once record, the plugin state, the saved panels, the update notified and crash reports' install id. The one list of them: <c>--fresh</c> wipes only a folder that holds
     /// nothing else, and the 1.x import keeps the 1.x folder clear of them.
     /// </summary>
     public static IReadOnlyList<string> EngineFiles { get; } =
-        [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, ServiceCredentialFileName, ServiceCredentialProtectedFileName, "runtime.json", "engine.lock", "profiles.xml", ImportRecordFileName, PluginStateFileName, DevicesFileName, UpdatesFileName];
+        [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, ServiceCredentialFileName, ServiceCredentialProtectedFileName, "runtime.json", "engine.lock", "profiles.xml", ImportRecordFileName, PluginStateFileName, DevicesFileName, UpdatesFileName, CrashReportsFileName];
 
     /// <summary>The top-level folders the engine writes in its data folder (<c>assets</c> is step-1's).</summary>
-    public static IReadOnlyList<string> EngineFolders { get; } = ["profiles", "blobs", "fonts", "logs", "assets", "plugins", "plugin-settings"];
+    public static IReadOnlyList<string> EngineFolders { get; } = ["profiles", "blobs", "fonts", "logs", "assets", "plugins", "plugin-settings", CrashReportsFolderName];
 
     /// <summary>The engine files written by renaming a temp file (<c>{name}.{32 hex}.tmp</c>) over them.</summary>
-    private static readonly string[] ReplacedFiles = [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, ServiceCredentialFileName, ServiceCredentialProtectedFileName, "runtime.json", "profiles.xml", ImportRecordFileName, PluginStateFileName, DevicesFileName, UpdatesFileName];
+    private static readonly string[] ReplacedFiles = [StoreFileName, "profiles.json", "tokens.json", PairingsFileName, SettingsFileName, ServiceCredentialFileName, ServiceCredentialProtectedFileName, "runtime.json", "profiles.xml", ImportRecordFileName, PluginStateFileName, DevicesFileName, UpdatesFileName, CrashReportsFileName];
 
     private static readonly Regex EngineTempFile = new(
         $"\\A({string.Join('|', ReplacedFiles.Select(Regex.Escape))})\\.[0-9a-f]{{32}}\\.tmp\\z",

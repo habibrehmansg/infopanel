@@ -379,6 +379,11 @@ The engine executable and what it loads beside it: `InfoPanel.Core`, the plugin 
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://dot.net/
 
+### Sentry 6.13.0
+- **Licence**: MIT
+- **Copyright**: none stated in the package (authors: Sentry Team and Contributors)
+- **Project**: https://sentry.io/
+
 ### Serilog 4.3.1
 - **Licence**: Apache-2.0
 - **Copyright**: Copyright © Serilog Contributors

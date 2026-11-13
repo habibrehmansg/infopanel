@@ -2,6 +2,7 @@
 # Builds the macOS app and its disk image (docs/2.0/packaging.md):
 #
 #   packaging/macos/build.sh --version <version> --allow-origin <origin> --out <folder> [--libusb-source <tarball>]
+#                            [--crash-reports-dsn <address>]
 #
 #   --version        the release's version, a SemVer such as 2.0.0, 2.0.0-beta.1 or 2.0.0+build.1 (the engine reports it;
 #                    the bundle's CFBundleShortVersionString is its major.minor.patch, CFBundleVersion the whole of it)
@@ -11,6 +12,8 @@
 #   --libusb-source  libusb's release tarball (libusb-<version>.tar.bz2), fetched elsewhere: native/libusb/build.sh,
 #                    which this script runs into <out>/libusb, refuses it unless its SHA-256 is the one native/libusb/pins.txt
 #                    pins; without it that build downloads the tarball (and checks it the same way)
+#   --crash-reports-dsn  where the engine sends crash reports (a Sentry DSN: https, a key, a host, a project number):
+#                    built in (InfoPanelCrashReportsDsn); without it the build sends none (docs/2.0/crash-reports.md)
 #   --check-args     only check the arguments above, then stop (exit 0 when they are accepted)
 #   --list-panel-drivers  only list the panel driver projects the build publishes into plugins/ (and those it leaves
 #                    out, with why), then stop; needs no other argument
@@ -34,12 +37,13 @@
 set -euo pipefail
 
 usage() {
-  sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
 version=""
 origin=""
+crash_dsn=""
 out=""
 libusb_source=""
 check_args=0
@@ -49,6 +53,7 @@ while [ $# -gt 0 ]; do
     --version) [ $# -ge 2 ] || usage; version="$2"; shift 2 ;;
     --allow-origin) [ $# -ge 2 ] || usage; origin="$2"; shift 2 ;;
     --out) [ $# -ge 2 ] || usage; out="$2"; shift 2 ;;
+    --crash-reports-dsn) [ $# -ge 2 ] || usage; crash_dsn="$2"; shift 2 ;;
     --libusb-source) [ $# -ge 2 ] || usage; libusb_source="$2"; shift 2 ;;
     --check-args) check_args=1; shift ;;
     --list-panel-drivers) list_drivers=1; shift ;;
@@ -108,6 +113,13 @@ if [ "$origin_ok" -eq 0 ]; then
   echo "build.sh: --allow-origin must be https, a host and an optional port, with no user info, path, query or fragment, such as https://client.example or https://client.example:8443, not '$origin'" >&2
   exit 2
 fi
+# A crash-report address, when given: a Sentry DSN (https://<key>@<host>[:<port>]/<project>), nothing else.
+if [ -n "$crash_dsn" ] && ! [[ "$crash_dsn" =~ ^https://[0-9A-Za-z]+@[A-Za-z0-9.-]+(:[0-9]{1,5})?/[0-9]+$ ]]; then
+  echo "build.sh: --crash-reports-dsn must be a Sentry DSN, https://<key>@<host>/<project>" >&2
+  exit 2
+fi
+crash_property=()
+[ -z "$crash_dsn" ] || crash_property=("-p:InfoPanelCrashReportsDsn=$crash_dsn")
 [ "$check_args" -eq 0 ] || exit 0
 if [ "$(uname -s)" != "Darwin" ]; then
   echo "build.sh: macOS only (codesign, hdiutil)" >&2
@@ -144,7 +156,7 @@ copying_sha256="$(sed -n 's/^source_copying_sha256=//p' "$root/native/libusb/pin
 
 echo "==> Publishing the engine $version for osx-arm64"
 (cd "$root" && dotnet publish InfoPanel/InfoPanel.csproj -c Release -r osx-arm64 --self-contained true \
-  -p:Version="$version" -p:InfoPanelAllowOrigin="$origin" -p:DebugType=none -p:DebugSymbols=false \
+  -p:Version="$version" -p:InfoPanelAllowOrigin="$origin" ${crash_property[@]+"${crash_property[@]}"} -p:DebugType=none -p:DebugSymbols=false \
   -o "$publish")
 [ -x "$publish/InfoPanel" ] || { echo "build.sh: the publish has no InfoPanel executable" >&2; exit 1; }
 echo "==> Publishing the panel drivers into plugins/"

@@ -12,6 +12,7 @@ The pages for the `2.0.x` branch. Start with the [README](../../README.md): what
 | [Video](video.md) | The live preview as H.264 video (hardware encoders, ffmpeg), and FFmpeg's libraries for video files and cameras |
 | [Weather](weather.md) | The weather source: its readings, and how it asks the configured service |
 | [AI apps elsewhere](mcp.md) | The tools AI apps may use on this engine, and the rules they run under |
+| [Crash reports](crash-reports.md) | What a release build sends to Sentry when the engine fails, how it is scrubbed, and the switch that turns it off |
 | [The relay](relay.md) | The engine's connection to the configured service's relay, which AI apps elsewhere use, and its frames |
 
 ## Writing a client

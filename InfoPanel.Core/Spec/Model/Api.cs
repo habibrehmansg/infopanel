@@ -937,8 +937,17 @@ public sealed record EngineSettingsBody
     public required RenderingSettingsBody Rendering { get; init; }
     public required ServiceSettingsBody Service { get; init; }
     public required ProxySettingsBody Proxy { get; init; }
+    public required TelemetrySettingsBody Telemetry { get; init; }
     /// <summary>Each client's preferences by client name, as the client set them.</summary>
     public required IReadOnlyDictionary<string, JsonElement> Clients { get; init; }
+}
+
+/// <summary>What the engine reports (<c>telemetrySettings</c>, engineSettings' <c>telemetry</c>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/telemetrySettings")]
+public sealed record TelemetrySettingsBody
+{
+    /// <summary>Whether a build that reports crashes sends them; true by default.</summary>
+    public required bool CrashReports { get; init; }
 }
 
 /// <summary>The names a reverse proxy on this computer reaches the engine by (<c>proxySettings</c>, engineSettings' <c>proxy</c>).</summary>
@@ -1040,6 +1049,7 @@ public sealed record SettingsChange : IRemovesMembers
     public RenderingSettingsChange? Rendering { get; init; }
     public ServiceSettingsChange? Service { get; init; }
     public ProxySettingsChange? Proxy { get; init; }
+    public TelemetrySettingsChange? Telemetry { get; init; }
     public IReadOnlyDictionary<string, JsonElement>? Clients { get; init; }
     /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
@@ -1102,6 +1112,16 @@ public sealed record MediaSettingsChange : IRemovesMembers
 public sealed record RenderingSettingsChange : IRemovesMembers
 {
     public bool? Gpu { get; init; }
+    /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
+    [JsonIgnore]
+    public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}
+
+/// <summary>What the engine reports, to change; <c>null</c> goes back to the default, on (<see cref="IRemovesMembers"/>).</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/settingsChange/properties/telemetry")]
+public sealed record TelemetrySettingsChange : IRemovesMembers
+{
+    public bool? CrashReports { get; init; }
     /// <summary>The members this change sets back to their defaults (read as <c>null</c>), by C# name; see <see cref="IRemovesMembers"/>.</summary>
     [JsonIgnore]
     public ISet<string> Removed { get; init; } = new HashSet<string>(StringComparer.Ordinal);

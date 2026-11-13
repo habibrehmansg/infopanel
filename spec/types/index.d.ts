@@ -1385,6 +1385,7 @@ export interface EngineSettingsOk {
   rendering: RenderingSettings;
   service: ServiceSettings;
   proxy: ProxySettings;
+  telemetry: TelemetrySettings;
   /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
   clients: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean };
 }
@@ -1416,6 +1417,7 @@ export interface EngineSettingsProblem {
   rendering: RenderingSettings;
   service: ServiceSettings;
   proxy: ProxySettings;
+  telemetry: TelemetrySettings;
   /** Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any. */
   clients: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean };
 }
@@ -1512,6 +1514,12 @@ export interface ProxySettings {
   hosts: ProxyHost[];
 }
 
+/** What the engine reports (docs/api.md#crash-reports). */
+export interface TelemetrySettings {
+  /** Whether a build that reports crashes sends a report of each error and unexpected exit, with names, paths and addresses removed first (docs/api.md#crash-reports); true by default. A build without a crash-report address, such as one built from source, sends nothing whatever this says. A change applies at once, without a restart. */
+  crashReports: boolean;
+}
+
 /**
  * A name a reverse proxy on this computer reaches the engine by: a DNS name in lower case, two labels or more, each 1 to 63 of `a-z`, `0-9` and `-`, neither starting nor ending with `-`, the last starting with a letter (so never an IP address), at most 253 characters, without a trailing dot, a port or a wildcard. An internationalised name is given in its `xn--` form.
  * Length: ≤ 253.
@@ -1528,7 +1536,7 @@ export type LogLevel = "debug" | "information" | "warning" | "error";
  */
 export type ClientName = string;
 
-/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `sources.systemInfo`, `media`, `rendering`, `service`, `proxy` and `clients` are merged member by member, each client's preferences, `proxy.hosts` and `sources.systemInfo.excludedProcesses` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
+/** PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `sources.systemInfo`, `media`, `rendering`, `service`, `proxy`, `telemetry` and `clients` are merged member by member, each client's preferences, `proxy.hosts` and `sources.systemInfo.excludedProcesses` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits). */
 export interface SettingsChange {
   /**
    * Frames a second, 1 to 60 (engineSettings).
@@ -1596,6 +1604,10 @@ export interface SettingsChange {
      * Unique items.
      */
     hosts?: ProxyHost[] | null;
+  };
+  telemetry?: {
+    /** telemetrySettings: whether a build that reports crashes sends them; `null` sets it back to its default, on. */
+    crashReports?: boolean | null;
   };
   /** Client preferences to set, each whole, or to remove (`null`), by client name; the other clients' are kept. */
   clients?: { [key: string]: { [key: string]: JsonValue } | JsonValue[] | string | number | boolean | null };

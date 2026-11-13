@@ -23,6 +23,10 @@
     <!-- A desktop app, not a server: the concurrent workstation garbage collector (the Web SDK defaults to the server one,
          which holds a heap per core). The plugin hosts run this executable too. -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
+    <!-- Sentry (crash reports): no implicit `using Sentry` across the engine, and no native SDK (it belongs to native AOT,
+         which the engine doesn't use). -->
+    <SentryImplicitUsings>false</SentryImplicitUsings>
+    <SentryNative>false</SentryNative>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,6 +36,8 @@
   <ItemGroup>
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.Console" />
+    <!-- Crash reports (InfoPanel/CrashReports/): only a build given InfoPanelCrashReportsDsn sends any. -->
+    <PackageReference Include="Sentry" />
   </ItemGroup>
 
   <ItemGroup>
@@ -135,5 +141,8 @@
 
   <!-- The web client origin a release build carries (InfoPanelAllowOrigin; none by default): WebClientOrigin.targets. -->
   <Import Project="WebClientOrigin.targets" />
+
+  <!-- The crash-report address a release build carries (InfoPanelCrashReportsDsn; none by default): CrashReportsDsn.targets. -->
+  <Import Project="CrashReportsDsn.targets" />
 
 </Project>

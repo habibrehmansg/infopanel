@@ -483,6 +483,124 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void CrashReports_AreOnByDefault_SetStoredAndReadBack_NullSetsThemBack_AndAStoredOneOfTheWrongTypeGetsItsDefault()
+    {
+        var store = Open();
+        Assert.Equal(new TelemetrySettings(CrashReports: true), store.Current.Settings.Telemetry);
+        Assert.Equal(TelemetrySettings.Default, EngineSettings.Default.Telemetry);
+
+        var off = store.Apply(Change("""{"telemetry":{"crashReports":false}}"""));
+        Assert.Equal((false, 1L), (off.Settings.Telemetry.CrashReports, off.Version));
+        Assert.False(Open().Current.Settings.Telemetry.CrashReports);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"format":"infopanel.settings/1","telemetry":{"crashReports":false}}"""), Stored()));
+
+        // The default given explicitly is stored (with the consent epoch that turning them on makes); null removes it, the
+        // epoch kept.
+        var on = store.Apply(Change("""{"telemetry":{"crashReports":true}}"""));
+        var epoch = on.Settings.Telemetry.CrashReportsEpoch;
+        Assert.NotNull(epoch);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse($$$"""{"format":"infopanel.settings/1","telemetry":{"crashReports":true,"crashReportsEpoch":"{{{epoch}}}"}}"""), Stored()));
+        store.Apply(Change("""{"telemetry":{"crashReports":null}}"""));
+        Assert.True(store.Current.Settings.Telemetry.CrashReports);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse($$$"""{"format":"infopanel.settings/1","telemetry":{"crashReportsEpoch":"{{{epoch}}}"}}"""), Stored()));
+
+        File.WriteAllText(File_, """{"format":"infopanel.settings/1","media":{"localNetwork":false},"telemetry":{"crashReports":"no"}}""");
+        var read = Open();
+        Assert.True(read.Current.Settings.Telemetry.CrashReports);
+        Assert.False(read.Current.Settings.Media.LocalNetwork);
+        Assert.Contains("/telemetry/crashReports", Assert.Single(Warnings).RenderMessage(), StringComparison.Ordinal);
+
+        File.WriteAllText(File_, """{"format":"infopanel.settings/1","telemetry":false}""");
+        Assert.True(Open().Current.Settings.Telemetry.CrashReports);
+    }
+
+    [Fact]
+    public void AMemberOfTelemetryTheEngineDoesntKnow_IsKept_AsCrashReportsChange()
+    {
+        File.WriteAllText(File_, """{"format":"infopanel.settings/1","telemetry":{"crashReports":true,"later":{"x":[1,2]}}}""");
+        var store = Open();
+
+        store.Apply(Change("""{"telemetry":{"crashReports":false}}"""));
+        Assert.False(store.Current.Settings.Telemetry.CrashReports);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"format":"infopanel.settings/1","telemetry":{"crashReports":false,"later":{"x":[1,2]}}}"""), Stored()));
+
+        var on = store.Apply(Change("""{"telemetry":{"crashReports":null}}"""));
+        var epoch = on.Settings.Telemetry.CrashReportsEpoch;
+        Assert.NotNull(epoch);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse($$$"""{"format":"infopanel.settings/1","telemetry":{"later":{"x":[1,2]},"crashReportsEpoch":"{{{epoch}}}"}}"""), Stored()));
+    }
+
+    [Fact]
+    public void CrashReportsConsentEpoch_IsMadeByTheWriteThatTurnsThemOn_RemovedByTheOneThatTurnsThemOff_AndKeptByEveryOther()
+    {
+        var store = Open();
+        // On since the install: none until the reports ask, then one made and written, without a new version.
+        Assert.Null(store.Current.Settings.Telemetry.CrashReportsEpoch);
+        var first = store.CrashReportsEpoch();
+        Assert.Matches("^[0-9a-f]{32}$", first);
+        Assert.Equal(0L, store.Current.Version);
+        Assert.Equal(first, store.Current.Settings.Telemetry.CrashReportsEpoch);
+        Assert.Equal(first, store.CrashReportsEpoch());
+        Assert.Equal(first, Open().Current.Settings.Telemetry.CrashReportsEpoch);
+
+        // Every other change keeps it, turning them on while they are on included.
+        store.Apply(Change("""{"media":{"localNetwork":false}}"""));
+        store.Apply(Change("""{"telemetry":{"crashReports":true}}"""));
+        Assert.Equal(first, store.Current.Settings.Telemetry.CrashReportsEpoch);
+
+        // Off removes it, in that write; off, there is none to ask for.
+        var off = store.Apply(Change("""{"telemetry":{"crashReports":false}}"""));
+        Assert.Null(off.Settings.Telemetry.CrashReportsEpoch);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"format":"infopanel.settings/1","media":{"localNetwork":false},"telemetry":{"crashReports":false}}"""), Stored()));
+        Assert.Null(store.CrashReportsEpoch());
+
+        // On again makes a new one, in that write.
+        var on = store.Apply(Change("""{"telemetry":{"crashReports":null}}"""));
+        var second = on.Settings.Telemetry.CrashReportsEpoch;
+        Assert.Matches("^[0-9a-f]{32}$", second);
+        Assert.NotEqual(first, second);
+        Assert.Equal(second, Open().Current.Settings.Telemetry.CrashReportsEpoch);
+
+        // A change can't name it.
+        var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(Change($$$"""{"telemetry":{"crashReportsEpoch":"{{{first}}}"}}""")));
+        Assert.Contains(refused.Errors, e => e.Path == "/telemetry/crashReportsEpoch");
+        Assert.Equal(second, store.Current.Settings.Telemetry.CrashReportsEpoch);
+    }
+
+    [Theory]
+    [InlineData("\"0123\"")]
+    [InlineData("\"0123456789ABCDEF0123456789ABCDEF\"")]
+    [InlineData("\"../../0123456789abcdef0123456789\"")]
+    [InlineData("12")]
+    public void AStoredConsentEpochThatIsnt32LowerCaseHexDigits_IsDropped_AndANewOneMadeWhenAsked(string stored)
+    {
+        File.WriteAllText(File_, $$$"""{"format":"infopanel.settings/1","telemetry":{"crashReportsEpoch":{{{stored}}}}}""");
+        var store = Open();
+
+        Assert.Null(store.Current.Settings.Telemetry.CrashReportsEpoch);
+        Assert.Contains("/telemetry/crashReportsEpoch", Assert.Single(Warnings).RenderMessage(), StringComparison.Ordinal);
+        Assert.Matches("^[0-9a-f]{32}$", store.CrashReportsEpoch());
+    }
+
+    [Theory]
+    [InlineData("""{"telemetry":{"crashReports":"no"}}""", "/telemetry/crashReports")]
+    [InlineData("""{"telemetry":{"crashReports":0}}""", "/telemetry/crashReports")]
+    [InlineData("""{"telemetry":{"usage":false}}""", "/telemetry/usage")]
+    [InlineData("""{"telemetry":{"CrashReports":false}}""", "/telemetry/CrashReports")]
+    [InlineData("""{"telemetry":null}""", "/telemetry")]
+    [InlineData("""{"telemetry":false}""", "/telemetry")]
+    public void ABadTelemetryChange_IsRefusedAtItsPath_AndChangesNothing(string json, string path)
+    {
+        var store = Open();
+
+        var refused = Assert.Throws<SettingsChangeException>(() => store.Apply(Change(json)));
+
+        Assert.Contains(refused.Errors, e => e.Path == path && e.Code == "schema");
+        Assert.Equal(TelemetrySettings.Default, store.Current.Settings.Telemetry);
+        Assert.False(File.Exists(File_));
+    }
+
+    [Fact]
     public void TheWeatherSettings_AreOnAutoAndNoPlaceByDefault_SetAndResetMemberByMember_AndAStoredBadOneGetsItsDefault()
     {
         var store = Open();

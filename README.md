@@ -86,6 +86,8 @@ A build from source has no editor built in, so on its own it serves the engine's
 
 `packaging/macos/build.sh` and `packaging\windows\build.ps1` build the disk image and the setup ([packaging](docs/2.0/packaging.md)).
 
+Release builds send crash reports to Sentry, with names, paths and addresses removed, unless you turn them off (`telemetry.crashReports`); a build from source sends nothing ([crash reports](docs/2.0/crash-reports.md)).
+
 The documentation starts at [docs/2.0](docs/2.0/README.md). The profile formats and the engine's API, for anyone writing a client, are in [`spec/`](spec/README.md). [`CLAUDE.md`](CLAUDE.md) is the guide to the code.
 
 ## Contributing

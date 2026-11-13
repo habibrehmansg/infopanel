@@ -13,6 +13,8 @@
 # or with 7-Zip where that tar can't read it), the archive and the DLL both checked against native\libusb\pins.txt, and
 # goes into the publish beside the engine, with libusb's licence text, libusb-COPYING.txt: the COPYING of the release's
 # source tarball (downloaded, or -LibusbSource), the tarball and the file both checked against pins.txt too.
+# -CrashReportsDsn (optional): where the engine sends crash reports, a Sentry DSN (https://<key>@<host>/<project>), built in
+# as InfoPanelCrashReportsDsn; without it the build sends none (docs/2.0/crash-reports.md).
 param(
   [Parameter(Mandatory = $true)][string]$Version,
   [Parameter(Mandatory = $true)][string]$AllowOrigin,
@@ -21,6 +23,7 @@ param(
   [string]$DotnetRuntime,
   [string]$LibusbArchive,
   [string]$LibusbSource,
+  [string]$CrashReportsDsn,
   [string]$Iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 )
 $ErrorActionPreference = 'Stop'
@@ -40,6 +43,8 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$') { throw "-Version '$Version' isn't a version like 2.0.0 or 2.0.0-beta.1." }
 $fileVersion = '{0}.{1}.{2}.0' -f $Matches[1], $Matches[2], $Matches[3]
 if ($AllowOrigin -notmatch '^https://[^/\s]+$') { throw "-AllowOrigin '$AllowOrigin' isn't an https origin (scheme://host[:port], no path)." }
+if ($CrashReportsDsn -and $CrashReportsDsn -notmatch '^https://[0-9A-Za-z]+@[A-Za-z0-9.-]+(:[0-9]{1,5})?/[0-9]+$') { throw '-CrashReportsDsn must be a Sentry DSN, https://<key>@<host>/<project>.' }
+$crashProperty = @(if ($CrashReportsDsn) { "-p:InfoPanelCrashReportsDsn=$CrashReportsDsn" })
 if (-not (Test-Path -LiteralPath $Iscc)) { throw "Inno Setup 6's compiler isn't at $Iscc (install Inno Setup 6, or pass -Iscc)." }
 if ((Test-Path -LiteralPath $Out) -and (Get-ChildItem -LiteralPath $Out -Force | Select-Object -First 1)) { throw "-Out $Out isn't empty: choose a new folder." }
 
@@ -138,7 +143,7 @@ $runtimeInstaller = Get-Pinned $runtimeName $Runtime.Url $DotnetRuntime 'SHA512'
 
 # The engine, self-contained for win-x64, with the sensor helper, the web client's origin built in.
 & dotnet publish (Join-Path $repo 'InfoPanel\InfoPanel.csproj') -c Release -r win-x64 --self-contained true `
-  "-p:Version=$Version" "-p:InfoPanelAllowOrigin=$AllowOrigin" -o $publish --nologo
+  "-p:Version=$Version" "-p:InfoPanelAllowOrigin=$AllowOrigin" @crashProperty -o $publish --nologo
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish exited $LASTEXITCODE." }
 # Every panel driver project, InfoPanel.Panels.{Family}\ with its {folder}.csproj and a panel.json, but the virtual panel
 # (a test fixture, never shipped): published for win-x64 into plugins\{folder} beside the engine, where it finds its

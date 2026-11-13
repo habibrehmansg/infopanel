@@ -37,9 +37,11 @@
     <PackageVersion Include="Topten.RichTextKit" Version="0.6.170" />
   </ItemGroup>
 
-  <!-- InfoPanel (engine host) -->
+  <!-- InfoPanel (engine host). Sentry (sentry-dotnet): crash reports from release builds that name a crash-report
+       address (InfoPanel/CrashReports/, docs/2.0/crash-reports.md); referenced by InfoPanel only. -->
   <ItemGroup>
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageVersion Include="Sentry" Version="6.13.0" />
   </ItemGroup>
 
   <!-- InfoPanel.SensorHelper: LibreHardwareMonitorLib 0.9.6 and its dependencies, each at the latest version LHM 0.9.6

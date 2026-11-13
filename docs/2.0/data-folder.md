@@ -27,6 +27,7 @@ The engine keeps everything it stores in one folder: `{LocalApplicationData}/Inf
 | `plugin-settings/{package}/{plugin id}.json` | Configurable plugins' settings, written by their hosts |
 | `plugin-state.json` | The plugin packages the user turned off, by folder name; written only when the user turns one on or off ([below](#the-plugin-state)) |
 | `updates.json` | The newest version the engine has shown an update notification for; written only when one is shown ([below](#the-update-notified)) |
+| `crash-reports.json`, `crash-reports/` | Crash reports' random id for this install, made only when a release build first starts sending them; and their queue of reports not yet sent, in a folder per consent epoch (`crash-reports/{epoch}/`, the epoch kept in `settings.json`), an earlier epoch's folder never read and deleted when it can be ([crash reports](crash-reports.md)) |
 | `devices.json` | The USB panels the engine has identified and their settings; written when a panel is first found, moves to another port, or its settings change ([below](#the-panels)) |
 | `profiles.xml`, `profiles/{guid}.xml`, `assets/` | Step-1 data, left untouched and unread |
 

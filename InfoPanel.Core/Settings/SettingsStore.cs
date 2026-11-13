@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -56,6 +57,9 @@ public sealed class SettingsUnavailableException(SettingsStatus status, SpecErro
 /// it is (numbers compared as the doubles nearest their text, so stored spellings stay) writes nothing and raises nothing, unless the last write's folder flush failed: then it writes again (no new
 /// version) and throws if that fails. A failed write leaves the file and the values as they were and throws.</item>
 /// <item><see cref="Changed"/> follows every change to the stored settings, in order.</item>
+/// <item>Crash reports' consent epoch (<c>telemetry.crashReportsEpoch</c>, <see cref="TelemetrySettings.CrashReportsEpoch"/>)
+/// is the engine's own: made by the write that turns <c>telemetry.crashReports</c> on, removed by the one that turns it
+/// off, kept by every other, and never named by a change.</item>
 /// </list>
 /// The limits it keeps are the format's settings limits (spec/docs/limits.md, "Settings limits"), each refusal with its
 /// <c>limit.*</c> code. A task that adds a setting adds it to <see cref="EngineSettings"/>, <see cref="SettingsLimits"/>,
@@ -157,7 +161,7 @@ public sealed class SettingsStore
 
     /// <summary>
     /// Merges <paramref name="change"/> into the settings and writes them: a member's value sets it, <c>null</c> removes it
-    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>sources.weather</c>, <c>sources.systemInfo</c>, <c>media</c>, <c>rendering</c>, <c>service</c>, <c>proxy</c> and <c>clients</c> merge member by member, and each
+    /// (back to its default); <c>sources</c>, <c>sources.libre</c>, <c>sources.network</c>, <c>sources.weather</c>, <c>sources.systemInfo</c>, <c>media</c>, <c>rendering</c>, <c>service</c>, <c>proxy</c>, <c>telemetry</c> and <c>clients</c> merge member by member, and each
     /// <c>clients</c> member, <c>proxy.hosts</c> and <c>sources.systemInfo.excludedProcesses</c> is set or removed whole. Unknown members are refused.
     /// </summary>
     /// <returns>The settings in effect afterwards (the same version when nothing changed).</returns>
@@ -206,6 +210,7 @@ public sealed class SettingsStore
             {
                 next = (JsonObject)_tree.DeepClone();
                 Merge(next, change);
+                Consent(_current.Settings.Telemetry, next);
 
                 if (next["clients"] is JsonObject clients && clients.Count > SettingsLimits.Clients)
                     throw new SettingsChangeException([new SpecError("/clients", "limit.settingsClients", $"At most {SettingsLimits.Clients} clients keep preferences (settingsClients); this change would make {clients.Count}.")]);
@@ -265,6 +270,87 @@ public sealed class SettingsStore
     {
         lock (_lock)
             return read(_current);
+    }
+
+    /// <summary>
+    /// The consent crash reports run under (<see cref="TelemetrySettings.CrashReportsEpoch"/>): the stored one, or, while
+    /// they are on without one (never turned off, or a file that lost it), one made now and written, under the store's
+    /// lock. That write is not a change of the settings: no new version, nothing raised. Null while crash reports are off.
+    /// </summary>
+    /// <exception cref="IOException">The file couldn't be read at start-up or written now (nothing changed), or was written but its folder couldn't be flushed (the epoch is in effect).</exception>
+    public string? CrashReportsEpoch()
+    {
+        lock (_lock)
+        {
+            var telemetry = _current.Settings.Telemetry;
+            if (!telemetry.CrashReports || telemetry.CrashReportsEpoch != null)
+                return telemetry.CrashReportsEpoch;
+            if (Status != SettingsStatus.Ok)
+                throw new IOException($"The settings file is {Status.ToString().ToLowerInvariant()}, so it can't keep crash reports' consent.");
+
+            var next = (JsonObject)_tree.DeepClone();
+            var epoch = NewEpoch();
+            if (next["telemetry"] is not JsonObject group)
+                next["telemetry"] = group = new JsonObject();
+            group[EpochMember] = epoch;
+            var content = Serialize(next);
+            if (content.Length > SettingsLimits.MaxFileBytes)
+                throw new IOException($"The settings would take {content.Length} bytes as stored, over settingsBytes, with crash reports' consent.");
+
+            var replaced = false;
+            try
+            {
+                AtomicFile.Write(_path, content, _root, _faults, replaced: () => replaced = true);
+            }
+            catch when (replaced)
+            {
+                // The file holds it; only flushing its folder failed: it is what the next start reads.
+                _unflushed = true;
+                Adopt(next, content);
+                throw;
+            }
+
+            _unflushed = false;
+            Adopt(next, content);
+            return epoch;
+        }
+
+        void Adopt(JsonObject tree, byte[] content)
+        {
+            _tree = tree;
+            _content = content;
+            _current = _current with { Settings = Effective(tree) };
+        }
+    }
+
+    /// <summary>The member of <c>telemetry</c> in the file that holds <see cref="TelemetrySettings.CrashReportsEpoch"/>.</summary>
+    public const string EpochMember = "crashReportsEpoch";
+
+    /// <summary>A new consent epoch: 128 random bits as 32 lower-case hex digits.</summary>
+    private static string NewEpoch() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+
+    /// <summary>
+    /// Under <see cref="_lock"/>: the consent epoch of <paramref name="next"/>, the tree a change makes from settings whose
+    /// telemetry is <paramref name="before"/>. Crash reports off: none. Turned on by this change: a new one. On before and
+    /// after: the one before (or none). So only the write that turns them on makes one, in the same write, and a client's
+    /// change never sets, keeps or removes one itself (<c>telemetry</c> takes no such member, and is never removed whole).
+    /// </summary>
+    private static void Consent(TelemetrySettings before, JsonObject next)
+    {
+        var group = next["telemetry"] as JsonObject;
+        var on = (group?["crashReports"] is { } stored ? ElementOf(stored).GetBoolean() : (bool?)null) ?? TelemetrySettings.Default.CrashReports;
+        string? epoch = !on ? null : before.CrashReports ? before.CrashReportsEpoch : NewEpoch();
+        if (epoch == null)
+        {
+            group?.Remove(EpochMember);
+            if (group is { Count: 0 })
+                next.Remove("telemetry");
+            return;
+        }
+
+        if (group == null)
+            next["telemetry"] = group = new JsonObject();
+        group[EpochMember] = epoch;
     }
 
     /// <summary>
@@ -488,6 +574,12 @@ public sealed class SettingsStore
         if (Container(tree, "proxy", "/proxy") is { } proxy)
             Check(proxy, "hosts", "/proxy/hosts", HostsProblem);
 
+        if (Container(tree, "telemetry", "/telemetry") is { } telemetry)
+        {
+            Check(telemetry, "crashReports", "/telemetry/crashReports", BoolProblem);
+            Check(telemetry, EpochMember, "/telemetry/" + EpochMember, EpochProblem);
+        }
+
         if (Container(tree, "clients", "/clients") is { } clients)
         {
             var kept = 0;
@@ -523,6 +615,7 @@ public sealed class SettingsStore
         var rendering = tree["rendering"] as JsonObject;
         var service = tree["service"] as JsonObject;
         var proxy = tree["proxy"] as JsonObject;
+        var telemetry = tree["telemetry"] as JsonObject;
         var clients = ImmutableDictionary.CreateBuilder<string, JsonElement>(StringComparer.Ordinal);
         if (tree["clients"] is JsonObject stored)
         {
@@ -555,7 +648,14 @@ public sealed class SettingsStore
             proxy?["hosts"] is JsonArray hosts
                 ? new ProxySettings(ImmutableArray.CreateRange(hosts.Select(h => ElementOf(h).GetString()!)))
                 : ProxySettings.Default,
+            Telemetry(telemetry),
             clients.ToImmutable());
+
+        static TelemetrySettings Telemetry(JsonObject? telemetry)
+        {
+            var on = Bool(telemetry?["crashReports"]) ?? TelemetrySettings.Default.CrashReports;
+            return new TelemetrySettings(on, on && telemetry?[EpochMember] is { } epoch && EpochProblem(ElementOf(epoch)) == null ? ElementOf(epoch).GetString() : null);
+        }
 
         static int? Int(JsonNode? node) => node is null ? null : SpecJson.ReadInt32(ElementOf(node));
 
@@ -670,13 +770,13 @@ public sealed class SettingsStore
                     }
 
                     break;
-                case "media" or "rendering":
+                case "media" or "rendering" or "telemetry":
                     if (!Object(member.Value, pointer))
                         break;
                     foreach (var setting in member.Value.EnumerateObject())
                     {
                         var settingPointer = pointer + "/" + Escape(setting.Name);
-                        if ((member.Name, setting.Name) is ("media", "localNetwork") or ("rendering", "gpu"))
+                        if ((member.Name, setting.Name) is ("media", "localNetwork") or ("rendering", "gpu") or ("telemetry", "crashReports"))
                             Leaf(setting.Value, settingPointer, BoolProblem);
                         else
                             Unknown(settingPointer);
@@ -774,8 +874,8 @@ public sealed class SettingsStore
 
                     PruneIfEmpty(tree, "sources");
                     break;
-                case "media" or "rendering":
-                    // Only booleans: media.localNetwork, rendering.gpu.
+                case "media" or "rendering" or "telemetry":
+                    // Only booleans: media.localNetwork, rendering.gpu, telemetry.crashReports.
                     var group = Child(tree, member.Name);
                     foreach (var setting in member.Value.EnumerateObject())
                         Set(group, setting.Name, setting.Value, e => JsonValue.Create(e.GetBoolean()));
@@ -849,6 +949,12 @@ public sealed class SettingsStore
             ? null
             : $"{Clip(e.GetRawText())} is outside {range.Min}–{range.Max}";
     }
+
+    /// <summary>A consent epoch: 32 lower-case hex digits (<see cref="TelemetrySettings.CrashReportsEpoch"/>); a folder is named by it.</summary>
+    private static string? EpochProblem(JsonElement e) =>
+        e.ValueKind == JsonValueKind.String && e.GetString() is { Length: 32 } s && s.All(c => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f')
+            ? null
+            : "isn't 32 lower-case hex digits";
 
     private static string? BoolProblem(JsonElement e) =>
         e.ValueKind is JsonValueKind.True or JsonValueKind.False ? null : "isn't true or false";

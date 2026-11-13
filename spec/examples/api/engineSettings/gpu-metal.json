@@ -7,6 +7,6 @@
   "sources": {"libre": {"enabled": true, "storage": true, "storageInterval": 30}, "network": {"publicIp": true}, "weather": {"enabled": true, "units": "auto", "place": null}, "systemInfo": {"excludedProcesses": ["_Total", "Idle", "dwm", "csrss", "svchost", "lsass", "system", "spoolsv", "Memory Compression"]}},
   "media": {"localNetwork": true},
   "rendering": {"gpu": true, "using": "metal", "device": "Apple M4 Max", "fallback": null},
-  "service": {"address": null, "aiApps": false, "pairing": false}, "proxy": {"hosts": []},
+  "service": {"address": null, "aiApps": false, "pairing": false}, "proxy": {"hosts": []}, "telemetry": {"crashReports": true},
   "clients": {}
 }

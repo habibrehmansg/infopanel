@@ -51,7 +51,7 @@ public class SettingsSchemaTests
 
         var (ok, problem) = (Defs[Shapes[0]]!, Defs[Shapes[1]]!);
 
-        Assert.Equal(["clients", "frameRate", "graphRate", "logLevel", "media", "proxy", "rendering", "service", "sources", "version"], RequiredWithout(ok));
+        Assert.Equal(["clients", "frameRate", "graphRate", "logLevel", "media", "proxy", "rendering", "service", "sources", "telemetry", "version"], RequiredWithout(ok));
         Assert.Equal(RequiredWithout(ok), RequiredWithout(problem));
         Assert.Equal(Without(ok["properties"]!.AsObject()).Select(p => p.Key), Without(problem["properties"]!.AsObject()).Select(p => p.Key));
         foreach (var (name, schema) in Without(ok["properties"]!.AsObject()))
@@ -131,7 +131,24 @@ public class SettingsSchemaTests
         Assert.Equal(defaults.SystemInfo.ExcludedProcesses,
             example["sources"]!["systemInfo"]!["excludedProcesses"]!.AsArray().Select(n => n!.GetValue<string>()));
         Assert.Equal(defaults.Rendering, new RenderingSettings(example["rendering"]!["gpu"]!.GetValue<bool>()));
+        Assert.Equal(defaults.Telemetry, new TelemetrySettings(example["telemetry"]!["crashReports"]!.GetValue<bool>()));
         Assert.Empty(example["clients"]!.AsObject());
+    }
+
+    [Fact]
+    public void CrashReports_AreABooleanOnByDefault_InTheSchemaAsInTheStore_AndAChangeTakesNullToSetThemBack()
+    {
+        var setting = Defs["telemetrySettings"]!;
+        Assert.Equal(["crashReports"], setting["required"]!.AsArray().Select(r => r!.GetValue<string>()));
+        Assert.False(setting["additionalProperties"]!.GetValue<bool>());
+        Assert.Equal("boolean", setting["properties"]!["crashReports"]!["type"]!.GetValue<string>());
+        Assert.True(TelemetrySettings.Default.CrashReports);
+        foreach (var shape in Shapes)
+            Assert.Equal("#/$defs/telemetrySettings", Defs[shape]!["properties"]!["telemetry"]!["$ref"]!.GetValue<string>());
+
+        var change = Defs["settingsChange"]!["properties"]!["telemetry"]!;
+        Assert.False(change["additionalProperties"]!.GetValue<bool>());
+        Assert.Equal(["boolean", "null"], change["properties"]!["crashReports"]!["type"]!.AsArray().Select(t => t!.GetValue<string>()));
     }
 
     public static TheoryData<string> ChangeExamples(bool invalid)

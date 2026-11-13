@@ -109,6 +109,7 @@ public static class SettingsEndpoints
             },
             Service = new ServiceSettingsBody { Address = settings.Service.Address ?? defaultServiceAddress, AiApps = settings.Service.AiApps, Pairing = settings.Service.Pairing },
             Proxy = new ProxySettingsBody { Hosts = settings.Proxy.Hosts },
+            Telemetry = new TelemetrySettingsBody { CrashReports = settings.Telemetry.CrashReports },
             Clients = settings.Clients,
         };
     }

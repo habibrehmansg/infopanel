@@ -79,10 +79,13 @@ internal sealed class FakeHost : IPluginHostService
     internal FakeProcess Process { get; set; } = null!;
     internal JsonRpc? Rpc { get; set; }
 
+    /// <summary>Its plugin's name, as it lists it.</summary>
+    public string Name { get; init; } = "Fake";
+
     public PluginMetadataDto Metadata => new()
     {
         Id = PluginId,
-        Name = "Fake",
+        Name = Name,
         Description = "A fake plugin.",
         Actions = [.. Actions.Select(a => new PluginActionDto { MethodName = a, DisplayName = "Do " + a })],
         IsConfigurable = Settings != null,

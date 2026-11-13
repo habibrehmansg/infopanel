@@ -7,6 +7,6 @@
   "sources": {"libre": {"enabled": true, "storage": true, "storageInterval": 30}, "network": {"publicIp": true}, "weather": {"enabled": true, "units": "auto", "place": null}, "systemInfo": {"excludedProcesses": ["_Total", "Idle", "dwm", "csrss", "svchost", "lsass", "system", "spoolsv", "Memory Compression"]}},
   "media": {"localNetwork": true},
   "rendering": {"gpu": true, "using": "cpu", "device": null, "fallback": {"code": "gpu.noDevice", "message": "No hardware graphics device: only the Microsoft Basic Render Driver."}},
-  "service": {"address": null, "aiApps": false, "pairing": false}, "proxy": {"hosts": []},
+  "service": {"address": null, "aiApps": false, "pairing": false}, "proxy": {"hosts": []}, "telemetry": {"crashReports": true},
   "clients": {}
 }

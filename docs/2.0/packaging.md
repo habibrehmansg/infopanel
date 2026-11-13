@@ -261,6 +261,10 @@ The engine also reports the commit it was built from (`engineBuild`), with `-dir
 Every run needs it: without it the first job fails with "Set the repository variable INFOPANEL_ALLOW_ORIGIN to the web
 client's origin".
 
+**Crash reports** ([crash reports](crash-reports.md)): `build.sh --crash-reports-dsn` and `build.ps1 -CrashReportsDsn`
+take the address a build sends crash reports to (a Sentry DSN), built in as `InfoPanelCrashReportsDsn`. Unlike the
+origin it is optional: a build without it sends none.
+
 **The jobs.**
 
 1. `prepare` (Linux) decides the mode and the version (`.github/scripts/release-version.sh`) and checks the arguments

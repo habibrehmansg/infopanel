@@ -174,6 +174,10 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "PATCH", "/api/settings", 200, Body("""{"sources":{"systemInfo":{"excludedProcesses":["InfoPanel","node"]}}}"""));
         await Send(session, "PATCH", "/api/settings", 422, Body("{\"sources\":{\"systemInfo\":{\"excludedProcesses\":[\"" + new string('x', 65) + "\"]}}}"));
         await Send(session, "PATCH", "/api/settings", 200, Body("""{"sources":{"systemInfo":{"excludedProcesses":null}}}"""));
+        // Crash reports: turned off, a value that isn't a boolean refused, set back to the default.
+        await Send(session, "PATCH", "/api/settings", 200, Body("""{"telemetry":{"crashReports":false}}"""));
+        await Send(session, "PATCH", "/api/settings", 422, Body("""{"telemetry":{"crashReports":"off"}}"""));
+        await Send(session, "PATCH", "/api/settings", 200, Body("""{"telemetry":{"crashReports":null}}"""));
         var unreadable = Path.Combine(factory.Root, "settings-unreadable");
         Directory.CreateDirectory(unreadable);
         File.WriteAllText(Path.Combine(unreadable, "settings.json"), "{ not json");

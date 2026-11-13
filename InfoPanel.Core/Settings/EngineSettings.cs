@@ -240,6 +240,20 @@ public sealed record RenderingSettings(bool Gpu)
 }
 
 /// <summary>
+/// What the engine reports (<c>telemetry</c>): whether a release build that reports crashes sends them
+/// (<c>telemetry.crashReports</c>, on by default). A build without a crash-report address sends nothing whatever it says.
+/// <paramref name="CrashReportsEpoch"/> is not a setting: the engine's own record of the consent in effect
+/// (<c>telemetry.crashReportsEpoch</c> in the file, never in the API), a random id (32 lower-case hex digits) the write
+/// that turns crash reports on makes, the write that turns them off removes and every other write keeps
+/// (<see cref="SettingsStore.CrashReportsEpoch"/> makes one when they are on without one). Null when there is none.
+/// Crash reports keep their queue in a folder named by it, so nothing queued under an earlier consent is ever read.
+/// </summary>
+public sealed record TelemetrySettings(bool CrashReports, string? CrashReportsEpoch = null)
+{
+    public static TelemetrySettings Default { get; } = new(true);
+}
+
+/// <summary>
 /// The configured service's settings: its address as set (<c>service.address</c>, an origin in its normal form,
 /// <c>InfoPanel.Service.ServiceAddress</c>), or null when none is set and the engine's default applies; and whether AI
 /// apps may use this engine's tools through the configured service (<c>service.aiApps</c>, off by default); and whether
@@ -276,6 +290,7 @@ public sealed record EngineSettings(
     RenderingSettings Rendering,
     ServiceSettings Service,
     ProxySettings Proxy,
+    TelemetrySettings Telemetry,
     IReadOnlyDictionary<string, JsonElement> Clients)
 {
     public static EngineSettings Default { get; } = new(
@@ -290,6 +305,7 @@ public sealed record EngineSettings(
         RenderingSettings.Default,
         ServiceSettings.Default,
         ProxySettings.Default,
+        TelemetrySettings.Default,
         ImmutableDictionary<string, JsonElement>.Empty);
 
     /// <summary>The time between the sensor history's samples.</summary>

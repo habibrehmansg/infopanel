@@ -169,11 +169,14 @@ var logFile = new EngineLogFile(paths.LogsDirectory, message => Console.Error.Wr
 // so do the recent entries kept for clients. The level is the log level setting, set once the settings are open.
 var logLevel = new LoggingLevelSwitch(LogEventLevel.Information);
 var recentLog = new RecentLog();
+// Crash reports' breadcrumbs (message templates only) and logged errors, once crash reports start: nothing before.
+var crashSink = new InfoPanel.CrashReporting.TemplateBreadcrumbSink();
 var engineLogger = new LoggerConfiguration()
     .MinimumLevel.ControlledBy(logLevel)
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
     .Enrich.FromLogContext()
+    .WriteTo.Sink(crashSink)
     .WriteTo.Logger(console => console
         .Filter.ByExcluding(e => LogTargets.Is(e, LogTargets.File))
         .WriteTo.Console())
@@ -185,6 +188,7 @@ var engineLogger = new LoggerConfiguration()
 Log.Logger = engineLogger;
 // Errors nothing else catches are logged; before an unhandled exception ends the process the log is written out.
 var crashLogging = CrashLogging.Install(engineLogger.ForContext<CrashLogging>(), flush: engineLogger.Dispose);
+InfoPanel.CrashReporting.CrashReports? crashReports = null;
 
 try
 {
@@ -221,6 +225,22 @@ try
     var settings = SettingsStore.Open(paths, engineLogger.ForContext<SettingsStore>());
     logLevel.MinimumLevel = LevelOf(settings.Current.Settings.LogLevel);
     settings.Changed += snapshot => logLevel.MinimumLevel = LevelOf(snapshot.Settings.LogLevel);
+    // Crash reports (docs/2.0/crash-reports.md): only a build that names a crash-report address sends any, and only while
+    // telemetry.crashReports is on; read now, before this run writes runtime.json. The names they remove (profiles, plugins,
+    // saved panels, sensors) are read when a report is made. --offline reaches no other computer: none then.
+    IServiceProvider? crashServices = null;
+    crashReports = InfoPanel.CrashReporting.CrashReports.Start(new InfoPanel.CrashReporting.CrashReportsOptions
+    {
+        Dsn = options.Offline ? null : InfoPanel.CrashReporting.CrashReports.BuiltInDsn(),
+        Paths = paths,
+        Release = $"infopanel-engine@{ReadEndpoints.EngineVersion()}+{ReadEndpoints.EngineBuild()}",
+        Environment = InfoPanel.CrashReporting.CrashReports.EnvironmentOf(ReadEndpoints.EngineVersion()),
+        Fixed = InfoPanel.CrashReporting.CrashReports.ThisComputer(paths, v1Root),
+        KnownValues = () => InfoPanel.CrashReporting.CrashReports.EngineNames(workspace, paths, crashServices),
+        Logger = engineLogger.ForContext<InfoPanel.CrashReporting.CrashReports>(),
+    }, settings, crashSink);
+    if (crashReports.HasAddress && Environment.GetEnvironmentVariable("INFOPANEL_CRASH_TEST") is { Length: > 0 } crashTest)
+        InfoPanel.CrashReporting.CrashTest.Run(crashTest, Log.ForContext<InfoPanel.CrashReporting.CrashReports>());
     // Integration tokens: a file that can't be read stops the engine rather than dropping or overwriting them.
     var tokens = TokenStore.Open(paths.TokensFile, paths.Root, TimeProvider.System, engineLogger.ForContext<TokenStore>());
     // The paired clients and the last port: a file that can't be read is logged, the run has none, and it is never rewritten.
@@ -606,6 +626,7 @@ try
     builder.Services.AddHostedService(sp => sp.GetRequiredService<InfoPanel.Panels.PanelService>());
 
     var app = builder.Build();
+    crashServices = app.Services;
     // Opened now, so a credential kept for another address than the one in effect is removed at start.
     app.Services.GetRequiredService<ServiceCredentials>();
 
@@ -663,10 +684,14 @@ try
 catch (Exception ex) when (ex is not HostAbortedException)
 {
     Log.Fatal(ex, "The engine stopped on an error");
+    // The run ends on an error (a port it couldn't listen on, say): its session ends as crashed, not exited.
+    crashReports?.Stop(fatal: true);
     return 1;
 }
 finally
 {
+    // The session ended as exited (unless the run ended on an error, above), then what is queued sent (within 2 s), before the log closes.
+    crashReports?.Dispose();
     crashLogging.Dispose();
     if (ReferenceEquals(Log.Logger, engineLogger))
         Log.Logger = Serilog.Core.Logger.None;

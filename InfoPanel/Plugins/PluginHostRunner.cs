@@ -337,7 +337,11 @@ internal sealed class PluginHostRunner : IAsyncDisposable
 
     private async Task WatchAsync(int generation, PluginHostConnection connection)
     {
+        var running = _time.GetUtcNow();
         var reason = await connection.Ended.ConfigureAwait(false);
+        // Ended without the engine asking: a crash report says so, without the plugin's name, path or id.
+        if (IsCurrent(generation))
+            CrashReporting.CrashReports.PluginHostExited(connection.Process.ExitCode, _time.GetUtcNow() - running, Volatile.Read(ref _restarts));
         Failed(generation, reason, connection);
     }
 

@@ -148,6 +148,35 @@ public sealed class SettingsEndpointTests
     }
 
     [Fact]
+    public async Task CrashReports_AreOnByDefault_TurnedOffAndSetBack_StoredAndReadBack_OthersKept()
+    {
+        using var factory = new EngineFactory();
+        using var api = factory.CreateApiClient();
+        Assert.True((await Get(api)).GetProperty("telemetry").GetProperty("crashReports").GetBoolean());
+        await Patch(api, """{"media":{"localNetwork":false}}""");
+
+        var off = await Patch(api, """{"telemetry":{"crashReports":false}}""");
+
+        Assert.Equal(2, off.GetProperty("version").GetInt64());
+        Assert.False(off.GetProperty("telemetry").GetProperty("crashReports").GetBoolean());
+        Assert.False(off.GetProperty("media").GetProperty("localNetwork").GetBoolean());
+        Assert.True(JsonElement.DeepEquals(off, await Get(api)));
+        Assert.False(JsonNode.Parse(File.ReadAllText(Settings(factory)))!["telemetry"]!["crashReports"]!.GetValue<bool>());
+        Assert.False(factory.Services.GetRequiredService<SettingsStore>().Current.Settings.Telemetry.CrashReports);
+
+        var reset = await Patch(api, """{"telemetry":{"crashReports":null}}""");
+
+        Assert.Equal(3, reset.GetProperty("version").GetInt64());
+        Assert.True(reset.GetProperty("telemetry").GetProperty("crashReports").GetBoolean());
+        Assert.False(reset.GetProperty("media").GetProperty("localNetwork").GetBoolean());
+        // The file keeps only the consent epoch turning them on made, which the API never shows.
+        var telemetry = JsonNode.Parse(File.ReadAllText(Settings(factory)))!["telemetry"]!.AsObject();
+        Assert.Equal([SettingsStore.EpochMember], telemetry.Select(m => m.Key));
+        Assert.Equal(["crashReports"], reset.GetProperty("telemetry").EnumerateObject().Select(m => m.Name));
+        Assert.True(JsonElement.DeepEquals(reset, await Get(api)));
+    }
+
+    [Fact]
     public async Task Patch_AnswersTheNewValues_AndCountsOnlyChangesThatChangeSomething()
     {
         using var factory = new EngineFactory();
@@ -507,6 +536,9 @@ public sealed class SettingsEndpointTests
         { """{"rendering":{"gpu":"yes"}}""", "/rendering/gpu", "schema" },
         { """{"rendering":{"using":"metal"}}""", "/rendering/using", "schema" },
         { """{"rendering":null}""", "/rendering", "schema" },
+        { """{"telemetry":{"crashReports":"off"}}""", "/telemetry/crashReports", "schema" },
+        { """{"telemetry":{"usage":false}}""", "/telemetry/usage", "schema" },
+        { """{"telemetry":null}""", "/telemetry", "schema" },
         { """{"clients":{"my client":{}}}""", "/clients/my client", "schema" },
         { """{"clients":null}""", "/clients", "schema" },
         { "[]", "", "schema" },

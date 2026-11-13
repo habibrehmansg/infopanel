@@ -1434,7 +1434,7 @@
     "engineSettingsOk": {
       "description": "The engine read its stored settings (or had none), and they can be changed: no `problem`.",
       "type": "object",
-      "required": ["status", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "rendering", "service", "proxy", "clients"],
+      "required": ["status", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "rendering", "service", "proxy", "telemetry", "clients"],
       "additionalProperties": false,
       "properties": {
         "status": { "const": "ok" },
@@ -1452,6 +1452,7 @@
         "rendering": { "$ref": "#/$defs/renderingSettings" },
         "service": { "$ref": "#/$defs/serviceSettings" },
         "proxy": { "$ref": "#/$defs/proxySettings" },
+        "telemetry": { "$ref": "#/$defs/telemetrySettings" },
         "clients": {
           "description": "Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any.",
           "type": "object",
@@ -1464,7 +1465,7 @@
     "engineSettingsProblem": {
       "description": "The engine couldn't read its stored settings when it started: the defaults are in effect, `problem` says why, and every change is refused (409 settingsStatusProblem) until the stored settings are fixed or removed and the engine restarts.",
       "type": "object",
-      "required": ["status", "problem", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "rendering", "service", "proxy", "clients"],
+      "required": ["status", "problem", "version", "frameRate", "graphRate", "logLevel", "sources", "media", "rendering", "service", "proxy", "telemetry", "clients"],
       "additionalProperties": false,
       "properties": {
         "status": {
@@ -1486,6 +1487,7 @@
         "rendering": { "$ref": "#/$defs/renderingSettings" },
         "service": { "$ref": "#/$defs/serviceSettings" },
         "proxy": { "$ref": "#/$defs/proxySettings" },
+        "telemetry": { "$ref": "#/$defs/telemetrySettings" },
         "clients": {
           "description": "Each client's own preferences, by client name, as the client set them: the engine keeps them and never interprets them (docs/api.md#client-preferences). Empty when no client keeps any.",
           "type": "object",
@@ -1616,6 +1618,15 @@
         }
       }
     },
+    "telemetrySettings": {
+      "description": "What the engine reports (docs/api.md#crash-reports).",
+      "type": "object",
+      "required": ["crashReports"],
+      "additionalProperties": false,
+      "properties": {
+        "crashReports": { "description": "Whether a build that reports crashes sends a report of each error and unexpected exit, with names, paths and addresses removed first (docs/api.md#crash-reports); true by default. A build without a crash-report address, such as one built from source, sends nothing whatever this says. A change applies at once, without a restart.", "type": "boolean" }
+      }
+    },
     "proxyHost": {
       "description": "A name a reverse proxy on this computer reaches the engine by: a DNS name in lower case, two labels or more, each 1 to 63 of `a-z`, `0-9` and `-`, neither starting nor ending with `-`, the last starting with a letter (so never an IP address), at most 253 characters, without a trailing dot, a port or a wildcard. An internationalised name is given in its `xn--` form.",
       "type": "string",
@@ -1632,7 +1643,7 @@
       "pattern": "^[A-Za-z0-9._-]{1,64}$"
     },
     "settingsChange": {
-      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `sources.systemInfo`, `media`, `rendering`, `service`, `proxy` and `clients` are merged member by member, each client's preferences, `proxy.hosts` and `sources.systemInfo.excludedProcesses` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
+      "description": "PATCH /api/settings: the settings to change (docs/api.md#changing-settings). A member given sets that setting, `null` sets it back to its default, and a setting left out keeps its value; `sources`, `sources.libre`, `sources.network`, `sources.weather`, `sources.systemInfo`, `media`, `rendering`, `service`, `proxy`, `telemetry` and `clients` are merged member by member, each client's preferences, `proxy.hosts` and `sources.systemInfo.excludedProcesses` set or removed whole. Closed: a member the engine doesn't know is refused. At most `settingsRequestBytes` as received, and the settings it makes are held to the settings limits (docs/limits.md#settings-limits).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -1727,6 +1738,13 @@
               "uniqueItems": true,
               "items": { "$ref": "#/$defs/proxyHost" }
             }
+          }
+        },
+        "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "crashReports": { "description": "telemetrySettings: whether a build that reports crashes sends them; `null` sets it back to its default, on.", "type": ["boolean", "null"] }
           }
         },
         "clients": {
