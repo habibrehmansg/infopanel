@@ -178,6 +178,16 @@ public sealed unsafe class MacProcessSampler : IProcessSampler
         return list;
     }
 
+    /// <summary>
+    /// A process's physical footprint (Activity Monitor's Memory), in bytes, from the same <c>proc_pid_rusage</c> read as
+    /// <see cref="Processes"/>; 0 when it can't be read (gone, or another user's).
+    /// </summary>
+    internal static long Footprint(int pid)
+    {
+        RusageV0 usage;
+        return pid > 0 && proc_pid_rusage(pid, RusageInfoV0, &usage) == 0 ? (long)usage.PhysFootprint : 0;
+    }
+
     private VmStatistics64 VmInfo()
     {
         VmStatistics64 vm;

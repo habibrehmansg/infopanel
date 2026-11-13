@@ -1,6 +1,7 @@
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 namespace InfoPanel.Sensors.SystemInfo;
@@ -11,26 +12,39 @@ namespace InfoPanel.Sensors.SystemInfo;
 /// </summary>
 public interface IEngineProcess
 {
-    /// <summary>The machine's logical CPUs, as System Info counts them: the CPU time a second of wall time holds, in seconds.</summary>
+    /// <summary>
+    /// The machine's logical CPUs, as the OS's own tool counts them (<see cref="EngineSource.MachineProcessors"/>): the CPU
+    /// time a second of wall time holds, in seconds.
+    /// </summary>
     int ProcessorCount { get; }
+
+    /// <summary>
+    /// How the OS's own tool counts the process's CPU: <see langword="true"/> per CPU (Activity Monitor, <c>top</c>: a
+    /// busy CPU is 100 %, up to 100 × <see cref="ProcessorCount"/>), <see langword="false"/> as a share of the whole
+    /// machine (Task Manager: 0–100 %). System Info's tables count so too (<see cref="IProcessSampler.ProcessCpuPerCpu"/>).
+    /// </summary>
+    bool CpuPerCpu { get; }
 
     /// <summary>The CPU time the process has used since it started, user and system.</summary>
     TimeSpan CpuTime();
 
     /// <summary>
-    /// The process's resident memory, in bytes: its working set on Windows, its resident set size on macOS and Linux;
-    /// 0 or less when the read failed without throwing.
+    /// The process's memory as the OS's own tool shows it, in bytes (<see cref="ProcessMemory"/>: the physical footprint on
+    /// macOS, the private working set on Windows, the resident set on Linux); 0 or less when the read failed without
+    /// throwing.
     /// </summary>
-    long ResidentBytes();
+    long MemoryBytes();
 }
 
 /// <summary>
 /// The engine's own usage, <c>infopanel.engine</c> ("InfoPanel engine"): a <see cref="PolledSensorSource"/> polled at
 /// System Info's interval, on every operating system and in mock mode and a replay too (it reads the engine's own
 /// process, not the computer's sensors), with two numbers under <c>infopanel:/engine/{entry}</c>: <c>cpu</c>, the
-/// process's CPU time since the last round as a share of every CPU's (the whole machine, 0–100 %, as System Info's
-/// Windows tables count it), averaged over the last <see cref="SystemInfoSource.CpuRounds"/> rounds as System Info's
-/// tables are, read from the second round; and <c>memory</c>, its resident memory in megabytes, in System Info's units.
+/// process's CPU time since the last round as the OS's own tool counts it (per CPU on macOS and Linux, as Activity
+/// Monitor and <c>top</c> do: 100 % is one busy CPU, up to 100 × the CPUs; on Windows a share of every CPU's, the whole
+/// machine, 0–100 %, as Task Manager does; System Info's tables count each so), averaged over the last
+/// <see cref="SystemInfoSource.CpuRounds"/> rounds as System Info's tables are, read from the second round; and
+/// <c>memory</c>, its memory as that tool shows it (<see cref="ProcessMemory"/>), in megabytes, in System Info's units.
 /// </summary>
 public static class EngineSource
 {
@@ -62,25 +76,53 @@ public static class EngineSource
     public static PolledSensorSource CreateSystem(TimeProvider? time = null) => Create(CurrentProcess(), time);
 
     /// <summary>
-    /// The engine's own process, read through .NET (<see cref="Environment.CpuUsage"/>, <see cref="Environment.WorkingSet"/>,
-    /// each a call about this process alone), over the logical CPUs System Info counts (on Windows every processor group's).
+    /// The engine's own process: its CPU time through .NET (<see cref="Environment.CpuUsage"/>, about this process alone),
+    /// over the machine's logical CPUs as the OS counts them (<see cref="MachineProcessors"/>), per CPU off Windows; its memory
+    /// through <see cref="ProcessMemory"/>.
     /// </summary>
     public static IEngineProcess CurrentProcess() => new Current();
 
+    /// <summary>
+    /// The machine's logical CPUs as the OS's own tool counts them: on Windows every processor group's; on macOS
+    /// <c>hw.logicalcpu</c>; on Linux the online CPUs (<c>sysconf(_SC_NPROCESSORS_ONLN)</c>). Never
+    /// <see cref="Environment.ProcessorCount"/> where the OS answers, which follows <c>DOTNET_PROCESSOR_COUNT</c>, the
+    /// start-up affinity and a Linux CPU quota, and would cap a per-CPU reading below what the OS's tool shows.
+    /// </summary>
+    internal static int MachineProcessors()
+    {
+        if (OperatingSystem.IsWindows())
+            return WinProcessSampler.MachineProcessors();
+        if (OperatingSystem.IsMacOS() && InfoPanel.Sensors.MacOS.LibSystem.TryGetInt64("hw.logicalcpu\0"u8, out var mac) && mac > 0)
+            return (int)mac;
+        if (OperatingSystem.IsLinux() && sysconf(ScNprocessorsOnlnLinux) is var online and > 0)
+            return (int)online;
+        return Environment.ProcessorCount;
+    }
+
+    /// <summary><c>_SC_NPROCESSORS_ONLN</c> on Linux (glibc and musl).</summary>
+    private const int ScNprocessorsOnlnLinux = 84;
+
+    [System.Runtime.InteropServices.DllImport("libc")]
+    private static extern long sysconf(int name);
+
     private sealed class Current : IEngineProcess
     {
-        public int ProcessorCount { get; } = Math.Max(1, OperatingSystem.IsWindows() ? WinProcessSampler.MachineProcessors() : Environment.ProcessorCount);
+        private readonly Process _self = Process.GetCurrentProcess();
+
+        public int ProcessorCount { get; } = Math.Max(1, MachineProcessors());
+
+        public bool CpuPerCpu { get; } = !OperatingSystem.IsWindows();
 
         public TimeSpan CpuTime() => Environment.CpuUsage.TotalTime;
 
-        public long ResidentBytes() => Environment.WorkingSet;
+        public long MemoryBytes() => ProcessMemory.Of(_self);
     }
 }
 
 /// <summary>
 /// Reads <see cref="EngineSource"/>'s two entries each round from an <see cref="IEngineProcess"/>. A reading that throws
-/// fails that round, logged once while it fails; the CPU's next good round starts a new interval. A resident memory of 0
-/// or less fails the memory alone that round.
+/// fails that round, logged once while it fails; the CPU's next good round starts a new interval. A memory of 0 or less
+/// fails the memory alone that round, logged once while it fails.
 /// </summary>
 internal sealed class EngineSampler(IEngineProcess process, ILogger? log) : ISensorSampler
 {
@@ -89,6 +131,7 @@ internal sealed class EngineSampler(IEngineProcess process, ILogger? log) : ISen
     private readonly Queue<double> _recent = new();
     private TimeSpan? _lastCpu;
     private bool _failing;
+    private bool _memoryFailing;
 
     public IReadOnlyList<SensorDefinition> Discover() =>
         EngineSource.Entries.Select(e => new SensorDefinition(e.Id, EngineSource.Name, e.Name, e.Unit, SensorKind.Number)).ToList();
@@ -99,11 +142,11 @@ internal sealed class EngineSampler(IEngineProcess process, ILogger? log) : ISen
             return;
 
         TimeSpan cpu;
-        long resident;
+        long memory;
         try
         {
             cpu = _process.CpuTime();
-            resident = _process.ResidentBytes();
+            memory = _process.MemoryBytes();
             if (_failing)
             {
                 _failing = false;
@@ -124,23 +167,37 @@ internal sealed class EngineSampler(IEngineProcess process, ILogger? log) : ISen
             return;
         }
 
-        // The CPU from the second round on: the share of every CPU's time this process used since the last.
-        var capacity = elapsed.TotalSeconds * Math.Max(1, _process.ProcessorCount);
+        // The CPU from the second round on: the share of every CPU's time this process used since the last (0–100), and
+        // per CPU that share times the CPUs (0–100 × the CPUs), as the OS's own tool counts it.
+        var cpus = Math.Max(1, _process.ProcessorCount);
+        var capacity = elapsed.TotalSeconds * cpus;
         if (_lastCpu is { } last && cpu >= last && capacity > 0)
         {
-            _recent.Enqueue(Math.Clamp((cpu - last).TotalSeconds / capacity * 100, 0, 100));
+            var share = Math.Clamp((cpu - last).TotalSeconds / capacity * 100, 0, 100);
+            _recent.Enqueue(_process.CpuPerCpu ? share * cpus : share);
             if (_recent.Count > SystemInfoSource.CpuRounds)
                 _recent.Dequeue();
             samples[0].Set(_recent.Average());
         }
         _lastCpu = cpu;
 
-        // A process always has resident memory: 0 or less is a read that failed without throwing (.NET's working set
-        // reads 0 when the OS refuses it), so the memory fails that round rather than reading a live 0.
-        if (resident > 0)
-            samples[1].Set(resident / 1024d / 1024d);
+        // A process always uses memory: 0 or less is a read that failed without throwing (refused by the OS, or Windows
+        // before 1809, which has no private working set), so the memory fails that round rather than reading a live 0,
+        // logged once while it fails.
+        if (memory > 0)
+        {
+            samples[1].Set(memory / 1024d / 1024d);
+            _memoryFailing = false;
+        }
         else
+        {
             samples[1].Outcome = SampleOutcome.Failed;
+            if (!_memoryFailing)
+            {
+                _memoryFailing = true;
+                _log.Information("InfoPanel engine: the engine's memory can't be read here; it reads as unavailable");
+            }
+        }
     }
 
     public void Dispose()

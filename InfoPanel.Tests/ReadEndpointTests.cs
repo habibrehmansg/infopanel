@@ -587,7 +587,8 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     {
         var all = await GetJson("/api/sensors/values?history=60");
         // The engine's own usage, left out below: its memory reads from the first round (a positive resident size, in
-        // MB); its CPU from the second (listed once it reads, as a share of the machine).
+        // MB); its CPU from the second (listed once it reads: per CPU off Windows, up to 100 × the CPUs; a share of the
+        // machine on Windows).
         var memoryKey = InfoPanel.Sensors.SystemInfo.EngineSource.KeyOf("memory").ToString();
         var memory = Assert.Single(all.EnumerateArray(), v => v.GetProperty("key").GetString() == memoryKey);
         Assert.True(memory.GetProperty("now").GetDouble() > 0);
@@ -595,7 +596,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         var cpuKey = InfoPanel.Sensors.SystemInfo.EngineSource.KeyOf("cpu").ToString();
         var cpu = all.EnumerateArray().Where(v => v.GetProperty("key").GetString() == cpuKey).ToList();
         Assert.True(cpu.Count <= 1);
-        Assert.All(cpu, c => Assert.InRange(c.GetProperty("now").GetDouble(), 0, 100));
+        Assert.All(cpu, c => Assert.InRange(c.GetProperty("now").GetDouble(), 0, 100 * InfoPanel.Sensors.SystemInfo.EngineSource.CurrentProcess().ProcessorCount));
         var values = MockOnly(all);
 
         Assert.Equal(37, values.Count);
