@@ -215,7 +215,7 @@ public sealed class PluginImageTransportTests
             time.Advance(TimeSpan.FromMilliseconds(100));
         }
         Assert.InRange(pictures, 2, int.MaxValue);
-        Assert.InRange(bytes, 0, IpcLimits.ImageWireBurstBytes + IpcLimits.ImageStallSeconds * IpcLimits.ImageWireBytesPerSecond);
+        Assert.InRange(bytes, 0, IpcLimits.ImageWireBurstBytes + IpcLimits.StallSeconds * IpcLimits.ImageWireBytesPerSecond);
         Assert.InRange(bytes + IpcLimits.HostMessageBytes, 0, limits.PendingBytes);
 
         // 2,000 entries with tiny pictures, each new every cycle: at most the burst of 16 and 5 × 16 calls, beside a
@@ -232,7 +232,7 @@ public sealed class PluginImageTransportTests
             calls += Sends(manager, wrapper).Count + 1;
             time.Advance(TimeSpan.FromMilliseconds(100));
         }
-        Assert.InRange(calls - 51, 1, IpcLimits.ImagesBurst + IpcLimits.ImageStallSeconds * IpcLimits.ImagesPerSecond);
+        Assert.InRange(calls - 51, 1, IpcLimits.ImagesBurst + IpcLimits.StallSeconds * IpcLimits.ImagesPerSecond);
         Assert.InRange(calls, 0, limits.PendingMessages);
     }
 

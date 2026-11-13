@@ -61,7 +61,7 @@ Notifications sent from the host back to the main application:
 | Method | Description |
 |---|---|
 | `OnPluginsLoaded(plugins, containers)` | Plugin metadata and initial container structure |
-| `OnSensorUpdate(updates)` | Batched delta updates (only changed values) |
+| `OnSensorUpdate(updates)` | Batched delta updates (only changed values); a plugin's picture (`PluginImage`) goes alone in one of its own |
 | `OnPluginError(pluginId, message)` | Error notification |
 | `OnPerformanceUpdate(performances)` | CPU and update-time metrics |
 | `OnImageResize(pluginId, descriptor)` | Image buffer was resized — app must re-map the MMF |
@@ -83,6 +83,7 @@ ContainerDto
 
 SensorUpdateBatchDto
   └── EntryUpdateDto[]
+        └── ImageValue?   (a picture's bytes as base64, Type "image"; none: no picture)
 
 PluginPerformanceDto
 ```
@@ -164,6 +165,12 @@ To minimize IPC overhead, only changed sensor values are transmitted.
 - **Tables**: Row count + column count + cell content hashes
 
 On each update cycle, `GetChangedEntries()` compares current hashes against cached hashes and returns only the entries that differ. Key strings (`{pluginId}/{containerId}/{entryId}`) are cached to avoid repeated allocation.
+
+An entry counts as sent only once its message was written (`MarkSent`), so a change held back goes in a later cycle with its newest value. Pictures (`GetChangedImages()`): an entry's picture is sent when its SHA-256 changed (hashed at most once a second), alone in a message, at most one new picture an entry a second, the entries that waited longest first; each is reserved just before its send (`TryReserve`) and holds its reservation through it (`Release`).
+
+### The wire budget
+
+The engine closes a host that has more than 1,024 messages, or 32 MiB of them, waiting for it to handle (`PendingBudget`), so `WireBudget` holds everything the host sends to what the engine holds over a 5 s stall: 16 MiB at once and 3 MiB a second, 64 messages at once and 32 a second (31 MiB and 224 messages in any 5 s), the numbers in `IpcLimits`. Messages of readings take from it and from their own budget (8 MiB at once, 2 MiB a second), pictures from it and from theirs (12 MiB at once, 2 MiB a second; 16 at once, 16 a second), each counted by `JsonSize`'s estimate (an upper bound); readings that find no room end the cycle's readings (`HostService.RunUpdateCycleAsync`), in the order their changes began to wait (`WaitingOrder`), and a picture that finds none ends the cycle's pictures. The catalogue counts once, at the start; an error report, a resize or the processor use that finds no room is dropped. The engine checks a host's pictures again as it takes them (`PluginSensorSource`: only a listed image entry's, within the same rates and 5 s more burst, before anything is decoded), and takes an update only in the source's generation it read with the connection still current (`PluginHostRunner`'s callback, `PluginSensorSource.EpochOf`), so a call of a host that has been replaced takes nothing.
 
 ## Plugin Loading Flow
 

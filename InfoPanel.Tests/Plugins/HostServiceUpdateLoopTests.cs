@@ -127,16 +127,24 @@ public class HostServiceUpdateLoopTests
     }
 
     // Six tables of 1,000 rows of 3 cells of 1,000 characters, about 3 MB each, are within every limit alone but 19 MB
-    // together: the cycle sends them all, whole, across messages within the limit.
+    // together: they all go, whole, across messages within the limit, as fast as the host's wire allows (its messages of
+    // readings at most 8 MiB at once, then 2 MiB a second: IpcLimits), the rest waiting for later cycles.
     [Fact]
-    public async Task Changes_larger_than_a_message_together_are_sent_whole_across_messages_in_one_cycle()
+    public async Task Changes_larger_than_a_message_together_are_sent_whole_across_messages_as_the_wire_allows()
     {
         var tables = Enumerable.Range(0, 6).Select(i => Table($"t{i}", rows: 1_000, columns: 3, chars: 1_000)).ToArray();
-        var host = await HostWith(tables);
+        var time = new InfoPanel.Tests.Desktop.ManualTime(new DateTimeOffset(2026, 11, 13, 12, 0, 0, TimeSpan.Zero));
+        var host = await HostWith(time, tables);
         var transport = new TestTransport();
         Connect(host, transport);
 
         await Cycle(host);
+        Assert.InRange(transport.Tables.Count, 1, tables.Length - 1);
+        for (var cycle = 0; cycle < 150 && transport.Tables.Count < tables.Length; cycle++)
+        {
+            time.Advance(TimeSpan.FromMilliseconds(100));
+            await Cycle(host);
+        }
 
         AllWithinTheEnginesLimit(transport);
         Assert.Equal(tables.Select(t => (t.Id, 1_000)), transport.Tables);
@@ -181,9 +189,11 @@ public class HostServiceUpdateLoopTests
 
     private static Task Cycle(HostService host) => host.RunUpdateCycleAsync([], TestContext.Current.CancellationToken);
 
-    private static async Task<HostService> HostWith(params IPluginData[] entries)
+    private static Task<HostService> HostWith(params IPluginData[] entries) => HostWith(TimeProvider.System, entries);
+
+    private static async Task<HostService> HostWith(TimeProvider time, params IPluginData[] entries)
     {
-        var host = new HostService("plugin.dll");
+        var host = new HostService("plugin.dll", null, null, time);
         var wrapper = new PluginWrapper(new PluginDescriptor("plugin.dll", null), new StubPlugin(entries));
         await wrapper.Initialize();
         host.AddInitializedWrapper(wrapper);

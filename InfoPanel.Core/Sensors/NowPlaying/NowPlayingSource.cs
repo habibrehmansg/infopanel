@@ -159,6 +159,9 @@ public sealed class NowPlayingSource : ISensorSource, ISensorStatusSource, ISens
             _demand.Note();
     }
 
+    /// <summary>Its image sensor's covers are drawn by the <c>now-playing</c> media provider.</summary>
+    public string Provider => InfoPanel.Images.NowPlayingProvider.Name;
+
     /// <summary>
     /// The cover <see cref="Art"/> keeps under <paramref name="reference"/>, the <c>art</c> reading's token, as its bytes
     /// (no copy); none for a cover given as a web address, which the engine holds no bytes of. Not a use: it starts no

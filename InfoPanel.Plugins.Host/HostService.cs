@@ -43,11 +43,17 @@ namespace InfoPanel.Plugins.Host
         /// </param>
         /// <param name="logger">The log; the process's by default.</param>
         public HostService(string pluginPath, string? settingsDirectory = null, ILogger? logger = null)
+            : this(pluginPath, settingsDirectory, logger, TimeProvider.System)
+        {
+        }
+
+        /// <param name="time">The clock the host's rates are kept by (tests give their own).</param>
+        internal HostService(string pluginPath, string? settingsDirectory, ILogger? logger, TimeProvider time)
         {
             _pluginPath = pluginPath;
             _settingsDirectory = settingsDirectory;
             Logger = logger ?? Log.ForContext<HostService>();
-            _snapshotManager = new SensorSnapshotManager(logger, NotifyError);
+            _snapshotManager = new SensorSnapshotManager(logger, NotifyError, time);
         }
 
         public void SetJsonRpc(JsonRpc jsonRpc)
@@ -271,7 +277,8 @@ namespace InfoPanel.Plugins.Host
                 Logger.Warning(ex, "Failed to initialize CPU baseline");
             }
 
-            // Notify main app about loaded plugins
+            // Notify main app about loaded plugins: the first message, counted on the host's wire by its estimate.
+            _snapshotManager.Wire.Take(IpcLimits.HostMessageBytes - catalogueBytes);
             NotifyPluginsLoaded(metadataList, containersByPluginId);
 
             return metadataList;
@@ -571,40 +578,53 @@ namespace InfoPanel.Plugins.Host
             // Only ids aren't, and the engine refuses a plugin that lists a longer one than it takes.
             // The pictures (PluginImage) are read first: an entry that no longer holds one goes with the readings, as a
             // reading does, and each picture after them, in a message of its own.
+            // Each message of readings waits for room on the host's wire (WireBudget: the readings' own budget and the
+            // whole host's); one that finds none ends this cycle's readings, which go in a later cycle with their newest
+            // values. The changes that waited longest go first, so later entries aren't kept back by earlier ones that
+            // change all the time.
             var images = _snapshotManager.GetChangedImages(_wrappers.Where(w => w.IsLoaded));
-            var cleared = images.Where(i => !i.IsPicture).ToLookup(i => i.PluginId, i => i.Update, StringComparer.Ordinal);
-            batches.Clear();
-            var bytes = JsonSize.MessageFixed;
-
+            var changes = new List<(string PluginId, EntryUpdateDto Update)>();
             foreach (var wrapper in _wrappers)
             {
                 if (!wrapper.IsLoaded) continue;
+                foreach (var update in _snapshotManager.GetChangedEntries(wrapper))
+                    changes.Add((wrapper.Id, update));
+            }
+            changes.AddRange(images.Where(i => !i.IsPicture).Select(i => (i.PluginId, i.Update)));
 
-                SensorUpdateBatchDto? batch = null;
-                foreach (var update in _snapshotManager.GetChangedEntries(wrapper).Concat(cleared[wrapper.Id]))
+            batches.Clear();
+            var bytes = JsonSize.MessageFixed;
+            SensorUpdateBatchDto? batch = null;
+            var held = false;
+            foreach (var (pluginId, update) in changes.OrderBy(c => _snapshotManager.WaitingOrder(c.PluginId, c.Update)))
+            {
+                var size = JsonSize.Of(update);
+                var batchSize = batch?.PluginId == pluginId ? 0 : JsonSize.BatchFixed + JsonSize.Of(pluginId);
+                if (batches.Count > 0 && bytes + batchSize + size > IpcLimits.HostMessageBytes)
                 {
-                    var size = JsonSize.Of(update);
-                    var batchSize = batch == null ? JsonSize.BatchFixed + JsonSize.Of(wrapper.Id) : 0;
-                    if (batches.Count > 0 && bytes + batchSize + size > IpcLimits.HostMessageBytes)
+                    var outcome = await SendReadingsAsync(batches, bytes, token);
+                    if (outcome == Outcome.Failed) return;
+                    batches.Clear();
+                    if (outcome == Outcome.Held)
                     {
-                        if (!await SendAsync(batches, token)) return;
-                        batches.Clear();
-                        bytes = JsonSize.MessageFixed;
-                        batch = null;
-                        batchSize = JsonSize.BatchFixed + JsonSize.Of(wrapper.Id);
+                        held = true;
+                        break;
                     }
-
-                    if (batch == null)
-                    {
-                        batch = new SensorUpdateBatchDto { PluginId = wrapper.Id, Updates = [] };
-                        batches.Add(batch);
-                    }
-                    batch.Updates.Add(update);
-                    bytes += batchSize + size;
+                    bytes = JsonSize.MessageFixed;
+                    batch = null;
+                    batchSize = JsonSize.BatchFixed + JsonSize.Of(pluginId);
                 }
+
+                if (batch == null || batch.PluginId != pluginId)
+                {
+                    batch = new SensorUpdateBatchDto { PluginId = pluginId, Updates = [] };
+                    batches.Add(batch);
+                }
+                batch.Updates.Add(update);
+                bytes += batchSize + size;
             }
 
-            if (batches.Count > 0 && !await SendAsync(batches, token))
+            if (!held && batches.Count > 0 && await SendReadingsAsync(batches, bytes, token) == Outcome.Failed)
                 return;
 
             // Then the pictures, each in a message of its own: an 8 MiB picture is about 10.7 MiB as base64, within the
@@ -627,6 +647,26 @@ namespace InfoPanel.Plugins.Host
                 }
                 if (!sent)
                     return;
+            }
+        }
+
+        private enum Outcome { Sent, Held, Failed }
+
+        /// <summary>
+        /// Sends one message of readings of <paramref name="bytes"/> (by the estimate) once the wire has room for it, held
+        /// through the send: <see cref="Outcome.Held"/> when it has none now (nothing is sent, and the readings wait).
+        /// </summary>
+        private async Task<Outcome> SendReadingsAsync(List<SensorUpdateBatchDto> batches, long bytes, CancellationToken token)
+        {
+            if (!_snapshotManager.Wire.TryTakeReadings(bytes))
+                return Outcome.Held;
+            try
+            {
+                return await SendAsync(batches, token) ? Outcome.Sent : Outcome.Failed;
+            }
+            finally
+            {
+                _snapshotManager.Wire.Hold();
             }
         }
 
@@ -985,7 +1025,7 @@ namespace InfoPanel.Plugins.Host
         private async Task NotifyErrorAsync(string pluginId, string message, CancellationToken token)
         {
             var jsonRpc = _jsonRpc;
-            if (jsonRpc == null) return;
+            if (jsonRpc == null || !Room(ErrorBytes(pluginId, message))) return;
 
             try
             {
@@ -1001,8 +1041,18 @@ namespace InfoPanel.Plugins.Host
             }
         }
 
+        /// <summary>
+        /// Whether a report (an error, a resize, the processor use) of <paramref name="bytes"/> by the estimate may go now:
+        /// it takes room on the host's wire, and is dropped when there is none (the host's log keeps errors, and the engine
+        /// a package's newest only).
+        /// </summary>
+        private bool Room(long bytes) => _jsonRpc != null && _snapshotManager.Wire.TryTake(bytes);
+
+        private static long ErrorBytes(string pluginId, string message) => JsonSize.MessageFixed + JsonSize.Of(pluginId) + JsonSize.Of(message);
+
         private void NotifyError(string pluginId, string message)
         {
+            if (!Room(ErrorBytes(pluginId, message))) return;
             try
             {
                 _jsonRpc?.NotifyAsync(nameof(IPluginClientCallback.OnPluginError), pluginId, message);
@@ -1035,6 +1085,7 @@ namespace InfoPanel.Plugins.Host
 
         private void NotifyImageResize(string pluginId, ImageDescriptorDto descriptor)
         {
+            if (!Room(JsonSize.MessageFixed + JsonSize.Of(pluginId) + 256 + JsonSize.Of(descriptor.Id) + JsonSize.Of(descriptor.Name) + JsonSize.Of(descriptor.MmfName))) return;
             try
             {
                 _jsonRpc?.NotifyAsync(nameof(IPluginClientCallback.OnImageResize), pluginId, descriptor);
@@ -1047,6 +1098,8 @@ namespace InfoPanel.Plugins.Host
 
         private void NotifyPerformanceUpdate(List<PluginPerformanceDto> performances)
         {
+            // {"PluginId":,"UpdateTimeMilliseconds":n,"CpuPercent":n} and a comma: within 128 bytes beside its id.
+            if (!Room(JsonSize.MessageFixed + performances.Sum(p => 128 + JsonSize.Of(p.PluginId)))) return;
             try
             {
                 _jsonRpc?.NotifyAsync(nameof(IPluginClientCallback.OnPerformanceUpdate), performances);

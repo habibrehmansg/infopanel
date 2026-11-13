@@ -211,6 +211,13 @@ public sealed class SensorHub : ISensorStatusReader
         return IsWellFormed(key) && FindSource(key) is ISensorImages images && images.TryGetImage(key, reference, out bytes);
     }
 
+    /// <summary>
+    /// The media provider that draws the pictures of the image sensor <paramref name="key"/>: its source's
+    /// (<see cref="ISensorImages.Provider"/>); null when the source holds no pictures or names none.
+    /// </summary>
+    public string? ImageProviderOf(SensorKey key) =>
+        IsWellFormed(key) && FindSource(key) is ISensorImages images ? images.Provider : null;
+
     /// <summary>Recent values from the source that handles <paramref name="key"/>, when it keeps any.</summary>
     public IReadOnlyList<double> GetBackfill(SensorKey key) =>
         IsWellFormed(key) && FindSource(key) is ISensorBackfill backfill ? backfill.GetBackfill(key) : [];

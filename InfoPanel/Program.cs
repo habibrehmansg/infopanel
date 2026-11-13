@@ -541,16 +541,29 @@ try
     builder.Services.AddSingleton(sp => new NowPlayingProvider(
         sp.GetServices<ISensorSource>().OfType<InfoPanel.Sensors.NowPlaying.NowPlayingSource>().FirstOrDefault()?.Art,
         sp.GetRequiredService<MediaSampleCache>(), fetched, sp.GetRequiredService<HttpMediaProvider>()));
-    builder.Services.AddSingleton(sp => new SceneRuntimeOptions
+    // The plugin provider (spec/docs/providers.md): the pictures the plugins source keeps for its image sensors, decoded
+    // from memory as fetched media are; it reaches no address.
+    builder.Services.AddSingleton(sp => new PluginImageProvider(
+        sp.GetService<InfoPanel.Plugins.PluginSensorSource>(), sp.GetRequiredService<MediaSampleCache>(), fetched));
+    builder.Services.AddSingleton(sp =>
     {
-        Inputs = new SensorSceneInputs(sp.GetRequiredService<ISensorReader>(), sp.GetRequiredService<ISensorHistory>()),
-        Media = sp.GetRequiredService<MediaSampleCache>(),
-        Providers = sp.GetService<InfoPanel.Images.Video.RtspProvider>() is { } rtsp
-            ? new Dictionary<string, IMediaProvider> { [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>(), [NowPlayingProvider.Name] = sp.GetRequiredService<NowPlayingProvider>(), [InfoPanel.Images.Video.RtspProvider.Name] = rtsp }
-            : new Dictionary<string, IMediaProvider> { [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>(), [NowPlayingProvider.Name] = sp.GetRequiredService<NowPlayingProvider>() },
-        Limits = workspace.Limits,
-        Support = workspace.Support,
-        Locale = sp.GetRequiredService<RegionalFormat>(),
+        var providers = new Dictionary<string, IMediaProvider>
+        {
+            [HttpMediaProvider.Name] = sp.GetRequiredService<HttpMediaProvider>(),
+            [NowPlayingProvider.Name] = sp.GetRequiredService<NowPlayingProvider>(),
+            [PluginImageProvider.Name] = sp.GetRequiredService<PluginImageProvider>(),
+        };
+        if (sp.GetService<InfoPanel.Images.Video.RtspProvider>() is { } rtsp)
+            providers[InfoPanel.Images.Video.RtspProvider.Name] = rtsp;
+        return new SceneRuntimeOptions
+        {
+            Inputs = new SensorSceneInputs(sp.GetRequiredService<ISensorReader>(), sp.GetRequiredService<ISensorHistory>()),
+            Media = sp.GetRequiredService<MediaSampleCache>(),
+            Providers = providers,
+            Limits = workspace.Limits,
+            Support = workspace.Support,
+            Locale = sp.GetRequiredService<RegionalFormat>(),
+        };
     });
     // Live frames for /ws and desktop windows; disposed with the host, which stops every render loop. They draw with the GPU
     // while rendering.gpu is on: the stored value applied now, each change at once (so a PATCH's answer says what draws).

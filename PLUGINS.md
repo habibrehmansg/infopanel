@@ -32,7 +32,7 @@ Each plugin runs in an isolated host process, communicating with the main applic
 
 This guide was written for InfoPanel 1.x, the Windows app (branch `1.4.x`). The SDK (`InfoPanel.Plugins`, .NET 8) is the same in 2.0, whose engine runs 1.x plugins as they are, on Windows and macOS; on macOS it skips plugin types marked for Windows only, and a plugin type that provides [images](#image-providers) doesn't start there at all (its image channel needs Windows' shared memory), so its sensors don't show either. What 2.0 does differently ([docs/2.0/plugins.md](docs/2.0/plugins.md)):
 
-- **What the engine reads:** sensors, texts and tables, under 1.x's keys. It doesn't show [images](#image-providers), offer [actions](#plugin-actions) or let a user change a plugin's [settings](#plugin-configuration) yet.
+- **What the engine reads:** sensors, texts and tables, under 1.x's keys, and [pictures](#pluginimage) (`PluginImage`, 2.0 only: 1.x lists none). It doesn't show drawn [images](#image-providers), offer [actions](#plugin-actions) or let a user change a plugin's [settings](#plugin-configuration) yet.
 - **Where plugins go:** a package is a folder `InfoPanel.{Name}` holding `InfoPanel.{Name}.dll`. The engine reads its bundled plugins from `plugins/` beside itself and the user's from `plugins/` in its data folder (`%LOCALAPPDATA%\InfoPanel\v2\plugins\` on Windows, `~/Library/Application Support/InfoPanel/v2/plugins/` on macOS), when it starts. There is no plugin browser and no "Add Plugin from ZIP" yet: copy the folder there and start the engine again.
 - **Settings:** stored in the data folder, `plugin-settings/{package}/{plugin id}.json`, and applied when the plugin starts. 2.0 never writes to 1.x's folders.
 - **Logs:** `logs/plugins/{package}-{yyyyMMdd}.log` in the data folder.
@@ -229,6 +229,21 @@ dataTable.Rows.Add(row);
 var table = new PluginTable("table-id", "Table Name", dataTable, "0:150|1:60|2:80");
 container.Entries.Add(table);
 ```
+
+#### PluginImage
+
+A picture the plugin holds as encoded bytes (a cover, an icon, a snapshot), InfoPanel 2.0 only: the engine lists it as an image sensor, whose reading names the picture, and a scene draws it through the `plugin` media provider, its reference a text input bound to the sensor ([docs/2.0/plugins.md](docs/2.0/plugins.md#sensors)). 1.x lists no such entry.
+
+```csharp
+var cover = new PluginImage("cover", "Cover Art");
+container.Entries.Add(cover);
+
+// Update later:
+cover.SetImage(pngOrJpegBytes);   // copied; a PNG, JPEG, GIF or WebP of at most PluginImage.MaxBytes (8 MiB)
+cover.Clear();                    // no picture: the sensor has no reading
+```
+
+Set a new picture only when it changes: the host sends one only when its bytes changed, at most one a second per entry, and holds all of a host's pictures to a rate ([docs/2.0/plugins.md](docs/2.0/plugins.md#bounds)), so a picture set many times a second goes only as the newest one. A picture over 8 MiB is left out, as no picture, with one warning, and the engine refuses bytes that aren't one of the four formats within the media limits.
 
 ## Image Providers
 

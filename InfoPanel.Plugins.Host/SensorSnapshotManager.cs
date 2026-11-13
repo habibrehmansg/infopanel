@@ -45,7 +45,26 @@ namespace InfoPanel.Plugins.Host
             _reportCut = reportCut;
             _time = time ?? TimeProvider.System;
             (_imageWire, _imageCount) = (WireBucket(), CountBucket());
+            Wire = new WireBudget(_time);
         }
+
+        /// <summary>
+        /// The host's budget for everything it sends (<see cref="IpcLimits"/>): a picture is reserved against it as against
+        /// the pictures' own rates; the host's messages of readings and its reports take from it too.
+        /// </summary>
+        public WireBudget Wire { get; }
+
+        // Per entry key: the order its change began to wait in, from when the host first took it to send until it was sent
+        // (MarkSent): a change the wire held back goes before those that began to wait after it.
+        private readonly ConcurrentDictionary<string, long> _waiting = new();
+        private long _waitOrder;
+
+        /// <summary>
+        /// The order <paramref name="update"/>'s change (of <paramref name="pluginId"/>'s entry) began to wait in: given the
+        /// first time the host takes it to send, and kept, whatever newer value it carries, until it is sent.
+        /// </summary>
+        public long WaitingOrder(string pluginId, EntryUpdateDto update) =>
+            _waiting.GetOrAdd(Key(pluginId, update.ContainerId, update.EntryId), _ => Interlocked.Increment(ref _waitOrder));
 
         private RateBucket WireBucket() => new(IpcLimits.ImageWireBurstBytes, IpcLimits.ImageWireBytesPerSecond, _time);
 
@@ -94,17 +113,20 @@ namespace InfoPanel.Plugins.Host
             internal string Key { get; }
             internal ImageTrack? Track { get; }
             internal long WireBytes { get; set; }
+            // A picture still waiting for its hash: it keeps its place in the order, and can't be reserved yet.
+            internal bool Unhashed { get; init; }
         }
 
         /// <summary>
         /// The image entries' changes this cycle, in the order to send them: each no picture where one was delivered (a
         /// picture over <see cref="PluginImage.MaxBytes"/> is left out, as no picture, with one warning), then each picture
         /// new by its SHA-256 that may go: its entry's last send ended <see cref="IpcLimits.ImageIntervalMs"/> ago. Each
-        /// entry is read once; a picture is hashed at most once a second, the newest one set waiting meanwhile. Pictures
-        /// come in the order their entries began to wait, a waiting entry's newer picture in place of the one before,
-        /// which never goes. Nothing is reserved here: each picture is reserved alone, just before its send
-        /// (<see cref="TryReserve"/>). As with <see cref="GetChangedEntries"/>, each counts as delivered once
-        /// <see cref="MarkSent"/> confirms it.
+        /// entry is read once; a picture is hashed at most once a second, the newest one set waiting meanwhile, in its place
+        /// in the order but not to be reserved (so the cycle's pictures stop at it). Pictures come in the order their
+        /// entries began to wait, a waiting entry's newer picture in place of the one before, which never goes. Nothing is
+        /// reserved here: each picture is reserved alone, just before its send (<see cref="TryReserve"/>), and the cycle
+        /// sends no more once one can't be, so a picture that waits longer keeps the wire for itself. As with
+        /// <see cref="GetChangedEntries"/>, each counts as delivered once <see cref="MarkSent"/> confirms it.
         /// </summary>
         public List<ImageSend> GetChangedImages(IEnumerable<PluginWrapper> wrappers)
         {
@@ -159,9 +181,14 @@ namespace InfoPanel.Plugins.Host
                             if (track.Hash == null)
                             {
                                 // Hashed only once it may go, and at most once a second: a plugin that sets the same picture
-                                // again and again (a new array each time) costs one hash a second.
+                                // again and again (a new array each time) costs one hash a second. Meanwhile it keeps its place
+                                // in the order, unreserved, so pictures that began to wait after it wait behind it: they
+                                // can't take the wire it waits for (a picture found unchanged at its hash lets them go).
                                 if (track.HashedAt is { } hashed && _time.GetElapsedTime(hashed, now) < ImageInterval)
+                                {
+                                    due.Add((track.WaitingSince.Value, due.Count, new ImageSend(wrapper.Id, key, update, track) { Unhashed = true }));
                                     continue;
+                                }
                                 track.Hash = Convert.ToHexString(SHA256.HashData(bytes.Span));
                                 track.HashedAt = now;
                                 ImageHashes++;
@@ -183,14 +210,17 @@ namespace InfoPanel.Plugins.Host
 
         /// <summary>
         /// Reserves a picture of <see cref="GetChangedImages"/> to send now and gives its update the picture (base64): only
-        /// when its entry's last send ended a second ago and the host's rates have room for it now (its wire bytes and one
-        /// picture, <see cref="IpcLimits"/>); else false, and it waits (the cycle sends no more pictures). No picture needs
-        /// no reservation. A reserved picture counts against the rates whether or not its send succeeds.
+        /// when it has been hashed, its entry's last send ended a second ago and the host's picture rates and its wire have
+        /// room for it now (its wire bytes and one picture, <see cref="IpcLimits"/>); else false, and it waits (the cycle
+        /// sends no more pictures). No picture needs no reservation. A reserved picture counts against the rates whether or
+        /// not its send succeeds.
         /// </summary>
         public bool TryReserve(ImageSend send)
         {
             if (send.Track is not { } track)
                 return true;
+            if (send.Unhashed)
+                return false;
             ReadOnlyMemory<byte> bytes;
             lock (_images)
             {
@@ -202,7 +232,8 @@ namespace InfoPanel.Plugins.Host
                 // when its ids make that more than the allowance.
                 var envelope = JsonSize.MessageFixed + JsonSize.BatchFixed + JsonSize.Of(send.PluginId) + JsonSize.Of(send.Update) + 2;
                 send.WireBytes = IpcLimits.ImageWireBytes(bytes.Length) + Math.Max(0, envelope - IpcLimits.ImageEnvelopeBytes);
-                if (!_imageWire.CanTake(send.WireBytes) || !_imageCount.CanTake(1))
+                // The pictures' own rates, then the host's wire (taken only when the rates have room).
+                if (!_imageWire.CanTake(send.WireBytes) || !_imageCount.CanTake(1) || !Wire.TryTake(send.WireBytes))
                     return false;
                 _imageWire.Take(send.WireBytes);
                 _imageCount.Take(1);
@@ -226,6 +257,7 @@ namespace InfoPanel.Plugins.Host
                 track.SentAt = _time.GetTimestamp();
                 _imageWire.Hold();
                 _imageCount.Hold();
+                Wire.Hold();
             }
         }
 
@@ -277,6 +309,7 @@ namespace InfoPanel.Plugins.Host
             foreach (var update in updates)
             {
                 var key = Key(pluginId, update.ContainerId, update.EntryId);
+                _waiting.TryRemove(key, out _);
                 if (_pending.TryRemove(key, out var value))
                 {
                     _lastValues[key] = value;
@@ -445,6 +478,7 @@ namespace InfoPanel.Plugins.Host
             _keyCache.Clear();
             _skipStreaks.Clear();
             _cutReported.Clear();
+            _waiting.Clear();
             lock (_images)
             {
                 _images.Clear();

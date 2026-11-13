@@ -15,7 +15,8 @@ namespace InfoPanel.Plugins.Host
         private const long CellFixed = 128;
         // {"Columns":[],"Rows":[],"DefaultFormat":} is 41 bytes.
         private const long TableFixed = 64;
-        // {"ContainerId":,"EntryId":,"Type":,"SensorValue":,"TextValue":,"TableValue":} is 77 bytes ({"Id":,"Name":,…} less).
+        // {"ContainerId":,"EntryId":,"Type":,"SensorValue":,"TextValue":,"TableValue":,"ImageValue":} is 91 bytes ({"Id":,"Name":,…}
+        // less). A picture's base64 isn't counted here: a picture goes alone, sized by its own (IpcLimits.ImageWireBytes).
         private const long EntryFixed = 128;
 
         // {"Id":,"Name":,"Description":,"ConfigFilePath":,"UpdateIntervalMs":,"Actions":[],"IsConfigurable":false,

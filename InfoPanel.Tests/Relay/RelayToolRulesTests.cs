@@ -489,8 +489,30 @@ public sealed class RelayToolRulesTests
         Assert.Equal(WebImageRefusal, refused.Text);
     }
 
-    /// <summary>A scene showing the cover of what plays: the <c>now-playing</c> provider with the input <c>art</c> as its reference.</summary>
-    private static JsonObject NowPlayingScene() => new()
+    [Fact]
+    public async Task A_plugins_picture_can_be_added_and_rebound_from_elsewhere()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        async Task<(string Text, bool IsError)> Call(string tool, JsonObject arguments)
+        {
+            await peer.SendAsync(rig.Call("c" + Guid.NewGuid().ToString("N")[..8], tool, arguments));
+            var result = (await peer.ExpectAsync("result", Ct))["result"]!;
+            return (result["content"]![0]!["text"]!.GetValue<string>(), result["isError"]!.GetValue<bool>());
+        }
+
+        // The plugin provider reaches no address either: its reference only picks one of the pictures the plugins source holds.
+        var added = await Call("add_item", new JsonObject { ["profile"] = "P", ["name"] = "picture", ["scene"] = NowPlayingScene("plugin") });
+        Assert.False(added.IsError, added.Text);
+        var bound = await Call("update_item", new JsonObject { ["profile"] = "P", ["item"] = "picture", ["bindings"] = new JsonObject { ["art"] = "plugin:/test-fixture/pictures/cover" } });
+        Assert.False(bound.IsError, bound.Text);
+    }
+
+    /// <summary>A scene showing the picture of an image sensor: <paramref name="provider"/> (the cover of what plays by default) with the input <c>art</c> as its reference.</summary>
+    private static JsonObject NowPlayingScene(string provider = "now-playing") => new()
     {
         ["format"] = "infopanel.scene/1",
         ["requires"] = new JsonArray("media.provider"),
@@ -500,7 +522,7 @@ public sealed class RelayToolRulesTests
             ["kind"] = "media",
             ["w"] = 40,
             ["h"] = 40,
-            ["source"] = new JsonObject { ["provider"] = "now-playing", ["ref"] = new JsonObject { ["op"] = "input", ["name"] = "art", ["field"] = "text" } },
+            ["source"] = new JsonObject { ["provider"] = provider, ["ref"] = new JsonObject { ["op"] = "input", ["name"] = "art", ["field"] = "text" } },
         }),
     };
 

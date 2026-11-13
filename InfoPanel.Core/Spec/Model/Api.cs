@@ -645,6 +645,9 @@ public sealed record SensorEntry
     public required InfoPanel.Sensors.SensorStatus Status { get; init; }
     public required string Type { get; init; }
 
+    /// <summary>An image sensor's media provider, which draws its picture by its reference (<c>now-playing</c>, <c>plugin</c>); absent for any other type.</summary>
+    public string? Provider { get; init; }
+
     /// <summary>The spelling of a sensor's type, as a scene input's type names it; <c>image</c>, a picture named by a reference.</summary>
     public static string TypeName(InfoPanel.Sensors.SensorKind kind) => kind switch
     {

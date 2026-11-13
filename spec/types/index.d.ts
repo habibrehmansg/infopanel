@@ -1022,6 +1022,11 @@ export interface SensorEntry {
   status: "live" | "stale" | "unavailable" | "denied" | "simulated" | "missing";
   /** The type of value the sensor reads, as a scene input's type names it (docs/bindings.md): `number`, `text` or `table`; or `image`, a picture, named by a reference (its reading's `text`), whose bytes GET /api/sensors/image answers (docs/api.md#sensor-pictures), and which a `text` input reads as its reference; `number` when the engine can't tell. Taken with `status`, from one read. Known without a reading. A client treats a type it doesn't know as `number`. */
   type: "number" | "text" | "table" | "image";
+  /**
+   * An `image` sensor's media provider (one the session's `media.providers` lists, docs/providers.md): the one that draws the sensor's picture by its reference, as a `media` node's source `{ "provider", "ref" }` whose `ref` is a `text` input bound to the sensor (`now-playing` for the cover of what plays, `plugin` for a plugin's picture). Present for an `image` sensor whose source names one; absent for any other type.
+   * Length: ≥ 1.
+   */
+  provider?: string;
 }
 
 /** One reading in GET /api/sensors/values, an array of these: every listed sensor (sensorEntry) that has a reading now, in list order. A sensor without one is left out. */

@@ -125,6 +125,12 @@ internal sealed class PluginHostRunner : IAsyncDisposable
     /// <summary>The tests' barrier: awaited once a settings change has read the settings it checks the value against.</summary>
     internal Func<Task>? AfterSettingsRead { get; set; }
 
+    /// <summary>
+    /// Tests only: given a host's update call (its generation, and its hand-off to the source) once it was found current,
+    /// to run the hand-off when it likes.
+    /// </summary>
+    internal Action<int, Action>? SourceUpdate { get; set; }
+
     /// <summary>The plugin ids its host took this run, while it is starting, running or restarting; else none.</summary>
     internal IReadOnlyList<string> ClaimedIds
     {
@@ -758,12 +764,36 @@ internal sealed class PluginHostRunner : IAsyncDisposable
             }
         }
 
+        /// <summary>
+        /// Whether this connection is current, and the source's generation of the package read in the same step, under the
+        /// runner's lock: a replacement's catalogue (which starts another) is loaded only under that lock once its own
+        /// generation is current, so a generation read here is never the replacement's.
+        /// </summary>
+        private bool TryCurrent(out long epoch)
+        {
+            lock (runner._lock)
+            {
+                epoch = runner._source.EpochOf(runner._package.Folder);
+                return runner._generation == generation && !runner._stopping;
+            }
+        }
+
+        /// <summary>
+        /// The host's changes, taken by the source only in the generation read when this connection was found current
+        /// (<see cref="TryCurrent"/>): a call paused after that, while the host was stopped or replaced, takes nothing.
+        /// </summary>
         public void OnSensorUpdate(List<SensorUpdateBatchDto> updates)
         {
             try
             {
-                if (Current && updates != null)
-                    runner._source.Update(runner._package.Folder, updates);
+                if (updates != null && TryCurrent(out var epoch))
+                {
+                    void HandOff() => runner._source.Update(runner._package.Folder, epoch, updates);
+                    if (runner.SourceUpdate is { } hook)
+                        hook(generation, HandOff);
+                    else
+                        HandOff();
+                }
             }
             finally
             {

@@ -39,9 +39,10 @@ public enum PluginHostState
 /// is an image sensor: its reading the picture's reference, 16 hex digits of its SHA-256, its bytes held for
 /// <see cref="TryGetImage"/> once inspected as media; a picture is admitted, before anything is decoded, only for a listed
 /// image entry of its host and within the rates (<see cref="PluginLimits"/>); each entry keeps its current and its
-/// previous picture, a host at most <see cref="ImageBytesPerHost"/>, and they go with its readings.
+/// previous picture, a host at most <see cref="ImageBytesPerHost"/>, and they go with its readings. The <c>plugin</c> media
+/// provider draws them by reference alone (<see cref="IKeptPictures"/>).
 /// </summary>
-public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISensorSourceState, ISensorImages
+public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISensorSourceState, ISensorImages, InfoPanel.Images.IKeptPictures
 {
     public const string SourceId = "plugins";
 
@@ -66,6 +67,9 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
     private readonly Dictionary<SensorKey, Entry> _entries = [];
     private IReadOnlyList<SensorInfo> _list = [];
     private int _order;
+    // Every picture an image entry keeps (its current or its previous), by reference, with how many keep it: the plugin
+    // media provider draws a picture by its reference alone.
+    private readonly Dictionary<string, (byte[] Bytes, int Count)> _kept = new(StringComparer.Ordinal);
 
     private readonly TimeProvider _time;
 
@@ -83,6 +87,9 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
     internal Action? BeforePictureCommit { get; set; }
 
     public string Id => SourceId;
+
+    /// <summary>Its image sensors' pictures are drawn by the <c>plugin</c> media provider.</summary>
+    public string Provider => InfoPanel.Images.PluginImageProvider.Name;
 
     /// <summary>Running while the engine hosts plugins (however many it found), off with <see cref="Disabled"/> when it doesn't.</summary>
     public SourceState State { get; }
@@ -321,15 +328,31 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
     /// then decoded, inspected and hashed outside the lock, and committed (<see cref="TakePicture"/>) only if its host's
     /// generation and its entry's turn still hold, so a stop, a failure or a new catalogue meanwhile drops it.
     /// </summary>
-    public void Update(string folder, IReadOnlyList<SensorUpdateBatchDto> batches)
+    public void Update(string folder, IReadOnlyList<SensorUpdateBatchDto> batches) => Update(folder, EpochOf(folder), batches);
+
+    /// <summary>
+    /// The package's generation now: a stop, a failure and each catalogue start another. A host's caller reads it while it
+    /// knows that host is the package's current one, and hands it to <see cref="Update(string, long, IReadOnlyList{SensorUpdateBatchDto})"/>.
+    /// </summary>
+    public long EpochOf(string folder)
+    {
+        lock (_lock)
+            return _packages.TryGetValue(folder, out var package) ? package.Epoch : -1;
+    }
+
+    /// <summary>
+    /// <see cref="Update(string, IReadOnlyList{SensorUpdateBatchDto})"/> for the host that was current in the package's
+    /// generation <paramref name="epoch"/> (<see cref="EpochOf"/>, read while it was): nothing of it is taken once the
+    /// generation has moved on (the host stopped, failed or was replaced, and another catalogue may hold the same
+    /// entries), neither at its admission nor at a picture's commit.
+    /// </summary>
+    public void Update(string folder, long epoch, IReadOnlyList<SensorUpdateBatchDto> batches)
     {
         List<Admitted>? admitted = null;
-        long epoch;
         lock (_lock)
         {
-            if (!_packages.TryGetValue(folder, out var package))
+            if (!_packages.TryGetValue(folder, out var package) || package.Epoch != epoch)
                 return;
-            epoch = package.Epoch;
             foreach (var batch in batches)
             {
                 if (batch?.PluginId is not { } pluginId || !package.PluginIds.Contains(pluginId))
@@ -490,7 +513,10 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
     private void Clear(Package package)
     {
         foreach (var key in package.Keys)
-            _entries.Remove(key);
+        {
+            if (_entries.Remove(key, out var entry))
+                (entry.Current, entry.Previous) = (Unkeep(entry.Current), Unkeep(entry.Previous));
+        }
         foreach (var id in package.PluginIds)
             _owners.Remove(id);
         package.Keys.Clear();
@@ -581,7 +607,8 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
                 return;
             }
             package.ImageBytes = after;
-            (entry.Previous, entry.Current) = (entry.Current, new Picture(reference, bytes));
+            Unkeep(entry.Previous);
+            (entry.Previous, entry.Current) = (entry.Current, Keep(new Picture(reference, bytes)));
         }
 
         entry.Reading = new SensorReading(reference);
@@ -589,11 +616,12 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
     }
 
     /// <summary>The entry has no picture now: its current one is kept as the previous (an Image may still hold it), the one before let go.</summary>
-    private static void LetGo(Package package, Entry entry)
+    private void LetGo(Package package, Entry entry)
     {
         if (entry.Current is { } current)
         {
             package.ImageBytes -= entry.Previous?.Bytes.Length ?? 0;
+            Unkeep(entry.Previous);
             (entry.Previous, entry.Current) = (current, null);
         }
         entry.Reading = default;
@@ -607,12 +635,55 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
         {
             if (_entries.TryGetValue(key, out var entry) && entry.Kind == SensorKind.Image)
             {
-                (entry.Current, entry.Previous) = (null, null);
+                (entry.Current, entry.Previous) = (Unkeep(entry.Current), Unkeep(entry.Previous));
                 entry.Reading = default;
                 entry.HasReading = false;
             }
         }
         package.ImageBytes = 0;
+    }
+
+    /// <summary><paramref name="picture"/> is kept by one more entry (as its current or previous); under the lock.</summary>
+    private Picture Keep(Picture picture)
+    {
+        _kept[picture.Reference] = _kept.TryGetValue(picture.Reference, out var kept) ? (kept.Bytes, kept.Count + 1) : (picture.Bytes, 1);
+        return picture;
+    }
+
+    /// <summary><paramref name="picture"/> is kept by one fewer entry, and by none it is forgotten; under the lock. Null, to clear what held it.</summary>
+    private Picture? Unkeep(Picture? picture)
+    {
+        if (picture != null && _kept.TryGetValue(picture.Reference, out var kept))
+        {
+            if (kept.Count <= 1)
+                _kept.Remove(picture.Reference);
+            else
+                _kept[picture.Reference] = (kept.Bytes, kept.Count - 1);
+        }
+        return null;
+    }
+
+    /// <summary>Whether an image entry keeps a picture under <paramref name="reference"/> now (a plugin's picture is never an address).</summary>
+    public bool Keeps(string reference, out string? address)
+    {
+        address = null;
+        lock (_lock)
+            return _kept.ContainsKey(reference);
+    }
+
+    /// <summary>The bytes of the picture an image entry keeps under <paramref name="reference"/>, as its host sent them, named by the reference itself.</summary>
+    public bool TryGet(string reference, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out byte[]? bytes, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? id)
+    {
+        lock (_lock)
+        {
+            if (_kept.TryGetValue(reference, out var kept))
+            {
+                (bytes, id) = (kept.Bytes, reference);
+                return true;
+            }
+        }
+        (bytes, id) = (null, null);
+        return false;
     }
 
     private void Rebuild() =>

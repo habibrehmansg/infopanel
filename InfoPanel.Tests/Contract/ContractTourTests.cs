@@ -163,6 +163,15 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         {
             picturingSession.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", EngineFactory.Token);
             await Send(picturingSession, "GET", $"/api/sensors/image?key={Uri.EscapeDataString(PictureSource.Key.ToString())}&ref=cover", 200);
+            // An image sensor's entry names the media provider that draws it (sensorEntry.provider): a plugin's picture,
+            // held as its host would send it.
+            var plugins = picturing.Services.GetRequiredService<InfoPanel.Plugins.PluginSensorSource>();
+            plugins.Load("InfoPanel.Pictures", [new InfoPanel.Plugins.Ipc.PluginMetadataDto { Id = "pictures", Name = "Pictures" }],
+                new Dictionary<string, List<InfoPanel.Plugins.Ipc.ContainerDto>> { ["pictures"] = [new() { Id = "c", Name = "C", Entries = [new() { Id = "cover", Name = "Cover", Type = "image" }] }] });
+            plugins.SetState("InfoPanel.Pictures", InfoPanel.Plugins.PluginHostState.Running);
+            var listed = await Send(picturingSession, "GET", "/api/sensors", 200);
+            Assert.Contains(listed.EnumerateArray(), s => s.GetProperty("key").GetString() == "plugin:/pictures/c/cover"
+                && s.TryGetProperty("provider", out var provider) && provider.GetString() == "plugin");
         }
 
         // The engine settings, the session token's: read, changed, a change refused; refused while they can't be read

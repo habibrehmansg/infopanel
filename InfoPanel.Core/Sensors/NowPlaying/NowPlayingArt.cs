@@ -14,7 +14,7 @@ namespace InfoPanel.Sensors.NowPlaying;
 /// <c>https</c>, at most <see cref="MaxAddressChars"/> characters). In memory only, and emptied when the source stops
 /// reading. The sampler publishes on its poll thread; the provider reads from render threads.
 /// </summary>
-public sealed class NowPlayingArt
+public sealed class NowPlayingArt : InfoPanel.Images.IKeptPictures
 {
     /// <summary>Pictures kept at most: the current one and those before it.</summary>
     public const int MaxKept = 4;
@@ -103,6 +103,14 @@ public sealed class NowPlayingArt
         }
         picture = null!;
         return false;
+    }
+
+    /// <summary>The cover kept under <paramref name="token"/> as the <c>now-playing</c> provider takes it: its bytes and their whole SHA-256.</summary>
+    bool InfoPanel.Images.IKeptPictures.TryGet(string token, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out byte[]? bytes,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? id)
+    {
+        (bytes, id) = TryGet(token, out var picture) && picture.Bytes is { } kept ? (kept, picture.Sha256!) : (null, null);
+        return bytes is not null;
     }
 
     /// <summary>

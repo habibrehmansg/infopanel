@@ -112,12 +112,20 @@ public sealed class ChangeCutOffException(string reason) : Exception($"The chang
 /// The rule for web images from elsewhere (docs/2.0/relay.md): until the engine can hold a provider's fetches for such a
 /// change to public addresses, a change from elsewhere may not insert or set a scene that holds a media source with a
 /// <c>provider</c>, nor change the bindings of an item whose scene holds one (which could re-address it). Moving,
-/// hiding, renaming or removing such an item is fine. The <c>now-playing</c> provider's sources are exempt: it reaches
-/// no address a scene gives, its <c>ref</c> only picks one of the covers the now-playing source read.
+/// hiding, renaming or removing such an item is fine. The <c>now-playing</c> and <c>plugin</c> providers' sources are
+/// exempt (<see cref="Exempt"/>): neither reaches an address, its <c>ref</c> only picks one of the pictures a sensor
+/// source keeps (the covers the now-playing source read, the pictures the plugins source holds).
 /// </summary>
 public static class WebImageRule
 {
     public const string Code = "webImage";
+
+    /// <summary>The providers that reach no address, whose sources a change from elsewhere may hold.</summary>
+    public static readonly IReadOnlySet<string> Exempt = new HashSet<string>(StringComparer.Ordinal)
+    {
+        InfoPanel.Images.NowPlayingProvider.Name,
+        InfoPanel.Images.PluginImageProvider.Name,
+    };
 
     public const string Refusal = "An AI app can't add or change a picture from a web address (webImage): nothing was changed. " +
         "add_asset stores a picture to show instead; moving, hiding or removing such an item works.";
@@ -142,7 +150,7 @@ public static class WebImageRule
 
     /// <summary>
     /// Whether <paramref name="scene"/> has a media node whose source is a provider's (<c>{"provider", "ref"}</c>) other than
-    /// the <c>now-playing</c> provider's, among its nodes or in its groups' children at any depth; nothing else in a scene
+    /// an <see cref="Exempt"/> one's, among its nodes or in its groups' children at any depth; nothing else in a scene
     /// names a provider (an input or a value called <c>provider</c> is not one).
     /// </summary>
     public static bool HoldsProvider(JsonNode? scene) => scene is JsonObject o && NodesHoldProvider(o["nodes"]);
@@ -150,7 +158,7 @@ public static class WebImageRule
     private static bool NodesHoldProvider(JsonNode? nodes) => nodes is JsonArray array && array.Any(n => n is JsonObject node && Kind(node, "kind") switch
     {
         "media" => node["source"] is JsonObject source && source.ContainsKey("provider")
-            && !(source["provider"] is JsonValue provider && provider.TryGetValue<string>(out var name) && name == InfoPanel.Images.NowPlayingProvider.Name),
+            && !(source["provider"] is JsonValue provider && provider.TryGetValue<string>(out var name) && Exempt.Contains(name)),
         "group" => NodesHoldProvider(node["children"]),
         _ => false,
     });

@@ -124,6 +124,8 @@ public static partial class ReadEndpoints
                         Unit = s.Unit,
                         Status = state.Status,
                         Type = SensorEntry.TypeName(state.Type),
+                        // An image sensor names the media provider that draws its picture by its reference.
+                        Provider = state.Type == SensorKind.Image ? hub.ImageProviderOf(s.Key) : null,
                     };
                 })
                 .ToList())).RequireScope(ApiScope.Read);

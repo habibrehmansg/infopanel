@@ -194,6 +194,7 @@
   "api/profilesMessage/invalid/version-zero.json": {"code": "schema", "path": "/version"},
   "api/scopeProblem/invalid/unknown-scope.json": {"code": "schema", "path": "/scope"},
   "api/sensorEntry/invalid/empty-key.json": {"code": "schema", "path": "/key"},
+  "api/sensorEntry/invalid/empty-provider.json": {"code": "schema", "path": "/provider"},
   "api/sensorEntry/invalid/permission-denied.json": {"code": "schema", "path": "/status"},
   "api/sensorEntry/invalid/unknown-status.json": {"code": "schema", "path": "/status"},
   "api/sensorEntry/invalid/unknown-type.json": {"code": "schema", "path": "/type"},

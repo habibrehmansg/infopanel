@@ -14,4 +14,11 @@ public interface ISensorImages
     /// it holds no bytes of. Not a use of the sensor (it starts no reading), and it copies, fetches and logs nothing.
     /// </summary>
     bool TryGetImage(SensorKey key, string reference, out ReadOnlyMemory<byte> bytes);
+
+    /// <summary>
+    /// The media provider that draws its image sensors' pictures by their references (spec/docs/providers.md:
+    /// <c>now-playing</c>, <c>plugin</c>), which each image sensor's entry names (<c>sensorEntry.provider</c>); null when
+    /// none does.
+    /// </summary>
+    string? Provider => null;
 }

@@ -1,1 +1,1 @@
-{"key": "infopanel:/now-playing/art", "source": "infopanel.now-playing", "group": "Now Playing", "name": "Cover Art", "unit": "", "status": "live", "type": "image"}
+{"key": "infopanel:/now-playing/art", "source": "infopanel.now-playing", "group": "Now Playing", "name": "Cover Art", "unit": "", "status": "live", "type": "image", "provider": "now-playing"}

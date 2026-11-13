@@ -96,9 +96,9 @@ public sealed class VideoPreviewTests : IAsyncLifetime
     public async Task WithADecoder_TheSessionListsTheRtspProvider_AndWithoutOne_Doesnt()
     {
         using var plain = Api(_base);
-        Assert.Equal(["http", "now-playing"], await Providers(plain));
+        Assert.Equal(["http", "now-playing", "plugin"], await Providers(plain));
         using var video = Api(Video());
-        Assert.Equal(["http", "now-playing", "rtsp"], await Providers(video));
+        Assert.Equal(["http", "now-playing", "plugin", "rtsp"], await Providers(video));
     }
 
     [Fact]
