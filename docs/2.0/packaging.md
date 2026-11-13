@@ -5,11 +5,14 @@ self-contained publish of the engine into the download. The scripts name no web 
 client's origin are arguments, and the origin is built in as `--allow-origin`'s default (`InfoPanelAllowOrigin`, see
 the security model in `CLAUDE.md`), so the engine opens that web client from Open Editor without any flag.
 
-The downloads carry the engine and libusb-1.0 (USB panels, [panels.md](panels.md)): no web client (`wwwroot`) and no
-FFmpeg (video files and cameras need FFmpeg's libraries beside the engine, [video.md](video.md)). libusb is pinned by
+The downloads carry the engine and libusb-1.0 (USB panels, [panels.md](panels.md)), and the Mac app FFmpeg's four
+decode-only libraries (video files and RTSP cameras, [video.md](video.md)); no web client (`wwwroot`). libusb is pinned by
 version and SHA-256 in `native/libusb/pins.txt` and comes from libusb's own release: the Mac app's `libusb-1.0.dylib`
 is built from its source by `native/libusb/build.sh`, the Windows installer carries the release's x64
-`libusb-1.0.dll`. Linux has no download here and uses the system's library.
+`libusb-1.0.dll`. FFmpeg 9.0.2 and dav1d 1.5.4 are pinned the same way in `native/ffmpeg/pins.txt` and built from their
+release sources by `native/ffmpeg/build.sh` without `--enable-gpl`, `--enable-nonfree` and `--enable-version3`
+(their terms: `LICENSES.md`), with dav1d linked into libavcodec. The Windows installer doesn't carry FFmpeg yet. Linux has no
+download here and uses the system's libraries.
 
 ## macOS: the app and its disk image
 
@@ -20,21 +23,28 @@ packaging/macos/build.sh --version 2.0.0-beta.1 --allow-origin https://client.ex
 `--version` is a SemVer (`2.0.0`, `2.0.0-beta.1`, `2.0.0+build.1`); `--allow-origin` is what the engine accepts as an origin:
 https, a host and an optional port, with no user info, path, query or fragment (`--check-args` only checks both).
 
-On a Mac with the .NET SDK `global.json` pins and Xcode's command line tools; `codesign`, `hdiutil`, `plutil` and
-`ditto` are macOS's own. The script first builds libusb from its pinned source with `native/libusb/build.sh`, into
-`<out>/libusb` (`--libusb-source <libusb-<version>.tar.bz2>` takes the release tarball fetched elsewhere instead of
-downloading it; it is refused unless its SHA-256 is the pinned one). It writes:
+On a Mac with the .NET SDK `global.json` pins, Xcode's command line tools, and meson, ninja and pkg-config for FFmpeg
+(`brew install meson ninja pkgconf`, or meson and ninja from PyPI in a virtual environment on `PATH`);
+`codesign`, `hdiutil`, `plutil` and `ditto` are macOS's own. The script first builds libusb from its pinned source with
+`native/libusb/build.sh`, into `<out>/libusb` (`--libusb-source <libusb-<version>.tar.bz2>` takes the release tarball
+fetched elsewhere instead of downloading it; it is refused unless its SHA-256 is the pinned one), then FFmpeg with
+`native/ffmpeg/build.sh --target macos-arm64`, into `<out>/ffmpeg` (`--ffmpeg-source <ffmpeg-<version>.tar.xz>` and
+`--dav1d-source <dav1d-<version>.tar.xz>` the same way). `INFOPANEL_BUILD_JOBS` caps FFmpeg's parallel compile jobs.
+It writes:
 
 - `<out>/libusb/`: libusb's build, `libusb-1.0.dylib` and `libusb-COPYING.txt`;
+- `<out>/ffmpeg/`: FFmpeg's build: `bundle/` (the four libraries and `ffmpeg-COPYING.txt` and
+  `dav1d-COPYING.txt`), `source/` (the two tarballs it was built from) and `config.mak` (FFmpeg's configuration, kept
+  for reference: the checks read the libraries themselves);
 - `<out>/publish/`: the self-contained `osx-arm64` Release publish (`-p:Version`, `-p:InfoPanelAllowOrigin`, no debug
-  symbols) with `libusb-1.0.dylib` copied into its top level, and in `plugins/{folder}` every panel driver project
+  symbols) with `libusb-1.0.dylib` and FFmpeg's four libraries copied into its top level, and in `plugins/{folder}` every panel driver project
   (`InfoPanel.Panels.{Family}/` with a `panel.json`, but the virtual panel, a test fixture), each published framework
   dependent for `osx-arm64`: the engine's bundled panel packages (`build.sh --list-panel-drivers` lists them, and those
   it leaves out, without building anything). The Windows script publishes the same projects for `win-x64` the same way;
 - `<out>/dmg/InfoPanel.app`: the app;
 - `<out>/InfoPanel-<version>-mac-arm64.dmg`: the disk image (`hdiutil create -format UDZO`, an HFS+ volume named
-  "InfoPanel <version>") holding the app, a link to `/Applications`, `LICENSE`, `LICENSES.md` and `libusb-COPYING.txt`;
-  its SHA-256 is printed last.
+  "InfoPanel <version>") holding the app, a link to `/Applications`, `LICENSE`, `LICENSES.md`, `libusb-COPYING.txt`,
+  `ffmpeg-COPYING.txt` and `dav1d-COPYING.txt`; its SHA-256 is printed last.
 
 **The app.** `Info.plist` is `packaging/macos/Info.plist` with the version set: `CFBundleShortVersionString` its
 major.minor.patch (`2.0.0`), `CFBundleVersion` the whole of it. The bundle id is `net.infopanel.InfoPanel`; `LSUIElement` makes it a
@@ -69,6 +79,29 @@ app's `Contents/Resources` and the disk image carry beside `LICENSES.md`. `build
 before the layout step, so the rule above moves it to `Contents/MacOS` (linked from `Contents/Resources/engine`) and
 signs it with the rest; the engine finds it beside itself (`InfoPanel.Core/Panels/Usb/LibUsb.cs`). There is no option
 to package a library built elsewhere. To move to a new libusb release, change `pins.txt`.
+
+**FFmpeg.** `native/ffmpeg/build.sh --target macos-arm64` downloads FFmpeg's and dav1d's release tarballs (the versions
+in `native/ffmpeg/pins.txt`), refuses each unless its SHA-256 is the pinned one, before unpacking, and each licence text
+unless its own is; builds dav1d static (meson) and FFmpeg's four libraries with only the containers, codecs and RTSP
+client the engine uses, dav1d inside libavcodec. Each is one regular file, `lib{name}.{major}.dylib`
+(`libavutil.61`, `libavcodec.63`, `libavformat.63`, `libswscale.10`), with the install name `@rpath/lib{name}.{major}.dylib`
+and the rpath `@loader_path`, so the four find each other in the folder they're in; built for the app's minimum macOS as
+libusb is. Its checks, on each library itself (after the build, and again in `build.sh` through `--verify <folder>`):
+arm64, built for macOS (`LC_BUILD_VERSION`'s platform), the install names and rpath, its `{name}_version` exported,
+nothing linked but macOS's own libraries and each other, the minimum macOS, no weak imports, a valid signature; and
+the build record FFmpeg compiles into each library (what `avutil_license()` and `avutil_configuration()` and the
+others answer): the licence `pins.txt` pins (`ffmpeg_license_sha256`), and one configure line in all four, with
+`--enable-libdav1d` and without `--enable-gpl`, `--enable-nonfree` and `--enable-version3`. The Windows DLLs
+(`--target windows-x64`, in `native/ffmpeg/windows-cross.Dockerfile`'s container: x86-64 Ubuntu, its packages from one
+snapshot of Ubuntu's archive; the image built from it and checked on 13 Nov 2026 was
+`sha256:46bcfee013110abda4cc9359387e5dd7a5c1057aeee3db24719324653e8f0f6d`, a digest a rebuild needn't repeat, since
+its layers carry the build's own times) get the same build record checks, and each its export directory's own name (the library
+and its major, which renaming the file doesn't change), its `{name}_version` export and its imports.
+`build.sh` copies the four into the publish beside libusb, so they take the same way into `Contents/MacOS`, and the two
+licence texts beside `libusb-COPYING.txt`; the engine loads them by full path from beside itself
+(`InfoPanel.Core/Images/Video/FFmpeg.cs`). To replace them (a right their licence gives users, `LICENSES.md`), put another build of the same majors in
+`InfoPanel.app/Contents/MacOS` under the same names and sign the app again ad hoc:
+`codesign --force --deep --sign - InfoPanel.app`. To move to new releases, change `pins.txt`.
 
 **Signing.** Ad hoc only: every Mach-O file is signed (`codesign --force --sign -`), the deepest first, then the bundle,
 with no hardened runtime; then `codesign --verify --deep --strict` checks it. Nothing is notarised.

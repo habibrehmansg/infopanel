@@ -592,15 +592,15 @@ Only in a publish for Windows (`dotnet publish InfoPanel -r win-x64`), in its ow
 - **Copyright**: © Microsoft Corporation. All rights reserved.
 - **Project**: https://github.com/dotnet/runtime, https://github.com/dotnet/aspnetcore
 
-### FFmpeg 9.0.2 (video decoding)
-- **Use**: libavutil, libavcodec, libavformat and libswscale as shared libraries, built decode-only by `native/ffmpeg/build.sh` from FFmpeg 9.0.2's release source, configured without `--enable-gpl` and `--enable-nonfree`. Not in this repository: the engine looks for them beside itself, then in `INFOPANEL_FFMPEG_DIR` (`InfoPanel.Core/Images/Video/FFmpeg.cs`). Not redistributed: the Mac app and the Windows installer carry neither FFmpeg nor dav1d ([packaging](docs/2.0/packaging.md)); the engine loads the FFmpeg libraries installed on the computer.
-- **Licence**: LGPL-2.1-or-later (built without `--enable-gpl` and `--enable-nonfree`)
+### FFmpeg 9.0.2 (video files and RTSP cameras)
+- **Use**: libavutil, libavcodec, libavformat and libswscale as shared libraries, dynamically linked: the engine loads them by full path from beside itself, then from `INFOPANEL_FFMPEG_DIR`, and calls them through its own function pointers (`InfoPanel.Core/Images/Video/FFmpeg.cs`), so they can be replaced by another build of the same major versions. The macOS app carries `libavutil.61.dylib`, `libavcodec.63.dylib`, `libavformat.63.dylib` and `libswscale.10.dylib`, built unmodified by `native/ffmpeg/build.sh` from FFmpeg 9.0.2's release source (pinned by SHA-256 in `native/ffmpeg/pins.txt`), configured decode-only without `--enable-gpl`, `--enable-nonfree` and `--enable-version3`, with dav1d linked into libavcodec; the Windows installer doesn't carry FFmpeg yet. Not in this repository: the source is the release at https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz (signed by FFmpeg's release key).
+- **Licence**: LGPL-2.1-or-later. Its full text, the `COPYING.LGPLv2.1` of that release's source (its SHA-256 pinned in `native/ffmpeg/pins.txt` too), comes with the Mac app as `ffmpeg-COPYING.txt` beside this file: in its `Contents/Resources` and on its disk image.
 - **Copyright**: © the FFmpeg developers
 - **Project**: https://ffmpeg.org/
 
-### dav1d (AV1 decoding inside the FFmpeg build)
-- **Use**: built and installed before FFmpeg, which `build.sh` configures with `--enable-libdav1d`; `build.sh` doesn't pin its version
-- **Licence**: BSD-2-Clause
+### dav1d 1.5.4 (AV1 decoding inside FFmpeg's libavcodec)
+- **Use**: built unmodified by `native/ffmpeg/build.sh` from dav1d 1.5.4's release source (pinned by SHA-256 in `native/ffmpeg/pins.txt`) as a static library and linked into libavcodec, which the macOS app carries. Not in this repository: the source is the release at https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz.
+- **Licence**: BSD-2-Clause. Its full text, the `COPYING` of that release's source (its SHA-256 pinned too), comes with the Mac app as `dav1d-COPYING.txt` beside this file.
 - **Copyright**: © VideoLAN and dav1d authors
 - **Project**: https://code.videolan.org/videolan/dav1d
 

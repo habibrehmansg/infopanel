@@ -46,8 +46,11 @@ dotnet run --project InfoPanel -c Release -- --web-root <dir>  # serve a built w
 dotnet run --project InfoPanel -- --help                       # all flags
 # A release build that opens a web client served elsewhere (its pairing link): the origin is built in, the default for --allow-origin
 dotnet build InfoPanel -c Release -p:InfoPanelAllowOrigin=https://client.example
-# The macOS app and its disk image, ad hoc signed (macOS only; --out a new or empty folder; docs/2.0/packaging.md)
+# The macOS app and its disk image, ad hoc signed (macOS only; --out a new or empty folder; meson, ninja and pkg-config on PATH for FFmpeg; docs/2.0/packaging.md)
 packaging/macos/build.sh --version 2.0.0-beta.1 --allow-origin https://client.example --out <dir>
+# FFmpeg's decode-only libraries alone, from the pinned sources (<dir>/bundle; windows-x64 in native/ffmpeg/windows-cross.Dockerfile's container)
+native/ffmpeg/build.sh --target macos-arm64 --out <dir> [--source ffmpeg-9.0.2.tar.xz] [--dav1d-source dav1d-1.5.4.tar.xz]
+INFOPANEL_FFMPEG_DIR=<dir>/bundle dotnet test InfoPanel.slnx --filter "FullyQualifiedName~Video|FullyQualifiedName~Rtsp|FullyQualifiedName~SceneGoldenTests"
 # Windows installer (on Windows, with Inno Setup 6): InfoPanel-<version>-win-x64-setup.exe in a new folder (docs/2.0/packaging.md)
 powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1 -Version 2.0.0-beta.1 -AllowOrigin https://client.example -Out C:\builds\2.0.0-beta.1
 gh workflow run release.yml --ref 2.0.x [-f version=2.0.0-beta.1]   # both on GitHub, a dry run's artifacts, once the workflow has run on 2.0.x (the Actions page's Run workflow button may not show while the default branch is 1.4.x); a pushed 2.x tag makes a draft release (docs/2.0/packaging.md, Releases)

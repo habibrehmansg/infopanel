@@ -1,0 +1,18 @@
+# The FFmpeg release and the dav1d release the engine ships (native/ffmpeg/build.sh: the macOS app's libraries and the
+# Windows installer's DLLs), pinned by version and SHA-256. Every script that builds or packages them reads this file:
+# key=value, '#' lines are comments. ffmpeg_source_sha256 is FFmpeg's release tarball,
+# https://ffmpeg.org/releases/ffmpeg-<version>.tar.xz (signed by FFmpeg's release key, https://ffmpeg.org/ffmpeg-devel.asc,
+# fingerprint FCF986EA15E6E293A5644F10B4322F04D67658D8); dav1d_source_sha256 is VideoLAN's release tarball,
+# https://downloads.videolan.org/pub/videolan/dav1d/<version>/dav1d-<version>.tar.xz (its .sha256 beside it). The two
+# copying hashes are the licence texts in those tarballs that the build is under (ffmpeg-<version>/COPYING.* for the
+# licence LICENSES.md names, and dav1d-<version>/COPYING), which every package carries as ffmpeg-COPYING.txt and
+# dav1d-COPYING.txt. ffmpeg_license_sha256 is that licence's name as FFmpeg's configure compiles it into each library
+# (FFMPEG_LICENSE: the words after "lib<name> license: " that avutil_license() and the others answer, no newline), which
+# build.sh --verify reads from each library itself.
+ffmpeg_version=9.0.2
+ffmpeg_source_sha256=8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
+ffmpeg_copying_sha256=246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30
+ffmpeg_license_sha256=c22095021b17dfaceeade0ea610808d0966ed8f8fd7761e6399c7652db0c9363
+dav1d_version=1.5.4
+dav1d_source_sha256=686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5
+dav1d_copying_sha256=dd92c3c2247c5651606fc23a5e2d6a1ebc5ace9a3e49cbde0e12f05ad1cb1ee5
