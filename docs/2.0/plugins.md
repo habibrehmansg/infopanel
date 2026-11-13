@@ -70,7 +70,7 @@ Plugins are code the user chose to run, but a buggy one must not take the engine
 
 ## Errors, processor and memory
 
-A plugin's errors (an action that throws among them), a refused plugin, a failed start and a restart are logged as warnings, `plugin {package}/{plugin id}: …` (the recent log entries carry them), and a package keeps its newest 20, each with the time the engine got it and the plugin it came from (none for the package's own). A package's processor use is its host's own report (every plugin's is the process's), cut to 0–100, while it runs; its memory is read by the engine from the host's process: private bytes on Windows, the resident size elsewhere.
+A plugin's errors (an action that throws among them), a refused plugin, a failed start and a restart are logged as warnings, `plugin {package}/{plugin id}: …` (the recent log entries carry them), and a package keeps its newest 20, each with the time the engine got it and the plugin it came from (none for the package's own). A package's processor use is its host's own report (every plugin's is the process's), while it runs, counted as the engine's own CPU is ([API](../../spec/docs/api.md#sensor-sources)): on macOS and Linux per CPU, as Activity Monitor and `top` count it (100 is one busy CPU, up to 100 × the logical CPUs); on Windows a share of the whole computer's, 0–100, as Task Manager counts it. Its memory is read by the engine from the host's process as the engine's own is, as the operating system's tool shows it: the physical footprint on macOS, the private working set on Windows, the resident set on Linux.
 
 ## The API
 

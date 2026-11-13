@@ -273,6 +273,43 @@ public sealed class PluginEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task A_hosts_memory_is_what_the_OSs_own_tool_shows_for_its_process_as_the_engines_own_is()
+    {
+        var package = PluginFixtures.CopyFixture(Path.Combine(_root, "bundled"));
+        var pipeName = PluginHostConnection.NewPipeName();
+        await using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        using var process = new PluginProcessLauncher().Start(new PluginHostCommand(pipeName, PluginFixtures.DllOf(package),
+            Path.Combine(_root, "logs"), Path.Combine(_root, "settings"), "information"));
+        try
+        {
+            // Connected, the host waits for the engine's first call: its memory is the engine's reader's
+            // (ProcessMemory.Of: the footprint on macOS, the private working set on Windows, the resident set on Linux),
+            // within 5 % of that reader's figure at two instants around it.
+            await pipe.WaitForConnectionAsync(Ct).WaitAsync(TimeSpan.FromSeconds(30), Ct);
+            using var os = Process.GetProcessById(process.Id);
+            var before = InfoPanel.Sensors.SystemInfo.ProcessMemory.Of(os);
+            var read = process.MemoryBytes;
+            var after = InfoPanel.Sensors.SystemInfo.ProcessMemory.Of(os);
+
+            if (OperatingSystem.IsWindows() && !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
+            {
+                // Before Windows 10 1809 the reader returns 0 and the host's memory is unknown by design.
+                Assert.Null(read);
+                return;
+            }
+
+            Assert.True(before > 0 && after > 0, $"the reader reads the host: {before}, {after}");
+            Assert.NotNull(read);
+            Assert.InRange((double)read.Value, Math.Min(before, after) * 0.95, Math.Max(before, after) * 1.05);
+        }
+        finally
+        {
+            process.Kill();
+        }
+    }
+
+    [Fact]
     public async Task A_packages_settings_folder_linked_into_the_1x_folder_fails_it_and_nothing_is_written_there()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating symbolic links needs privileges on Windows.");

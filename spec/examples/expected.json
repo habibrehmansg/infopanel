@@ -203,7 +203,7 @@
   "api/pluginPackage/invalid/unknown-state.json": {"code": "schema", "path": "/state"},
   "api/pluginPackage/invalid/website-javascript.json": {"code": "schema", "path": "/website"},
   "api/pluginPackage/invalid/folder-not-a-package.json": {"code": "schema", "path": "/folder"},
-  "api/pluginPackage/invalid/cpu-over-100.json": {"code": "schema", "path": "/cpu"},
+  "api/pluginPackage/invalid/cpu-below-0.json": {"code": "schema", "path": "/cpu"},
   "api/pluginPackage/invalid/twenty-one-errors.json": {"code": "schema", "path": "/errors"},
   "api/pluginPackage/invalid/with-a-setting.json": {"code": "schema", "path": "/plugins/0/settings"},
   "api/pluginPackage/invalid/error-time-without-milliseconds.json": {"code": "schema", "path": "/errors/0/time"},

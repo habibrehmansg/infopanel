@@ -154,7 +154,10 @@ internal sealed class PluginHostRunner : IAsyncDisposable
         }
     }
 
-    /// <summary>Its host's processor use as the host last reported it (0–100), while it runs; null before its first report.</summary>
+    /// <summary>
+    /// Its host's processor use as the host last reported it, counted as the engine's own (<see cref="CpuShown"/>: per CPU
+    /// off Windows, 0–100 × the CPUs; a share of the machine's on Windows, 0–100), while it runs; null before its first report.
+    /// </summary>
     public double? Cpu
     {
         get
@@ -162,6 +165,21 @@ internal sealed class PluginHostRunner : IAsyncDisposable
             lock (_lock)
                 return _state == PluginHostState.Running ? _cpu : null;
         }
+    }
+
+    /// <summary>The engine's own CPU rule (<see cref="InfoPanel.Sensors.SystemInfo.EngineSource"/>): the CPUs the OS counts, and whether its tool counts per CPU.</summary>
+    private static readonly InfoPanel.Sensors.SystemInfo.IEngineProcess EngineCpu = InfoPanel.Sensors.SystemInfo.EngineSource.CurrentProcess();
+
+    /// <summary>
+    /// A host's report (its CPU time over the wall time, per CPU: 100 a busy CPU) as the engine shows its own CPU:
+    /// <paramref name="perCpu"/> (off Windows, as Activity Monitor and <c>top</c>) as reported, within 0–100 ×
+    /// <paramref name="processors"/>; else (Windows, as Task Manager) a share of every CPU's, the report over the CPUs,
+    /// within 0–100.
+    /// </summary>
+    internal static double CpuShown(double reported, int processors, bool perCpu)
+    {
+        var cpus = Math.Max(1, processors);
+        return perCpu ? Math.Clamp(reported, 0, 100d * cpus) : Math.Clamp(reported / cpus, 0, 100);
     }
 
     /// <summary>Its host's memory in bytes, read from the process, while it runs.</summary>
@@ -814,7 +832,7 @@ internal sealed class PluginHostRunner : IAsyncDisposable
             }
         }
 
-        /// <summary>The host's own report of its processor use (every plugin's is the process's): the highest finite one, clamped to 0–100.</summary>
+        /// <summary>The host's own report of its processor use (every plugin's is the process's): the highest finite one, shown as the engine's own CPU (<see cref="CpuShown"/>).</summary>
         public void OnPerformanceUpdate(List<PluginPerformanceDto> performances)
         {
             try
@@ -825,7 +843,7 @@ internal sealed class PluginHostRunner : IAsyncDisposable
                     lock (runner._lock)
                     {
                         if (runner._generation == generation && !runner._stopping)
-                            runner._cpu = Math.Clamp(cpu, 0, 100);
+                            runner._cpu = CpuShown(cpu, EngineCpu.ProcessorCount, EngineCpu.CpuPerCpu);
                     }
                 }
             }

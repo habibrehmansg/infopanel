@@ -150,7 +150,7 @@ When `IPluginImageWriter.Resize(width, height)` is called:
 The host process tracks two metrics per plugin:
 
 - **Update time**: Wall-clock duration of each `UpdateAsync()` call, reported as `UpdateTimeMilliseconds`
-- **CPU usage**: Computed as `(cpuDelta_ms / (elapsed_ms × ProcessorCount)) × 100`, reported as `CpuPercent`
+- **CPU usage**: Computed per CPU as `(cpuDelta_ms / elapsed_ms) × 100` (`HostService.CpuPercent`: 100 is one busy CPU, never below 0), reported as `CpuPercent`. The engine shows it as it counts its own CPU (`PluginHostRunner.CpuShown`): per CPU on macOS and Linux, up to 100 × the logical CPUs; on Windows a share of the whole machine's, the report over the CPUs, 0–100
 
 These are sent via `OnPerformanceUpdate` every 2 seconds.
 

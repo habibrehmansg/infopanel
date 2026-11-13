@@ -564,7 +564,7 @@ public sealed class PluginManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task CPU_is_the_hosts_report_clamped_and_memory_the_engines_read_both_only_while_it_runs()
+    public async Task CPU_is_the_hosts_report_as_the_engines_own_is_counted_and_memory_the_engines_read_both_only_while_it_runs()
     {
         Package(Bundled, "InfoPanel.A");
         var launcher = Launcher();
@@ -573,13 +573,16 @@ public sealed class PluginManagerTests : IDisposable
         var a = manager.Find("InfoPanel.A")!;
         await Running(a);
         var host = launcher.Started[0].Host;
+        var engine = InfoPanel.Sensors.SystemInfo.EngineSource.CurrentProcess();
+        var top = engine.CpuPerCpu ? 100d * engine.ProcessorCount : 100;
 
         Assert.Null(a.Cpu);
         Assert.Equal(42L * 1024 * 1024, a.Memory);
         await host.SendPerformanceAsync(12.5);
-        await Eventually.Until(() => a.Cpu == 12.5, "the host's report is the CPU");
-        await host.SendPerformanceAsync(250);
-        await Eventually.Until(() => a.Cpu == 100, "clamped at 100");
+        var shown = engine.CpuPerCpu ? 12.5 : 12.5 / engine.ProcessorCount;
+        await Eventually.Until(() => a.Cpu == shown, "the host's report, as the engine's own CPU is counted");
+        await host.SendPerformanceAsync(100_000);
+        await Eventually.Until(() => a.Cpu == top, "clamped at 100 × the CPUs per CPU, else at 100");
         await host.SendPerformanceAsync(-3);
         await Eventually.Until(() => a.Cpu == 0, "clamped at 0");
 

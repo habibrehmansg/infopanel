@@ -1223,12 +1223,12 @@ export interface PluginPackage {
   /** Why it is `failed` or `unsupported`, or null. */
   reason: PluginReason | null;
   /**
-   * Its host's processor use, in percent of the computer's, as the host last reported it; null until its first report, or while no host runs.
-   * Range: 0–100.
+   * Its host's processor use as the host last reported it, in percent as the operating system's own tool counts it, as the engine's own `infopanel:/engine/cpu` is: on macOS and Linux per CPU (100 is one busy CPU; up to 100 × the logical CPUs), on Windows a share of the whole computer's (0–100); null until its first report, or while no host runs.
+   * Range: ≥ 0.
    */
   cpu: number | null;
   /**
-   * Its host's memory in bytes, read by the engine from the host's process: private bytes on Windows, resident size elsewhere; null while no host runs.
+   * Its host's memory in bytes as the operating system's own tool shows it, read by the engine from the host's process as `infopanel:/engine/memory` is: the physical footprint on macOS, the private working set on Windows, the resident set on Linux; null while no host runs, or where it can't be read (Windows before version 1809).
    * Range: ≥ 0.
    */
   memory: number | null;

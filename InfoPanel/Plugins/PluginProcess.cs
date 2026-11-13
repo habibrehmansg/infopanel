@@ -39,7 +39,11 @@ public interface IPluginProcess : IDisposable
     /// <summary>Kills the process and its children; nothing when it has exited.</summary>
     void Kill();
 
-    /// <summary>Its memory now, in bytes: private bytes on Windows, resident size elsewhere; null when it can't be read.</summary>
+    /// <summary>
+    /// Its memory now, in bytes, as the OS's own tool shows it, read as the engine's own is
+    /// (<see cref="InfoPanel.Sensors.SystemInfo.ProcessMemory"/>: the physical footprint on macOS, the private working set
+    /// on Windows, the resident set on Linux); null when it can't be read.
+    /// </summary>
     long? MemoryBytes { get; }
 }
 
@@ -145,8 +149,8 @@ public sealed class PluginProcessLauncher : IPluginProcessLauncher
                 {
                     if (_process.HasExited)
                         return null;
-                    _process.Refresh();
-                    return OperatingSystem.IsWindows() ? _process.PrivateMemorySize64 : _process.WorkingSet64;
+                    // 0 or less is a read that failed (exited meanwhile, refused, or Windows before 1809).
+                    return InfoPanel.Sensors.SystemInfo.ProcessMemory.Of(_process) is var bytes and > 0 ? bytes : null;
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
                 {

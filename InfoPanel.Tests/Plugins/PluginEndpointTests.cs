@@ -170,6 +170,28 @@ public sealed class PluginEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_hosts_cpu_is_listed_as_the_engines_own_is_counted_per_cpu_off_windows_past_100()
+    {
+        var launcher = new FakeLauncher(() => new FakeHost());
+        using var factory = new EngineFactory();
+        using var engine = WithFakePlugins(factory, launcher, "InfoPanel.A");
+        using var session = Client(engine);
+        var a = await RunningRunner(engine, "InfoPanel.A");
+
+        // The host reports 2.8 s of CPU time a second: per CPU off Windows, as the engine's own CPU (280, within 100 × the
+        // CPUs); on Windows a share of the whole machine's.
+        await launcher.Started[0].Host.SendPerformanceAsync(280);
+        await Eventually.Until(() => a.Cpu != null, "the host's report is taken");
+        var cpus = InfoPanel.Sensors.SystemInfo.EngineSource.CurrentProcess().ProcessorCount;
+        var expected = OperatingSystem.IsWindows() ? Math.Min(280d / cpus, 100) : Math.Min(280, 100d * cpus);
+
+        var package = (await Get(session, "/api/plugins", 200)).GetProperty("packages")[0];
+        Assert.Equal(expected, package.GetProperty("cpu").GetDouble(), 9);
+        if (!OperatingSystem.IsWindows() && cpus >= 3)
+            Assert.Equal(280, package.GetProperty("cpu").GetDouble());
+    }
+
+    [Fact]
     public async Task An_action_the_plugin_lists_is_sent_and_no_other()
     {
         var launcher = new FakeLauncher(() => new FakeHost { Actions = ["Refresh"] });

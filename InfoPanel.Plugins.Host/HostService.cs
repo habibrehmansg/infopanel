@@ -29,7 +29,8 @@ namespace InfoPanel.Plugins.Host
         // CPU metrics
         private Process? _currentProcess;
         private TimeSpan _lastCpuTime;
-        private DateTime _lastCheckTime = DateTime.UtcNow;
+        private long _lastCheckStamp;
+        private readonly TimeProvider _time;
 
         /// <summary>
         /// Called after plugin shutdown completes to signal the host process to exit gracefully.
@@ -53,6 +54,7 @@ namespace InfoPanel.Plugins.Host
             _pluginPath = pluginPath;
             _settingsDirectory = settingsDirectory;
             Logger = logger ?? Log.ForContext<HostService>();
+            _time = time;
             _snapshotManager = new SensorSnapshotManager(logger, NotifyError, time);
         }
 
@@ -269,8 +271,7 @@ namespace InfoPanel.Plugins.Host
             try
             {
                 _currentProcess = Process.GetCurrentProcess();
-                _lastCpuTime = _currentProcess.TotalProcessorTime;
-                _lastCheckTime = DateTime.UtcNow;
+                StartCpuBaseline(_currentProcess.TotalProcessorTime);
             }
             catch (Exception ex)
             {
@@ -732,20 +733,7 @@ namespace InfoPanel.Plugins.Host
             try
             {
                 proc.Refresh();
-                var now = DateTime.UtcNow;
-                var cpuTime = proc.TotalProcessorTime;
-                var elapsed = now - _lastCheckTime;
-
-                if (elapsed.TotalMilliseconds > 0)
-                {
-                    var cpuDelta = (cpuTime - _lastCpuTime).TotalMilliseconds;
-                    var cpuPercent = cpuDelta / (elapsed.TotalMilliseconds * Environment.ProcessorCount) * 100.0;
-
-                    _lastCpuTime = cpuTime;
-                    _lastCheckTime = now;
-
-                    return Math.Clamp(cpuPercent, 0, 100);
-                }
+                return CpuSample(proc.TotalProcessorTime);
             }
             catch (Exception ex)
             {
@@ -754,6 +742,36 @@ namespace InfoPanel.Plugins.Host
 
             return 0;
         }
+
+        internal void StartCpuBaseline(TimeSpan cpuTime)
+        {
+            _lastCpuTime = cpuTime;
+            _lastCheckStamp = _time.GetTimestamp();
+        }
+
+        /// <summary>The host's processor use since the last sample (or the baseline), given its total CPU time now.</summary>
+        internal double CpuSample(TimeSpan cpuTime)
+        {
+            // The monotonic clock, not the wall clock: a step of the wall clock changes no figure.
+            var now = _time.GetTimestamp();
+            var elapsed = _time.GetElapsedTime(_lastCheckStamp, now);
+            if (elapsed.TotalMilliseconds <= 0)
+                return 0;
+
+            var cpuPercent = CpuPercent(cpuTime - _lastCpuTime, elapsed);
+            _lastCpuTime = cpuTime;
+            _lastCheckStamp = now;
+            return cpuPercent;
+        }
+
+        /// <summary>
+        /// The host's processor use over <paramref name="elapsed"/>, per CPU: the CPU time it used in that wall time, in
+        /// percent, so 100 is one busy CPU and the figure can pass 100 (0 when no time passed, never below 0). It needs no
+        /// count of the machine's CPUs: the engine shows it as it counts its own CPU (per CPU off Windows, a share of every
+        /// CPU's on Windows) and clamps it there.
+        /// </summary>
+        internal static double CpuPercent(TimeSpan cpuTime, TimeSpan elapsed) =>
+            elapsed > TimeSpan.Zero ? Math.Max(0, cpuTime.TotalMilliseconds / elapsed.TotalMilliseconds * 100.0) : 0;
 
         /// <summary>
         /// A catalogue entry, cut as the engine cuts it (its name, a sensor's unit, a text, a table), with its value only
