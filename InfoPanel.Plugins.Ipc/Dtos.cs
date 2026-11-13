@@ -44,7 +44,7 @@ namespace InfoPanel.Plugins.Ipc
         public string Id { get; set; } = "";
         public string Name { get; set; } = "";
         /// <summary>
-        /// "sensor", "text", or "table"
+        /// "sensor", "text", "table" or "image"; an image is listed without its picture, which an update sends
         /// </summary>
         public string Type { get; set; } = "";
         public SensorValueDto? SensorValue { get; set; }
@@ -91,12 +91,20 @@ namespace InfoPanel.Plugins.Ipc
         public string ContainerId { get; set; } = "";
         public string EntryId { get; set; } = "";
         /// <summary>
-        /// "sensor", "text", or "table"
+        /// "sensor", "text", "table" or "image"
         /// </summary>
         public string Type { get; set; } = "";
         public SensorValueDto? SensorValue { get; set; }
         public string? TextValue { get; set; }
         public TableValueDto? TableValue { get; set; }
+        /// <summary>
+        /// An image's picture, its encoded bytes as the plugin gave them, as base64 text (<see cref="PictureText"/>), at
+        /// most <see cref="IpcLimits.ImageBytes"/>; null when it holds none. Text, not bytes, so that reading a message
+        /// decodes no picture: the engine decodes one only once it has admitted it, its size known from the text's length
+        /// first. An update with a picture is the only update of its message: a picture of 8 MiB is about 10.7 MiB as
+        /// base64, within the engine's 16 MiB but over the host's own share for a message of updates.
+        /// </summary>
+        public string? ImageValue { get; set; }
     }
 
     public class PluginPerformanceDto

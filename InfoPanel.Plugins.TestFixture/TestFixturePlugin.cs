@@ -6,7 +6,8 @@ namespace InfoPanel.TestFixture;
 /// <summary>
 /// The engine tests' plugin: a sensor, a text and a table in a container, a sensor in an ephemeral container, two actions
 /// (Reset counter; Report an error, which throws), and a setting of each type, its Label setting, when applied, becoming
-/// its Status text (a setting changing a reading live); <see cref="FixtureMode"/> makes it misbehave on request.
+/// its Status text (a setting changing a reading live); <see cref="FixtureMode"/> makes it misbehave on request, or adds a
+/// picture (<c>image</c>).
 /// </summary>
 public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
 {
@@ -16,6 +17,11 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
     private readonly PluginText _status = new("status", "Status", "ok");
     private readonly PluginTable _table;
     private readonly PluginSensor _ephemeral = new("eph-value", "Ephemeral", 7, "V");
+    private readonly PluginImage _cover = new("cover", "Cover");
+
+    /// <summary>The picture of the <c>image</c> mode's Cover entry: a 1 × 1 PNG.</summary>
+    public static readonly byte[] Pixel = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
     private readonly List<PluginSensor> _flood = [];
     private readonly Dictionary<string, object?> _settings = new()
     {
@@ -201,6 +207,14 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
             for (var i = 0; i < FixtureMode.Current.Texts; i++)
                 texts.Entries.Add(new PluginText($"t{i}", $"Text {i}", new string('x', 4096)));
             containers.Add(texts);
+        }
+
+        if (FixtureMode.Current.Image)
+        {
+            var pictures = new PluginContainer("pictures", "Pictures");
+            _cover.SetImage(Pixel);
+            pictures.Entries.Add(_cover);
+            containers.Add(pictures);
         }
 
         if (FixtureMode.Current.EmptyTables > 0)

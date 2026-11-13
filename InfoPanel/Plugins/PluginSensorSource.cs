@@ -1,8 +1,10 @@
 using System.Data;
+using System.Security.Cryptography;
 using InfoPanel.Enums;
 using InfoPanel.Models;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Sensors;
+using InfoPanel.Spec;
 
 namespace InfoPanel.Plugins;
 
@@ -33,11 +35,21 @@ public enum PluginHostState
 /// (unavailable when there is no such entry); any other key is left to the hub. Statuses follow the package's host:
 /// live while it runs, stale while it restarts, unavailable once it is off or failed. What a host sends is bounded
 /// (<see cref="PluginLimits"/>). Its state (<see cref="ISensorSourceState"/>) is running while the engine hosts plugins,
-/// off with <see cref="Disabled"/> when it doesn't (<c>--no-plugins</c>).
+/// off with <see cref="Disabled"/> when it doesn't (<c>--no-plugins</c>). A plugin's picture (<see cref="PluginImage"/>)
+/// is an image sensor: its reading the picture's reference, 16 hex digits of its SHA-256, its bytes held for
+/// <see cref="TryGetImage"/> once inspected as media; a picture is admitted, before anything is decoded, only for a listed
+/// image entry of its host and within the rates (<see cref="PluginLimits"/>); each entry keeps its current and its
+/// previous picture, a host at most <see cref="ImageBytesPerHost"/>, and they go with its readings.
 /// </summary>
-public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISensorSourceState
+public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISensorSourceState, ISensorImages
 {
     public const string SourceId = "plugins";
+
+    /// <summary>
+    /// The most bytes one host's pictures come to (64 MiB), each image entry's current and previous picture counted: past
+    /// it a new picture is refused, with one warning.
+    /// </summary>
+    public const long ImageBytesPerHost = 64 * 1024 * 1024;
 
     /// <summary>The engine hosts no plugins (<c>--no-plugins</c>): the source is off.</summary>
     public static readonly SourceReason Disabled = new("disabled", "Plugins are turned off for this engine");
@@ -55,13 +67,20 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
     private IReadOnlyList<SensorInfo> _list = [];
     private int _order;
 
+    private readonly TimeProvider _time;
+
     /// <param name="enabled">Whether the engine hosts plugins (<see cref="PluginOptions.Enabled"/>): off when it doesn't.</param>
-    public PluginSensorSource(PluginLimits? limits = null, ILogger<PluginSensorSource>? logger = null, bool enabled = true)
+    /// <param name="time">The clock the picture rates are kept by; the system's by default.</param>
+    public PluginSensorSource(PluginLimits? limits = null, ILogger<PluginSensorSource>? logger = null, bool enabled = true, TimeProvider? time = null)
     {
         State = enabled ? SourceState.Running : SourceState.OffBecause(Disabled);
         _limits = limits ?? PluginLimits.Default;
         _logger = (ILogger?)logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        _time = time ?? TimeProvider.System;
     }
+
+    /// <summary>Tests only: run between a picture's checks (outside the lock) and its commit.</summary>
+    internal Action? BeforePictureCommit { get; set; }
 
     public string Id => SourceId;
 
@@ -78,6 +97,19 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
         public HashSet<SensorKey> Warned { get; } = [];
         // (plugin id, container id, entry id), as updates name an entry → its key.
         public Dictionary<(string, string, string), SensorKey> Routes { get; } = [];
+        // The bytes its image entries' pictures come to, and the warnings given about them: each entry's, by rule, and
+        // the host's for passing ImageBytesPerHost.
+        public long ImageBytes { get; set; }
+        public HashSet<(SensorKey, string)> ImageWarned { get; } = [];
+        public bool ImageBytesWarned { get; set; }
+        // Its host's generation for pictures: a picture admitted in one is committed only in the same. A stop, a failure
+        // or a new catalogue starts another.
+        public long Epoch { get; set; }
+        // The rates its host's pictures are admitted within (wire bytes, pictures), made at its catalogue, and whether
+        // a refusal for them has been warned of.
+        public RateBucket? ImageWire { get; set; }
+        public RateBucket? ImageCount { get; set; }
+        public bool ImageRateWarned { get; set; }
     }
 
     private sealed class Entry(SensorInfo info, SensorKind kind, string folder, string pluginId)
@@ -88,7 +120,23 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
         public string PluginId { get; } = pluginId;
         public SensorReading Reading { get; set; }
         public bool HasReading { get; set; }
+        // An image entry's picture now and the one before it (an Image holds its last picture while a new one loads).
+        public Picture? Current { get; set; }
+        public Picture? Previous { get; set; }
+        // An image entry's own rate, and its turn: each picture admitted, or no picture, takes the next, and a picture is
+        // committed only while its turn is the last (so one admitted earlier never lands after a later one).
+        public RateBucket? ImageRate { get; set; }
+        public long Turn { get; set; }
     }
+
+    /// <summary>A picture admitted under the lock, to check outside it and commit if its host's generation and its entry's turn hold.</summary>
+    private sealed record Admitted(Entry Entry, long Turn, string Text);
+
+    /// <summary>A kept picture: its reference (16 hex digits of its SHA-256) and its bytes, as the host sent them.</summary>
+    private sealed record Picture(string Reference, byte[] Bytes);
+
+    /// <summary>A picture as it came, checked outside the lock: its reference and bytes, or the rule it breaks and the warning's words.</summary>
+    private readonly record struct PictureCheck(string? Reference, byte[]? Bytes, string? Rule, string? Problem);
 
     /// <summary>A plugin a host offered that wasn't taken, and why.</summary>
     public sealed record Refusal(string PluginId, string Reason);
@@ -139,7 +187,10 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
         }
     }
 
-    /// <summary>The package's host state, for its sensors' statuses.</summary>
+    /// <summary>
+    /// The package's host state, for its sensors' statuses. A stopped or failed host's pictures go with its readings: its
+    /// image sensors have none until a host of it sends them again.
+    /// </summary>
     public void SetState(string folder, PluginHostState state)
     {
         lock (_lock)
@@ -147,6 +198,12 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
             if (!_packages.TryGetValue(folder, out var package))
                 _packages[folder] = package = new Package(folder, _order++);
             package.State = state;
+            if (state is PluginHostState.Stopped or PluginHostState.Failed)
+            {
+                // A picture of its host still being checked is not committed: a new generation.
+                package.Epoch++;
+                DropPictures(package);
+            }
         }
     }
 
@@ -257,13 +314,22 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
         return refused;
     }
 
-    /// <summary>Applies changed values a package's host sent. Entries it didn't list at load (or that were left out) are ignored.</summary>
+    /// <summary>
+    /// Applies changed values a package's host sent. Entries it didn't list at load (or that were left out) are ignored.
+    /// An image entry's picture (base64 text) is admitted under the lock before anything is decoded (<see cref="Admit"/>:
+    /// a listed image entry of a host that isn't stopped or failed, its size from the text's length, the rates); it is
+    /// then decoded, inspected and hashed outside the lock, and committed (<see cref="TakePicture"/>) only if its host's
+    /// generation and its entry's turn still hold, so a stop, a failure or a new catalogue meanwhile drops it.
+    /// </summary>
     public void Update(string folder, IReadOnlyList<SensorUpdateBatchDto> batches)
     {
+        List<Admitted>? admitted = null;
+        long epoch;
         lock (_lock)
         {
             if (!_packages.TryGetValue(folder, out var package))
                 return;
+            epoch = package.Epoch;
             foreach (var batch in batches)
             {
                 if (batch?.PluginId is not { } pluginId || !package.PluginIds.Contains(pluginId))
@@ -274,6 +340,16 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
                         || !package.Routes.TryGetValue((pluginId, update.ContainerId ?? "", update.EntryId ?? ""), out var key)
                         || !_entries.TryGetValue(key, out var entry))
                         continue;
+                    if (entry.Kind == SensorKind.Image)
+                    {
+                        // Each picture or none takes the entry's next turn: an earlier picture of this message is superseded.
+                        entry.Turn++;
+                        if (update.ImageValue is not { } text)
+                            LetGo(package, entry);
+                        else if (Admit(package, entry, text))
+                            (admitted ??= []).Add(new Admitted(entry, entry.Turn, text));
+                        continue;
+                    }
                     if (ReadingOf(package, entry.Info.Key, entry.Kind, update.SensorValue, update.TextValue, update.TableValue) is { } reading)
                     {
                         entry.Reading = reading;
@@ -282,6 +358,68 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
                 }
             }
         }
+
+        if (admitted == null)
+            return;
+        var checks = admitted.Select(a => CheckPicture(a.Text)).ToList();
+        BeforePictureCommit?.Invoke();
+        lock (_lock)
+        {
+            if (!_packages.TryGetValue(folder, out var package) || package.Epoch != epoch)
+                return;
+            for (var i = 0; i < admitted.Count; i++)
+            {
+                var (entry, turn, _) = admitted[i];
+                if (entry.Turn == turn && _entries.TryGetValue(entry.Info.Key, out var now) && ReferenceEquals(now, entry))
+                    TakePicture(package, entry, checks[i]);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the picture <paramref name="text"/> for <paramref name="entry"/> is admitted, under the lock and before
+    /// anything is decoded: its host not stopped or failed (else ignored), at most <see cref="PluginImage.MaxBytes"/> by
+    /// the text's length (else refused, as no picture, with one warning for the entry), and within the entry's and the
+    /// host's rates (<see cref="PluginLimits"/>; else refused, as no picture, with one warning for the host). Admitted, it
+    /// counts against the rates.
+    /// </summary>
+    private bool Admit(Package package, Entry entry, string text)
+    {
+        if (package.State is PluginHostState.Stopped or PluginHostState.Failed)
+            return false;
+        if (PictureText.DecodedLength(text) > PluginImage.MaxBytes)
+        {
+            Refuse(package, entry, "size", $"its picture is over {PluginImage.MaxBytes / (1024 * 1024)} MiB; it is refused, as no picture");
+            return false;
+        }
+
+        var wire = text.Length + IpcLimits.ImageEnvelopeBytes;
+        entry.ImageRate ??= new RateBucket(_limits.ImageEntryBurst, 1, _time);
+        package.ImageWire ??= new RateBucket(_limits.ImageWireBurstBytes, _limits.ImageWireBytesPerSecond, _time);
+        package.ImageCount ??= new RateBucket(_limits.ImagesBurst, _limits.ImagesPerSecond, _time);
+        if (!entry.ImageRate.CanTake(1) || !package.ImageWire.CanTake(wire) || !package.ImageCount.CanTake(1))
+        {
+            if (!package.ImageRateWarned)
+            {
+                package.ImageRateWarned = true;
+                _logger.LogWarning("plugin {Folder}: its host sends pictures faster than the engine takes them; a picture past the rate is refused, as no picture",
+                    package.Folder);
+            }
+            LetGo(package, entry);
+            return false;
+        }
+        entry.ImageRate.Take(1);
+        package.ImageWire.Take(wire);
+        package.ImageCount.Take(1);
+        return true;
+    }
+
+    /// <summary>A picture refused by a rule of its own: the entry has none, with one warning for each entry and rule.</summary>
+    private void Refuse(Package package, Entry entry, string rule, string problem)
+    {
+        if (package.ImageWarned.Add((entry.Info.Key, rule)))
+            _logger.LogWarning("plugin {Folder}: {Key}: {What}", package.Folder, entry.Info.Key.ToString(), problem);
+        LetGo(package, entry);
     }
 
     /// <summary>The plugin ids the package's catalogue holds now.</summary>
@@ -358,6 +496,123 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
         package.Keys.Clear();
         package.PluginIds.Clear();
         package.Routes.Clear();
+        // Its pictures went with its entries; a picture still being checked isn't committed, and its next host's rates
+        // start afresh.
+        package.ImageBytes = 0;
+        package.Epoch++;
+        (package.ImageWire, package.ImageCount, package.ImageRateWarned) = (null, null, false);
+    }
+
+    /// <summary>
+    /// The bytes of the picture <paramref name="reference"/> names that the image sensor <paramref name="key"/> keeps now,
+    /// its current or its previous picture, as its host sent them (no copy); false for any other key or reference. Not a
+    /// use, and nothing is logged.
+    /// </summary>
+    public bool TryGetImage(SensorKey key, string reference, out ReadOnlyMemory<byte> bytes)
+    {
+        bytes = default;
+        lock (_lock)
+        {
+            if (!_entries.TryGetValue(key, out var entry) || entry.Kind != SensorKind.Image)
+                return false;
+            var picture = entry.Current?.Reference == reference ? entry.Current
+                : entry.Previous?.Reference == reference ? entry.Previous
+                : null;
+            if (picture == null)
+                return false;
+            bytes = picture.Bytes;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// An admitted picture as the engine takes it: base64 of at most <see cref="PluginImage.MaxBytes"/> (decoded only
+    /// then), and a PNG, JPEG, GIF or WebP within the media limits, inspected as an asset is (its header and structure,
+    /// nothing decoded; anything else, an SVG or a video, isn't inspected at all), its reference 16 hex digits of its
+    /// SHA-256; else the rule it breaks.
+    /// </summary>
+    private static PictureCheck CheckPicture(string text)
+    {
+        var bytes = PictureText.Decode(text, PluginImage.MaxBytes, out var tooLarge);
+        if (tooLarge)
+            return new(null, null, "size", $"its picture is over {PluginImage.MaxBytes / (1024 * 1024)} MiB; it is refused, as no picture");
+        const string NotMedia = "its picture isn't a PNG, JPEG, GIF or WebP within the media limits; it is refused, as no picture";
+        if (bytes == null)
+            return new(null, null, "media", NotMedia);
+        ReadOnlySpan<byte> b = bytes;
+        var looks = b.StartsWith((ReadOnlySpan<byte>)[0x89, 0x50, 0x4E, 0x47]) || b.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xD8])
+            || b.StartsWith("GIF8"u8) || (b.Length >= 12 && b.StartsWith("RIFF"u8) && b[8..12].SequenceEqual("WEBP"u8));
+        if (!looks || MediaValidator.Check(b) is not { Errors.Count: 0, Format: MediaFormat.Png or MediaFormat.Jpeg or MediaFormat.Gif or MediaFormat.WebP })
+            return new(null, null, "media", NotMedia);
+        return new(Convert.ToHexStringLower(SHA256.HashData(b))[..16], bytes, null, null);
+    }
+
+    /// <summary>
+    /// An image entry's admitted picture, checked. A picture is kept as the entry's current one, its current one becoming
+    /// the previous and the one before let go (a picture that was the previous one comes back by swapping the two); its
+    /// reading is the reference. One refused (over 8 MiB, not a picture, or one that would take the host past
+    /// <see cref="ImageBytesPerHost"/>) leaves the entry without one, unavailable, with one warning for each entry and
+    /// rule (the host's bound: one for the host).
+    /// </summary>
+    private void TakePicture(Package package, Entry entry, PictureCheck check)
+    {
+        if (check is not { Reference: { } reference, Bytes: { } bytes })
+        {
+            Refuse(package, entry, check.Rule!, check.Problem!);
+            return;
+        }
+
+        if (entry.Previous is { } previous && previous.Reference == reference)
+        {
+            (entry.Current, entry.Previous) = (previous, entry.Current);
+        }
+        else if (entry.Current?.Reference != reference)
+        {
+            var after = package.ImageBytes - (entry.Previous?.Bytes.Length ?? 0) + bytes.Length;
+            if (after > ImageBytesPerHost)
+            {
+                if (!package.ImageBytesWarned)
+                {
+                    package.ImageBytesWarned = true;
+                    _logger.LogWarning("plugin {Folder}: its pictures would pass {Max} MiB; a new picture is refused, as no picture, while they would",
+                        package.Folder, ImageBytesPerHost / (1024 * 1024));
+                }
+                LetGo(package, entry);
+                return;
+            }
+            package.ImageBytes = after;
+            (entry.Previous, entry.Current) = (entry.Current, new Picture(reference, bytes));
+        }
+
+        entry.Reading = new SensorReading(reference);
+        entry.HasReading = true;
+    }
+
+    /// <summary>The entry has no picture now: its current one is kept as the previous (an Image may still hold it), the one before let go.</summary>
+    private static void LetGo(Package package, Entry entry)
+    {
+        if (entry.Current is { } current)
+        {
+            package.ImageBytes -= entry.Previous?.Bytes.Length ?? 0;
+            (entry.Previous, entry.Current) = (current, null);
+        }
+        entry.Reading = default;
+        entry.HasReading = false;
+    }
+
+    /// <summary>Lets go of every picture the package's image entries keep: they read unavailable until their host sends pictures again.</summary>
+    private void DropPictures(Package package)
+    {
+        foreach (var key in package.Keys)
+        {
+            if (_entries.TryGetValue(key, out var entry) && entry.Kind == SensorKind.Image)
+            {
+                (entry.Current, entry.Previous) = (null, null);
+                entry.Reading = default;
+                entry.HasReading = false;
+            }
+        }
+        package.ImageBytes = 0;
     }
 
     private void Rebuild() =>
@@ -386,6 +641,7 @@ public sealed class PluginSensorSource : ISensorSource, ISensorStatusSource, ISe
     {
         "text" => SensorKind.Text,
         "table" => SensorKind.Table,
+        "image" => SensorKind.Image,
         _ => SensorKind.Number,
     };
 

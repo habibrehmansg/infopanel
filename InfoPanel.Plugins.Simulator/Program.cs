@@ -115,6 +115,11 @@ static string BuildScreen(IEnumerable<PluginWrapper> wrappers)
                 {
                     buffer.AppendLine($"---{table.Name}: {table.ToString()}");
                 }
+                else if (entry is IPluginImage image)
+                {
+                    // Its size only: InfoPanel 2.0 shows the picture; a console shows that there is one.
+                    buffer.AppendLine($"---{image.Name}: {(image.Value.IsEmpty ? "no picture" : $"a picture of {image.Value.Length} bytes")}");
+                }
             }
 
             buffer.AppendLine();

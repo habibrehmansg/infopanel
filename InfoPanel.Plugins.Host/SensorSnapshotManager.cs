@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Data;
+using System.Security.Cryptography;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
 using Serilog;
@@ -37,10 +38,195 @@ namespace InfoPanel.Plugins.Host
         /// <param name="reportCut">
         /// Told (plugin id, message) once per text or table that is cut to what the engine takes (<see cref="IpcLimits"/>).
         /// </param>
-        public SensorSnapshotManager(ILogger? logger = null, Action<string, string>? reportCut = null)
+        /// <param name="time">The clock the picture rates are kept by; the system's by default.</param>
+        public SensorSnapshotManager(ILogger? logger = null, Action<string, string>? reportCut = null, TimeProvider? time = null)
         {
             _logger = logger ?? Log.ForContext<SensorSnapshotManager>();
             _reportCut = reportCut;
+            _time = time ?? TimeProvider.System;
+            (_imageWire, _imageCount) = (WireBucket(), CountBucket());
+        }
+
+        private RateBucket WireBucket() => new(IpcLimits.ImageWireBurstBytes, IpcLimits.ImageWireBytesPerSecond, _time);
+
+        private RateBucket CountBucket() => new(IpcLimits.ImagesBurst, IpcLimits.ImagesPerSecond, _time);
+
+        private static readonly TimeSpan ImageInterval = TimeSpan.FromMilliseconds(IpcLimits.ImageIntervalMs);
+
+        private readonly TimeProvider _time;
+        // Per image entry key, under its own lock (with the rates below): what was read of it and when it may go.
+        private readonly Dictionary<string, ImageTrack> _images = [];
+        // The host's picture rates (IpcLimits): wire bytes and pictures, each with its burst.
+        private RateBucket _imageWire;
+        private RateBucket _imageCount;
+
+        /// <summary>Tests only: how many times a picture has been hashed.</summary>
+        internal int ImageHashes { get; private set; }
+
+        internal sealed class ImageTrack
+        {
+            // The picture read last, as the plugin holds it (never changed once given), and its SHA-256, taken once it may go.
+            public ReadOnlyMemory<byte> Seen;
+            public string? Hash;
+            // When its picture was last hashed: at most once an ImageInterval, whatever the plugin sets meanwhile.
+            public long? HashedAt;
+            // When a picture not yet delivered began to wait (a newer one keeps its place), and when the entry's last
+            // picture's send ended (its next may go an ImageInterval after).
+            public long? WaitingSince;
+            public long? SentAt;
+        }
+
+        /// <summary>
+        /// One image entry's change found by <see cref="GetChangedImages"/>: no picture (<see cref="IsPicture"/> false),
+        /// which goes with the readings, or a picture, which goes in a message of its own once <see cref="TryReserve"/>
+        /// has reserved it, and is released (<see cref="Release"/>) when its send ends.
+        /// </summary>
+        public sealed class ImageSend
+        {
+            internal ImageSend(string pluginId, string key, EntryUpdateDto update, ImageTrack? track)
+            {
+                (PluginId, Key, Update, Track) = (pluginId, key, update, track);
+            }
+
+            public string PluginId { get; }
+            public EntryUpdateDto Update { get; }
+            public bool IsPicture => Track != null;
+            internal string Key { get; }
+            internal ImageTrack? Track { get; }
+            internal long WireBytes { get; set; }
+        }
+
+        /// <summary>
+        /// The image entries' changes this cycle, in the order to send them: each no picture where one was delivered (a
+        /// picture over <see cref="PluginImage.MaxBytes"/> is left out, as no picture, with one warning), then each picture
+        /// new by its SHA-256 that may go: its entry's last send ended <see cref="IpcLimits.ImageIntervalMs"/> ago. Each
+        /// entry is read once; a picture is hashed at most once a second, the newest one set waiting meanwhile. Pictures
+        /// come in the order their entries began to wait, a waiting entry's newer picture in place of the one before,
+        /// which never goes. Nothing is reserved here: each picture is reserved alone, just before its send
+        /// (<see cref="TryReserve"/>). As with <see cref="GetChangedEntries"/>, each counts as delivered once
+        /// <see cref="MarkSent"/> confirms it.
+        /// </summary>
+        public List<ImageSend> GetChangedImages(IEnumerable<PluginWrapper> wrappers)
+        {
+            var clears = new List<ImageSend>();
+            var due = new List<(long Since, int Order, ImageSend Send)>();
+            lock (_images)
+            {
+                var now = _time.GetTimestamp();
+                foreach (var wrapper in wrappers)
+                {
+                    foreach (var container in wrapper.PluginContainers)
+                    {
+                        foreach (var entry in container.Entries)
+                        {
+                            if (entry is not IPluginImage image)
+                                continue;
+                            var key = Key(wrapper.Id, container.Id, entry.Id);
+                            if (!_images.TryGetValue(key, out var track))
+                                _images[key] = track = new ImageTrack();
+
+                            var bytes = image.Value;
+                            if (bytes.Length > PluginImage.MaxBytes)
+                            {
+                                ReportCut(wrapper.Id, key, $"Image '{entry.Id}' is over {PluginImage.MaxBytes / (1024 * 1024)} MiB; it is left out, as no picture");
+                                bytes = default;
+                            }
+                            // What was delivered: a picture's SHA-256, or null for none (the catalogue lists none).
+                            var delivered = _lastValues.TryGetValue(key, out var last) ? last as string : null;
+                            var update = new EntryUpdateDto { ContainerId = container.Id, EntryId = entry.Id, Type = "image" };
+
+                            if (bytes.IsEmpty)
+                            {
+                                (track.Seen, track.Hash, track.WaitingSince) = (default, null, null);
+                                if (delivered != null)
+                                {
+                                    _pending[key] = null;
+                                    clears.Add(new ImageSend(wrapper.Id, key, update, null));
+                                }
+                                continue;
+                            }
+
+                            if (!bytes.Equals(track.Seen))
+                                (track.Seen, track.Hash) = (bytes, null);
+                            if (track.Hash != null && track.Hash == delivered)
+                            {
+                                track.WaitingSince = null;
+                                continue;
+                            }
+                            track.WaitingSince ??= now;
+                            if (track.SentAt is { } sent && _time.GetElapsedTime(sent, now) < ImageInterval)
+                                continue;
+                            if (track.Hash == null)
+                            {
+                                // Hashed only once it may go, and at most once a second: a plugin that sets the same picture
+                                // again and again (a new array each time) costs one hash a second.
+                                if (track.HashedAt is { } hashed && _time.GetElapsedTime(hashed, now) < ImageInterval)
+                                    continue;
+                                track.Hash = Convert.ToHexString(SHA256.HashData(bytes.Span));
+                                track.HashedAt = now;
+                                ImageHashes++;
+                            }
+                            if (track.Hash == delivered)
+                            {
+                                track.WaitingSince = null;
+                                continue;
+                            }
+                            due.Add((track.WaitingSince.Value, due.Count, new ImageSend(wrapper.Id, key, update, track)));
+                        }
+                    }
+                }
+            }
+
+            clears.AddRange(due.OrderBy(d => d.Since).ThenBy(d => d.Order).Select(d => d.Send));
+            return clears;
+        }
+
+        /// <summary>
+        /// Reserves a picture of <see cref="GetChangedImages"/> to send now and gives its update the picture (base64): only
+        /// when its entry's last send ended a second ago and the host's rates have room for it now (its wire bytes and one
+        /// picture, <see cref="IpcLimits"/>); else false, and it waits (the cycle sends no more pictures). No picture needs
+        /// no reservation. A reserved picture counts against the rates whether or not its send succeeds.
+        /// </summary>
+        public bool TryReserve(ImageSend send)
+        {
+            if (send.Track is not { } track)
+                return true;
+            ReadOnlyMemory<byte> bytes;
+            lock (_images)
+            {
+                var now = _time.GetTimestamp();
+                if (track.SentAt is { } sent && _time.GetElapsedTime(sent, now) < ImageInterval)
+                    return false;
+                bytes = track.Seen;
+                // Its wire bytes: the base64 and the message around it, by the estimate the readings' messages are sized by
+                // when its ids make that more than the allowance.
+                var envelope = JsonSize.MessageFixed + JsonSize.BatchFixed + JsonSize.Of(send.PluginId) + JsonSize.Of(send.Update) + 2;
+                send.WireBytes = IpcLimits.ImageWireBytes(bytes.Length) + Math.Max(0, envelope - IpcLimits.ImageEnvelopeBytes);
+                if (!_imageWire.CanTake(send.WireBytes) || !_imageCount.CanTake(1))
+                    return false;
+                _imageWire.Take(send.WireBytes);
+                _imageCount.Take(1);
+                track.WaitingSince = null;
+                _pending[send.Key] = track.Hash;
+            }
+            send.Update.ImageValue = PictureText.Encode(bytes.Span);
+            return true;
+        }
+
+        /// <summary>
+        /// A reserved picture's send ended (sent or not): its reservation was held through the send, so the host's rates
+        /// fill again, and its entry's second runs, only from now.
+        /// </summary>
+        public void Release(ImageSend send)
+        {
+            if (send.Track is not { } track)
+                return;
+            lock (_images)
+            {
+                track.SentAt = _time.GetTimestamp();
+                _imageWire.Hold();
+                _imageCount.Hold();
+            }
         }
 
         public List<EntryUpdateDto> GetChangedEntries(PluginWrapper wrapper)
@@ -259,6 +445,11 @@ namespace InfoPanel.Plugins.Host
             _keyCache.Clear();
             _skipStreaks.Clear();
             _cutReported.Clear();
+            lock (_images)
+            {
+                _images.Clear();
+                (_imageWire, _imageCount) = (WireBucket(), CountBucket());
+            }
         }
     }
 }

@@ -78,6 +78,54 @@ public sealed class PluginEngineTests : IDisposable
         Assert.True(File.Exists(Path.Combine(factory.DataDir, "plugin-settings", "InfoPanel.TestFixture", "test-fixture.json")));
     }
 
+    // The test plugin's picture (its image mode: a 1 × 1 PNG in an image entry) is an image sensor: listed as one, its
+    // reading the picture's reference, its bytes answered by the picture request, as they are, also while its host
+    // restarts and after.
+    [Fact]
+    public async Task The_test_plugins_picture_is_an_image_sensor_answered_by_the_picture_request_also_across_a_restart()
+    {
+        const string cover = "plugin:/test-fixture/pictures/cover";
+        using var factory = new EngineFactory();
+        using var engine = WithPlugins(factory, PluginFixtures.CopyFixture(Path.Combine(_root, "bundled"), "image"));
+        using var client = Client(engine);
+        await Listed(client);
+        JsonElement[] sensors = [];
+        await Until(async () =>
+        {
+            sensors = (await client.GetFromJsonAsync<JsonElement[]>("/api/sensors", Ct))!;
+            return sensors.Any(s => s.GetProperty("key").GetString() == cover && s.GetProperty("status").GetString() == "live");
+        }, "the test plugin's picture is listed, live");
+
+        var listed = sensors.Single(s => s.GetProperty("key").GetString() == cover);
+        Assert.Equal(("image", "Test Fixture › Pictures", PluginSensorSource.SourceId),
+            (listed.GetProperty("type").GetString(), listed.GetProperty("group").GetString(), listed.GetProperty("source").GetString()));
+        var values = (await client.GetFromJsonAsync<JsonElement[]>("/api/sensors/values", Ct))!.ToDictionary(v => v.GetProperty("key").GetString()!);
+        var reference = values[cover].GetProperty("text").GetString()!;
+        Assert.Equal(PluginPictures.ReferenceOf(PluginPictures.Pixel), reference);
+        await AssertPicture(client, cover, reference);
+
+        var hub = engine.Services.GetRequiredService<SensorHub>();
+        var runner = Assert.Single(engine.Services.GetRequiredService<PluginHostManager>().Runners);
+        var first = runner.ProcessId!.Value;
+        using (var host = Process.GetProcessById(first))
+            host.Kill();
+        var key = SensorKey.Plugin("/test-fixture/pictures/cover");
+        await Until(() => runner.ProcessId is { } pid && pid != first && hub.GetStatus(key) == SensorStatus.Live, "a new host runs and its picture is live again");
+
+        Assert.Equal(reference, hub.ReadState(key).Reading.ValueText);
+        await AssertPicture(client, cover, reference);
+    }
+
+    /// <summary>The picture request answers the test plugin's PNG under <paramref name="reference"/>, as it is, not to be stored.</summary>
+    private static async Task AssertPicture(HttpClient client, string key, string reference)
+    {
+        using var answer = await client.GetAsync($"/api/sensors/image?key={Uri.EscapeDataString(key)}&ref={reference}", Ct);
+        Assert.Equal(System.Net.HttpStatusCode.OK, answer.StatusCode);
+        Assert.Equal("image/png", answer.Content.Headers.ContentType?.MediaType);
+        Assert.True(answer.Headers.CacheControl?.NoStore);
+        Assert.Equal(PluginPictures.Pixel, await answer.Content.ReadAsByteArrayAsync(Ct));
+    }
+
     [Fact]
     public async Task A_killed_host_comes_back_and_its_sensors_are_stale_meanwhile_and_stopping_the_engine_ends_it()
     {

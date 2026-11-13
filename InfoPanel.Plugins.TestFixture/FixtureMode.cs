@@ -24,6 +24,7 @@ namespace InfoPanel.TestFixture;
 /// columns (2 each by default) of text cells N characters long (16 by default), when any of the three is given.</item>
 /// <item><c>spew-bytes=N</c>: once started, N bytes to stdout and N to stderr with no newline, then <c>spew-end</c> on
 /// stderr, and the plugin runs on.</item>
+/// <item><c>image</c>: a picture, a 1 × 1 PNG, in an image entry (<c>cover</c>) in a container of its own (<c>pictures</c>).</item>
 /// </list>
 /// </summary>
 public sealed class FixtureMode
@@ -50,6 +51,7 @@ public sealed class FixtureMode
     public int? TableRows { get; private init; }
     public int? TableColumns { get; private init; }
     public int? TableCellChars { get; private init; }
+    public bool Image { get; private init; }
 
     private static FixtureMode Load()
     {
@@ -85,6 +87,7 @@ public sealed class FixtureMode
             TableRows = Number("table-rows"),
             TableColumns = Number("table-columns"),
             TableCellChars = Number("table-cell-chars"),
+            Image = settings.ContainsKey("image"),
         };
     }
 }

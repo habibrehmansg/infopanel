@@ -25,6 +25,28 @@ public sealed record PluginLimits
     /// <summary>The most bytes those calls may come to (32 MiB, two of the largest message); more closes the connection.</summary>
     public long PendingBytes { get; init; } = 32 * 1024 * 1024;
 
+    /// <summary>
+    /// A host's pictures' wire bytes a second the engine admits (<see cref="IpcLimits.ImageWireBytesPerSecond"/>), with
+    /// <see cref="ImageWireBurstBytes"/> at once; past them a picture is refused before it is decoded, with one warning
+    /// for the host.
+    /// </summary>
+    public long ImageWireBytesPerSecond { get; init; } = IpcLimits.ImageWireBytesPerSecond;
+
+    /// <summary>
+    /// The wire bytes of a host's pictures the engine admits at once (22 MiB): the host's burst and
+    /// <see cref="IpcLimits.ImageStallSeconds"/> of its rate, which a stall can hold back and hand over at once.
+    /// </summary>
+    public long ImageWireBurstBytes { get; init; } = IpcLimits.ImageWireBurstBytes + IpcLimits.ImageStallSeconds * IpcLimits.ImageWireBytesPerSecond;
+
+    /// <summary>A host's pictures a second the engine admits, with <see cref="ImagesBurst"/> at once.</summary>
+    public int ImagesPerSecond { get; init; } = IpcLimits.ImagesPerSecond;
+
+    /// <summary>A host's pictures the engine admits at once (96): the host's burst and the stall's.</summary>
+    public int ImagesBurst { get; init; } = IpcLimits.ImagesBurst + IpcLimits.ImageStallSeconds * IpcLimits.ImagesPerSecond;
+
+    /// <summary>An entry's pictures the engine admits at once (6), one a second past them: the host's one and the stall's.</summary>
+    public int ImageEntryBurst { get; init; } = 1 + IpcLimits.ImageStallSeconds;
+
     /// <summary>The most entries (sensors, texts, tables) one host's plugins list; the rest are left out.</summary>
     public int EntriesPerHost { get; init; } = 16_384;
 

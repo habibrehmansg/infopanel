@@ -569,6 +569,10 @@ namespace InfoPanel.Plugins.Host
             // JsonSize's estimate): the engine closes a host that sends one over its limit. Every update fits a message:
             // texts, units and tables are cut to the engine's limits before they are compared (SensorSnapshotManager).
             // Only ids aren't, and the engine refuses a plugin that lists a longer one than it takes.
+            // The pictures (PluginImage) are read first: an entry that no longer holds one goes with the readings, as a
+            // reading does, and each picture after them, in a message of its own.
+            var images = _snapshotManager.GetChangedImages(_wrappers.Where(w => w.IsLoaded));
+            var cleared = images.Where(i => !i.IsPicture).ToLookup(i => i.PluginId, i => i.Update, StringComparer.Ordinal);
             batches.Clear();
             var bytes = JsonSize.MessageFixed;
 
@@ -577,7 +581,7 @@ namespace InfoPanel.Plugins.Host
                 if (!wrapper.IsLoaded) continue;
 
                 SensorUpdateBatchDto? batch = null;
-                foreach (var update in _snapshotManager.GetChangedEntries(wrapper))
+                foreach (var update in _snapshotManager.GetChangedEntries(wrapper).Concat(cleared[wrapper.Id]))
                 {
                     var size = JsonSize.Of(update);
                     var batchSize = batch == null ? JsonSize.BatchFixed + JsonSize.Of(wrapper.Id) : 0;
@@ -600,8 +604,30 @@ namespace InfoPanel.Plugins.Host
                 }
             }
 
-            if (batches.Count > 0)
-                await SendAsync(batches, token);
+            if (batches.Count > 0 && !await SendAsync(batches, token))
+                return;
+
+            // Then the pictures, each in a message of its own: an 8 MiB picture is about 10.7 MiB as base64, within the
+            // engine's limit but over this host's share for a message of updates. Each is reserved within the rates
+            // (IpcLimits) just before its send and held through it, so a send that stalls delays the rest.
+            foreach (var picture in images)
+            {
+                if (!picture.IsPicture)
+                    continue;
+                if (!_snapshotManager.TryReserve(picture))
+                    break;
+                bool sent;
+                try
+                {
+                    sent = await SendAsync([new SensorUpdateBatchDto { PluginId = picture.PluginId, Updates = [picture.Update] }], token);
+                }
+                finally
+                {
+                    _snapshotManager.Release(picture);
+                }
+                if (!sent)
+                    return;
+            }
         }
 
         /// <summary>
@@ -724,6 +750,11 @@ namespace InfoPanel.Plugins.Host
             {
                 dto.Type = "table";
                 dto.TableValue = TableDtoConverter.Convert(table, IpcLimits.HostTableBytes).Table;
+            }
+            else if (entry is IPluginImage)
+            {
+                // Listed without its picture: the first cycle sends it, in a message of its own.
+                dto.Type = "image";
             }
 
             if (JsonSize.Of(dto) > budget)
