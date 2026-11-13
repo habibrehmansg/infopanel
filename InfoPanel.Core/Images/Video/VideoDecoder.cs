@@ -65,14 +65,18 @@ internal sealed unsafe class VideoDecoder : IDisposable
     internal const int Threads = 2;
 
     /// <summary>
-    /// The most pixels a picture of a video may have, from the size its container states: each side 64 pixels longer
-    /// (a picture's edges and row alignment), rounded up to 64, and at least 320 rows (MPEG-4's scratch buffers are 280
-    /// rows of a picture's width, and FFmpeg holds them to the same cap). The decoder allocates no larger picture, and
-    /// its memory is reserved for pictures of this size (<see cref="VideoPlayer.WorkingSet"/>).
+    /// The most pixels a picture of a video may have, from the size its container states: the larger of the picture
+    /// with each side rounded up to 64 and 64 pixels longer (the coded size and row alignment), and MPEG-4's scratch
+    /// buffers, which FFmpeg holds to the same cap: 280 rows of a frame's luma row in bytes plus 64. That row is widest
+    /// with 64-byte alignment (an AVX-512 build) and 2 bytes a sample (MPEG-4's 10-bit profile): twice the width
+    /// rounded up to 64. The decoder allocates no larger picture, and its memory is reserved for pictures of this size
+    /// (<see cref="VideoPlayer.WorkingSet"/>).
     /// </summary>
-    internal static long PictureArea(MediaInfo info) => Padded(info.Width) * Math.Max(Padded(info.Height), 320);
+    internal static long PictureArea(MediaInfo info) => Math.Max(Padded(info.Width) * Padded(info.Height), ScratchRows(info.Width));
 
     private static long Padded(int side) => ((long)Math.Max(1, side) + 64 + 63) / 64 * 64;
+
+    private static long ScratchRows(int width) => (2 * (((long)Math.Max(1, width) + 63) / 64 * 64) + 64) * 280;
 
     private VideoDecoder(FFmpeg f, Stream stream, MediaInfo probe, int width, int height)
     {
