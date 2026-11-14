@@ -1,11 +1,13 @@
 name: Release
 
 # InfoPanel 2's installers (docs/2.0/packaging.md, "Releases"). A pushed tag that is a bare 2.x version (2.0.0-beta.1)
-# on a 2.0.x commit builds the macOS disk image and the Windows setup, smoke-runs each, and attaches both with
-# SHA256SUMS to a draft release for that tag, which is published by hand. A run started by hand, or a push to 2.0.x that
-# changes packaging, is a dry run: the same builds, kept as the run's artifacts only, stamped 2.0.0-dev.ci.<run number>
-# (or the version given). The web client's origin is the repository variable INFOPANEL_ALLOW_ORIGIN. Nothing here
-# creates a tag, signs or publishes.
+# on a 2.0.x commit builds the macOS disk image, the Windows setup (with FFmpeg's Windows DLLs, built in their own job)
+# and the Linux .deb and tarball (amd64 and arm64), smoke-runs each, and attaches them, the bundled libraries' source
+# tarballs and SHA256SUMS to a draft release for that tag, which is published by hand. A run started by hand, or a push
+# to 2.0.x that changes packaging, is a dry run: the same builds, kept as the run's artifacts only, stamped
+# 2.0.0-dev.ci.<run number> (or the version given). The web client's origin is the repository variable
+# INFOPANEL_ALLOW_ORIGIN; the address crash reports go to, the optional repository variable INFOPANEL_SENTRY_DSN (without
+# it a build sends none). Nothing here creates a tag, signs or publishes.
 on:
   push:
     tags: ['2.*']
@@ -55,7 +57,10 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           ALLOW_ORIGIN: ${{ vars.INFOPANEL_ALLOW_ORIGIN }}
-        run: bash packaging/macos/build.sh --check-args --version "$VERSION" --allow-origin "$ALLOW_ORIGIN" --out unused
+          CRASH_REPORTS_DSN: ${{ vars.INFOPANEL_SENTRY_DSN }}
+        run: |
+          bash packaging/macos/build.sh --check-args --version "$VERSION" --allow-origin "$ALLOW_ORIGIN" --crash-reports-dsn "$CRASH_REPORTS_DSN" --out unused
+          bash packaging/linux/build.sh --check-args --version "$VERSION" --allow-origin "$ALLOW_ORIGIN" --crash-reports-dsn "$CRASH_REPORTS_DSN" --arch amd64 --out unused
 
   mac:
     needs: prepare
@@ -64,6 +69,7 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       ALLOW_ORIGIN: ${{ vars.INFOPANEL_ALLOW_ORIGIN }}
+      CRASH_REPORTS_DSN: ${{ vars.INFOPANEL_SENTRY_DSN }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -72,9 +78,18 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+      - name: FFmpeg's build tools
+        # packaging/macos/build.sh builds FFmpeg and dav1d from their pinned sources (native/ffmpeg/build.sh).
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: brew install meson ninja pkgconf
       - name: Build the app and its disk image
         # The output folder is outside the checkout, so the build isn't recorded as -dirty.
-        run: packaging/macos/build.sh --version "$VERSION" --allow-origin "$ALLOW_ORIGIN" --out "$RUNNER_TEMP/mac"
+        run: packaging/macos/build.sh --version "$VERSION" --allow-origin "$ALLOW_ORIGIN" --crash-reports-dsn "$CRASH_REPORTS_DSN" --out "$RUNNER_TEMP/mac"
+      - name: Crash reports in this build
+        run: |
+          if [ -n "$CRASH_REPORTS_DSN" ]; then echo "Crash reports: on" >> "$GITHUB_STEP_SUMMARY"; else echo "Crash reports: off in this build" >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Smoke run
         run: |
           set -euo pipefail
@@ -129,15 +144,68 @@ jobs:
           echo "Smoke: engineBuild $build (expected $expected_build)"
           [ "$version" = "$VERSION" ] || { echo "::error::engineVersion is $version, not $VERSION"; exit 1; }
           [ "$build" = "$expected_build" ] || { echo "::error::engineBuild is $build, not $expected_build (a -dirty build, or another commit)"; exit 1; }
+          # The bundled FFmpeg loaded: the scene format lists media.video and the providers rtsp (spec/docs/api.md, Session).
+          video="$(jq -r '.formatSupport["infopanel.scene/1"].capabilities | index("media.video") != null' <<< "$session")"
+          rtsp="$(jq -r '.media.providers | index("rtsp") != null' <<< "$session")"
+          echo "Smoke: media.video $video, rtsp $rtsp (expected true, true)"
+          if [ "$video" != true ] || [ "$rtsp" != true ]; then
+            grep -i ffmpeg "$smoke/engine.log" || true
+            echo "::error::The bundled FFmpeg didn't load"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: mac
           path: ${{ runner.temp }}/mac/InfoPanel-${{ needs.prepare.outputs.version }}-mac-arm64.dmg
           if-no-files-found: error
           retention-days: 14
+      - name: The bundled libraries' sources
+        # The exact release tarballs the app's libraries were built from (FFmpeg's, dav1d's, libusb's), checked against
+        # their pins by the build; the release attaches them beside the downloads.
+        run: |
+          set -euo pipefail
+          sources="$RUNNER_TEMP/sources"
+          mkdir "$sources"
+          cp "$RUNNER_TEMP"/mac/ffmpeg/source/*.tar.xz "$RUNNER_TEMP"/mac/libusb/work/libusb-*.tar.bz2 "$sources/"
+          ls -l "$sources"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sources
+          path: ${{ runner.temp }}/sources/
+          if-no-files-found: error
+          retention-days: 14
+
+  ffmpeg-windows:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Build FFmpeg's Windows DLLs
+        # native/ffmpeg/build.sh --target windows-x64 in its pinned container (native/ffmpeg/windows-cross.Dockerfile),
+        # from the sources native/ffmpeg/pins.txt pins; then its checks again on what it built (--verify).
+        run: |
+          set -euo pipefail
+          docker build -f native/ffmpeg/windows-cross.Dockerfile -t ffmpeg-cross native/ffmpeg
+          mkdir "$RUNNER_TEMP/ffmpeg-win"
+          docker run --rm -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/ffmpeg-win:/out" ffmpeg-cross \
+            /src/native/ffmpeg/build.sh --target windows-x64 --out /out/build
+          docker run --rm -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/ffmpeg-win:/out:ro" ffmpeg-cross \
+            /src/native/ffmpeg/build.sh --target windows-x64 --verify /out/build
+          ls -l "$RUNNER_TEMP/ffmpeg-win/build/bundle"
+      - uses: actions/upload-artifact@v7
+        # The four DLLs and the two licence texts, what build.ps1 takes as -FFmpegDir.
+        with:
+          name: ffmpeg-windows
+          path: ${{ runner.temp }}/ffmpeg-win/build/bundle/
+          if-no-files-found: error
+          retention-days: 1
 
   windows:
-    needs: prepare
+    needs: [prepare, ffmpeg-windows]
     # Pinned: its image carries Inno Setup 6 (installed below when it doesn't).
     runs-on: windows-2022
     timeout-minutes: 60
@@ -147,6 +215,7 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       ALLOW_ORIGIN: ${{ vars.INFOPANEL_ALLOW_ORIGIN }}
+      CRASH_REPORTS_DSN: ${{ vars.INFOPANEL_SENTRY_DSN }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -164,11 +233,18 @@ jobs:
           }
           if (-not (Test-Path -LiteralPath $iscc)) { throw "Inno Setup 6's compiler isn't at $iscc." }
           Write-Host "Inno Setup: $iscc"
+      - uses: actions/download-artifact@v8
+        with:
+          name: ffmpeg-windows
+          path: ${{ runner.temp }}\ffmpeg-win
       - name: Build the setup
         # The output folder is outside the checkout, so the build isn't recorded as -dirty.
         run: |
+          # Passed only when set: an empty native argument would make -Out bind as the address.
+          $crash = @()
+          if ($env:CRASH_REPORTS_DSN) { $crash = @('-CrashReportsDsn', $env:CRASH_REPORTS_DSN) }
           powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1 `
-            -Version $env:VERSION -AllowOrigin $env:ALLOW_ORIGIN -Out "$env:RUNNER_TEMP\win"
+            -Version $env:VERSION -AllowOrigin $env:ALLOW_ORIGIN -FFmpegDir "$env:RUNNER_TEMP\ffmpeg-win" @crash -Out "$env:RUNNER_TEMP\win"
           if ($LASTEXITCODE -ne 0) { throw "build.ps1 exited $LASTEXITCODE." }
       - name: Smoke run
         run: |
@@ -216,6 +292,15 @@ jobs:
           Write-Host "Smoke: engineBuild $($session.engineBuild) (expected $expectedBuild)"
           if ($session.engineVersion -cne $env:VERSION) { Write-Host "::error::engineVersion is $($session.engineVersion), not $env:VERSION"; exit 1 }
           if ($session.engineBuild -cne $expectedBuild) { Write-Host "::error::engineBuild is $($session.engineBuild), not $expectedBuild (a -dirty build, or another commit)"; exit 1 }
+          # The bundled FFmpeg loaded: the scene format lists media.video and the providers rtsp (spec/docs/api.md, Session).
+          $video = @($session.formatSupport.'infopanel.scene/1'.capabilities) -contains 'media.video'
+          $rtsp = @($session.media.providers) -contains 'rtsp'
+          Write-Host "Smoke: media.video $video, rtsp $rtsp (expected True, True)"
+          if (-not ($video -and $rtsp)) {
+            Select-String -Path (Join-Path $smoke 'engine.log'), (Join-Path $smoke 'engine.err.log') -Pattern 'FFmpeg' -ErrorAction SilentlyContinue | ForEach-Object { $_.Line }
+            Write-Host "::error::The bundled FFmpeg didn't load"
+            exit 1
+          }
       - uses: actions/upload-artifact@v7
         with:
           name: windows
@@ -223,8 +308,55 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  linux:
+    needs: prepare
+    # Each architecture on its own runner, so the smoke run is native.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      ALLOW_ORIGIN: ${{ vars.INFOPANEL_ALLOW_ORIGIN }}
+      CRASH_REPORTS_DSN: ${{ vars.INFOPANEL_SENTRY_DSN }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      # This job's actions are pinned to full commit SHAs (the release's tag beside each), so a moved tag can't change
+      # what runs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      - name: Build the tarball and the .deb
+        # The output folder is outside the checkout, so the build isn't recorded as -dirty.
+        run: packaging/linux/build.sh --version "$VERSION" --allow-origin "$ALLOW_ORIGIN" --crash-reports-dsn "$CRASH_REPORTS_DSN" --arch "$ARCH" --out "$RUNNER_TEMP/linux"
+      - name: Smoke run
+        # In a clean Ubuntu container: install, a headless start that must report the version and this commit and keep
+        # the time in Europe/Berlin, a stop with exit code 0, then the removal and the purge (packaging/linux/smoke.sh).
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$RUNNER_TEMP/linux:/pkg:ro" -v "$GITHUB_WORKSPACE/packaging/linux:/smoke:ro" ubuntu:24.04 \
+            bash /smoke/smoke.sh "/pkg/InfoPanel-$VERSION-linux-$ARCH.deb" "$VERSION" "$(git rev-parse --short=7 HEAD)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/linux/InfoPanel-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.deb
+            ${{ runner.temp }}/linux/InfoPanel-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
   release:
-    needs: [prepare, mac, windows]
+    needs: [prepare, mac, windows, linux]
     if: needs.prepare.outputs.mode == 'release'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -249,13 +381,39 @@ jobs:
         with:
           name: windows
           path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: sources
+          path: dist
+      # Pinned to a full commit SHA (its release's tag beside it), as the linux job's actions are.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: linux-*
+          merge-multiple: true
+          path: dist
       - name: Draft release
         run: |
           set -euo pipefail
           dmg="InfoPanel-$TAG-mac-arm64.dmg"
           setup="InfoPanel-$TAG-win-x64-setup.exe"
-          [ -f "dist/$dmg" ] && [ -f "dist/$setup" ] || { echo "::error::dist lacks $dmg or $setup"; ls -l dist; exit 1; }
-          (cd dist && sha256sum "$dmg" "$setup" > SHA256SUMS)
+          linux=("InfoPanel-$TAG-linux-amd64.deb" "InfoPanel-$TAG-linux-amd64.tar.gz" "InfoPanel-$TAG-linux-arm64.deb" "InfoPanel-$TAG-linux-arm64.tar.gz")
+          for file in "$dmg" "$setup" "${linux[@]}"; do
+            [ -f "dist/$file" ] || { echo "::error::dist lacks $file"; ls -l dist; exit 1; }
+          done
+          # The bundled libraries' release sources, each the pinned one (native/ffmpeg/pins.txt, native/libusb/pins.txt).
+          pin() { sed -n "s/^$2=//p" "$1"; }
+          sources=()
+          for s in "ffmpeg-$(pin native/ffmpeg/pins.txt ffmpeg_version).tar.xz native/ffmpeg/pins.txt ffmpeg_source_sha256" \
+                   "dav1d-$(pin native/ffmpeg/pins.txt dav1d_version).tar.xz native/ffmpeg/pins.txt dav1d_source_sha256" \
+                   "libusb-$(pin native/libusb/pins.txt version).tar.bz2 native/libusb/pins.txt source_sha256"; do
+            read -r file pins key <<< "$s"
+            expected="$(pin "$pins" "$key")"
+            [ -f "dist/$file" ] || { echo "::error::dist lacks $file"; ls -l dist; exit 1; }
+            actual="$(sha256sum "dist/$file" | cut -d ' ' -f 1)"
+            [ -n "$expected" ] && [ "$actual" = "$expected" ] || { echo "::error::$file's SHA-256 is $actual, not the pinned $expected"; exit 1; }
+            sources+=("$file")
+          done
+          (cd dist && sha256sum "$dmg" "$setup" "${linux[@]}" "${sources[@]}" > SHA256SUMS)
           cat dist/SHA256SUMS
 
           # A release is never reused: if one exists for this tag, a draft or a published one, this run writes nothing.
@@ -287,7 +445,7 @@ jobs:
           # The draft and its files in one call: no upload to an existing release, nothing replaced.
           flags=(--draft --verify-tag --title "InfoPanel $TAG" --notes-file packaging/release-notes.md)
           [ "$PRERELEASE" != "true" ] || flags+=(--prerelease)
-          gh release create "$TAG" "${flags[@]}" "dist/$dmg" "dist/$setup" dist/SHA256SUMS
+          gh release create "$TAG" "${flags[@]}" "dist/$dmg" "dist/$setup" "${linux[@]/#/dist/}" "${sources[@]/#/dist/}" dist/SHA256SUMS
 
           {
             echo "### InfoPanel $TAG"

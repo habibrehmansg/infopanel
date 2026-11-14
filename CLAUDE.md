@@ -54,8 +54,8 @@ packaging/linux/build.sh --version 2.0.0-beta.1 --allow-origin https://client.ex
 # FFmpeg's decode-only libraries alone, from the pinned sources (<dir>/bundle; windows-x64 in native/ffmpeg/windows-cross.Dockerfile's container)
 native/ffmpeg/build.sh --target macos-arm64 --out <dir> [--source ffmpeg-9.0.2.tar.xz] [--dav1d-source dav1d-1.5.4.tar.xz]
 INFOPANEL_FFMPEG_DIR=<dir>/bundle dotnet test InfoPanel.slnx --filter "FullyQualifiedName~Video|FullyQualifiedName~Rtsp|FullyQualifiedName~SceneGoldenTests"
-# Windows installer (on Windows, with Inno Setup 6): InfoPanel-<version>-win-x64-setup.exe in a new folder (docs/2.0/packaging.md)
-powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1 -Version 2.0.0-beta.1 -AllowOrigin https://client.example -Out C:\builds\2.0.0-beta.1
+# Windows installer (on Windows, with Inno Setup 6; -FFmpegDir is native/ffmpeg/build.sh --target windows-x64's bundle): InfoPanel-<version>-win-x64-setup.exe in a new folder (docs/2.0/packaging.md)
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1 -Version 2.0.0-beta.1 -AllowOrigin https://client.example -FFmpegDir <dir>\bundle -Out C:\builds\2.0.0-beta.1
 gh workflow run release.yml --ref 2.0.x [-f version=2.0.0-beta.1]   # both on GitHub, a dry run's artifacts, once the workflow has run on 2.0.x (the Actions page's Run workflow button may not show while the default branch is 1.4.x); a pushed 2.x tag makes a draft release (docs/2.0/packaging.md, Releases)
 ```
 

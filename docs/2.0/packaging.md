@@ -5,13 +5,14 @@ self-contained publish of the engine into the download. The scripts name no web 
 client's origin are arguments, and the origin is built in as `--allow-origin`'s default (`InfoPanelAllowOrigin`, see
 the security model in `CLAUDE.md`), so the engine opens that web client from Open Editor without any flag.
 
-The downloads carry the engine and libusb-1.0 (USB panels, [panels.md](panels.md)), and the Mac app FFmpeg's four
-decode-only libraries (video files and RTSP cameras, [video.md](video.md)); no web client (`wwwroot`). libusb is pinned by
+The downloads carry the engine, libusb-1.0 (USB panels, [panels.md](panels.md)) and FFmpeg's four decode-only
+libraries (video files and RTSP cameras, [video.md](video.md)); no web client (`wwwroot`). libusb is pinned by
 version and SHA-256 in `native/libusb/pins.txt` and comes from libusb's own release: the Mac app's `libusb-1.0.dylib`
 is built from its source by `native/libusb/build.sh`, the Windows installer carries the release's x64
 `libusb-1.0.dll`. FFmpeg 9.0.2 and dav1d 1.5.4 are pinned the same way in `native/ffmpeg/pins.txt` and built from their
 release sources by `native/ffmpeg/build.sh` without `--enable-gpl`, `--enable-nonfree` and `--enable-version3`
-(their terms: `LICENSES.md`), with dav1d linked into libavcodec. The Windows installer doesn't carry FFmpeg yet. The Linux
+(their terms: `LICENSES.md`), with dav1d linked into libavcodec: natively for the Mac app, cross-compiled in a pinned
+Linux container for the Windows installer. The Linux
 downloads carry neither: the `.deb` depends on the system's libusb and recommends its FFmpeg (below).
 
 ## macOS: the app and its disk image
@@ -97,12 +98,13 @@ others answer): the licence `pins.txt` pins (`ffmpeg_license_sha256`), and one c
 snapshot of Ubuntu's archive; the image built from it and checked on 13 Nov 2026 was
 `sha256:46bcfee013110abda4cc9359387e5dd7a5c1057aeee3db24719324653e8f0f6d`, a digest a rebuild needn't repeat, since
 its layers carry the build's own times) get the same build record checks, and each its export directory's own name (the library
-and its major, which renaming the file doesn't change), its `{name}_version` export and its imports.
-`build.sh` copies the four into the publish beside libusb, so they take the same way into `Contents/MacOS`, and the two
+and its major, which renaming the file doesn't change), its `{name}_version` export and its imports;
+`packaging/windows/build.ps1` takes them as `-FFmpegDir` (Windows, below). `build.sh` copies the four into the publish beside libusb, so they take the same way into `Contents/MacOS`, and the two
 licence texts beside `libusb-COPYING.txt`; the engine loads them by full path from beside itself
 (`InfoPanel.Core/Images/Video/FFmpeg.cs`). To replace them (a right their licence gives users, `LICENSES.md`), put another build of the same majors in
 `InfoPanel.app/Contents/MacOS` under the same names and sign the app again ad hoc:
-`codesign --force --deep --sign - InfoPanel.app`. To move to new releases, change `pins.txt`.
+`codesign --force --deep --sign - InfoPanel.app` (on Windows, put them in `C:\Program Files\InfoPanel 2` under the
+same names). To move to new releases, change `pins.txt`.
 
 **Signing.** Ad hoc only: every Mach-O file is signed (`codesign --force --sign -`), the deepest first, then the bundle,
 with no hardened runtime; then `codesign --verify --deep --strict` checks it. Nothing is notarised.
@@ -161,7 +163,7 @@ On a Windows PC with the .NET SDK `global.json` names and [Inno Setup 6](https:/
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1 `
-  -Version 2.0.0-beta.1 -AllowOrigin https://client.example -Out C:\builds\2.0.0-beta.1
+  -Version 2.0.0-beta.1 -AllowOrigin https://client.example -FFmpegDir C:\builds\ffmpeg\bundle -Out C:\builds\2.0.0-beta.1
 ```
 
 - `-Version` is the release's version (`2.0.0`, `2.0.0-beta.1`): the engine's version (`GET /api/session`'s
@@ -172,23 +174,31 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1 
   deleted. It must be writable only by the user building (a folder of the building user's own, never one other users can
   change), and `build.ps1` refuses an `-Out` that is, or lies below, a junction or a
   symbolic link. The checks on the bundled files hold only against a folder nobody else can change.
+- `-FFmpegDir` is FFmpeg's Windows build: the `bundle\` folder `native/ffmpeg/build.sh --target windows-x64 --out <dir>`
+  makes in `native/ffmpeg/windows-cross.Dockerfile`'s container (on Linux, or Docker on a Mac or PC), with exactly
+  `avutil-61.dll`, `avcodec-63.dll`, `avformat-63.dll`, `swscale-10.dll`, `ffmpeg-COPYING.txt` and
+  `dav1d-COPYING.txt`. A missing file, any other entry, or one that is a folder or a link is refused before anything is
+  published.
 - It runs on Windows because only a build on Windows writes the manifest and the icon into `InfoPanel.exe`.
 
-`build.ps1` publishes the engine self-contained for `win-x64` (with the sensor helper in `sensor-helper\` and the bundled AI usage plugin in `plugins\InfoPanel.AiUsage\`, then the panel drivers), adds four files it downloads (or takes from a download) and checks, and compiles the installer:
+`build.ps1` publishes the engine self-contained for `win-x64` (with the sensor helper in `sensor-helper\` and the bundled AI usage plugin in `plugins\InfoPanel.AiUsage\`, then the panel drivers), adds four files it downloads (or takes from a download) and FFmpeg's six from `-FFmpegDir`, checks them, and compiles the installer:
 
 | File | Where from | Checked against | Installed |
 |---|---|---|---|
 | `PawnIO_setup.exe` | PawnIO's GitHub release, at `PawnIoInstaller.BundledVersion` | `PawnIoInstaller.BundledSha256` (SHA-256), read from the engine's source | `pawnio\` beside the engine, never run by the installer (the engine's Install PawnIO runs it when asked) |
 | `libusb-1.0.dll` (x64) | libusb's GitHub release, the 7z at the version in `native\libusb\pins.txt`, unpacked with Windows' own `tar` (7-Zip's `7z.exe` where that `tar` has no liblzma) | the SHA-256 of the 7z and of the DLL (the release's `MinGW64\dll\libusb-1.0.dll`, which needs no Visual C++ runtime), both in `pins.txt` | beside the engine in `{app}`, where the engine finds it (the installer takes the publish's whole top level) |
 | `libusb-COPYING.txt` | libusb's licence text: the `COPYING` of the release's source tarball (`libusb-<version>.tar.bz2`, at the same version; the 7z holds none), unpacked with Windows' own `tar` (7-Zip's `7z.exe`, then `tar`, where that `tar` has no bz2lib) | the SHA-256 of the tarball and of the file, both in `pins.txt` | beside the engine in `{app}`, with `LICENSES.md` (as the DLL, from the publish's top level) |
+| `avutil-61.dll`, `avcodec-63.dll`, `avformat-63.dll`, `swscale-10.dll` | `-FFmpegDir`: FFmpeg 9.0.2, decode-only, with dav1d inside `avcodec-63.dll`, built by `native/ffmpeg/build.sh --target windows-x64` from the sources `native\ffmpeg\pins.txt` pins (macOS, above, "FFmpeg"; `--verify` checks the build itself) | each DLL's PE header (PE32+, x86-64, a DLL) and version resource: its file major the one the engine loads (61, 63, 63, 10), its product version `pins.txt`'s `ffmpeg_version`, its original file name its own; a build isn't byte for byte reproducible, so no hash is pinned: each one's copy in `-Out\downloads\ffmpeg` is opened read only before its check and held until the compiler has finished, and it is held to the SHA-256 of the bytes checked, taken through that hold | beside the engine in `{app}`, where the engine loads them (`InfoPanel.Core/Images/Video/FFmpeg.cs`) |
+| `ffmpeg-COPYING.txt`, `dav1d-COPYING.txt` | `-FFmpegDir`: the licence texts of FFmpeg's and dav1d's release sources | the SHA-256 of each, `ffmpeg_copying_sha256` and `dav1d_copying_sha256` in `pins.txt` | beside the engine in `{app}`, with `LICENSES.md` |
 | `dotnet-runtime-<v>-win-x64.exe` | Microsoft, the version pinned in `build.ps1` | the SHA-512 pinned beside it (from Microsoft's release metadata) | not installed as a file: run `/install /quiet /norestart` only when no stable .NET 8 or later (x64) is installed |
 
 Windows 11's `tar` reads both archives and needs nothing more; where it doesn't (Windows Server 2022's), `build.ps1` falls back to 7-Zip's `7z.exe`, found on the PATH or in `%ProgramFiles%\7-Zip` (on GitHub's Windows images already, not bundled), and stops if there is none.
 
-A file whose hash isn't the pinned one stops the build before anything is published. Right before the compiler
-packs them, all four (PawnIO's and libusb's in their final places in the publish) are opened read only, so that nothing can change, replace
-or rename them, hashed again through that handle and held until the compiler has finished: one replaced during the
-publish stops the build, and none can be replaced while the compiler runs. `-PawnIoSetup`, `-LibusbArchive` (the 7z), `-LibusbSource` (the tarball) and
+A file whose hash isn't the pinned one, or an FFmpeg DLL that fails its checks, stops the build before anything is
+published. Right before the compiler packs them, all of them (PawnIO's, libusb's and FFmpeg's in their final places in
+the publish) are opened read only, so that nothing can change, replace or rename them, hashed again through that handle
+and held until the compiler has finished: one replaced during the publish stops the build, and none can be replaced
+while the compiler runs. `-PawnIoSetup`, `-LibusbArchive` (the 7z), `-LibusbSource` (the tarball) and
 `-DotnetRuntime` take local copies instead of downloading them; they are checked the same way. To move to a new .NET
 runtime, change `$Runtime` in `build.ps1` (its version, URL and SHA-512 from
 `https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`).
@@ -224,7 +234,8 @@ The Task Scheduler can't hold a task and a folder of one name at its root: with 
   write) is refused before anything is stopped or written (exit code 7).
 - **Per machine**, administrator rights asked once (UAC). Read all sensors registers its SYSTEM task only for a helper
   under Program Files, whose files a user can't write. x64 Windows 10 or later only.
-- The licence page shows `LICENSE`; `LICENSE`, `LICENSES.md` and `libusb-COPYING.txt` are installed beside the engine.
+- The licence page shows `LICENSE`; `LICENSE`, `LICENSES.md`, `libusb-COPYING.txt`, `ffmpeg-COPYING.txt` and
+  `dav1d-COPYING.txt` are installed beside the engine.
 - The finish page's "Launch InfoPanel 2" starts the engine as the user who started Setup, not with Setup's administrator
   rights, and is offered only when that user's token is unelevated (integrity Medium). Setup started elevated (Run as
   administrator, an elevated prompt, UAC off) offers no launch, since it would start the engine elevated. A silent
@@ -409,18 +420,26 @@ origin it is optional: a build without it sends none.
    with `build.sh --check-args`. A pushed tag is a **release**: refused unless it is a bare 2.x version, not `-dev`,
    on a commit of `2.0.x`. Anything else is a **dry run**, stamped with the version given or
    `2.0.0-dev.ci.<run number>`.
-2. `mac` (`macos-15`, Apple silicon) runs `packaging/macos/build.sh` into the runner's temporary folder, outside the
-   checkout, so the build isn't `-dirty`. `windows` (`windows-2022`, with Inno Setup 6, installed when the image lacks
-   it) runs `packaging\windows\build.ps1` the same way.
+2. `mac` (`macos-15`, Apple silicon) installs FFmpeg's build tools (`brew install meson ninja pkgconf`) and runs
+   `packaging/macos/build.sh` into the runner's temporary folder, outside the checkout, so the build isn't `-dirty`; it
+   keeps the release tarballs the app's libraries were built from (FFmpeg's, dav1d's and libusb's) as the artifact
+   `sources`. `ffmpeg-windows` (`ubuntu-24.04`) builds `native/ffmpeg/windows-cross.Dockerfile`'s container and runs
+   `native/ffmpeg/build.sh --target windows-x64` in it, then `--verify`, and keeps the `bundle` folder as the artifact
+   `ffmpeg-windows` for a day. `windows` (`windows-2022`, with Inno Setup 6, installed when the image lacks it) waits
+   for it and runs `packaging\windows\build.ps1` the same way, with that folder as `-FFmpegDir`.
 3. Each smoke-runs what it built: the engine on a temporary data folder with `--offline --no-tray --no-windows
    --no-browser --no-plugins --no-panels`, then `GET /api/session` must report the version as `engineVersion` and the
-   checked-out commit, without `-dirty`, as `engineBuild`. Each keeps its file as the run's artifact (`mac`,
-   `windows`) for 14 days.
-4. `release` runs for a release only, and is the only job that may write to the repository. It writes `SHA256SUMS`
-   for the two files. It never reuses a release: if one exists for the tag, a draft or a published one, it fails and
-   writes nothing. It also fails unless the tag on GitHub still points at the commit the run built. Otherwise it makes
-   a **draft** pre-release from the existing tag, with the disk image, the setup and `SHA256SUMS` attached in the same
-   call (`gh release create --draft --verify-tag`: it never makes a tag) and `packaging/release-notes.md` as its notes.
+   checked-out commit, without `-dirty`, as `engineBuild`, and list `media.video` among the scene format's
+   capabilities and `rtsp` among the media providers (the bundled FFmpeg loaded). Each keeps its file as the run's
+   artifact (`mac`, `windows`) for 14 days.
+4. `release` runs for a release only, and is the only job that may write to the repository. It checks each source
+   tarball against its pin (`native/ffmpeg/pins.txt`, `native/libusb/pins.txt`) and writes `SHA256SUMS` for the two
+   downloads and the three tarballs. It never reuses a release: if one exists for the tag, a draft or a published one,
+   it fails and writes nothing. It also fails unless the tag on GitHub still points at the commit the run built.
+   Otherwise it makes a **draft** pre-release from the existing tag, with the disk image, the setup, the tarballs
+   (the source of the bundled libraries, offered beside them as their licences ask) and `SHA256SUMS` attached in the
+   same call (`gh release create --draft --verify-tag`: it never makes a tag) and `packaging/release-notes.md` as its
+   notes.
 
 Every 2.x release is marked pre-release on GitHub for now, `2.0.0` included: 1.x's update check offers every release
 that isn't one, so a 2.x release marked otherwise would be offered to 1.x users.

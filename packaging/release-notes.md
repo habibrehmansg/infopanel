@@ -18,9 +18,15 @@
 4. InfoPanel 2 runs in the notification area. Its menu's **Open editor** opens the editor, and **Start when I sign in**
    starts it with Windows.
 
+## Source of the bundled libraries
+
+Both downloads carry FFmpeg's decode-only libraries (with dav1d) and libusb. Their source, the release tarballs at the
+pinned versions, is attached below: `ffmpeg-<version>.tar.xz`, `dav1d-<version>.tar.xz` and `libusb-<version>.tar.bz2`.
+`LICENSES.md`, beside the program, lists their terms.
+
 ## Check a download
 
-`SHA256SUMS` lists each file's SHA-256. Compare it with the file you downloaded:
+`SHA256SUMS` lists each file's SHA-256, the source tarballs' too. Compare it with the file you downloaded:
 
 - macOS: `shasum -a 256 InfoPanel-<version>-mac-arm64.dmg`
 - Windows (PowerShell): `Get-FileHash InfoPanel-<version>-win-x64-setup.exe -Algorithm SHA256`
