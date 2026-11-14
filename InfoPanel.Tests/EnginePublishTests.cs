@@ -11,21 +11,25 @@ namespace InfoPanel.Tests;
 /// The engine as <c>dotnet publish</c> lays it out, in this test run's configuration, into a new folder: everything the
 /// engine's <c>InfoPanel.deps.json</c> lists is in the publish root (or at its own path under it), at the versions it
 /// names, so the published engine starts (and its plugin host mode, which loads plugins with the engine's own assemblies);
-/// no bundled plugin is published (there is no <c>plugins/</c> folder). Builds and tests run from <c>bin/</c>, which never
-/// shows what a publish leaves out.
+/// the bundled plugins (AI usage) are under <c>plugins/</c> and nowhere else, each with what its own deps file lists and
+/// its whole assembly closure resolvable as its host loads it. Builds and tests run from <c>bin/</c>, which never shows
+/// what a publish leaves out.
 /// </summary>
 public class EnginePublishTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    /// <summary>The plugins the engine bundles (InfoPanel.csproj's BundledPlugin list), by folder.</summary>
+    private static readonly string[] BundledPlugins = ["InfoPanel.AiUsage"];
+
     [Fact]
-    public async Task APublish_HasTheEnginesOwnDependenciesInItsRoot_AndNoBundledPlugins()
+    public async Task APublish_HasTheEnginesOwnDependenciesInItsRoot_AndTheBundledPluginsOnlyUnderPlugins()
     {
         var dir = Directory.CreateTempSubdirectory("infopanel-publish-");
         try
         {
-            // Every restore and build artifact goes under this test's folder; the real projects' restore files are left as
-            // they were (a later build or publish of theirs relies on them).
+            // Every restore and build artifact goes under this test's folder, the bundled plugins' too; the real projects'
+            // restore files are left as they were (a later build or publish of theirs relies on them).
             var artifacts = Path.Combine(dir.FullName, "artifacts");
             var restoreFiles = RealRestoreFiles();
             var root = Path.Combine(dir.FullName, "out");
@@ -33,7 +37,14 @@ public class EnginePublishTests
 
             var problems = new List<string>();
             CheckIsolated(problems, artifacts, restoreFiles);
-            await CheckDeps(problems, "engine", root, "InfoPanel.deps.json");
+            var listed = await CheckDeps(problems, "engine", root, "InfoPanel.deps.json");
+            // The engine's own files stay in the root, whatever a plugin carries (a bundled plugin's file of the same name
+            // once displaced the engine's Serilog.dll from it).
+            foreach (var own in new[] { "InfoPanel.dll", "InfoPanel.Plugins.dll", "Serilog.dll" })
+            {
+                if (!File.Exists(Path.Combine(root, own)))
+                    problems.Add($"{own}: the engine's own, missing from the publish root");
+            }
             // A desktop app, not a server: the concurrent workstation garbage collector (the Web SDK's default is the server one).
             using (var config = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(root, "InfoPanel.runtimeconfig.json"), Ct)))
             {
@@ -52,15 +63,53 @@ public class EnginePublishTests
                     problems.Add($"{helperFile}: the sensor helper's, in a publish for no runtime");
             }
 
-            // No package is bundled: the publish has no plugins folder, whatever the options.
-            if (Directory.Exists(Path.Combine(root, "plugins")))
-                problems.Add("plugins/: a bundled plugins folder, in a publish that bundles none");
+            // Each bundled plugin is published under plugins/, and none of its own files land in the root; its own deps file
+            // holds in its folder, and its whole closure resolves as its host loads it. It carries no SDK of its own (the
+            // host hands every plugin the engine's).
+            foreach (var plugin in BundledPlugins)
+            {
+                var folder = Path.Combine(root, "plugins", plugin);
+                var dll = Path.Combine(folder, plugin + ".dll");
+                if (!File.Exists(dll))
+                {
+                    problems.Add($"plugins/{plugin}/{plugin}.dll is missing");
+                    continue;
+                }
+                if (!File.Exists(Path.Combine(folder, "PluginInfo.ini")))
+                    problems.Add($"plugins/{plugin}/PluginInfo.ini is missing");
+                if (File.Exists(Path.Combine(folder, "InfoPanel.Plugins.dll")))
+                    problems.Add($"plugins/{plugin}/InfoPanel.Plugins.dll: a copy of the SDK beside the plugin");
+                foreach (var file in Directory.EnumerateFiles(folder))
+                {
+                    var name = Path.GetFileName(file);
+                    if (!listed.Contains(name) && File.Exists(Path.Combine(root, name)))
+                        problems.Add($"{name}: the bundled plugin's file, not the engine's, is in the publish root");
+                }
+                await CheckDeps(problems, plugin, folder, plugin + ".deps.json");
+                CheckPluginClosure(problems, plugin, root, listed, dll);
+            }
+
+            // A publish that leaves the restore out restores nothing, the bundled plugins included (an offline publish
+            // mustn't reach a package source): NuGet's record of a plugin's restore, which every restore that runs writes,
+            // is removed and stays absent. Either way the plugins are published.
+            foreach (var plugin in BundledPlugins)
+            {
+                if (!File.Exists(RestoreRecord(artifacts, plugin)))
+                    problems.Add($"{plugin}: no restore record at {RestoreRecord(artifacts, plugin)} after the publish");
+            }
             foreach (var option in new[] { "--no-restore", "--no-build" })
             {
+                foreach (var plugin in BundledPlugins)
+                    File.Delete(RestoreRecord(artifacts, plugin));
                 var optionRoot = Path.Combine(dir.FullName, "out" + option);
                 await Publish(optionRoot, artifacts, option);
-                if (Directory.Exists(Path.Combine(optionRoot, "plugins")))
-                    problems.Add($"plugins/: a bundled plugins folder, in a publish with {option}");
+                foreach (var plugin in BundledPlugins)
+                {
+                    if (File.Exists(RestoreRecord(artifacts, plugin)))
+                        problems.Add($"{plugin}: restored by a publish with {option}");
+                    if (!File.Exists(Path.Combine(optionRoot, "plugins", plugin, plugin + ".dll")))
+                        problems.Add($"plugins/{plugin}/{plugin}.dll is missing from a publish with {option}");
+                }
             }
 
             Assert.True(problems.Count == 0,
@@ -70,6 +119,93 @@ public class EnginePublishTests
         {
             dir.Delete(recursive: true);
         }
+    }
+
+    /// <summary>
+    /// A bundled plugin that carries a file of the same name as one of the engine's own (a test-only package, made here,
+    /// whose dependency is an assembly named <c>Serilog</c> at version 99) has it published in its own folder, and the
+    /// engine's file stays in the publish root as the engine's deps file names it: the SDK's conflict resolution, which
+    /// goes by file name whatever the folder, never weighs a plugin's files against the engine's.
+    /// </summary>
+    [Fact]
+    public async Task APublish_KeepsTheEnginesOwnFiles_WhenABundledPluginCarriesOneOfTheSameName()
+    {
+        var dir = Directory.CreateTempSubdirectory("infopanel-publish-collide-");
+        try
+        {
+            var collide = WriteCollidingPlugin(dir.FullName);
+            var root = Path.Combine(dir.FullName, "out");
+            await Publish(root, Path.Combine(dir.FullName, "artifacts"), $"-p:CustomAfterMicrosoftCommonTargets={collide}");
+
+            var problems = new List<string>();
+            await CheckDeps(problems, "engine", root, "InfoPanel.deps.json");
+            var own = Path.Combine(root, "Serilog.dll");
+            if (!File.Exists(own))
+                problems.Add("Serilog.dll: the engine's own, missing from the publish root");
+            else if (AssemblyName.GetAssemblyName(own).Version is { Major: 99 })
+                problems.Add("Serilog.dll in the publish root is the bundled plugin's (version 99), not the engine's");
+            var folder = Path.Combine(root, "plugins", "InfoPanel.TestCollide");
+            if (!File.Exists(Path.Combine(folder, "InfoPanel.TestCollide.dll")))
+                problems.Add("plugins/InfoPanel.TestCollide/InfoPanel.TestCollide.dll is missing");
+            var theirs = Path.Combine(folder, "Serilog.dll");
+            if (!File.Exists(theirs) || AssemblyName.GetAssemblyName(theirs).Version is not { Major: 99 })
+                problems.Add("plugins/InfoPanel.TestCollide/Serilog.dll isn't the plugin's own (version 99)");
+            if (File.Exists(Path.Combine(root, "InfoPanel.TestCollide.dll")))
+                problems.Add("InfoPanel.TestCollide.dll: the bundled plugin's, in the publish root");
+            Assert.True(problems.Count == 0, $"The publish in {root} with a plugin carrying a Serilog.dll of its own:\n" + string.Join("\n", problems));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// A test-only bundled plugin in <paramref name="dir"/>: <c>InfoPanel.TestCollide</c>, which depends on an assembly
+    /// named <c>Serilog</c> at version 99 (so its output carries a <c>Serilog.dll</c> newer than the engine's); answers a
+    /// targets file that adds it to the engine's BundledPlugin list, for <c>CustomAfterMicrosoftCommonTargets</c>.
+    /// </summary>
+    private static string WriteCollidingPlugin(string dir)
+    {
+        var serilog = Path.Combine(dir, "collide-serilog");
+        Directory.CreateDirectory(serilog);
+        File.WriteAllText(Path.Combine(serilog, "Serilog.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <AssemblyName>Serilog</AssemblyName>
+                <AssemblyVersion>99.0.0.0</AssemblyVersion>
+                <FileVersion>99.0.0.0</FileVersion>
+                <Version>99.0.0</Version>
+              </PropertyGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(serilog, "Collide.cs"), "namespace Serilog.Collide { public static class Marker { public const int Value = 99; } }\n");
+
+        var plugin = Path.Combine(dir, "collide-plugin");
+        Directory.CreateDirectory(plugin);
+        File.WriteAllText(Path.Combine(plugin, "InfoPanel.TestCollide.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <EnableDynamicLoading>true</EnableDynamicLoading>
+              </PropertyGroup>
+              <ItemGroup>
+                <ProjectReference Include="../collide-serilog/Serilog.csproj" />
+              </ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(plugin, "Plugin.cs"), "namespace InfoPanel.TestCollide { public static class Uses { public const int Value = Serilog.Collide.Marker.Value; } }\n");
+
+        var targets = Path.Combine(dir, "collide.targets");
+        File.WriteAllText(targets, $"""
+            <Project>
+              <ItemGroup Condition="'$(MSBuildProjectName)' == 'InfoPanel'">
+                <BundledPlugin Include="{Path.Combine(plugin, "InfoPanel.TestCollide.csproj")}" />
+              </ItemGroup>
+            </Project>
+            """);
+        return targets;
     }
 
     /// <summary>
@@ -227,7 +363,7 @@ public class EnginePublishTests
     /// </summary>
     private static void CheckIsolated(List<string> problems, string artifacts, Dictionary<string, string> before)
     {
-        foreach (var project in new[] { "InfoPanel" })
+        foreach (var project in new[] { "InfoPanel" }.Concat(BundledPlugins))
         {
             if (!File.Exists(Path.Combine(artifacts, "obj", project, "project.assets.json")))
                 problems.Add($"{project}: not restored under the test's folder {artifacts}");
@@ -315,6 +451,65 @@ public class EnginePublishTests
             }
         }
         return listed;
+    }
+
+    /// <summary>NuGet's record of <paramref name="project"/>'s restore under the test's folder.</summary>
+    private static string RestoreRecord(string artifacts, string project) => Path.Combine(artifacts, "obj", project, "project.nuget.cache");
+
+    /// <summary>
+    /// The plugin's whole closure resolves as the host loads it (<c>PluginLoadContext</c>): every assembly
+    /// <paramref name="pluginDll"/> references, and every assembly those reference in turn, comes from the plugin's own
+    /// folder through its deps file, or else (an assembly the host shares, or one its deps file doesn't name) from the
+    /// host's default context: the engine's root (its deps file's runtime assemblies, <paramref name="engineAssemblies"/>)
+    /// or the shared frameworks. Each at the version referenced or later. Assemblies from the root have their own closure
+    /// checked by the engine's deps file; the frameworks are whole.
+    /// </summary>
+    private static void CheckPluginClosure(List<string> problems, string plugin, string root, HashSet<string> engineAssemblies, string pluginDll)
+    {
+        // What PluginLoadContext always leaves to the host.
+        string[] shared = ["InfoPanel.Plugins", "InfoPanel.Plugins.Graphics", "SkiaSharp"];
+        // The engine runs on Microsoft.NETCore.App and Microsoft.AspNetCore.App, as this test process does.
+        string[] frameworks =
+        [
+            Path.GetDirectoryName(typeof(object).Assembly.Location)!,
+            Path.GetDirectoryName(typeof(Microsoft.AspNetCore.Http.HttpContext).Assembly.Location)!,
+        ];
+        var resolver = new System.Runtime.Loader.AssemblyDependencyResolver(pluginDll);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var queue = new Queue<string>([pluginDll]);
+        while (queue.TryDequeue(out var path))
+        {
+            foreach (var reference in References(path))
+            {
+                if (!seen.Add(reference.FullName))
+                    continue;
+                var name = reference.Name!;
+                var fromPlugin = shared.Contains(name, StringComparer.OrdinalIgnoreCase) ? null : resolver.ResolveAssemblyToPath(reference);
+                var found = fromPlugin
+                    ?? (engineAssemblies.Contains(name + ".dll") ? Path.Combine(root, name + ".dll") : null)
+                    ?? frameworks.Select(f => Path.Combine(f, name + ".dll")).FirstOrDefault(File.Exists);
+                var by = Path.GetFileName(path);
+                if (found == null || !File.Exists(found))
+                {
+                    problems.Add($"{plugin}: {reference.FullName} (referenced by {by}) is neither in the plugin's folder, the engine's root nor the frameworks");
+                    continue;
+                }
+                var version = AssemblyName.GetAssemblyName(found).Version;
+                if (reference.Version != null && (version == null || version < reference.Version))
+                    problems.Add($"{plugin}: {reference.FullName} (referenced by {by}) resolves to {found}, version {version}");
+                if (fromPlugin != null)
+                    queue.Enqueue(fromPlugin);
+            }
+        }
+    }
+
+    /// <summary>The assemblies <paramref name="path"/> references.</summary>
+    private static List<AssemblyName> References(string path)
+    {
+        using var stream = File.OpenRead(path);
+        using var pe = new System.Reflection.PortableExecutable.PEReader(stream);
+        var metadata = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe);
+        return [.. metadata.AssemblyReferences.Select(h => metadata.GetAssemblyReference(h).GetAssemblyName())];
     }
 
     /// <summary>

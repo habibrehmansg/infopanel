@@ -37,7 +37,7 @@ It writes:
   `dav1d-COPYING.txt`), `source/` (the two tarballs it was built from) and `config.mak` (FFmpeg's configuration, kept
   for reference: the checks read the libraries themselves);
 - `<out>/publish/`: the self-contained `osx-arm64` Release publish (`-p:Version`, `-p:InfoPanelAllowOrigin`, no debug
-  symbols) with `libusb-1.0.dylib` and FFmpeg's four libraries copied into its top level, and in `plugins/{folder}` every panel driver project
+  symbols, with the bundled AI usage plugin in `plugins/InfoPanel.AiUsage/`, [plugins](plugins.md)) with `libusb-1.0.dylib` and FFmpeg's four libraries copied into its top level, and in `plugins/{folder}` every panel driver project
   (`InfoPanel.Panels.{Family}/` with a `panel.json`, but the virtual panel, a test fixture), each published framework
   dependent for `osx-arm64`: the engine's bundled panel packages (`build.sh --list-panel-drivers` lists them, and those
   it leaves out, without building anything). The Windows script publishes the same projects for `win-x64` the same way;
@@ -65,7 +65,8 @@ library (Now Playing's `mediaremote-adapter/MediaRemoteAdapter.framework/MediaRe
 `native/mediaremote-adapter/build.sh --verify`), moves to `Contents/Frameworks/MediaRemoteAdapter.dylib`, and a relative
 symlink takes its place, where the engine and the helper's script find it; a publish without it stops the script. Any
 other Mach-O file below the publish's top level stops it too: this layout would seal it as a resource rather than sign
-it as code.
+it as code. The bundled plugins under `plugins/` (AI usage in `plugins/InfoPanel.AiUsage/`, and the panel drivers) are
+managed files only, so they stay in `Contents/Resources/engine/plugins/`, where the engine finds them beside it.
 
 **libusb.** `native/libusb/build.sh` downloads libusb's release tarball (the version in `native/libusb/pins.txt`), refuses
 it unless its SHA-256 is the pinned one, builds it for arm64 and leaves one regular file, `libusb-1.0.dylib`, whose
@@ -173,7 +174,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\build.ps1 
   symbolic link. The checks on the bundled files hold only against a folder nobody else can change.
 - It runs on Windows because only a build on Windows writes the manifest and the icon into `InfoPanel.exe`.
 
-`build.ps1` publishes the engine self-contained for `win-x64` (with the sensor helper in `sensor-helper\`; no plugin is bundled), adds four files it downloads (or takes from a download) and checks, and compiles the installer:
+`build.ps1` publishes the engine self-contained for `win-x64` (with the sensor helper in `sensor-helper\` and the bundled AI usage plugin in `plugins\InfoPanel.AiUsage\`, then the panel drivers), adds four files it downloads (or takes from a download) and checks, and compiles the installer:
 
 | File | Where from | Checked against | Installed |
 |---|---|---|---|
@@ -239,7 +240,7 @@ The Task Scheduler can't hold a task and a folder of one name at its root: with 
 - **Over a running InfoPanel 2** (an update or a repair): Setup first stops this install's running sensor helper
   tasks (the helper runs as SYSTEM in session 0), then stops the engine as it stops at a sign-out (below). The Restart
   Manager then closes, without forcing, anything else holding a file (`CloseApplications=yes`), and Setup restarts
-  nothing. An earlier 2.0's `sensor-helper\` and `pawnio\` are replaced whole, and the bundled plugin folder of earlier builds is removed.
+  nothing. An earlier 2.0's `sensor-helper\` and `pawnio\` are replaced whole, and the retired bundled plugin folder of earlier builds (`plugins\InfoPanel.Extras\`) is removed.
 - **Stopping the engine** (Setup and the uninstaller): each of this install's engines on Setup's desktop gets
   `WM_ENDSESSION` at its hidden window (`InfoPanelMessageWindow`), which it takes as the session ending: its own orderly
   stop, which writes every unsaved change to `recovery.json`. Setup waits up to 20 s for it, then up to 5 s for its
@@ -298,7 +299,7 @@ docker run --rm --user 1000:1000 -v <copy>:/src -v <nuget cache>:/nuget -v <out 
 It writes:
 
 - `<out>/publish/`: the self-contained Release publish for the runtime (`-p:Version`, `-p:InfoPanelAllowOrigin`, no
-  debug symbols), with every panel driver in `plugins/{folder}` as the macOS script publishes them;
+  debug symbols, with the bundled AI usage plugin in `plugins/InfoPanel.AiUsage/`), with every panel driver in `plugins/{folder}` as the macOS script publishes them;
 - `<out>/files.sha256`: every file of the tarball's folder, hashed once after the checks below;
 - `<out>/InfoPanel-<version>-linux-<arch>.tar.gz`: one folder, `InfoPanel-<version>-linux-<arch>/`, holding the publish,
   `LICENSE`, `LICENSES.md` and `linux/` (`70-infopanel.rules`, `70-infopanel-opt-in.rules`, `infopanel.desktop`,

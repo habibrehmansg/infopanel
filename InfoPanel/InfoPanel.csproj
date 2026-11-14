@@ -42,7 +42,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\InfoPanel.Core\InfoPanel.Core.csproj" />
-    <!-- The plugin host (net8.0, as the plugin SDK): the engine executable runs it as its plugin host mode. -->
+    <!-- The plugin host (net10.0, as the plugin SDK): the engine executable runs it as its plugin host mode. -->
     <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
   </ItemGroup>
 
@@ -58,6 +58,60 @@
   <ItemGroup>
     <EmbeddedResource Include="..\Images\logo.png" LogicalName="InfoPanel.Shell.logo.png" Link="Shell\Windows\logo.png" />
   </ItemGroup>
+
+  <!-- The bundled plugins: every BundledPlugin project is built and its output copied into plugins/{its assembly name}/
+       beside the engine (on build and on publish), where the engine finds its bundled packages (docs/2.0/plugins.md).
+       Copied, not referenced, and not as content, so projects that reference the engine (the tests) don't get a plugins
+       folder. Built even when the engine isn't (publish's no-build), for no runtime (a plugin is portable: its host is the
+       engine), and with the SDK left out of its output (the host hands every plugin its own). -->
+  <ItemGroup>
+    <BundledPlugin Include="..\InfoPanel.AiUsage\InfoPanel.AiUsage.csproj" />
+  </ItemGroup>
+
+  <Target Name="BuildBundledPlugins" DependsOnTargets="_CollectBundledPluginFiles" />
+
+  <Target Name="_BuildBundledPluginProjects">
+    <MSBuild Projects="@(BundledPlugin)" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained;PublishDir;NoBuild">
+      <Output TaskParameter="TargetOutputs" ItemName="_BundledPluginOutput" />
+    </MSBuild>
+  </Target>
+
+  <!-- Each plugin's whole output folder, once per plugin (target batching), under plugins/{its assembly's name}/. -->
+  <Target Name="_CollectBundledPluginFiles" DependsOnTargets="_BuildBundledPluginProjects" Outputs="%(_BundledPluginOutput.Identity)">
+    <PropertyGroup>
+      <_BundledPluginDir>%(_BundledPluginOutput.RootDir)%(_BundledPluginOutput.Directory)</_BundledPluginDir>
+      <_BundledPluginName>%(_BundledPluginOutput.Filename)</_BundledPluginName>
+    </PropertyGroup>
+    <ItemGroup>
+      <_BundledPluginOne Include="$(_BundledPluginDir)**\*" />
+      <_BundledPluginOne>
+        <RelativePath>plugins$([System.IO.Path]::DirectorySeparatorChar)$(_BundledPluginName)$([System.IO.Path]::DirectorySeparatorChar)%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+      </_BundledPluginOne>
+      <_BundledPluginFile Include="@(_BundledPluginOne)" />
+      <_BundledPluginOne Remove="@(_BundledPluginOne)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Not being references (NuGet leaves a reference that doesn't take its output out of the restore graph), the bundled
+       plugins are restored with the engine: after the engine's own restore, in the same restore step, so their builds are
+       evaluated after it, and never when the restore is left out (no-restore, no-build). The solution restores them on
+       their own; a project that only references the engine doesn't. -->
+  <Target Name="RestoreBundledPlugins" AfterTargets="Restore">
+    <MSBuild Projects="@(BundledPlugin)" Targets="Restore" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained;PublishDir;NoBuild" />
+  </Target>
+
+  <Target Name="CopyBundledPlugins" AfterTargets="CopyFilesToOutputDirectory" DependsOnTargets="BuildBundledPlugins">
+    <Copy SourceFiles="@(_BundledPluginFile)" DestinationFiles="@(_BundledPluginFile->'$(OutDir)%(RelativePath)')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Added after the publish list is computed: the SDK resolves conflicts in that list by file name, whatever the
+       folder, so files added before it are weighed against the engine's own (Serilog.dll, say), which can then be left
+       out of the publish root. Added after it, they only ever go under plugins/{name}/. -->
+  <Target Name="PublishBundledPlugins" AfterTargets="ComputeResolvedFilesToPublishList" DependsOnTargets="BuildBundledPlugins">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="@(_BundledPluginFile)" RelativePath="%(_BundledPluginFile.RelativePath)" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 
   <!-- The sensor helper (InfoPanel.SensorHelper, which hosts LibreHardwareMonitorLib for the Libre source): a publish for
        a Windows runtime (dotnet publish -r win-x64), self-contained or not, publishes it for that runtime, framework-

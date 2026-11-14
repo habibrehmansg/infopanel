@@ -33,6 +33,8 @@
     <ProjectReference Include="..\InfoPanel.Plugins.Host\InfoPanel.Plugins.Host.csproj" />
     <!-- The plugin simulator, run in process by its tests (SimulatorTests). -->
     <ProjectReference Include="..\InfoPanel.Plugins.Simulator\InfoPanel.Plugins.Simulator.csproj" />
+    <!-- AI usage, the bundled plugin, whose readers its tests run in process over fixture homes (Plugins/AiUsage/). -->
+    <ProjectReference Include="..\InfoPanel.AiUsage\InfoPanel.AiUsage.csproj" />
   </ItemGroup>
 
   <!-- The plugin the tests run in hosts, built and copied into plugin-fixtures/InfoPanel.TestFixture/. Not into plugins/, so
@@ -60,6 +62,17 @@
       <_V1FixturePluginFile Include="$(_V1FixturePluginDir)\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(_V1FixturePluginFile)" DestinationFiles="@(_V1FixturePluginFile->'$(OutDir)plugin-fixtures\InfoPanel.V1Fixture\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <!-- AI usage as the engine bundles it, into plugin-fixtures/InfoPanel.AiUsage/, for its host test. -->
+    <MSBuild Projects="..\InfoPanel.AiUsage\InfoPanel.AiUsage.csproj" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained">
+      <Output TaskParameter="TargetOutputs" PropertyName="_AiUsagePluginPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <_AiUsagePluginDir>$([System.IO.Path]::GetDirectoryName($(_AiUsagePluginPath)))</_AiUsagePluginDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_AiUsagePluginFile Include="$(_AiUsagePluginDir)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AiUsagePluginFile)" DestinationFiles="@(_AiUsagePluginFile->'$(OutDir)plugin-fixtures\InfoPanel.AiUsage\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

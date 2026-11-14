@@ -8,8 +8,10 @@ A plugin package is a folder `InfoPanel.{Name}` (letters, digits, `-` and `_`) h
 
 | Folder | What |
 |---|---|
-| `{engine folder}/plugins/` | The bundled plugins (none today; the folder stays for first-party plugins), read-only; `--bundled-plugins <dir>` names another folder |
+| `{engine folder}/plugins/` | The bundled plugins, read-only: [AI usage](ai-usage.md) (`InfoPanel.AiUsage`), and in a release the panel drivers ([below](#panel-packages)); `--bundled-plugins <dir>` names another folder |
 | `{data}/plugins/` | Plugins the user added (per user, in the [data folder](data-folder.md)) |
+
+The engine's build and every publish of it (`dotnet build`, `dotnet publish`, the packaging scripts) put each project of `InfoPanel/InfoPanel.csproj`'s `BundledPlugin` list, built for no runtime, into `plugins/{its assembly name}/` beside the engine: its whole build output, which holds no copy of the SDK (a plugin references it without copying it; the host hands it the engine's). They are added after the publish's own files are settled, so a file of a plugin never takes the place of the engine's file of the same name in the publish's root, and a publish that leaves out the restore restores none of them.
 
 Folder names are compared ignoring case, and a bundled package wins over an installed one of the same name. A folder whose name isn't `InfoPanel.{Name}`, or that has no `InfoPanel.{Name}.dll`, is skipped with a warning; a folder starting with `.` is skipped silently. In the data folder, a package folder that is a link isn't followed, and the folder's listing is bounded (10,000 entries). A package that can't be read, or a plugins folder that can't be listed, is skipped with a warning, and the other packages start. `--no-plugins` starts no plugin at all.
 

@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="InfoPanel.AiUsage/InfoPanel.AiUsage.csproj" />
   <Project Path="InfoPanel.Core.Tests/InfoPanel.Core.Tests.csproj" />
   <Project Path="InfoPanel.Core/InfoPanel.Core.csproj" />
   <Project Path="InfoPanel.Panels.Ms9132Jonsbo/InfoPanel.Panels.Ms9132Jonsbo.csproj" />
