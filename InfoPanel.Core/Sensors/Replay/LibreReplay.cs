@@ -42,7 +42,7 @@ public sealed class LibreRecorder : LibreSampler.IObserver
     private readonly TimeProvider _time;
     private readonly SensorRecordingLimits _limits;
     private readonly ILogger _log;
-    private readonly MemoryStream _pending = new();
+    private MemoryStream _pending = new();
     private int _pendingFrames;
     private long? _firstRound;
     private int _round;
@@ -208,6 +208,9 @@ public sealed class LibreRecorder : LibreSampler.IObserver
     private void Finish(string why)
     {
         _finished = true;
+        // The round's buffer keeps the largest round's capacity: an empty one in its place (RoundEnded's cleanup still
+        // runs on it after this; nothing is written to it once finished).
+        _pending = new MemoryStream();
         if (!_claimed)
             return;
         try

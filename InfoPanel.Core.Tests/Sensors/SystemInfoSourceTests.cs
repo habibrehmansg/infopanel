@@ -49,16 +49,21 @@ public sealed class SystemInfoSourceTests : IDisposable
         public int ProcessorCount => Processors;
         public bool ProcessCpuPerCpu => PerCpu;
         public TimeSpan Uptime() => Up;
-        public int ProcessCount() => Count;
-        public int? ThreadCount() => Threads;
-        public int? HandleCount() => Handles;
+        public int ProcessesCalls;
+        public int CountCalls;
+        public int ProcessCount() { CountCalls++; return Count; }
+        public int? ThreadCount() { CountCalls++; return Threads; }
+        public int? HandleCount() { CountCalls++; return Handles; }
         public double? CpuUsage() => Usage.Count > 1 ? Usage.Dequeue() : Usage.Peek();
         public double? CpuUtility() => Utility;
         public long MemoryUsage() => AppMemory;
         public long MemoryCompression() => Compressed;
 
-        public IReadOnlyList<ProcessReading> Processes() =>
-            ProcessesThrow ? throw new InvalidOperationException("refused") : [.. List];
+        public IReadOnlyList<ProcessReading> Processes()
+        {
+            ProcessesCalls++;
+            return ProcessesThrow ? throw new InvalidOperationException("refused") : [.. List];
+        }
 
         /// <summary>Adds CPU time to the process <paramref name="pid"/>.</summary>
         public void Run(int pid, double seconds)
@@ -90,10 +95,12 @@ public sealed class SystemInfoSourceTests : IDisposable
     }
 
     /// <summary>The source over the fake system, discovered and polled once; with <paramref name="settings"/>, following them.</summary>
-    private PolledSensorSource Open(SettingsStore? settings = null)
+    private PolledSensorSource Open(SettingsStore? settings = null, bool demand = false)
     {
         var log = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(new CollectingSink(_events)).CreateLogger();
-        _source = SystemInfoSource.Create(_system, _time, log: log, settings: settings);
+        // Without demand, every round reads everything, whatever the test reads (the source's own default has demand).
+        var options = demand ? null : new PolledSensorSourceOptions { Interval = SystemInfoSource.Interval };
+        _source = SystemInfoSource.Create(_system, _time, options, log: log, settings: settings);
         _source.Open();
         return _source;
     }
@@ -838,5 +845,122 @@ public sealed class SystemInfoSourceTests : IDisposable
         Round();
 
         Assert.DoesNotContain(self, Names(Table("processes/top-memory-usage")));
+    }
+    [Fact]
+    public void Processes_and_counts_are_read_only_while_a_table_or_count_is_read()
+    {
+        _system.List = [.. Enumerable.Range(1, 500).Select(i => new ProcessReading(i, "proc" + i, TimeSpan.FromSeconds(i), i * MB, 1))];
+        var source = Open(demand: true);
+        RunAll();
+        Round();
+        var table = Key("processes/top-cpu-usage");
+        var lister = (ISensorStatusSource)source;
+        Assert.Equal(SensorKind.Table, lister.PeekState(table).Type);
+        _system.ProcessesCalls = _system.CountCalls = 0;
+
+        // Twenty rounds that nothing reads: the sensor list's peek doesn't count, and still finds the last table.
+        for (var i = 0; i < 20; i++)
+        {
+            RunAll();
+            Round();
+            Assert.True(lister.PeekState(table).HasReading);
+        }
+
+        Assert.Equal((0, 0), (_system.ProcessesCalls, _system.CountCalls));
+
+        // Read once: the next round is the CPU baseline, the one after it gives the current table.
+        source.ReadState(table);
+        RunAll();
+        Round();
+        RunAll();
+        Round();
+        var state = State("processes/top-cpu-usage");
+        Assert.Equal(SensorStatus.Live, state.Status);
+        Assert.Equal(500, state.Reading.ValueTable!.Rows.Count);
+        Assert.Equal(2, _system.ProcessesCalls);
+    }
+
+    [Fact]
+    public void A_table_whose_reads_failed_until_unavailable_stays_unavailable_while_nothing_reads_it_never_stale()
+    {
+        _system.List = [new(1, "busy", TimeSpan.FromSeconds(1), 8 * MB, 1), new(2, "quiet", TimeSpan.FromSeconds(1), 4 * MB, 1)];
+        var source = Open(demand: true);
+        RunAll();
+        Round();
+        string[] tables = ["processes/top-cpu-usage", "processes/top-cpu-utility", "processes/top-memory-usage"];
+        Assert.All(tables, id => Assert.Equal(SensorStatus.Live, State(id).Status));
+
+        // The processes can't be listed while the tables are read: 31 s on, they are unavailable.
+        _system.ProcessesThrow = true;
+        for (var i = 0; i < 31; i++)
+        {
+            foreach (var id in tables)
+                State(id);
+            Round();
+        }
+
+        Assert.All(tables, id => Assert.Equal(SensorStatus.Unavailable, State(id).Status));
+
+        // Then 3 minutes in which only the sensor list peeks: the tables from before the failure never come back.
+        for (var i = 0; i < 180; i++)
+        {
+            Round();
+            foreach (var id in tables)
+                Assert.Equal(SensorStatus.Unavailable, source.PeekState(Key(id)).Status);
+        }
+    }
+
+    [Fact]
+    public void A_status_alone_isnt_a_use_the_processes_and_counts_arent_read_for_one()
+    {
+        _system.List = [.. Enumerable.Range(1, 50).Select(i => new ProcessReading(i, "proc" + i, TimeSpan.FromSeconds(i), i * MB, 1))];
+        var source = Open(demand: true);
+        RunAll();
+        Round();
+        Assert.Equal(SensorKind.Table, source.PeekState(Key("processes/top-cpu-usage")).Type);
+        _system.ProcessesCalls = _system.CountCalls = 0;
+
+        // 3 minutes in which every entry's status is asked each second (as a 1.x import's sensor metadata asks), and nothing reads.
+        for (var i = 0; i < 180; i++)
+        {
+            foreach (var id in Ids)
+                source.GetStatus(Key(id));
+            RunAll();
+            Round();
+        }
+
+        Assert.Equal((0, 0), (_system.ProcessesCalls, _system.CountCalls));
+    }
+
+    [Fact]
+    public void After_an_idle_spell_the_tables_start_afresh_new_processes_from_a_new_cpu_baseline()
+    {
+        _system.List = [new(1, "old-a", TimeSpan.FromSeconds(10), 8 * MB, 1), new(2, "old-b", TimeSpan.FromSeconds(10), 4 * MB, 1)];
+        var source = Open(demand: true);
+        RunAll();
+        Round();
+        Assert.Equal(["old-a", "old-b"], Names(Table("processes/top-memory-usage")));
+
+        // Nothing reads the tables for 3 minutes. Meanwhile the processes change: other names, and far more CPU time.
+        for (var i = 0; i < 180; i++)
+        {
+            RunAll();
+            Round();
+        }
+
+        _system.List = [new(1, "new-a", TimeSpan.FromSeconds(500), 8 * MB, 1), new(2, "new-b", TimeSpan.FromSeconds(900), 4 * MB, 1)];
+
+        // Read again: the next round is the CPU baseline, and the one after it gives the tables of the processes now, each
+        // CPU figure from that baseline alone (0.1 s of 4 CPUs over 1 s: 2.5 %).
+        State("processes/top-cpu-usage");
+        RunAll();
+        Round();
+        RunAll();
+        Round();
+        var usage = Table("processes/top-cpu-usage");
+        Assert.Equal(SensorStatus.Live, State("processes/top-cpu-usage").Status);
+        Assert.Equal(["new-a", "new-b"], Names(usage).Order(StringComparer.Ordinal));
+        Assert.Equal(2.5, Cell(usage, "new-a", 1).Value, 3);
+        Assert.Equal(2.5, Cell(usage, "new-b", 1).Value, 3);
     }
 }

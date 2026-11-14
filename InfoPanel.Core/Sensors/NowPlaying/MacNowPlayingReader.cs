@@ -50,8 +50,14 @@ namespace InfoPanel.Sensors.NowPlaying;
 /// playing: not when it came with anything on its standard error, a standard error cut at that deadline, or an exit
 /// other than 0, as the helper's own timeout does; nor an output cut there), unless the stream gave a line while it
 /// ran: then only its cover is taken, for the track that line gave and still without one.
+/// While the current track's cover is held, a poll's <c>get</c> leaves the cover out (<c>--no-artwork</c>), but never more
+/// than <see cref="CoverEvery"/> - 1 polls in a row: every <see cref="CoverEvery"/>th asks with it, so a cover that
+/// changes on the same track (the helper's answer names no cover, so only its bytes tell) arrives within
+/// <see cref="CoverEvery"/> polls. An answer without the cover that names another track isn't taken: a <c>get</c> with
+/// the cover starts at once, and its answer is the reading, so a new track's title and cover come together.
 /// A cover is the reading's own track's only (the same app, process, title, artist, album, ids and duration,
-/// <see cref="TrackOf"/>) and kept with that track's later lines that lack one; a track with none of a title, the
+/// <see cref="TrackOf"/>) and kept with that track's later lines that lack one, until a reading whose cover was left out
+/// as too large drops it (the polls then ask with the cover until one is held again); a track with none of a title, the
 /// player's ids or a duration can't be told from the app's next one, so no cover is kept for it. A <c>get</c> is started
 /// outside the lock, so <see cref="Stop"/> never waits on a start; the stream's end and <see cref="Stop"/> end the polls
 /// and kill a <c>get</c> under way (or the one a start under way returns), never waiting for it.
@@ -96,6 +102,9 @@ public sealed class MacNowPlayingReader : INowPlayingReader
     /// <summary>How often the helper's <c>get</c> is run while the stream runs: the stream can go quiet after its first track.</summary>
     public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
+    /// <summary>While the current track's cover is held, every this many polls' <c>get</c> asks with the cover; the others leave it out.</summary>
+    public const int CoverEvery = 5;
+
     /// <summary>A <c>get</c> that hasn't ended this long after its start is killed.</summary>
     public static readonly TimeSpan GetLimit = TimeSpan.FromSeconds(5);
 
@@ -138,6 +147,10 @@ public sealed class MacNowPlayingReader : INowPlayingReader
     private bool _getWarned;
     // The current track's cover, from a get or the stream: kept with its lines that lack one.
     private (string Track, ReadOnlyMemory<byte> Art, string? Type)? _keptArt;
+    // The gets asked without the cover since the last asked with it.
+    private int _withoutCover;
+    // A get without the cover answered another track: the next get asks with the cover.
+    private bool _coverWanted;
 
     /// <param name="process">Starts the helper: <see cref="MediaHelperProcess"/>, or a test's.</param>
     /// <param name="folders">The folders looked in for the helper, in order (<see cref="Candidates"/>).</param>
@@ -189,9 +202,15 @@ public sealed class MacNowPlayingReader : INowPlayingReader
     public static MediaHelperStart StartOf(string script, string framework) =>
         new(Perl, [script, framework, "stream", "--no-diff", "--debounce=200", "--micros", "--allow-missing-title"], RemovedVariables);
 
-    /// <summary>The helper's <c>get</c>, asked for a cover the stream left out: one line, the current session's payload.</summary>
-    public static MediaHelperStart GetOf(string script, string framework) =>
-        new(Perl, [script, framework, "get", "--micros", "--allow-missing-title"], RemovedVariables);
+    /// <summary>
+    /// The helper's <c>get</c>: one line, the current session's payload; without <paramref name="artwork"/>, without its
+    /// cover (<c>--no-artwork</c>), as a poll asks while the current track's cover is held, 4 polls in 5
+    /// (<see cref="CoverEvery"/>).
+    /// </summary>
+    public static MediaHelperStart GetOf(string script, string framework, bool artwork = true) =>
+        new(Perl, artwork
+            ? [script, framework, "get", "--micros", "--allow-missing-title"]
+            : [script, framework, "get", "--micros", "--allow-missing-title", "--no-artwork"], RemovedVariables);
 
     public SourceState? State
     {
@@ -498,7 +517,9 @@ public sealed class MacNowPlayingReader : INowPlayingReader
     /// <summary>
     /// Under the lock, a reading taken (a stream line, or a get's answer when no stream line came while it ran): the cover
     /// kept for its track is put on it when it has none; a cover it has is kept for its track; a cover of another track
-    /// is dropped. A cover never goes to another track than its own.
+    /// is dropped, and so is the kept cover when the reading's cover was left out as too large (the player's cover is no
+    /// longer the one kept, so a later answer without the cover can't bring it back). A cover never goes to another track
+    /// than its own.
     /// </summary>
     private void Take(NowPlayingSnapshot? snapshot, string? track, bool artTooBig)
     {
@@ -506,7 +527,7 @@ public sealed class MacNowPlayingReader : INowPlayingReader
             snapshot = snapshot with { Art = kept.Art, ArtType = kept.Type };
         else if (snapshot is { Art: { } art } && track is not null)
             _keptArt = (track, art, snapshot.ArtType);
-        else if (_keptArt is { } other && other.Track != track)
+        else if (artTooBig || _keptArt is { } other && other.Track != track)
             _keptArt = null;
         _latest = snapshot;
         _latestTrack = snapshot is null ? null : track;
@@ -525,6 +546,9 @@ public sealed class MacNowPlayingReader : INowPlayingReader
 
         /// <summary>The stream's lines taken when it was asked for: when more have been since, its answer is older.</summary>
         public readonly long Lines = lines;
+
+        /// <summary>Asked to leave the cover out (<c>--no-artwork</c>).</summary>
+        public bool WithoutArtwork;
 
         // Under _lock.
 
@@ -583,6 +607,8 @@ public sealed class MacNowPlayingReader : INowPlayingReader
         _poll = null;
         _latestTrack = null;
         _keptArt = null;
+        _withoutCover = 0;
+        _coverWanted = false;
         if (_get is not { Abandoned: false } get)
             return null;
         get.Abandoned = true;
@@ -656,8 +682,10 @@ public sealed class MacNowPlayingReader : INowPlayingReader
     }
 
     /// <summary>
-    /// The poll, every <see cref="PollInterval"/> while the stream's run <paramref name="generation"/> is current: one get,
-    /// reserved under the lock and started outside it; none while one is under way, an earlier run's included.
+    /// The poll, every <see cref="PollInterval"/> while the stream's run <paramref name="generation"/> is current, and at
+    /// once after an answer without the cover named another track: one get, reserved under the lock and started outside
+    /// it; none while one is under way, an earlier run's included. It leaves the cover out while the current track's cover
+    /// is held, unless <see cref="CoverEvery"/> - 1 gets in a row have, or the last answered another track.
     /// </summary>
     private void Poll(long generation)
     {
@@ -669,7 +697,21 @@ public sealed class MacNowPlayingReader : INowPlayingReader
                 return;
             get = new GetRun(generation, _lines);
             _get = get;
-            start = GetOf(paths.Script, paths.Framework);
+            // While the current track's cover is held, the get leaves it out (its answer takes the held one, Take), but
+            // every CoverEvery-th asks with it, so a cover changed on the same track arrives.
+            var coverHeld = _latestTrack is { } track && _keptArt is { } kept && kept.Track == track;
+            get.WithoutArtwork = coverHeld && !_coverWanted && _withoutCover < CoverEvery - 1;
+            if (get.WithoutArtwork)
+            {
+                _withoutCover++;
+            }
+            else
+            {
+                _withoutCover = 0;
+                _coverWanted = false;
+            }
+
+            start = GetOf(paths.Script, paths.Framework, artwork: !get.WithoutArtwork);
         }
 
         StartGet(get, start);
@@ -846,11 +888,12 @@ public sealed class MacNowPlayingReader : INowPlayingReader
     /// cover, for the track that line gave and still without one. "Nothing plays" that came with anything on its standard
     /// error, a standard error still open at its deadline, or an exit other than 0 isn't taken: the helper answers so when
     /// it failed, its own timeout included (its MediaRemote callbacks not answering within 2 s: a line on its standard
-    /// error, then <c>null</c>, exit 0).
+    /// error, then <c>null</c>, exit 0). An answer asked without the cover that names another track isn't taken either: a
+    /// get with the cover is polled at once, its answer the reading, so the new track never reads without its cover.
     /// </summary>
     private void Retired(GetRun get)
     {
-        bool warnLine, warnJson, warnArt, failedNull;
+        bool warnLine, warnJson, warnArt, failedNull, again = false;
         lock (_lock)
         {
             if (_get == get)
@@ -872,7 +915,12 @@ public sealed class MacNowPlayingReader : INowPlayingReader
             failedNull = get.Taken && get.Answer is null && (get.WroteError || get.ErrorCut || get.ExitCode != 0);
             if (get.Taken && !failedNull)
             {
-                if (get.Lines == _lines)
+                if (get.Lines == _lines && get.WithoutArtwork && get.Answer is not null && get.Track != _latestTrack)
+                {
+                    _coverWanted = true;
+                    again = true;
+                }
+                else if (get.Lines == _lines)
                 {
                     Take(get.Answer, get.Track, get.ArtTooBig);
                 }
@@ -892,6 +940,9 @@ public sealed class MacNowPlayingReader : INowPlayingReader
             _log.Warning("Now Playing: cover art over {Max} bytes was left out", NowPlayingSource.MaxArtBytes);
         if (failedNull)
             _log.Debug("Now Playing: the media helper's get said nothing plays with an error or exit code {Code}; not taken", get.ExitCode);
+        // Its reservation has ended: the get with the cover for the other track starts now, not at the next poll.
+        if (again)
+            Poll(get.Generation);
     }
 
     /// <summary>A get's standard error, read to its end, its bytes counted and never kept (it can name what plays).</summary>

@@ -323,6 +323,24 @@ public sealed class LibreRecordingTests : IDisposable
     }
 
     [Fact]
+    public void AFinishedRecorder_KeepsNoRoundBuffer()
+    {
+        // One round of large answers (a 9,000-sensor catalogue, near a frame's 1 MiB, and its sample), then the recording
+        // is finished.
+        var time = new TimerTimeProvider(DateTimeOffset.UnixEpoch);
+        var recorder = new LibreRecorder(_root, 1, false, LibreSource.Interval, time.GetUtcNow(), time: time);
+        recorder.Answered(HelperCodec.EncodeAnswer(Hello));
+        recorder.Answered(HelperCodec.EncodeAnswer(CatalogueOf(1, [.. Enumerable.Range(0, 9_000).Select(i => $"/amdcpu/0/load/{i}")])));
+        recorder.Answered(HelperCodec.EncodeAnswer(SampleOf(1, [.. Enumerable.Range(0, 9_000).Select(i => (float?)(i * 0.5f))])));
+        recorder.RoundEnded();
+        Assert.True(recorder.Finished);
+
+        var kept = ((MemoryStream)typeof(LibreRecorder).GetField("_pending", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(recorder)!).Capacity;
+        TestContext.Current.TestOutputHelper?.WriteLine($"finished Libre recorder keeps {kept:N0} bytes");
+        Assert.Equal(0, kept);
+    }
+
+    [Fact]
     public void ARound_IsWrittenUnderATemporaryName_ThenPublished_NeverTakingAnotherFilesName()
     {
         var time = new TimerTimeProvider(DateTimeOffset.UnixEpoch);

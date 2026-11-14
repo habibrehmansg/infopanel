@@ -1532,4 +1532,29 @@ public class PolledSensorSourceTests
             await Task.Delay(5, Ct);
         }
     }
+    [Fact]
+    public void InUse_IsEveryKeyWithoutADemandWindow_AndAReadNotAPeekWithinOne()
+    {
+        var (plain, _, _) = Create("a");
+        plain.Open();
+        Assert.True(plain.InUse(0));
+        plain.Dispose();
+
+        var time = new TimerTimeProvider(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero));
+        var sampler = new ScriptedSampler(["a", "b"]);
+        using var source = new PolledSensorSource("test.polled", () => sampler, new PolledSensorSourceOptions { DemandWindow = TimeSpan.FromMinutes(2) }, time);
+        source.Open();
+        Assert.False(source.InUse(0));
+        source.PeekState(source.KeyOf("a"));
+        source.TryPeek(source.KeyOf("a"), out _);
+        Assert.False(source.InUse(0));
+        source.ReadState(source.KeyOf("a"));
+        Assert.True(source.InUse(0));
+        Assert.False(source.InUse(1));
+        source.NoteUse(source.KeyOf("b"));
+        Assert.True(source.InUse(1));
+        time.Advance(TimeSpan.FromMinutes(2.5));
+        Assert.False(source.InUse(0));
+        Assert.False(source.InUse(1));
+    }
 }

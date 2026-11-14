@@ -687,6 +687,22 @@ public sealed class SensorRecordingTests : IDisposable
     }
 
     [Fact]
+    public void AFinishedRecorder_KeepsNoCopyOfTheLargestImage()
+    {
+        // A large HWiNFO image (8 MiB: many sensors, padded), one round, then the recording is finished.
+        var image = new byte[8 << 20];
+        Pc(1000, 50).Build().CopyTo(image, 0);
+        var recorder = new HwInfoRecorder(_root, 1, scrub: false, Interval, DateTimeOffset.UnixEpoch);
+        recorder.Copied(-1, image);
+        recorder.RoundEnded();
+        Assert.True(recorder.Finished);
+
+        var kept = ((byte[])typeof(HwInfoRecorder).GetField("_buffer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(recorder)!).Length;
+        TestContext.Current.TestOutputHelper?.WriteLine($"finished HWiNFO recorder keeps {kept:N0} bytes");
+        Assert.Equal(0, kept);
+    }
+
+    [Fact]
     public void AReplay_LoadsARecording_WithOrWithoutItsClaim()
     {
         var recorder = new HwInfoRecorder(_root, 2, scrub: false, Interval, DateTimeOffset.UnixEpoch);

@@ -109,7 +109,8 @@ public sealed class WinProcessSamplerTests
         var category = new FakeCategory { ReadMs = 600, CountMs = 10 };
         var win = new WinProcessSampler(() => 4, category.Counts, category.Read);
         var time = new TimerTimeProvider(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero));
-        using var source = SystemInfoSource.Create(win, time);
+        // Without demand: every poll reads the counts and the processes, whatever the test reads.
+        using var source = SystemInfoSource.Create(win, time, new PolledSensorSourceOptions { Interval = SystemInfoSource.Interval });
         source.Open();
 
         InfoPanel.Models.SensorReading Reading(string entry) => source.ReadState(SystemInfoSource.KeyOf("processes", entry)).Reading;

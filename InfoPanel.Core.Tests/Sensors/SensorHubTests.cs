@@ -344,4 +344,101 @@ public class SensorHubTests
         Assert.Equal(0xE40C292Cu, StableHash.Fnv1a("a"));
         Assert.Equal(0xBF9CF968u, StableHash.Fnv1a("foobar"));
     }
+    /// <summary>Handles every key with one fixed reading, allocating nothing.</summary>
+    private sealed class FixedSource : ISensorSource
+    {
+        private static readonly SensorReading Fixed = new(1, 1, 1, 1, "u");
+
+        public string Id => "fixed";
+
+        public bool Handles(SensorKey key) => true;
+
+        public IReadOnlyList<SensorInfo> GetSensors() => [];
+
+        public bool TryRead(SensorKey key, out SensorReading reading)
+        {
+            reading = Fixed;
+            return true;
+        }
+
+        public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+
+    [Fact]
+    public void ReadingAKey_AllocatesNothingInTheHub()
+    {
+        var hub = new SensorHub([new FixedSource()]);
+        SensorKey[] keys =
+        [
+            SensorKey.HwInfo(-1, 1, 0, 7),
+            SensorKey.Libre("/amdcpu/0/load/0"),
+            SensorKey.Plugin("/infopanel.mock/gpu/gpu-temp"),
+            SensorKey.Plugin("/weather/temp"),
+        ];
+        foreach (var key in keys)
+        {
+            Assert.True(hub.TryRead(key, out _));
+            hub.NoteUse(key);
+            Assert.Equal(SensorStatus.Live, hub.ReadState(key).Status);
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 1000; i++)
+        {
+            foreach (var key in keys)
+            {
+                hub.TryRead(key, out _);
+                hub.NoteUse(key);
+                hub.ReadState(key);
+            }
+        }
+
+        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+    }
+
+    /// <summary>The check as it was: the key's text parses back to the same key, and a HWiNFO key's sensor id isn't 0.</summary>
+    private static bool RoundTripIsWellFormed(SensorKey key)
+    {
+        if (string.IsNullOrWhiteSpace(key.Id) || !Enum.IsDefined(key.Type))
+            return false;
+        if (!SensorKey.TryParse(key.ToString(), out var parsed) || parsed != key)
+            return false;
+        return key.Type != SensorType.HwInfo || key.Id.Split(':')[1] != "0";
+    }
+
+    [Fact]
+    public void IsWellFormed_AgreesWithTheTextRoundTrip()
+    {
+        string[] hwinfo =
+        [
+            "-1:1:0:7", "0:1:0:0", "1:2:3:4", "-1:0:0:0", "0:0:0:0", "-1:00:0:7", "-1:01:0:7", "-01:1:0:7", "+1:1:0:7",
+            "-0:1:0:7", "1:+1:0:7", "1:-1:0:7", "1:1:0:07", "1:1:00:7", "1:1::7", ":1:0:7", "1:1:0:", "1:1:0", "1:1:0:7:8",
+            "1:1:0:7:", " 1:1:0:7", "1:1:0:7 ", "1: 1:0:7", "2147483647:4294967295:0:0", "2147483648:1:0:0",
+            "-2147483648:1:0:0", "-2147483649:1:0:0", "1:4294967296:0:0", "1:1:0:4294967295", "a:1:0:7", "1:1:0:x",
+            "١:1:0:7", "1:1:0:7\n", "", " ", "\t", "0", "1:1:0:7:", "1:1:0:7::",
+        ];
+        string[] ids =
+        [
+            "/amdcpu/0/load/0", "x", " x", "x ", ":", "::", ":x", "x:y", "/infopanel.mock/gpu/gpu-temp",
+            "/infopanel.mock/a", "/infopanel.mock/", "/infopanel.mock", "/infopanel./a", "/infopanel.-mock/a",
+            "/infopanel.mock-/a", "/infopanel.mo--ck/a", "/infopanel.mo-ck/a", "/infopanel.Mock/a", "/infopanel.mock//a",
+            "/infopanel.m0ck/a/b", "/infopanel.mock/a/", "/infopanel.mock/ ", "/infopanel.", "/infopanel.//a",
+            "/INFOPANEL.mock/a", "/InfoPanel.mock/a", "/infopanel", "/infopanelx.mock/a", "infopanel.mock/a",
+            "/weather/temp", "/weather", "/", "//", "", " ", "\t", "/infopanel.mock/gpu temp", "/infopanel.mock /a",
+            "/infopanel.mö/a", "/infopanel.9/a",
+        ];
+
+        var cases = new List<SensorKey>();
+        foreach (var id in hwinfo.Concat(ids))
+        {
+            foreach (var type in new[] { SensorType.HwInfo, SensorType.Libre, SensorType.Plugin, (SensorType)7 })
+                cases.Add(new SensorKey(type, id));
+        }
+        cases.Add(new SensorKey(SensorType.Plugin, null!));
+
+        foreach (var key in cases)
+            Assert.True(RoundTripIsWellFormed(key) == SensorHub.IsWellFormed(key), $"{key.Type} '{key.Id}'");
+    }
 }

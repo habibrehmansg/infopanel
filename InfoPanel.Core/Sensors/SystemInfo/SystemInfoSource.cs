@@ -48,6 +48,9 @@ public static class SystemInfoSource
 
     public static readonly TimeSpan Interval = TimeSpan.FromSeconds(1);
 
+    /// <summary>The processes are listed, and counted, only while a table, or a count, was read within this long.</summary>
+    public static readonly TimeSpan DemandWindow = TimeSpan.FromMinutes(2);
+
     /// <summary>
     /// The names the tables leave out unless the settings say otherwise (<c>sources.systemInfo.excludedProcesses</c>),
     /// compared exactly (case too), as the 1.x plugin's default list.
@@ -97,8 +100,13 @@ public static class SystemInfoSource
     /// <c>sources.systemInfo.excludedProcesses</c>, read at each round, so a change applies from the next; without, the default.
     /// </summary>
     public static PolledSensorSource Create(IProcessSampler processes, TimeProvider? time = null, PolledSensorSourceOptions? options = null, ILogger? log = null,
-        SettingsStore? settings = null) =>
-        new(SourceId, () => new SystemInfoSampler(processes, log, settings), options ?? new PolledSensorSourceOptions { Interval = Interval }, time, log: log);
+        SettingsStore? settings = null)
+    {
+        PolledSensorSource? source = null;
+        source = new(SourceId, () => new SystemInfoSampler(processes, log, settings, i => source!.InUse(i)),
+            options ?? new PolledSensorSourceOptions { Interval = Interval, DemandWindow = DemandWindow }, time, log: log);
+        return source;
+    }
 
     /// <summary>The source over this computer: <see cref="MacProcessSampler"/> on macOS, <see cref="WinProcessSampler"/> on Windows; with <paramref name="settings"/>, following them.</summary>
     [SupportedOSPlatform("macos")]
@@ -142,13 +150,60 @@ public sealed class SystemInfoSampler : ISensorSampler
     // The tables' last rounds (at most CpuRounds), oldest first: each name's CPU figures (usage, utility) in it.
     private readonly Queue<Dictionary<string, (double Usage, double Utility)>> _recent = new();
     private bool _listed;
+    // Whether the sensor at an index of Discover's list was read lately; the counts' and tables' samples of their last
+    // round read, when good, put back marked stale in the rounds that skip them; whether each group (by its first index)
+    // has been read with a good sample once: until then it is read, used or not.
+    private readonly Func<int, bool> _inUse;
+    private readonly SensorSample[] _kept = new SensorSample[15];
+    private readonly bool[] _readOnce = new bool[15];
 
-    public SystemInfoSampler(IProcessSampler system, ILogger? log = null, SettingsStore? settings = null)
+    public SystemInfoSampler(IProcessSampler system, ILogger? log = null, SettingsStore? settings = null, Func<int, bool>? inUse = null)
     {
         ArgumentNullException.ThrowIfNull(system);
         _system = system;
         _log = (log ?? Log.Logger).ForContext<SystemInfoSampler>();
         _settings = settings;
+        _inUse = inUse ?? (_ => true);
+    }
+
+    /// <summary>
+    /// Whether the samples <paramref name="first"/> to <paramref name="first"/> + 2 are read this round: one of them is in
+    /// use, or the group hasn't been read with a good sample yet. What is kept doesn't decide it.
+    /// </summary>
+    private bool Wanted(int first)
+    {
+        if (!_readOnce[first])
+            return true;
+        for (var i = first; i < first + 3; i++)
+        {
+            if (_inUse(i))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// When read, keeps the samples <paramref name="first"/> to <paramref name="first"/> + 2 that are good and clears the
+    /// others (a read that fails, or a round without a table, confirms nothing kept before); else puts the kept ones back,
+    /// stale.
+    /// </summary>
+    private void KeepOrRestore(Span<SensorSample> samples, int first, bool read)
+    {
+        for (var i = first; i < first + 3; i++)
+        {
+            if (read)
+            {
+                var good = samples[i].Outcome == SampleOutcome.Ok;
+                _kept[i] = good ? samples[i] : default;
+                _readOnce[first] |= good;
+            }
+            else if (_kept[i].Outcome == SampleOutcome.Ok)
+            {
+                samples[i] = _kept[i];
+                samples[i].MarkStale();
+            }
+        }
     }
 
     /// <summary>The names the tables leave out this round: the settings' list as it is now, matched exactly (ordinal).</summary>
@@ -191,9 +246,15 @@ public sealed class SystemInfoSampler : ISensorSampler
             Fail(samples[..5]);
         }
 
-        Count(ref samples[5], Part.ProcessCount, () => _system.ProcessCount());
-        Count(ref samples[6], Part.ThreadCount, _system.ThreadCount);
-        Count(ref samples[7], Part.HandleCount, _system.HandleCount);
+        var counts = Wanted(5);
+        if (counts)
+        {
+            Count(ref samples[5], Part.ProcessCount, () => _system.ProcessCount());
+            Count(ref samples[6], Part.ThreadCount, _system.ThreadCount);
+            Count(ref samples[7], Part.HandleCount, _system.HandleCount);
+        }
+
+        KeepOrRestore(samples, 5, counts);
 
         double? usage = null, utility = null;
         if (Try(Part.Cpu, () => (_system.CpuUsage(), _system.CpuUtility()), out var cpu))
@@ -213,9 +274,23 @@ public sealed class SystemInfoSampler : ISensorSampler
         Memory(ref samples[10], Part.MemoryUsage, _system.MemoryUsage);
         Memory(ref samples[11], Part.MemoryCompression, _system.MemoryCompression);
 
-        if (Try(Part.Processes, _system.Processes, out var processes))
+        if (!Wanted(12))
+        {
+            // Nothing reads the tables: the processes aren't listed, the last tables stay (stale), and the next round
+            // that reads them starts afresh, its CPU baseline first.
+            if (_listed)
+            {
+                _last = [];
+                _recent.Clear();
+                _listed = false;
+            }
+
+            KeepOrRestore(samples, 12, read: false);
+        }
+        else if (Try(Part.Processes, _system.Processes, out var processes))
         {
             Tables(samples[12..15], processes, elapsed, usage, utility);
+            KeepOrRestore(samples, 12, read: true);
         }
         else
         {
@@ -224,6 +299,7 @@ public sealed class SystemInfoSampler : ISensorSampler
             _recent.Clear();
             _listed = false;
             Fail(samples[12..15]);
+            KeepOrRestore(samples, 12, read: true);
         }
     }
 

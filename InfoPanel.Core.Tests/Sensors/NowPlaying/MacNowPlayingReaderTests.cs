@@ -787,6 +787,24 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         Assert.True(SpinWait.SpinUntil(() => run.Disposed, TimeSpan.FromSeconds(10)), "the reader let go of the get");
     }
 
+    /// <summary>
+    /// Answers <paramref name="run"/>, the latest poll's get, asked without the cover (the current track's is held), with
+    /// the next track as the helper then gives it (<see cref="GetNextNoArt"/>); that answer isn't taken, and the get with
+    /// the cover that starts at once answers <see cref="GetNext"/>.
+    /// </summary>
+    private void AnswerNextTrack(FakeRun run)
+    {
+        var starts = StartCount;
+        Assert.Same(_process.Runs[starts - 1], run);
+        Assert.Contains("--no-artwork", _process.Starts[starts - 1].Arguments);
+        run.Print(GetNextNoArt);
+        Answered(run);
+        Assert.Equal(starts + 1, StartCount);
+        Assert.DoesNotContain("--no-artwork", _process.Starts[starts].Arguments);
+        _process.Runs[starts].Print(GetNext);
+        Answered(_process.Runs[starts]);
+    }
+
     private int StartCount
     {
         get
@@ -1113,6 +1131,11 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         {"bundleIdentifier":"com.apple.Music","playing":false,"title":"Next Secret Song","artist":"Next Secret Band","album":"Next Secret Album","uniqueIdentifier":"u-2","durationMicros":180000000,"elapsedTimeMicros":7000000,"timestampEpochMicros":1794474100000000,"playbackRate":0,"artworkData":"R0lGODdh","artworkMimeType":"image/gif"}
         """;
 
+    /// <summary><see cref="GetNext"/> as the helper's get gives it when asked to leave the cover out (<c>--no-artwork</c>).</summary>
+    private const string GetNextNoArt = """
+        {"bundleIdentifier":"com.apple.Music","playing":false,"title":"Next Secret Song","artist":"Next Secret Band","album":"Next Secret Album","uniqueIdentifier":"u-2","durationMicros":180000000,"elapsedTimeMicros":7000000,"timestampEpochMicros":1794474100000000,"playbackRate":0}
+        """;
+
     /// <summary>The track <see cref="Full"/> is, as the helper's get gives it, with its cover.</summary>
     private const string GetFull = """
         {"bundleIdentifier":"com.apple.Music","parentApplicationBundleIdentifier":null,"playing":true,"title":"A Secret Song","artist":"Secret Band","album":"Secret Album","durationMicros":200000000,"elapsedTimeMicros":14500000,"timestampEpochMicros":1794474002000000,"playbackRate":1,"trackNumber":1,"totalTrackCount":5,"genre":"Secret Genre","composer":"Someone","shuffleMode":3,"repeatMode":2,"artworkData":"iVBORw0KGgo=","artworkMimeType":"image/png","processIdentifier":4242}
@@ -1143,14 +1166,25 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         Assert.Equal(2, StartCount);
         var get = _process.Starts[1];
         Assert.Equal("/usr/bin/perl", get.FileName);
-        Assert.Equal([Path.Combine(_folder, "mediaremote-adapter.pl"), Path.Combine(_folder, "MediaRemoteAdapter.framework"), "get", "--micros", "--allow-missing-title"], get.Arguments);
+        // The stream's line gave the track's cover, so the get leaves it out.
+        Assert.Equal([Path.Combine(_folder, "mediaremote-adapter.pl"), Path.Combine(_folder, "MediaRemoteAdapter.framework"), "get", "--micros", "--allow-missing-title", "--no-artwork"], get.Arguments);
         Assert.Equal(["PERL5LIB", "PERL5OPT", "PERLLIB", "PERL5DB"], get.RemovedVariables);
 
-        // It answers the next track: every reading is that track's, its cover too.
+        // It answers the next track, without its cover as the helper does when asked to leave it out: that answer isn't
+        // the reading (the reading stays the held track's), and a get with the cover starts at once, with no clock advance.
         _process.Runs[1].PrintError("Sentinel Secret Title");
-        _process.Runs[1].Print(GetNext);
+        _process.Runs[1].Print(GetNextNoArt);
         Answered(_process.Runs[1]);
         Assert.True(reader.TryRead(out var s));
+        Assert.Equal("A Secret Song", s!.Title);
+        Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s.Art!.Value.ToArray());
+        Assert.Equal(3, StartCount);
+        Assert.Equal([Path.Combine(_folder, "mediaremote-adapter.pl"), Path.Combine(_folder, "MediaRemoteAdapter.framework"), "get", "--micros", "--allow-missing-title"], _process.Starts[2].Arguments);
+
+        // Its answer is the reading: every reading is the next track's, its cover with its title.
+        _process.Runs[2].Print(GetNext);
+        Answered(_process.Runs[2]);
+        Assert.True(reader.TryRead(out s));
         Assert.Equal("Next Secret Song", s!.Title);
         Assert.Equal("Next Secret Band", s.Artist);
         Assert.Equal("Next Secret Album", s.Album);
@@ -1163,9 +1197,9 @@ public sealed class MacNowPlayingReaderTests : IDisposable
 
         // The player quits, and the stream still says nothing: the next poll's get says nothing plays.
         _time.Advance(TimeSpan.FromSeconds(2));
-        Assert.Equal(3, StartCount);
-        _process.Runs[2].Print("null");
-        Answered(_process.Runs[2]);
+        Assert.Equal(4, StartCount);
+        _process.Runs[3].Print("null");
+        Answered(_process.Runs[3]);
         Assert.True(reader.TryRead(out s));
         Assert.Null(s);
 
@@ -1174,6 +1208,184 @@ public sealed class MacNowPlayingReaderTests : IDisposable
             Assert.DoesNotContain("Secret", e.RenderMessage() + " " + e.Exception, StringComparison.Ordinal);
             Assert.DoesNotContain("Sentinel", e.RenderMessage() + " " + e.Exception, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void While_the_tracks_cover_is_held_4_polls_in_5_leave_the_cover_out_and_a_new_tracks_cover_comes_with_its_title()
+    {
+        var reader = Reader();
+        reader.Start();
+        var stream = _process.Runs[0];
+        var cover = new byte[1 << 20];
+        new Random(7).NextBytes(cover);
+        var getWithCover = GetWithArt.Replace("iVBORw0KGgo=", Convert.ToBase64String(cover), StringComparison.Ordinal);
+        PrintOn(stream, NoArt);
+
+        // Each get answers as the helper does: its cover only when not asked to leave it out.
+        bool Answer(string withCover, string withoutCover)
+        {
+            MediaHelperStart start;
+            lock (_process.Starts)
+                start = _process.Starts[^1];
+            var leftOut = start.Arguments.Contains("--no-artwork");
+            _process.Runs[^1].Print(leftOut ? withoutCover : withCover);
+            Answered(_process.Runs[^1]);
+            return !leftOut;
+        }
+
+        // The same track and cover for 30 polls: the first get and every 5th after it ask with the cover (one changed on the
+        // same track still arrives), the others leave it out; the cover stays on every reading.
+        var gotCover = 0;
+        for (var i = 0; i < 30; i++)
+        {
+            _time.Advance(MacNowPlayingReader.PollInterval);
+            Assert.Equal(2 + i, StartCount);
+            var withCover = Answer(getWithCover, GetNoArt);
+            Assert.True(withCover == (i % 5 == 0), $"poll {i + 1} asked {(withCover ? "with" : "without")} the cover");
+            gotCover += withCover ? 1 : 0;
+            Assert.True(reader.TryRead(out var s));
+            Assert.True(cover.AsSpan().SequenceEqual(s!.Art!.Value.Span));
+        }
+
+        Assert.True(gotCover <= 7, $"{gotCover} of 30 gets carried the 1 MiB cover");
+
+        // The 31st poll asks with the cover again, the same track still playing.
+        _time.Advance(MacNowPlayingReader.PollInterval);
+        Assert.True(Answer(getWithCover, GetNoArt));
+
+        // The player moves to the next track while the stream stays quiet. The next poll leaves the cover out; its answer,
+        // another track without a cover, isn't the reading, and a get with the cover follows at once, with no clock advance:
+        // the next track's title and cover come together.
+        _time.Advance(MacNowPlayingReader.PollInterval);
+        Assert.False(Answer(GetNext, GetNextNoArt));
+        Assert.Equal(34, StartCount);
+        Assert.True(reader.TryRead(out var held));
+        Assert.Equal("A Secret Song", held!.Title);
+        Assert.True(cover.AsSpan().SequenceEqual(held.Art!.Value.Span));
+        Assert.True(Answer(GetNext, GetNextNoArt));
+
+        Assert.True(reader.TryRead(out var next));
+        Assert.Equal("Next Secret Song", next!.Title);
+        Assert.Equal(Convert.FromBase64String("R0lGODdh"), next.Art!.Value.ToArray());
+    }
+
+    [Fact]
+    public void A_cover_replaced_on_the_same_track_shows_within_5_polls_and_the_polls_between_leave_the_cover_out()
+    {
+        var reader = Reader();
+        reader.Start();
+        PrintOn(_process.Runs[0], NoArt);
+        var getWithNewCover = GetWithArt.Replace("\"artworkData\":\"iVBORw0KGgo=\",\"artworkMimeType\":\"image/png\"", "\"artworkData\":\"R0lGODdh\",\"artworkMimeType\":\"image/gif\"", StringComparison.Ordinal);
+        Assert.NotEqual(GetWithArt, getWithNewCover);
+
+        // The first poll asks with the cover, and the reading holds it.
+        _time.Advance(MacNowPlayingReader.PollInterval);
+        Assert.Equal(2, StartCount);
+        Assert.DoesNotContain("--no-artwork", _process.Starts[1].Arguments);
+        _process.Runs[1].Print(GetWithArt);
+        Answered(_process.Runs[1]);
+        Assert.True(reader.TryRead(out var s));
+        Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s!.Art!.Value.ToArray());
+
+        // From then on the player shows another cover for the same track (a podcast's chapter): each get answers as the
+        // helper does, the new cover only when not asked to leave it out.
+        var shown = 0;
+        for (var poll = 1; poll <= 5 && shown == 0; poll++)
+        {
+            _time.Advance(MacNowPlayingReader.PollInterval);
+            Assert.Equal(2 + poll, StartCount);
+            MediaHelperStart start;
+            lock (_process.Starts)
+                start = _process.Starts[^1];
+            var leftOut = start.Arguments.Contains("--no-artwork");
+            _process.Runs[^1].Print(leftOut ? GetNoArt : getWithNewCover);
+            Answered(_process.Runs[^1]);
+            Assert.True(reader.TryRead(out s));
+            Assert.Equal("A Secret Song", s!.Title);
+            if (s.Art!.Value.Span.SequenceEqual(Convert.FromBase64String("R0lGODdh")))
+            {
+                Assert.Equal("image/gif", s.ArtType);
+                shown = poll;
+            }
+            else
+            {
+                // The polls in between leave the cover out, and the reading keeps the cover held.
+                Assert.True(leftOut, $"poll {poll} asked with the cover and its answer wasn't taken");
+                Assert.Equal(Convert.FromBase64String("iVBORw0KGgo="), s.Art!.Value.ToArray());
+            }
+        }
+
+        Assert.True(shown > 0, "the new cover wasn't read within 5 polls");
+    }
+
+    [Fact]
+    public void A_cover_replaced_by_one_over_8_MiB_on_the_same_track_drops_the_held_cover_until_a_valid_one_comes()
+    {
+        var reader = Reader();
+        reader.Start();
+        PrintOn(_process.Runs[0], NoArt);
+        var oldCover = Convert.FromBase64String("iVBORw0KGgo=");
+        var big = new string('A', (NowPlayingSource.MaxArtBytes / 3 + 1) * 4);
+        var getWithBigCover = GetWithArt.Replace("iVBORw0KGgo=", big, StringComparison.Ordinal);
+        var getWithNewCover = GetWithArt.Replace("\"artworkData\":\"iVBORw0KGgo=\",\"artworkMimeType\":\"image/png\"", "\"artworkData\":\"R0lGODdh\",\"artworkMimeType\":\"image/gif\"", StringComparison.Ordinal);
+
+        // Each get answers as the helper does, the player's cover only when not asked to leave it out.
+        var withCover = GetWithArt;
+        NowPlayingSnapshot Poll(int poll)
+        {
+            _time.Advance(MacNowPlayingReader.PollInterval);
+            Assert.Equal(1 + poll, StartCount);
+            MediaHelperStart start;
+            lock (_process.Starts)
+                start = _process.Starts[^1];
+            _process.Runs[^1].Print(start.Arguments.Contains("--no-artwork") ? GetNoArt : withCover);
+            Answered(_process.Runs[^1]);
+            Assert.True(reader.TryRead(out var s));
+            Assert.Equal("A Secret Song", s!.Title);
+            return s;
+        }
+
+        // The first poll asks with the cover, and the reading holds it.
+        Assert.Equal(oldCover, Poll(1).Art!.Value.ToArray());
+
+        // The player's cover for the same track becomes one over 8 MiB while the stream stays quiet. Within 5 polls a get
+        // asks with the cover and its answer leaves the cover out as too large: the reading has no cover.
+        withCover = getWithBigCover;
+        var poll = 1;
+        var dropped = 0;
+        while (dropped == 0 && poll < 6)
+        {
+            var s = Poll(++poll);
+            if (s.Art is null)
+                dropped = poll;
+            else
+                Assert.Equal(oldCover, s.Art.Value.ToArray());
+        }
+
+        Assert.True(dropped > 0, "the cover over 8 MiB wasn't asked for within 5 polls");
+
+        // The cover held before is the old one, no longer the player's: no later poll brings its bytes back.
+        for (var i = 0; i < 12; i++)
+        {
+            var s = Poll(++poll);
+            Assert.True(s.Art is null, $"poll {poll} read a cover the player no longer shows ({s.Art?.Length} bytes)");
+        }
+
+        // The player then shows a valid cover for the same track: it is read within 5 polls.
+        withCover = getWithNewCover;
+        var shown = 0;
+        for (var i = 0; i < 5 && shown == 0; i++)
+        {
+            var s = Poll(++poll);
+            if (s.Art is { } art)
+            {
+                Assert.Equal(Convert.FromBase64String("R0lGODdh"), art.ToArray());
+                Assert.Equal("image/gif", s.ArtType);
+                shown = poll;
+            }
+        }
+
+        Assert.True(shown > 0, "the valid cover wasn't read within 5 polls");
     }
 
     [Fact]
@@ -1197,11 +1409,10 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         Assert.True(reader.TryRead(out var s));
         Assert.Equal("A Secret Song", s!.Title);
 
-        // The next poll runs, and its answer is taken.
+        // The next poll runs, and its answer is taken (the next track, with its cover from the get that follows at once).
         _time.Advance(TimeSpan.FromSeconds(1));
         Assert.Equal(3, StartCount);
-        _process.Runs[2].Print(GetNext);
-        Answered(_process.Runs[2]);
+        AnswerNextTrack(_process.Runs[2]);
         Assert.True(reader.TryRead(out s));
         Assert.Equal("Next Secret Song", s!.Title);
     }
@@ -1302,11 +1513,10 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         Assert.NotNull(s);
         Assert.Equal("A Secret Song", s.Title);
 
-        // The next poll runs, and its answer is taken.
+        // The next poll runs, and its answer is taken (the next track, with its cover from the get that follows at once).
         _time.Advance(TimeSpan.FromSeconds(1));
         Assert.Equal(3, StartCount);
-        _process.Runs[2].Print(GetNext);
-        Answered(_process.Runs[2]);
+        AnswerNextTrack(_process.Runs[2]);
         Assert.True(reader.TryRead(out s));
         Assert.Equal("Next Secret Song", s!.Title);
     }
@@ -1400,11 +1610,11 @@ public sealed class MacNowPlayingReaderTests : IDisposable
         Assert.True(reader.TryRead(out var s));
         Assert.Equal("A Secret Song", s!.Title);
 
-        // The next poll (6 s) starts a new get, and its answer is taken.
+        // The next poll (6 s) starts a new get, and its answer is taken (the next track, with its cover from the get that
+        // follows at once).
         _time.Advance(TimeSpan.FromSeconds(1));
         Assert.Equal(3, StartCount);
-        _process.Runs[2].Print(GetNext);
-        Answered(_process.Runs[2]);
+        AnswerNextTrack(_process.Runs[2]);
         Assert.True(reader.TryRead(out s));
         Assert.Equal("Next Secret Song", s!.Title);
 

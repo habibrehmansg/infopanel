@@ -1,3 +1,4 @@
+using System.Reflection;
 using InfoPanel.SensorHelper;
 using Xunit;
 using static InfoPanel.Core.Tests.SensorHelper.HelperTestKit;
@@ -304,5 +305,89 @@ public sealed class HelperServerTests
         await raw.DisposeAsync();
 
         Assert.Equal(HelperExit.Refused, await run.WaitAsync(Patience, Cancel));
+    }
+
+    [Fact]
+    public void SamplesOfAnUnchangedTree_BuildNoCatalogue()
+    {
+        // 2,000 sensors on 20 pieces of hardware, the same list each round: only the values move.
+        var tree = new SameTree(LargeTree(20, 100));
+        var server = new HelperServer(tree, "2.0.0-test");
+        var read = typeof(HelperServer).GetMethod("Read", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        read.Invoke(server, null); // the first read opens the tree and builds the catalogue
+        read.Invoke(server, null);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 10; i++)
+            read.Invoke(server, null);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        TestContext.Current.TestOutputHelper?.WriteLine($"10 samples: {allocated:N0} bytes allocated");
+        Assert.True(allocated < 10 * 64 * 1024, $"10 samples of an unchanged 2,000-sensor tree allocated {allocated:N0} bytes");
+    }
+
+    [Fact]
+    public async Task ASensorRenamedInPlace_NamesANewCatalogue_AndNewValuesKeepTheirPlace()
+    {
+        var tree = FakeTree.Pc();
+        var (pipe, _) = StartHelper(tree);
+        await using var client = await Connect(pipe);
+        await client.HelloAsync(Cancel);
+        var first = await client.CatalogueAsync(Cancel);
+
+        // New records with the same fields and new values: the same catalogue, and each value at its sensor's place.
+        for (var i = 0; i < tree.Sensors.Count; i++)
+            tree.Sensors[i] = tree.Sensors[i] with { Value = 1000f + i };
+        var same = await client.SampleAsync(Cancel);
+        Assert.False(same.CatalogueChanged);
+        Assert.Equal(first.Version, same.Answer.Version);
+        Assert.Equal(first.Sensors.Select(s => (float?)(1000f + tree.Sensors.FindIndex(t => t.Identifier == s.Id))), same.Answer.Value);
+
+        // Only a name changes, in place: a new catalogue.
+        var fan = tree.Sensors.FindIndex(s => s.Identifier == "/lpc/nct6798d/0/fan/1");
+        tree.Sensors[fan] = tree.Sensors[fan] with { Name = "CPU Fan" };
+        var renamed = await client.SampleAsync(Cancel);
+        Assert.True(renamed.CatalogueChanged);
+        Assert.Equal(first.Version + 1, renamed.Answer.Version);
+        Assert.Equal("CPU Fan", (await client.CatalogueAsync(Cancel)).Sensors.Single(s => s.Id == "/lpc/nct6798d/0/fan/1").Name);
+
+        // The same list in another order: the same catalogue (1.4.x's order), and the values follow their sensors.
+        tree.Sensors.Reverse();
+        var reordered = await client.SampleAsync(Cancel);
+        Assert.False(reordered.CatalogueChanged);
+        Assert.Equal(first.Sensors.Select(s => (float?)(1000f + tree.Sensors.Count - 1 - tree.Sensors.FindIndex(t => t.Identifier == s.Id))), reordered.Answer.Value);
+    }
+
+    private static TreeSnapshot LargeTree(int pieces, int sensorsEach)
+    {
+        var hardware = new List<TreeHardware>();
+        var sensors = new List<TreeSensor>();
+        for (var h = 0; h < pieces; h++)
+        {
+            var id = $"/hardware/{h}";
+            hardware.Add(new TreeHardware(id, $"Hardware {h}", "Cpu", 2, null));
+            for (var s = 0; s < sensorsEach; s++)
+                sensors.Add(new TreeSensor($"{id}/load/{s}", $"Load {s}", "Load", s, id, s, 0f, 100f));
+        }
+
+        return new TreeSnapshot(hardware, sensors);
+    }
+
+    /// <summary>A tree that lists the same snapshot each round.</summary>
+    private sealed class SameTree(TreeSnapshot snapshot) : ISensorTree
+    {
+        public bool Elevated => false;
+
+        public string Driver => "unknown";
+
+        public void Configure(bool storage, int storageInterval)
+        {
+        }
+
+        public TreeSnapshot Update() => snapshot;
+
+        public void Dispose()
+        {
+        }
     }
 }

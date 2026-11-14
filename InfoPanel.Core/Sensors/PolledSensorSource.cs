@@ -20,6 +20,12 @@ public sealed class PolledSensorSourceOptions
 
     /// <summary>A sensor whose last good sample is older than this is unavailable.</summary>
     public TimeSpan UnavailableAfter { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// When set, <see cref="PolledSensorSource.InUse"/> says whether a sensor was read (not peeked, nor its status asked)
+    /// within this long, so a sampler can skip work no one reads; unset (by default), every sensor is in use.
+    /// </summary>
+    public TimeSpan? DemandWindow { get; init; }
 }
 
 /// <summary>
@@ -57,6 +63,8 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
     {
         // The kind its definition gave; a key whose kind changes at a rediscovery starts afresh.
         public SensorKind Kind;
+        // When a consumer last read it or noted its use (not a peek); null before the first.
+        public long? LastRead;
         // A text sensor's last good text, read as it is (a read allocates nothing); a table sensor's first row.
         public string? Text;
         // A table sensor's last good table and its format.
@@ -169,10 +177,50 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
         return state.HasReading;
     }
 
-    public SensorStatus GetStatus(SensorKey key) => ReadState(key).Status;
+    public bool TryPeek(SensorKey key, out SensorReading reading)
+    {
+        var state = PeekState(key);
+        reading = state.Reading;
+        return state.HasReading;
+    }
+
+    /// <summary>A status isn't a use (<see cref="InUse"/>): it is the peek's.</summary>
+    public SensorStatus GetStatus(SensorKey key) => Snapshot(key, peek: true).Status;
 
     /// <summary>A listed sensor is typed by its definition, with or without a reading; an unlisted key is a number.</summary>
-    public SensorState ReadState(SensorKey key)
+    public SensorState ReadState(SensorKey key) => Snapshot(key, peek: false);
+
+    /// <summary><see cref="ReadState"/> without putting the sensor in use (<see cref="InUse"/>): the sensor list's.</summary>
+    public SensorState PeekState(SensorKey key) => Snapshot(key, peek: true);
+
+    public void NoteUse(SensorKey key)
+    {
+        lock (_lock)
+        {
+            if (_index.TryGetValue(key, out var i))
+                _slots[i].LastRead = _time.GetTimestamp();
+        }
+    }
+
+    /// <summary>
+    /// Whether the sensor the sampler's definition <paramref name="definition"/> (its index in <see cref="ISensorSampler.Discover"/>)
+    /// was read within <see cref="PolledSensorSourceOptions.DemandWindow"/>; always true without one, or for a definition
+    /// not listed. Called by the sampler during its round.
+    /// </summary>
+    public bool InUse(int definition)
+    {
+        if (_options.DemandWindow is not { } window)
+            return true;
+        lock (_lock)
+        {
+            var s = (uint)definition < (uint)_slotOf.Length ? _slotOf[definition] : -1;
+            if (s < 0)
+                return true;
+            return _slots[s].LastRead is { } read && _time.GetElapsedTime(read, _time.GetTimestamp()) <= window;
+        }
+    }
+
+    private SensorState Snapshot(SensorKey key, bool peek)
     {
         lock (_lock)
         {
@@ -180,7 +228,10 @@ public sealed class PolledSensorSource : ISensorSource, ISensorStatusSource, ISe
                 return SensorState.Without(SensorStatus.Unavailable);
 
             ref var slot = ref _slots[i];
-            var status = StatusOf(in slot, _time.GetTimestamp());
+            var now = _time.GetTimestamp();
+            if (!peek)
+                slot.LastRead = now;
+            var status = StatusOf(in slot, now);
             if (status is not (SensorStatus.Live or SensorStatus.Stale))
                 return SensorState.Without(status, slot.Kind);
             return slot.Kind switch

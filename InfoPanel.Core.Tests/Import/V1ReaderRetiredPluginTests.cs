@@ -345,7 +345,11 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
             [new(1234, "busy", TimeSpan.FromSeconds(_rounds++), 8L * 1024 * 1024, 1)];
     }
 
-    /// <summary>The system information source over this PC's system, polled twice a second apart (its tables read from the second).</summary>
+    /// <summary>
+    /// The system information source over this PC's system, as the engine makes it, polled twice a second apart (its
+    /// tables read from the second). Nothing reads it, so readings it skips while idle (the counts after the first poll)
+    /// are stale: every entry is live or stale.
+    /// </summary>
     private PolledSensorSource OpenSystemInfo()
     {
         var source = InfoPanel.Sensors.SystemInfo.SystemInfoSource.Create(new ThisPcsSystem(), _time);
@@ -359,6 +363,9 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
 
     private static string Sys(string id) => $"/system-info-plugin/{id}";
 
+    /// <summary>A System Info entry's status in an import: never unavailable or missing.</summary>
+    private static readonly SensorStatus[] LiveOrStale = [SensorStatus.Live, SensorStatus.Stale];
+
     [Fact]
     public void SystemInfo_EveryEntry_IsBoundToTheSystemInfoSource_InPropsAndMeta_Live_AndListedOnce()
     {
@@ -369,7 +376,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
 
         Assert.Equal(SystemInfoIds.Select(id => $"/infopanel.system-info/{id}"), envelope.Items.Select(PropsKey));
         Assert.Equal(SystemInfoIds.Select(id => $"infopanel:/system-info/{id}"), envelope.Items.Select(n => n.Meta.Sensor!.Key));
-        Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
+        Assert.All(envelope.Items, n => Assert.Contains(n.Meta.Sensor!.Status, LiveOrStale));
         Assert.All(envelope.Items, n => Assert.Equal("Plugin", (string)n.Props["sensorType"]!));
 
         var translated = With(envelope, "import.sensor.translated");
@@ -398,7 +405,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
         Assert.Equal(
             ["infopanel:/system-info/uptime/formatted", "infopanel:/system-info/processes/cpu-usage", "infopanel:/system-info/processes/top-cpu-usage"],
             bound.Select(n => n.Meta.Sensor!.Key));
-        Assert.All(bound, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
+        Assert.All(bound, n => Assert.Contains(n.Meta.Sensor!.Status, LiveOrStale));
         Assert.Equal(["/items/0", "/items/1", "/items/2/children/0"], With(envelope, "import.sensor.translated").Select(d => d.Path));
         Assert.Empty(With(envelope, "import.sensor"));
     }
@@ -418,7 +425,7 @@ public sealed class V1ReaderRetiredPluginTests : IDisposable
 
         Assert.Equal("folder", envelope.Source);
         Assert.Equal(["infopanel:/system-info/uptime/formatted", "infopanel:/system-info/processes/top-cpu-usage"], envelope.Items.Select(n => n.Meta.Sensor!.Key));
-        Assert.All(envelope.Items, n => Assert.Equal(SensorStatus.Live, n.Meta.Sensor!.Status));
+        Assert.All(envelope.Items, n => Assert.Contains(n.Meta.Sensor!.Status, LiveOrStale));
         Assert.Equal(["/items/0", "/items/1"], With(envelope, "import.sensor.translated").Select(d => d.Path));
         Assert.Empty(With(envelope, "import.sensor"));
     }

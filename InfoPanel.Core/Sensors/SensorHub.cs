@@ -252,13 +252,16 @@ public sealed class SensorHub : ISensorStatusReader
     /// </summary>
     public static bool IsWellFormed(SensorKey key)
     {
-        if (string.IsNullOrWhiteSpace(key.Id) || !Enum.IsDefined(key.Type))
+        if (string.IsNullOrWhiteSpace(key.Id))
             return false;
-        if (!SensorKey.TryParse(key.ToString(), out var parsed) || parsed != key)
-            return false;
-        if (key.Type == SensorType.HwInfo && key.Id.Split(':')[1] == "0")
-            return false;
-        return true;
+        // The id is checked as it stands, without formatting and parsing the key's text: this runs on every read.
+        return key.Type switch
+        {
+            SensorType.HwInfo => SensorKey.IsCanonicalHwInfoId(key.Id, out var sensorId) && sensorId != 0,
+            SensorType.Libre => true,
+            SensorType.Plugin => SensorKey.IsCanonicalPluginId(key.Id),
+            _ => false,
+        };
     }
 
     private ISensorSource? FindSource(SensorKey key)

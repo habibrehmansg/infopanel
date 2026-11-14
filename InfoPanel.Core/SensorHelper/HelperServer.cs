@@ -56,6 +56,9 @@ public sealed class HelperServer(ISensorTree tree, string helperVersion)
     private long _version;
     private IReadOnlyList<HelperHardware> _hardware = [];
     private IReadOnlyList<HelperSensor> _sensors = [];
+    private TreeHardware[] _listedHardware = [];
+    private TreeSensor[] _listedSensors = [];
+    private int[] _order = [];
 
     /// <summary>Completes once the engine's hello has been taken (before its answer is written).</summary>
     public Task Greeted => _hello.Task;
@@ -262,14 +265,57 @@ public sealed class HelperServer(ISensorTree tree, string helperVersion)
         if (!_open)
             Open();
 
-        var built = BuildCatalogue(InTree(tree.Update));
+        var snapshot = InTree(tree.Update);
+        if (!_reopened && _version != 0 && ListsAsBefore(snapshot))
+        {
+            // The tree lists what it listed last time, so the catalogue and its order are the same: only the values move.
+            var sources = new TreeSensor[_order.Length];
+            for (var i = 0; i < sources.Length; i++)
+                sources[i] = snapshot.Sensors[_order[i]];
+            return sources;
+        }
+
+        var built = BuildCatalogue(snapshot);
         if (_reopened || _version == 0 || !built.Hardware.SequenceEqual(_hardware) || !built.Sensors.SequenceEqual(_sensors))
         {
             _version++;
             (_hardware, _sensors, _reopened) = (built.Hardware, built.Sensors, false);
         }
 
+        // What the catalogue was built from, and where each of its sensors sits in the tree's list.
+        _listedHardware = [.. snapshot.Hardware];
+        _listedSensors = [.. snapshot.Sensors];
+        var at = new Dictionary<TreeSensor, int>(_listedSensors.Length, ReferenceEqualityComparer.Instance);
+        for (var i = 0; i < _listedSensors.Length; i++)
+            at.TryAdd(_listedSensors[i], i);
+        _order = [.. built.Sources.Select(s => at[s])];
         return built.Sources;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="snapshot"/> lists the same hardware and sensors, in the same order, as the one the
+    /// catalogue was last built from: every field the catalogue is built from (values, minimums and maximums aside).
+    /// </summary>
+    private bool ListsAsBefore(TreeSnapshot snapshot)
+    {
+        if (snapshot.Hardware.Count != _listedHardware.Length || snapshot.Sensors.Count != _listedSensors.Length)
+            return false;
+        for (var i = 0; i < _listedHardware.Length; i++)
+        {
+            if (!snapshot.Hardware[i].Equals(_listedHardware[i]))
+                return false;
+        }
+
+        for (var i = 0; i < _listedSensors.Length; i++)
+        {
+            var (now, then) = (snapshot.Sensors[i], _listedSensors[i]);
+            if (!string.Equals(now.Identifier, then.Identifier, StringComparison.Ordinal) || !string.Equals(now.Name, then.Name, StringComparison.Ordinal)
+                || !string.Equals(now.Type, then.Type, StringComparison.Ordinal) || now.Index != then.Index
+                || !string.Equals(now.Hardware, then.Hardware, StringComparison.Ordinal))
+                return false;
+        }
+
+        return true;
     }
 
     private static float? Finite(float? value) => value is { } number && !float.IsNaN(number) && !float.IsInfinity(number) ? number : null;

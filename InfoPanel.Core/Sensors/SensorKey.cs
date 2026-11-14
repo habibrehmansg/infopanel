@@ -123,6 +123,62 @@ namespace InfoPanel.Sensors
         }
 
         /// <summary>
+        /// True when <paramref name="id"/> is a HWiNFO key's id as <see cref="TryParse"/> gives it back: four numbers
+        /// joined by colons, each written as <see cref="HwInfo"/> writes it (no sign but the remote's minus, no leading
+        /// zero, no space). Allocates nothing.
+        /// </summary>
+        public static bool IsCanonicalHwInfoId(ReadOnlySpan<char> id, out uint sensorId)
+        {
+            sensorId = 0;
+            Span<char> written = stackalloc char[11];
+            var first = id.IndexOf(':');
+            if (first < 0
+                || !int.TryParse(id[..first], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var remote)
+                || !remote.TryFormat(written, out var length, default, CultureInfo.InvariantCulture)
+                || !id[..first].SequenceEqual(written[..length]))
+            {
+                return false;
+            }
+
+            var rest = id[(first + 1)..];
+            for (var part = 0; part < 3; part++)
+            {
+                var end = rest.IndexOf(':');
+                if (part < 2 ? end < 0 : end >= 0)
+                    return false;
+                var text = part < 2 ? rest[..end] : rest;
+                if (!uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value)
+                    || !value.TryFormat(written, out length, default, CultureInfo.InvariantCulture)
+                    || !text.SequenceEqual(written[..length]))
+                {
+                    return false;
+                }
+
+                if (part == 0)
+                    sensorId = value;
+                if (part < 2)
+                    rest = rest[(end + 1)..];
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// True when a plugin key's <paramref name="id"/> is one <see cref="TryParse"/> gives back: a built-in source's id
+        /// (<c>/infopanel.{source}/{path}</c>) in its grammar, or a plugin's id that doesn't name a built-in source in any
+        /// case. Allocates nothing.
+        /// </summary>
+        public static bool IsCanonicalPluginId(ReadOnlySpan<char> id)
+        {
+            if (!id.StartsWith(BuiltInId, StringComparison.Ordinal))
+                return !IsBuiltInId(id);
+
+            var rest = id[BuiltInId.Length..];
+            var slash = rest.IndexOf('/');
+            return slash >= 0 && slash != rest.Length - 1 && IsBuiltInSource(rest[..slash]);
+        }
+
+        /// <summary>
         /// True for a key text in the plugin form (<c>plugin:/{plugin id}/…</c>) whose plugin id starts <c>infopanel.</c> in
         /// any case: the form the engine's own sources' keys had before they took <c>infopanel:/</c>, refused wherever a
         /// key is read.

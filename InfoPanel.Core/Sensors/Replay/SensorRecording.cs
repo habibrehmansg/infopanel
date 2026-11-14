@@ -430,6 +430,7 @@ public sealed class HwInfoRecorder : HwInfoSampler.IObserver
     private void Finish(string why)
     {
         _finished = true;
+        _buffer = []; // the largest image's copy: nothing is copied once finished
         if (!_claimed)
             return;
         try
