@@ -90,6 +90,9 @@ public sealed class DisplayWindowManager(
     /// <summary>The profile's window, or null (UI thread; for tests).</summary>
     public IDesktopWindow? WindowOf(string profileId) => _windows.GetValueOrDefault(profileId)?.Window;
 
+    /// <summary>How many profile ids the warnings once-per-profile remember: unopened, reduced resolution (UI thread; for tests).</summary>
+    internal (int Unopened, int Reduced) Warned => (_unopened.Count, _reduced.Count);
+
     /// <summary>The profile's frame sink, or null (UI thread; for tests).</summary>
     public DesktopWindowSink? SinkOf(string profileId) => _windows.GetValueOrDefault(profileId)?.Sink;
 
@@ -136,6 +139,8 @@ public sealed class DisplayWindowManager(
                 foreach (var (_, doc) in _documents)
                     doc.Changed -= OnDocumentChanged;
                 _documents.Clear();
+                _unopened.Clear();
+                _reduced.Clear();
             }
             finally
             {
@@ -238,7 +243,7 @@ public sealed class DisplayWindowManager(
     private void OnDocumentChanged(object? sender, DocumentChangedEventArgs e)
     {
         if (e.Change is not (DocumentChange.Saved or DocumentChange.History) && sender is ProfileDocument doc)
-            platform.Post(() => Reconcile(doc.Id));
+            platform.Post(() => Reconcile(doc.Id, edited: true));
     }
 
     /// <summary>UI thread: follows the profile list (opening new profiles, dropping deleted ones), then reconciles every window.</summary>
@@ -250,6 +255,9 @@ public sealed class DisplayWindowManager(
         _displays ??= platform.GetDisplays();
         var listed = workspace.List();
         var ids = listed.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+        // A deleted profile's warnings are forgotten (an id created again is warned about again).
+        _unopened.IntersectWith(ids);
+        _reduced.IntersectWith(ids);
         foreach (var (id, doc) in _documents.ToList())
         {
             if (ids.Contains(id) && workspace.IsOpen(doc))
@@ -305,8 +313,13 @@ public sealed class DisplayWindowManager(
             Reconcile(id);
     }
 
-    /// <summary>UI thread: makes the profile's window match the profile (open or closed, style, place).</summary>
-    private void Reconcile(string id)
+    /// <summary>
+    /// UI thread: makes the profile's window match the profile (open or closed, style, place). An
+    /// <paramref name="edited"/> profile whose window settings, width and height are those it was last placed by (an
+    /// item's edit) gets its style (an unchanged style costs nothing) and isn't placed again: displays, scales and the
+    /// user's moves reconcile without it.
+    /// </summary>
+    private void Reconcile(string id, bool edited = false)
     {
         if (_stopped || !_documents.TryGetValue(id, out var doc))
             return;
@@ -326,8 +339,11 @@ public sealed class DisplayWindowManager(
                 : "The desktop window of profile {ProfileId} takes clicks again", id);
 
         entry.Window.SetStyle(settings.Style);
-        if (!entry.ResizePending)
-            Place(entry, settings);
+        if (entry.ResizePending || (edited && entry.Placed == settings))
+            return;
+
+        Place(entry, settings);
+        entry.Placed = settings;
     }
 
     private WindowEntry OpenWindow(string id, ProfileDocument doc, Settings settings)
@@ -336,28 +352,46 @@ public sealed class DisplayWindowManager(
         var scale = displays.FirstOrDefault()?.Scale ?? 1;
         var window = platform.CreateWindow(settings.Style, new PointRect(0, 0, settings.Width / scale, settings.Height / scale));
         var entry = new WindowEntry(id, doc, window);
-        entry.Sink = new DesktopWindowSink(id, platform, FrameRate, frame => ShowFrame(entry, frame), reason => OnSinkClosed(entry, reason));
         window.UserMoved += () => OnUserMoved(entry);
         window.UserResized += () => OnUserResized(entry);
         window.BackingScaleChanged += () => OnBackingScaleChanged(entry);
         _windows[id] = entry;
-
-        try
-        {
-            if (!render.Attach(entry.Sink, doc))
-                entry.Sink = null;
-        }
-        catch (ObjectDisposedException ex)
-        {
-            logger.LogWarning(ex, "Profile {ProfileId} can't be rendered to its desktop window", id);
-            entry.Sink = null;
-        }
+        AttachSink(entry);
 
         if (settings.Style.ClickThrough)
             logger.LogInformation("Showing profile {ProfileId} as a desktop window, clicks passing through it", id);
         else
             logger.LogInformation("Showing profile {ProfileId} as a desktop window", id);
         return entry;
+    }
+
+    /// <summary>Gives the window a new sink on the profile's render loop (a retired sink is never attached again).</summary>
+    private void AttachSink(WindowEntry entry)
+    {
+        DesktopWindowSink sink = null!;
+        sink = new DesktopWindowSink(entry.ProfileId, platform, FrameRate, frame => ShowFrame(entry, frame), reason => OnSinkClosed(entry, sink, reason));
+        entry.Sink = sink;
+        try
+        {
+            if (!render.Attach(sink, entry.Document))
+                entry.Sink = null;
+        }
+        catch (ObjectDisposedException ex)
+        {
+            logger.LogWarning(ex, "Profile {ProfileId} can't be rendered to its desktop window", entry.ProfileId);
+            entry.Sink = null;
+        }
+    }
+
+    /// <summary>The window gets no more frames: its sink retired (a pending frame dropped) and detached, so a loop with no other output stops.</summary>
+    private void DetachSink(WindowEntry entry)
+    {
+        if (entry.Sink is not { } sink)
+            return;
+
+        entry.Sink = null;
+        sink.Retire();
+        render.Detach(sink);
     }
 
     private void CloseWindow(string id)
@@ -367,11 +401,7 @@ public sealed class DisplayWindowManager(
 
         entry.Closed = true;
         entry.ResizeTimer?.Dispose();
-        if (entry.Sink is { } sink)
-        {
-            sink.Retire();
-            render.Detach(sink);
-        }
+        DetachSink(entry);
 
         entry.Window.Dispose();
         logger.LogInformation("Closed the desktop window of profile {ProfileId}", id);
@@ -381,7 +411,8 @@ public sealed class DisplayWindowManager(
     /// Puts the window at its place (<see cref="DisplayMatcher.Place"/>), or hides it when none of its displays is
     /// connected (strict). During a drag it stays where the user has it: placing it then (a scale or display change, any
     /// other profile's sync) would move it from under the mouse, back to where the profile has it. The release
-    /// (<see cref="OnUserMoved"/>) places it.
+    /// (<see cref="OnUserMoved"/>) places it. Hidden, it keeps its last picture but gets no frames (its sink is detached);
+    /// shown again, a new sink gets the loop's next frame.
     /// </summary>
     private void Place(WindowEntry entry, Settings settings)
     {
@@ -391,6 +422,11 @@ public sealed class DisplayWindowManager(
         if (place is not { } at)
         {
             window.SetVisible(false);
+            if (entry.Sink != null)
+            {
+                DetachSink(entry);
+                entry.SinkHidden = true;
+            }
             return;
         }
 
@@ -414,6 +450,11 @@ public sealed class DisplayWindowManager(
 
         entry.Settled = window.Frame;
         entry.Relocated = null;
+        if (entry.SinkHidden)
+        {
+            entry.SinkHidden = false;
+            AttachSink(entry);
+        }
         window.SetVisible(true);
     }
 
@@ -605,9 +646,10 @@ public sealed class DisplayWindowManager(
         entry.Window.ShowFrame(frame);
     }
 
-    private void OnSinkClosed(WindowEntry entry, FrameSinkClosedReason reason)
+    private void OnSinkClosed(WindowEntry entry, DesktopWindowSink sink, FrameSinkClosedReason reason)
     {
-        if (entry.Closed)
+        // A sink detached since (the window hidden) is no longer the window's.
+        if (entry.Closed || entry.Sink != sink)
             return;
 
         // Deleted profiles and shutdown close the window through the workspace and StopAsync.
@@ -626,6 +668,9 @@ public sealed class DisplayWindowManager(
 
         public DesktopWindowSink? Sink { get; set; }
 
+        /// <summary>The window is hidden (none of its displays connected) and its sink detached: showing it attaches a new one.</summary>
+        public bool SinkHidden { get; set; }
+
         /// <summary>Where the window was last placed or its resize committed: a release there is no move.</summary>
         public PointRect? Settled { get; set; }
 
@@ -634,6 +679,9 @@ public sealed class DisplayWindowManager(
         /// (<see cref="OnUserResized"/>), until the window is placed again or the button is up: a release there is no move.
         /// </summary>
         public PointRect? Relocated { get; set; }
+
+        /// <summary>The settings the window was last placed by.</summary>
+        public Settings? Placed { get; set; }
 
         public bool ResizePending { get; set; }
 

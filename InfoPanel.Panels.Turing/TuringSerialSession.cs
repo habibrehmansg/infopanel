@@ -87,7 +87,7 @@ internal sealed class TuringSerialSession : IPanelSession
         if (frame.Bytes.Length != _frameBytes)
             return new(PanelDeviceStatus.NotSupported, TimeSpan.Zero);
         if (!frame.Repeat || _frame == null)
-            _frame = frame.Bytes.ToArray();
+            frame.Bytes.CopyTo(_frame ??= new byte[_frameBytes]); // one buffer for the session: the newest frame's pixels
         if (_pieces.Count == 0)
             Plan();
         if (_pieces.Count == 0)

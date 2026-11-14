@@ -77,22 +77,36 @@ public static class ChiZhuProtocol
     public static byte[] DisplayHeader(int width, int height, int dataSize, ThermalrightPixels pixels)
     {
         var header = new byte[HeaderSize];
-        Magic.CopyTo(header);
-        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(4), pixels == ThermalrightPixels.Jpeg ? 0x02 : 0x03);
-        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(8), width);
-        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(12), height);
-        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(56), 0x02);
-        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(60), dataSize);
+        WriteDisplayHeader(header, width, height, dataSize, pixels);
         return header;
+    }
+
+    /// <summary><see cref="DisplayHeader"/> written into the first <see cref="HeaderSize"/> bytes of <paramref name="into"/>.</summary>
+    public static void WriteDisplayHeader(Span<byte> into, int width, int height, int dataSize, ThermalrightPixels pixels)
+    {
+        var header = into[..HeaderSize];
+        header.Clear();
+        Magic.CopyTo(header);
+        BinaryPrimitives.WriteInt32LittleEndian(header[4..], pixels == ThermalrightPixels.Jpeg ? 0x02 : 0x03);
+        BinaryPrimitives.WriteInt32LittleEndian(header[8..], width);
+        BinaryPrimitives.WriteInt32LittleEndian(header[12..], height);
+        BinaryPrimitives.WriteInt32LittleEndian(header[56..], 0x02);
+        BinaryPrimitives.WriteInt32LittleEndian(header[60..], dataSize);
     }
 
     /// <summary>A frame's one write: its header, then its bytes.</summary>
     public static byte[] FramePacket(ReadOnlySpan<byte> frame, int width, int height, ThermalrightPixels pixels)
     {
         var packet = new byte[HeaderSize + frame.Length];
-        DisplayHeader(width, height, frame.Length, pixels).CopyTo(packet, 0);
-        frame.CopyTo(packet.AsSpan(HeaderSize));
+        WriteFramePacket(packet, frame, width, height, pixels);
         return packet;
+    }
+
+    /// <summary><see cref="FramePacket"/> written into the first <see cref="HeaderSize"/> + the frame's length bytes of <paramref name="into"/>.</summary>
+    public static void WriteFramePacket(Span<byte> into, ReadOnlySpan<byte> frame, int width, int height, ThermalrightPixels pixels)
+    {
+        WriteDisplayHeader(into, width, height, frame.Length, pixels);
+        frame.CopyTo(into[HeaderSize..]);
     }
 
     /// <summary>Whether a write of this length is followed by a zero-length packet (a multiple of 512 bytes).</summary>
@@ -154,26 +168,40 @@ public static class TrofeoProtocol
     public static IReadOnlyList<byte[]> FramePackets(ReadOnlySpan<byte> frame, int width, int height, ThermalrightPixels pixels)
     {
         var packets = new List<byte[]>();
-        var header = new byte[PacketSize];
-        Magic.CopyTo(header);
-        header[4] = 0x02;
-        if (pixels != ThermalrightPixels.Jpeg)
-            header[6] = 0x01;
-        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(8), (ushort)width);
-        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(10), (ushort)height);
-        header[12] = 0x02;
-        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(16), frame.Length);
-        var first = Math.Min(frame.Length, PacketSize - HeaderDataOffset);
-        frame[..first].CopyTo(header.AsSpan(HeaderDataOffset));
-        packets.Add(header);
-
-        for (var offset = first; offset < frame.Length; offset += PacketSize)
+        for (var i = 0; i < FramePacketCount(frame.Length); i++)
         {
-            var chunk = new byte[PacketSize];
-            frame.Slice(offset, Math.Min(frame.Length - offset, PacketSize)).CopyTo(chunk);
-            packets.Add(chunk);
+            var packet = new byte[PacketSize];
+            WriteFramePacket(packet, frame, i, width, height, pixels);
+            packets.Add(packet);
         }
         return packets;
+    }
+
+    /// <summary>How many packets a frame of <paramref name="frameLength"/> bytes is: the header, then 512 bytes each.</summary>
+    public static int FramePacketCount(int frameLength) =>
+        1 + ((Math.Max(0, frameLength - (PacketSize - HeaderDataOffset)) + PacketSize - 1) / PacketSize);
+
+    /// <summary>A frame's packet <paramref name="index"/> (0 the header) written into the first 512 bytes of <paramref name="into"/>, padded with zeros.</summary>
+    public static void WriteFramePacket(Span<byte> into, ReadOnlySpan<byte> frame, int index, int width, int height, ThermalrightPixels pixels)
+    {
+        var packet = into[..PacketSize];
+        packet.Clear();
+        var first = Math.Min(frame.Length, PacketSize - HeaderDataOffset);
+        if (index > 0)
+        {
+            var offset = first + ((index - 1) * PacketSize);
+            frame.Slice(offset, Math.Min(frame.Length - offset, PacketSize)).CopyTo(packet);
+            return;
+        }
+        Magic.CopyTo(packet);
+        packet[4] = 0x02;
+        if (pixels != ThermalrightPixels.Jpeg)
+            packet[6] = 0x01;
+        BinaryPrimitives.WriteUInt16LittleEndian(packet[8..], (ushort)width);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet[10..], (ushort)height);
+        packet[12] = 0x02;
+        BinaryPrimitives.WriteInt32LittleEndian(packet[16..], frame.Length);
+        frame[..first].CopyTo(packet[HeaderDataOffset..]);
     }
 }
 
@@ -238,10 +266,17 @@ public static class TrofeoBulkProtocol
     /// <summary>An LY frame's sub-packets, padded with empty ones to a multiple of four.</summary>
     public static byte[] LyFrame(ReadOnlySpan<byte> jpeg)
     {
-        var pieces = Pieces(jpeg.Length);
-        var padded = (pieces + 3) / 4 * 4;
-        return Frame(jpeg, pieces, padded, 0x01);
+        var frame = new byte[LyFrameLength(jpeg.Length)];
+        WriteLyFrame(frame, jpeg);
+        return frame;
     }
+
+    /// <summary>The length of <see cref="LyFrame"/>'s sub-packets for a JPEG of <paramref name="jpegLength"/> bytes.</summary>
+    public static int LyFrameLength(int jpegLength) => (Pieces(jpegLength) + 3) / 4 * 4 * SubPacketSize;
+
+    /// <summary><see cref="LyFrame"/> written into the first <see cref="LyFrameLength"/> bytes of <paramref name="into"/>.</summary>
+    public static void WriteLyFrame(Span<byte> into, ReadOnlySpan<byte> jpeg) =>
+        WriteFrame(into[..LyFrameLength(jpeg.Length)], jpeg, Pieces(jpeg.Length), 0x01);
 
     /// <summary>An LY frame's writes: 4096 bytes each, the last one what is left.</summary>
     public static IReadOnlyList<(int Offset, int Length)> LyTransfers(int frameLength)
@@ -255,9 +290,17 @@ public static class TrofeoBulkProtocol
     /// <summary>An LY1 frame's sub-packets, unpadded, written at once.</summary>
     public static byte[] Ly1Frame(ReadOnlySpan<byte> jpeg)
     {
-        var pieces = Pieces(jpeg.Length);
-        return Frame(jpeg, pieces, pieces, 0x02);
+        var frame = new byte[Ly1FrameLength(jpeg.Length)];
+        WriteLy1Frame(frame, jpeg);
+        return frame;
     }
+
+    /// <summary>The length of <see cref="Ly1Frame"/>'s sub-packets for a JPEG of <paramref name="jpegLength"/> bytes.</summary>
+    public static int Ly1FrameLength(int jpegLength) => Pieces(jpegLength) * SubPacketSize;
+
+    /// <summary><see cref="Ly1Frame"/> written into the first <see cref="Ly1FrameLength"/> bytes of <paramref name="into"/>.</summary>
+    public static void WriteLy1Frame(Span<byte> into, ReadOnlySpan<byte> jpeg) =>
+        WriteFrame(into[..Ly1FrameLength(jpeg.Length)], jpeg, Pieces(jpeg.Length), 0x02);
 
     // The frame's piece count; a JPEG longer than its 16-bit count holds is refused before anything is built (1.4 wrote
     // the count through a ushort cast, which would wrap).
@@ -268,13 +311,14 @@ public static class TrofeoBulkProtocol
         return (jpegLength + SubDataSize - 1) / SubDataSize;
     }
 
-    private static byte[] Frame(ReadOnlySpan<byte> jpeg, int pieces, int subPackets, byte command)
+    // The sub-packets into all of frame (its padding, and each sub-packet's past its piece, zeros).
+    private static void WriteFrame(Span<byte> frame, ReadOnlySpan<byte> jpeg, int pieces, byte command)
     {
-        var frame = new byte[subPackets * SubPacketSize];
+        frame.Clear();
         var offset = 0;
         for (var i = 0; i < pieces; i++)
         {
-            var at = frame.AsSpan(i * SubPacketSize);
+            var at = frame[(i * SubPacketSize)..];
             var size = Math.Min(SubDataSize, jpeg.Length - offset);
             at[0] = 0x01;
             at[1] = 0xFF;
@@ -286,7 +330,6 @@ public static class TrofeoBulkProtocol
             jpeg.Slice(offset, size).CopyTo(at[SubHeaderSize..]);
             offset += size;
         }
-        return frame;
     }
 }
 
@@ -322,9 +365,19 @@ public static class AliProtocol
     public static byte[] FramePacket(ReadOnlySpan<byte> pixels, int frameSize)
     {
         var packet = new byte[HeaderSize + frameSize];
-        FrameHeader.CopyTo(packet);
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(12), frameSize);
-        pixels[..Math.Min(pixels.Length, frameSize)].CopyTo(packet.AsSpan(HeaderSize));
+        WriteFramePacket(packet, pixels, frameSize);
         return packet;
+    }
+
+    /// <summary><see cref="FramePacket"/> written into the first <see cref="HeaderSize"/> + <paramref name="frameSize"/> bytes of <paramref name="into"/>.</summary>
+    public static void WriteFramePacket(Span<byte> into, ReadOnlySpan<byte> pixels, int frameSize)
+    {
+        var packet = into[..(HeaderSize + frameSize)];
+        var used = Math.Min(pixels.Length, frameSize);
+        packet[..HeaderSize].Clear();
+        FrameHeader.CopyTo(packet);
+        BinaryPrimitives.WriteInt32LittleEndian(packet[12..], frameSize);
+        pixels[..used].CopyTo(packet[HeaderSize..]);
+        packet[(HeaderSize + used)..].Clear(); // a short frame's padding: zeros, not the last frame's pixels
     }
 }

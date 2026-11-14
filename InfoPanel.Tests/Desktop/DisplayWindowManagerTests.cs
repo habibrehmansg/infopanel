@@ -1443,6 +1443,136 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         AssertNoErrors();
     }
 
+    [Fact]
+    public async Task AWindowHiddenWithoutItsDisplay_GetsNoFrames_AndGetsOneAtOnceWhenItShowsAgain()
+    {
+        await Start();
+        var growing = JsonNode.Parse("""
+            {"format": "infopanel.scene/1",
+             "state": {"t": {"init": 0, "next": {"op": "add", "args": [{"op": "state", "name": "t"}, {"op": "dt"}]}}},
+             "nodes": [{"kind": "rect", "w": {"op": "mul", "args": [{"op": "state", "name": "t"}, 100]}, "h": 20, "fill": "#ffffff"}]}
+            """)!.AsObject();
+        var id = TestDocs.Create(Workspace, TestDocs.Doc("Growing", 1000, 100, TestDocs.Scene("grow", 0, 40, growing)));
+        var doc = Workspace.Open(id)!;
+        await SetPlaces(doc, External, 10, 20, strict: true);
+        var window = await RequireWindow(id);
+        Assert.True(window.Visible);
+        Assert.Equal(1, Render.Tick(id));
+        await _platform.IdleAsync();
+        Assert.Equal(1, await _platform.InvokeAsync(() => window.FramesShown));
+
+        await _platform.ChangeDisplaysAsync(BuiltIn); // its only display unplugged: hidden, still open
+        Assert.False(window.Visible);
+        Assert.Same(window, await WindowOf(id));
+
+        // 100 ticks, each a fifteenth of a second on, each drawing new pixels: none reaches the hidden window.
+        var delivered = 0;
+        for (var tick = 0; tick < 100; tick++)
+        {
+            _clock.Advance(TimeSpan.FromMilliseconds(70));
+            delivered += Render.Tick(id);
+        }
+
+        await _platform.IdleAsync();
+        Assert.Equal(0, delivered);
+        Assert.Equal(1, await _platform.InvokeAsync(() => window.FramesShown));
+        Assert.Null(await _platform.InvokeAsync(() => Manager.SinkOf(id)));
+        Assert.False(Render.IsRendering(id)); // the window was the profile's only output
+
+        await _platform.ChangeDisplaysAsync(BuiltIn, External); // plugged back in: shown, and drawn at the next tick
+        Assert.True(window.Visible);
+        _clock.Advance(TimeSpan.FromMilliseconds(70));
+        Assert.Equal(1, Render.Tick(id));
+        await _platform.IdleAsync();
+        Assert.Equal(2, await _platform.InvokeAsync(() => window.FramesShown));
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task EditsThatLeaveTheWindowAlone_DoNotPlaceItAgain()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var listed = _platform.DisplaysListed;
+        var changes = window.FrameChanges;
+
+        // An item dragged in the editor: 100 placement commits, none touching the profile's size or window.
+        for (var i = 0; i < 100; i++)
+            TestDocs.Commit(doc, TestDocs.Place("bar", 10 + i, 10));
+        await _platform.IdleAsync();
+
+        Assert.InRange(_platform.DisplaysListed - listed, 0, 2);
+        Assert.Equal(changes, window.FrameChanges);
+
+        // A window change is still applied.
+        await Patch(doc, new JsonObject { ["x"] = 50 });
+        Assert.Equal(changes + 1, window.FrameChanges);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task ALevelChangedAndUndone_WhileAResizeWaits_IsAppliedLive()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+
+        await _platform.InvokeAsync(() => window.UserResize(Rect(0, 0, 700.5, 260)));
+        await _platform.IdleAsync();
+        Assert.Equal(1, doc.Rev);
+
+        // Before the size is quiet: the level goes to top and back, the user's frame untouched.
+        await Patch(doc, new JsonObject { ["level"] = "top" });
+        Assert.Equal(WindowLevel.Top, window.Style.Level);
+        Assert.Equal(Rect(0, 0, 700.5, 260), window.Frame);
+        Undo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal(WindowLevel.Normal, window.Style.Level);
+        Assert.Equal(Rect(0, 0, 700.5, 260), window.Frame);
+
+        // The resize still commits at the user's frame.
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        Assert.Equal((1401, 520, 0, 0), (P(doc).Width, P(doc).Height, W(doc).X, W(doc).Y));
+        Assert.Equal(Rect(0, 0, 700.5, 260), window.Frame);
+        Assert.Equal(WindowLevel.Normal, window.Style.Level);
+        AssertNoErrors();
+    }
+
+    [Fact]
+    public async Task DeletedProfiles_AreForgottenByTheOncePerProfileWarnings()
+    {
+        // 50 profiles this engine can't open (from a newer engine), each warned about once at start.
+        var unsupported = new List<string>();
+        for (var i = 0; i < 50; i++)
+        {
+            var id = TestDocs.NewId();
+            Seed(id, new JsonObject { ["format"] = "infopanel.document/2", ["id"] = id }.ToJsonString());
+            unsupported.Add(id);
+        }
+
+        await Start();
+        Assert.Equal(50, (await _platform.InvokeAsync(() => Manager.Warned)).Unopened);
+        foreach (var id in unsupported)
+            Assert.True(Workspace.DeleteWithItsTag(id));
+        await _platform.IdleAsync();
+
+        // 50 profiles over the frame pixel cap, each shown at reduced resolution once, then deleted.
+        for (var i = 0; i < 50; i++)
+        {
+            var created = CreateActive($"Huge {i}", 4097, 4096);
+            await _platform.IdleAsync();
+            Assert.Equal(1, Render.Tick(created));
+            await _platform.IdleAsync();
+            Assert.True(Workspace.DeleteWithItsTag(created));
+            await _platform.IdleAsync();
+        }
+
+        Assert.Equal(50, _log.Messages.Count(m => m.Contains("reduced resolution")));
+        Assert.Equal((0, 0), await _platform.InvokeAsync(() => Manager.Warned));
+        AssertNoErrors();
+    }
+
     private static byte[] Unpremultiplied(DesktopFrame frame)
     {
         using var source = new SKBitmap();

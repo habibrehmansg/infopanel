@@ -514,4 +514,97 @@ public sealed class TuringUsbDriverTests
         Assert.True(failures.Count == 0, string.Join("\n", failures));
         _ = (model, width, height);
     }
+
+    // ---- Allocation: a Lian Li frame's one write ----
+
+    /// <summary>
+    /// A claimed interface keeping only counts (and, when asked, each write's bytes); every read times out, so a command's
+    /// flush finds nothing and an image's missing answer is success (<c>LianLiUsbScreenDevice.cs:263-270</c>).
+    /// </summary>
+    private sealed class CountingUsb : IPanelUsb
+    {
+        public long Writes { get; private set; }
+
+        public long BytesWritten { get; private set; }
+
+        public List<byte[]>? Recorded { get; init; }
+
+        public IReadOnlyList<PanelUsbEndpoint> Endpoints => [];
+
+        public string? SerialNumber => null;
+
+        public PanelDeviceStatus BulkWrite(byte endpoint, ReadOnlySpan<byte> data, int timeoutMs, bool zeroLengthPacketIfFull = false, CancellationToken cancellationToken = default)
+        {
+            Writes++;
+            BytesWritten += data.Length;
+            Recorded?.Add(data.ToArray());
+            return PanelDeviceStatus.Ok;
+        }
+
+        public PanelDeviceStatus BulkRead(byte endpoint, Span<byte> buffer, int timeoutMs, out int read, CancellationToken cancellationToken = default)
+        {
+            read = 0;
+            return PanelDeviceStatus.Timeout;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private static TuringUsbSession LianLiSession(CountingUsb usb) =>
+        new(UsbVariant.LianLi, usb, 480, 480, () => Timestamp, () => Now, (_, _) => { });
+
+    [Fact]
+    public void LianLi_AFrame_AllocatesNoFrameSizeTransfer()
+    {
+        // A frame's command packet and its JPEG go as one write from a buffer the session keeps: 100 frames of a 400 KB
+        // JPEG allocate less than 4 KB a frame on this thread (the device seam here copies nothing).
+        var usb = new CountingUsb();
+        using var session = LianLiSession(usb);
+        var jpeg = new byte[400_000];
+        new Random(7).NextBytes(jpeg);
+        var stop = TestContext.Current.CancellationToken;
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(PanelDeviceStatus.Ok, session.WriteFrame(new PanelFrameView(jpeg, PanelFrameFormat.Jpeg, i, false), stop).Status);
+
+        const int Frames = 100;
+        var writes = usb.Writes;
+        var bytesBefore = usb.BytesWritten;
+        var expectedBytes = (long)Frames * (TuringUsbProtocol.PacketSize + jpeg.Length);
+        var failed = 0;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < Frames; i++)
+            if (session.WriteFrame(new PanelFrameView(jpeg, PanelFrameFormat.Jpeg, i, false), stop).Status != PanelDeviceStatus.Ok)
+                failed++;
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        TestContext.Current.TestOutputHelper?.WriteLine($"lianli: {Frames} frames of {jpeg.Length:N0} bytes allocated {allocated:N0} bytes ({allocated / Frames:N0} a frame)");
+        Assert.Equal(0, failed);
+        Assert.Equal(Frames, usb.Writes - writes);
+        Assert.Equal(expectedBytes, usb.BytesWritten - bytesBefore);
+        Assert.True(allocated < Frames * 4096, $"{Frames} frames of {jpeg.Length:N0} bytes allocated {allocated:N0} bytes ({allocated / Frames:N0} a frame)");
+    }
+
+    [Fact]
+    public void LianLi_EachFrame_IsOneWriteOfItsPacketAndItsJpeg_AShortFrameAfterALongOneToo()
+    {
+        // LianLiUsbScreenDevice.cs: the command packet and the image in one write, its length the two's: a long JPEG, a
+        // short one after it (nothing of the long one's sent), and a long one again.
+        var usb = new CountingUsb { Recorded = [] };
+        using var session = LianLiSession(usb);
+        var random = new Random(8);
+        var stop = TestContext.Current.CancellationToken;
+        foreach (var length in new[] { 400_000, 1_001, 512_000, 10 })
+        {
+            var jpeg = new byte[length];
+            random.NextBytes(jpeg);
+            var before = usb.Recorded!.Count;
+            Assert.Equal(PanelDeviceStatus.Ok, session.WriteFrame(new PanelFrameView(jpeg, PanelFrameFormat.Jpeg, length, false), stop).Status);
+            byte[] expected = [.. TuringUsbProtocol.Packet(UsbVariant.LianLi, TuringUsbProtocol.WithLength(TuringUsbProtocol.Jpeg, length, Timestamp)), .. jpeg];
+            var sent = Assert.Single(usb.Recorded.Skip(before));
+            Assert.Equal(expected.Length, sent.Length);
+            Assert.True(expected.AsSpan().SequenceEqual(sent));
+        }
+    }
 }

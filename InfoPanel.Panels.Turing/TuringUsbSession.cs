@@ -50,6 +50,7 @@ internal sealed class TuringUsbSession : IPanelSession
     private readonly Func<DateTime> _localNow;
     private readonly Action<TimeSpan, CancellationToken> _wait;
     private readonly byte[] _answer = new byte[TuringUsbProtocol.PacketSize];
+    private byte[] _transfer = []; // Lian Li: a command's packet and its image, one write; grown to the longest
     private Func<int>? _left;
     private bool _synced;
     private bool _gone;
@@ -221,9 +222,12 @@ internal sealed class TuringUsbSession : IPanelSession
         }
         else
         {
-            var both = new byte[packet.Length + image.Length];
-            packet.CopyTo(both, 0);
-            image.CopyTo(both.AsSpan(packet.Length));
+            var length = packet.Length + image.Length;
+            if (_transfer.Length < length)
+                _transfer = new byte[length];
+            var both = _transfer.AsSpan(0, length);
+            packet.CopyTo(both);
+            image.CopyTo(both[packet.Length..]);
             status = Write(both, stop);
         }
         if (status != PanelDeviceStatus.Ok)

@@ -89,14 +89,48 @@ public static class PanelTransform
     /// <summary>
     /// Software brightness, as 1.4.x's families without a light of their own dimmed (Thermalright's, Thermaltake's and
     /// JL's <c>ApplyBrightness</c>): each colour channel of the opaque RGBA frame times <paramref name="percent"/> / 100
-    /// through Skia's colour matrix, alpha kept. 100 or more leaves the frame as it is.
+    /// through Skia's colour matrix, alpha kept. 100 or more leaves the frame as it is. The matrix is applied once a
+    /// percent, to every channel value, and the frame is mapped through that table in place.
     /// </summary>
     public static unsafe void Dim(Span<byte> rgba, int width, int height, int percent)
     {
         CheckRgba(rgba, width, height);
         if (percent >= 100)
             return;
-        var scale = Math.Clamp(percent, 0, 100) / 100f;
+        var table = DimTable(Math.Clamp(percent, 0, 100));
+        fixed (byte* pixels = rgba)
+        fixed (byte* values = table)
+        {
+            for (byte* pixel = pixels, end = pixels + rgba.Length; pixel < end; pixel += 4)
+            {
+                pixel[0] = values[pixel[0]];
+                pixel[1] = values[256 + pixel[1]];
+                pixel[2] = values[512 + pixel[2]];
+            }
+        }
+    }
+
+    // Each percent's table: 256 values of red, then green, then blue, as Skia's colour matrix gives them.
+    private static readonly byte[]?[] DimTables = new byte[]?[100];
+
+    private static byte[] DimTable(int percent)
+    {
+        if (System.Threading.Volatile.Read(ref DimTables[percent]) is { } kept)
+            return kept;
+        // An opaque ramp holding every value in each channel, drawn through the matrix as frames were.
+        var ramp = new byte[256 * 4];
+        for (var v = 0; v < 256; v++)
+            (ramp[v * 4], ramp[v * 4 + 1], ramp[v * 4 + 2], ramp[v * 4 + 3]) = ((byte)v, (byte)v, (byte)v, 255);
+        DimThroughMatrix(ramp, 256, 1, percent / 100f);
+        var table = new byte[768];
+        for (var v = 0; v < 256; v++)
+            (table[v], table[256 + v], table[512 + v]) = (ramp[v * 4], ramp[v * 4 + 1], ramp[v * 4 + 2]);
+        System.Threading.Volatile.Write(ref DimTables[percent], table);
+        return table;
+    }
+
+    private static unsafe void DimThroughMatrix(Span<byte> rgba, int width, int height, float scale)
+    {
         var info = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Opaque);
         fixed (byte* pixels = rgba)
         {
@@ -104,16 +138,14 @@ public static class PanelTransform
                 ?? throw new InvalidOperationException("Skia could not copy the frame.");
             using var surface = SKSurface.Create(info, (IntPtr)pixels, info.RowBytes)
                 ?? throw new InvalidOperationException("Skia could not draw into the frame.");
-            using var paint = new SKPaint
-            {
-                ColorFilter = SKColorFilter.CreateColorMatrix(
-                [
-                    scale, 0, 0, 0, 0,
-                    0, scale, 0, 0, 0,
-                    0, 0, scale, 0, 0,
-                    0, 0, 0, 1, 0,
-                ]),
-            };
+            using var filter = SKColorFilter.CreateColorMatrix(
+            [
+                scale, 0, 0, 0, 0,
+                0, scale, 0, 0, 0,
+                0, 0, scale, 0, 0,
+                0, 0, 0, 1, 0,
+            ]);
+            using var paint = new SKPaint { ColorFilter = filter };
             surface.Canvas.DrawImage(copy, 0, 0, new SKSamplingOptions(SKFilterMode.Nearest, SKMipmapMode.None), paint);
             surface.Canvas.Flush();
         }

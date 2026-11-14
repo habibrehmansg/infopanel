@@ -277,10 +277,16 @@ internal sealed class ChiZhuSession(PanelCapabilities capabilities, IPanelUsb us
 {
     public const int WriteTimeoutMs = 500;
 
+    private byte[] _packet = []; // the session's one packet buffer, grown to the longest frame
+
     protected override PanelDeviceStatus Send(ReadOnlySpan<byte> frame, CancellationToken stop)
     {
-        var packet = ChiZhuProtocol.FramePacket(frame, Capabilities.Width, Capabilities.Height, pixels);
-        return usb.BulkWrite(outEndpoint, packet, WriteTimeoutMs, ChiZhuProtocol.NeedsZeroLengthPacket(packet.Length), stop);
+        var length = ChiZhuProtocol.HeaderSize + frame.Length;
+        if (_packet.Length < length)
+            _packet = new byte[length];
+        var packet = _packet.AsSpan(0, length);
+        ChiZhuProtocol.WriteFramePacket(packet, frame, Capabilities.Width, Capabilities.Height, pixels);
+        return usb.BulkWrite(outEndpoint, packet, WriteTimeoutMs, ChiZhuProtocol.NeedsZeroLengthPacket(length), stop);
     }
 
     protected override void After(CancellationToken stop) => wait(ChiZhuProtocol.FrameGap, stop);
@@ -297,13 +303,16 @@ internal sealed class TrofeoHidSession(PanelCapabilities capabilities, IPanelHid
 
     private bool Rgb565 => pixels != ThermalrightPixels.Jpeg;
 
+    private readonly byte[] _report = new byte[TrofeoProtocol.PacketSize + 1]; // report id 0, then the packet
+
     protected override PanelDeviceStatus Send(ReadOnlySpan<byte> frame, CancellationToken stop)
     {
-        var packets = TrofeoProtocol.FramePackets(frame, width, height, pixels);
+        var packets = TrofeoProtocol.FramePacketCount(frame.Length);
         var count = 1;
-        for (var i = 0; i < packets.Count; i++)
+        for (var i = 0; i < packets; i++)
         {
-            var status = hid.Write(TrofeoProtocol.HidReport(packets[i]), WriteTimeoutMs, stop);
+            TrofeoProtocol.WriteFramePacket(_report.AsSpan(1), frame, i, width, height, pixels);
+            var status = hid.Write(_report, WriteTimeoutMs, stop);
             if (status != PanelDeviceStatus.Ok)
                 return status;
             if (i > 0 && Rgb565 && ++count % 32 == 0)
@@ -326,22 +335,28 @@ internal sealed class TrofeoBulkSession(PanelCapabilities capabilities, IPanelUs
     public const int AckTimeoutMs = 500;
 
     private readonly byte[] _ack = new byte[ly1 ? TrofeoBulkProtocol.Ly1ReplySize : TrofeoBulkProtocol.ReplySize];
+    private byte[] _packets = []; // the session's one sub-packet buffer, grown to the longest frame
     private int _ackFailures;
 
     protected override PanelDeviceStatus Send(ReadOnlySpan<byte> frame, CancellationToken stop)
     {
         PanelDeviceStatus status;
+        var length = ly1 ? TrofeoBulkProtocol.Ly1FrameLength(frame.Length) : TrofeoBulkProtocol.LyFrameLength(frame.Length);
+        if (_packets.Length < length)
+            _packets = new byte[length];
+        var packets = _packets.AsSpan(0, length);
         if (ly1)
         {
-            status = usb.BulkWrite(outEndpoint, TrofeoBulkProtocol.Ly1Frame(frame), WriteTimeoutMs, cancellationToken: stop);
+            TrofeoBulkProtocol.WriteLy1Frame(packets, frame);
+            status = usb.BulkWrite(outEndpoint, packets, WriteTimeoutMs, cancellationToken: stop);
         }
         else
         {
-            var packets = TrofeoBulkProtocol.LyFrame(frame);
+            TrofeoBulkProtocol.WriteLyFrame(packets, frame);
             status = PanelDeviceStatus.Ok;
-            foreach (var (offset, length) in TrofeoBulkProtocol.LyTransfers(packets.Length))
+            for (var offset = 0; offset < length; offset += TrofeoBulkProtocol.TransferSize)
             {
-                status = usb.BulkWrite(outEndpoint, packets.AsSpan(offset, length), WriteTimeoutMs, cancellationToken: stop);
+                status = usb.BulkWrite(outEndpoint, packets.Slice(offset, Math.Min(TrofeoBulkProtocol.TransferSize, length - offset)), WriteTimeoutMs, cancellationToken: stop);
                 if (status != PanelDeviceStatus.Ok)
                     break;
             }
@@ -368,10 +383,12 @@ internal sealed class AliSession(PanelCapabilities capabilities, IPanelUsb usb, 
     public const int TimeoutMs = 100;
 
     private readonly byte[] _ack = new byte[AliProtocol.AckSize];
+    private readonly byte[] _packet = new byte[AliProtocol.HeaderSize + frameSize]; // the session's one packet buffer
 
     protected override PanelDeviceStatus Send(ReadOnlySpan<byte> frame, CancellationToken stop)
     {
-        var status = usb.BulkWrite(outEndpoint, AliProtocol.FramePacket(frame, frameSize), TimeoutMs, cancellationToken: stop);
+        AliProtocol.WriteFramePacket(_packet, frame, frameSize);
+        var status = usb.BulkWrite(outEndpoint, _packet, TimeoutMs, cancellationToken: stop);
         return status != PanelDeviceStatus.Ok ? status : usb.BulkRead(inEndpoint, _ack, TimeoutMs, out _, stop);
     }
 }

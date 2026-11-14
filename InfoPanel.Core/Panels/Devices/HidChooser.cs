@@ -42,7 +42,11 @@ public interface IHidSystem
 /// <summary>An open HID collection's reports (each with its report id first). A dispose while a call waits ends that call.</summary>
 public interface IHidStream : IDisposable
 {
-    PanelDeviceStatus Write(byte[] report, int timeoutMs);
+    /// <summary>
+    /// Writes the report in the first <paramref name="length"/> bytes of <paramref name="report"/>. The caller may reuse
+    /// <paramref name="report"/> after <see cref="PanelDeviceStatus.Ok"/>, and not after any other status (the OS may still read it).
+    /// </summary>
+    PanelDeviceStatus Write(byte[] report, int length, int timeoutMs);
 
     PanelDeviceStatus Read(byte[] buffer, int timeoutMs, out int read);
 

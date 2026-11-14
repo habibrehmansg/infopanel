@@ -217,10 +217,10 @@ public sealed class HidSharpSystem(ILogger logger) : IHidSystem
             }
         }
 
-        public PanelDeviceStatus Write(byte[] report, int timeoutMs) => Run(() =>
+        public PanelDeviceStatus Write(byte[] report, int length, int timeoutMs) => Run(() =>
         {
             stream.WriteTimeout = timeoutMs;
-            stream.Write(report);
+            stream.Write(report, 0, length);
         });
 
         public PanelDeviceStatus Read(byte[] buffer, int timeoutMs, out int read)

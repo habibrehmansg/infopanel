@@ -45,6 +45,7 @@ internal abstract class TuringSerialScreen
 
     protected readonly IPanelSerial Port;
     private Func<int>? _left;
+    private byte[] _pixels = [];
 
     protected TuringSerialScreen(IPanelSerial port) => Port = port;
 
@@ -84,6 +85,14 @@ internal abstract class TuringSerialScreen
     /// a frame's write can stop between them and go on with the next write.
     /// </summary>
     public abstract IEnumerable<Sector> Pieces(Sector area, bool whole);
+
+    /// <summary>The screen's one buffer for a piece's pixels, grown to the largest piece: the first <paramref name="length"/> bytes.</summary>
+    protected Span<byte> Pixels(int length)
+    {
+        if (_pixels.Length < length)
+            _pixels = new byte[length];
+        return _pixels.AsSpan(0, length);
+    }
 
     protected PanelDeviceStatus Send(ReadOnlySpan<byte> data, int timeoutMs, CancellationToken stop)
     {
@@ -197,9 +206,9 @@ internal sealed class RevisionAScreen(IPanelSerial port) : TuringSerialScreen(po
     public override PanelDeviceStatus Display(ReadOnlySpan<byte> frame, int frameWidth, Sector sector, CancellationToken stop, out bool result)
     {
         result = false;
-        var pixels = new byte[sector.Width * sector.Height * 2];
+        var pixels = Pixels(sector.Width * sector.Height * 2);
         for (var row = 0; row < sector.Height; row++)
-            frame.Slice((((sector.Top + row) * frameWidth) + sector.Left) * 2, sector.Width * 2).CopyTo(pixels.AsSpan(row * sector.Width * 2));
+            frame.Slice((((sector.Top + row) * frameWidth) + sector.Left) * 2, sector.Width * 2).CopyTo(pixels[(row * sector.Width * 2)..]);
         var status = Send(BitmapHeader(sector.Left, sector.Top, sector.Width, sector.Height), WriteTimeoutMs, stop);
         if (status == PanelDeviceStatus.Ok)
             status = Send(pixels, WriteTimeoutMs, stop);
@@ -303,16 +312,16 @@ internal sealed class RevisionCeScreen : TuringSerialScreen
         // CreateBufferFrom: the sector's pixels as the screen's buffer, C's BGR as it is, E's with 255 after each.
         var width = sector.Width;
         var height = sector.Height;
-        var bitmap = new byte[width * height * _pixelBytes];
+        var bitmap = Pixels(width * height * _pixelBytes);
         for (var y = 0; y < height; y++)
         {
             var source = frame.Slice((((sector.Top + y) * frameWidth) + sector.Left) * 3, width * 3);
             if (_pixelBytes == 3)
             {
-                source.CopyTo(bitmap.AsSpan(y * width * 3));
+                source.CopyTo(bitmap[(y * width * 3)..]);
                 continue;
             }
-            var target = bitmap.AsSpan(y * width * 4, width * 4);
+            var target = bitmap.Slice(y * width * 4, width * 4);
             for (var x = 0; x < width; x++)
             {
                 target[x * 4] = source[x * 3];
@@ -344,7 +353,7 @@ internal sealed class RevisionCeScreen : TuringSerialScreen
 
     // DisplayBitmap, with RotateOption.None (1.4 never turned these screens), and its partial path for every area: the
     // whole-screen command isn't sent (Pieces), so the render count counts on from the screen's start.
-    private bool DisplayBitmap(int x, int y, byte[] bitmap, int width, int height)
+    private bool DisplayBitmap(int x, int y, ReadOnlySpan<byte> bitmap, int width, int height)
     {
         for (var oy = 0; oy < height; oy += PartialBlockSize)
         {
@@ -359,7 +368,7 @@ internal sealed class RevisionCeScreen : TuringSerialScreen
         return true;
     }
 
-    private bool DisplayPartialBitmap(int x, int y, int w, int h, byte[] bitmap, int bitmapX, int bitmapY, int bitmapWidth)
+    private bool DisplayPartialBitmap(int x, int y, int w, int h, ReadOnlySpan<byte> bitmap, int bitmapX, int bitmapY, int bitmapWidth)
     {
         if (_failure != PanelDeviceStatus.Ok)
             return false;
@@ -388,7 +397,7 @@ internal sealed class RevisionCeScreen : TuringSerialScreen
             header[1] = (byte)((position >> 8) & 0xff);
             header[2] = (byte)(position & 0xff);
             Write(header);
-            Write(bitmap.AsSpan((((bitmapY + oy) * bitmapWidth) + bitmapX) * _pixelBytes, w * _pixelBytes));
+            Write(bitmap.Slice((((bitmapY + oy) * bitmapWidth) + bitmapX) * _pixelBytes, w * _pixelBytes));
         }
         Write(CommandUpdateBitmapTerminate);
         Flush();

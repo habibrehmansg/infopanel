@@ -316,6 +316,105 @@ public sealed class PanelTransformTests
     {
         Assert.Throws<OverflowException>(() => PanelTransform.TargetLength(panelWidth, panelHeight, PanelPixelFormat.Rgb565Le));
     }
+
+    // Software dimming: byte for byte what Skia's colour matrix gave, without a copy of the frame, a surface or a filter a frame.
+
+    /// <summary>1.4.x's dimming as this engine first did it, through Skia's colour matrix: the oracle.</summary>
+    private static void DimThroughSkia(Span<byte> rgba, int width, int height, int percent)
+    {
+        if (percent >= 100)
+            return;
+        var scale = Math.Clamp(percent, 0, 100) / 100f;
+        var info = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Opaque);
+        using var source = new SKBitmap(info);
+        rgba.CopyTo(source.GetPixelSpan());
+        using var copy = SKImage.FromPixelCopy(source.PeekPixels())!;
+        using var target = new SKBitmap(info);
+        rgba.CopyTo(target.GetPixelSpan());
+        using var filter = SKColorFilter.CreateColorMatrix(
+        [
+            scale, 0, 0, 0, 0,
+            0, scale, 0, 0, 0,
+            0, 0, scale, 0, 0,
+            0, 0, 0, 1, 0,
+        ]);
+        using var paint = new SKPaint { ColorFilter = filter };
+        using (var canvas = new SKCanvas(target))
+        {
+            canvas.DrawImage(copy, 0, 0, new SKSamplingOptions(SKFilterMode.Nearest, SKMipmapMode.None), paint);
+            canvas.Flush();
+        }
+        target.GetPixelSpan().CopyTo(rgba);
+    }
+
+    /// <summary>A 256 × 4 opaque frame in which every channel takes every value.</summary>
+    private static byte[] EveryValue()
+    {
+        var rgba = new byte[256 * 4 * 4];
+        for (var y = 0; y < 4; y++)
+        {
+            for (var x = 0; x < 256; x++)
+            {
+                var i = (y * 256 + x) * 4;
+                rgba[i] = (byte)x;
+                rgba[i + 1] = (byte)(x + 85 * y);
+                rgba[i + 2] = (byte)(255 - x);
+                rgba[i + 3] = 255;
+            }
+        }
+        return rgba;
+    }
+
+    [Fact]
+    public void Dimming_is_byte_identical_to_skias_colour_matrix_at_every_percent()
+    {
+        foreach (var percent in Enumerable.Range(-1, 103))
+        {
+            var expected = EveryValue();
+            DimThroughSkia(expected, 256, 4, percent);
+            var actual = EveryValue();
+            PanelTransform.Dim(actual, 256, 4, percent);
+            Assert.True(expected.AsSpan().SequenceEqual(actual), $"dimmed to {percent} % differs from Skia's colour matrix");
+        }
+    }
+
+    [Fact]
+    public void Dimming_a_frame_allocates_nothing_a_frame()
+    {
+        var rgba = EveryValue();
+        for (var i = 0; i < 5; i++)
+            PanelTransform.Dim(rgba, 256, 4, 50);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 100; i++)
+            PanelTransform.Dim(rgba, 256, 4, 50);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        // Each Skia object a call makes (the frame's copy, a surface, a paint, a colour filter left to its finalizer) is a managed wrapper too.
+        Assert.True(allocated < 100 * 64, $"100 dimmed frames allocated {allocated:N0} B");
+    }
+
+    /// <summary>A measurement, not a check: the median time to dim a 1600 × 720 frame to 50 %.</summary>
+    [Fact]
+    [Trait("Category", "Performance")]
+    public void Dimming_a_1600_by_720_frame_takes()
+    {
+        var rgba = new byte[1600 * 720 * 4];
+        new Random(1).NextBytes(rgba);
+        for (var i = 3; i < rgba.Length; i += 4)
+            rgba[i] = 255;
+        for (var i = 0; i < 20; i++)
+            PanelTransform.Dim(rgba, 1600, 720, 50);
+        var times = new double[300];
+        for (var i = 0; i < times.Length; i++)
+        {
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            PanelTransform.Dim(rgba, 1600, 720, 50);
+            times[i] = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        }
+        Array.Sort(times);
+        TestContext.Current.TestOutputHelper?.WriteLine($"Dim 1600x720 at 50 %: median {times[150]:0.000} ms, p95 {times[285]:0.000} ms");
+    }
 }
 
 /// <summary>

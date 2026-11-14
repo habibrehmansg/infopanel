@@ -418,6 +418,7 @@ public sealed class EnginePanelDevices : IPanelDevices
     {
         private readonly SemaphoreSlim _call = new(1, 1);
         private readonly CancellationTokenSource _disposing = new();
+        private byte[]? _staging; // a report's bytes, copied in under the call's turn (let go after a failed write)
         private volatile bool _disposed;
         private int _closed;
 
@@ -429,7 +430,11 @@ public sealed class EnginePanelDevices : IPanelDevices
 
         public int MaxFeatureReportLength => collection.MaxFeatureReportLength;
 
-        private PanelDeviceStatus Call(int timeoutMs, CancellationToken cancellationToken, Func<int, DeviceDeadline, PanelDeviceStatus> call)
+        private PanelDeviceStatus Call(int timeoutMs, CancellationToken cancellationToken, Func<int, DeviceDeadline, PanelDeviceStatus> call) =>
+            Call(call, timeoutMs, cancellationToken, static (call, left, deadline) => call(left, deadline));
+
+        private PanelDeviceStatus Call<TState>(TState state, int timeoutMs, CancellationToken cancellationToken, Func<TState, int, DeviceDeadline, PanelDeviceStatus> call)
+            where TState : allows ref struct
         {
             IPanelDevices.CheckTimeout(timeoutMs);
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -442,7 +447,7 @@ public sealed class EnginePanelDevices : IPanelDevices
             {
                 if (_disposed)
                     return PanelDeviceStatus.Io;
-                var status = call(left, deadline);
+                var status = call(state, left, deadline);
                 if (_disposed)
                     return PanelDeviceStatus.Io;
                 cancellationToken.ThrowIfCancellationRequested();
@@ -458,8 +463,17 @@ public sealed class EnginePanelDevices : IPanelDevices
         {
             if (report.Length > MaxOutputReportLength)
                 throw new ArgumentException($"An output report is at most {MaxOutputReportLength} bytes.", nameof(report));
-            var bytes = report.ToArray();
-            return Call(timeoutMs, cancellationToken, (left, _) => stream.Write(bytes, left));
+            // Copied in once this call has its turn; a write that didn't end Ok lets the buffer go (the OS may still read it).
+            return Call(report, timeoutMs, cancellationToken, (bytes, left, _) =>
+            {
+                var staging = _staging is { } kept && kept.Length >= bytes.Length ? kept : new byte[MaxOutputReportLength];
+                _staging = null;
+                bytes.CopyTo(staging);
+                var status = stream.Write(staging, bytes.Length, left);
+                if (status == PanelDeviceStatus.Ok)
+                    _staging = staging;
+                return status;
+            });
         }
 
         public PanelDeviceStatus Read(Span<byte> buffer, int timeoutMs, out int read, CancellationToken cancellationToken = default)

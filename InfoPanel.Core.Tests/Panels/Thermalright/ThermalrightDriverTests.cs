@@ -741,4 +741,216 @@ public sealed class ThermalrightDriverTests
         Assert.Throws<OperationCanceledException>(() => _driver.Open(ChiZhu, identity, new PanelOpenOptions(100), second.Token));
         Assert.Equal("h1 close usb if0", PanelTrace.FormatLine(device.Trace.Entries[^1]));
     }
+
+    // ---- Allocation: a frame's packets ----
+
+    /// <summary>
+    /// A claimed USB interface and an opened HID collection in one, keeping only counts (and, when asked, each write's
+    /// bytes): what a session allocates per frame is then its own. Every read brings a four-byte acknowledgement.
+    /// </summary>
+    private sealed class CountingHandle : IPanelUsb, IPanelHid
+    {
+        public long Writes { get; private set; }
+
+        public long BytesWritten { get; private set; }
+
+        /// <summary>Each write's bytes and its zero-length-packet flag, when not null.</summary>
+        public List<(byte[] Data, bool Zlp)>? Recorded { get; init; }
+
+        public IReadOnlyList<PanelUsbEndpoint> Endpoints => [];
+
+        public string? SerialNumber => null;
+
+        public PanelHidCollection Collection => null!;
+
+        public int MaxInputReportLength => 513;
+
+        public int MaxOutputReportLength => 513;
+
+        public int MaxFeatureReportLength => 0;
+
+        private PanelDeviceStatus Wrote(ReadOnlySpan<byte> data, bool zlp)
+        {
+            Writes++;
+            BytesWritten += data.Length;
+            Recorded?.Add((data.ToArray(), zlp));
+            return PanelDeviceStatus.Ok;
+        }
+
+        private static PanelDeviceStatus Ack(Span<byte> buffer, out int read)
+        {
+            read = Math.Min(buffer.Length, 4);
+            buffer[..read].Fill(0x03);
+            return PanelDeviceStatus.Ok;
+        }
+
+        public PanelDeviceStatus BulkWrite(byte endpoint, ReadOnlySpan<byte> data, int timeoutMs, bool zeroLengthPacketIfFull = false, CancellationToken cancellationToken = default) =>
+            Wrote(data, zeroLengthPacketIfFull);
+
+        public PanelDeviceStatus BulkRead(byte endpoint, Span<byte> buffer, int timeoutMs, out int read, CancellationToken cancellationToken = default) => Ack(buffer, out read);
+
+        public PanelDeviceStatus Write(ReadOnlySpan<byte> report, int timeoutMs, CancellationToken cancellationToken = default) => Wrote(report, false);
+
+        public PanelDeviceStatus Read(Span<byte> buffer, int timeoutMs, out int read, CancellationToken cancellationToken = default) => Ack(buffer, out read);
+
+        public PanelDeviceStatus SetFeature(ReadOnlySpan<byte> report, int timeoutMs, CancellationToken cancellationToken = default) => PanelDeviceStatus.NotSupported;
+
+        public PanelDeviceStatus GetFeature(Span<byte> buffer, int timeoutMs, out int read, CancellationToken cancellationToken = default)
+        {
+            read = 0;
+            return PanelDeviceStatus.NotSupported;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private static readonly Action<TimeSpan, CancellationToken> NoWait = (_, _) => { };
+
+    /// <summary>A session of <paramref name="protocol"/> over <paramref name="handle"/>, and the frame length it is fed.</summary>
+    private static (IPanelSession Session, int FrameBytes) SessionOf(string protocol, CountingHandle handle)
+    {
+        static PanelCapabilities Caps(int width, int height, PanelFrameFormat format) => new(width, height, [format], 30);
+        return protocol switch
+        {
+            "chizhu-jpeg" => (new ChiZhuSession(Caps(480, 480, PanelFrameFormat.Jpeg), handle, 0x01, ThermalrightPixels.Jpeg, NoWait), 200_000),
+            "chizhu-rgb565" => (new ChiZhuSession(Caps(320, 320, PanelFrameFormat.Rgb565Be), handle, 0x01, ThermalrightPixels.Rgb565Be, NoWait), 320 * 320 * 2),
+            "hid-jpeg" => (new TrofeoHidSession(Caps(1600, 720, PanelFrameFormat.Jpeg), handle, 1600, 720, ThermalrightPixels.Jpeg, NoWait), 400_000),
+            "hid-rgb565" => (new TrofeoHidSession(Caps(240, 320, PanelFrameFormat.Rgb565LeTruncated), handle, 240, 320, ThermalrightPixels.Rgb565Le, NoWait), 240 * 320 * 2),
+            "ly" => (new TrofeoBulkSession(Caps(1920, 480, PanelFrameFormat.Jpeg), handle, 0x01, 0x81, ly1: false), 230_000),
+            "ly1" => (new TrofeoBulkSession(Caps(1920, 462, PanelFrameFormat.Jpeg), handle, 0x01, 0x81, ly1: true), 230_000),
+            "ali" => (new AliSession(Caps(320, 320, PanelFrameFormat.Rgb565LeTruncated), handle, 0x01, 0x81, AliProtocol.DefaultFrameBytes), AliProtocol.DefaultFrameBytes),
+            _ => throw new ArgumentOutOfRangeException(nameof(protocol)),
+        };
+    }
+
+    /// <summary>What <paramref name="protocol"/>'s builders make of <paramref name="frame"/>: each write's bytes and its zero-length-packet flag.</summary>
+    private static List<(byte[] Data, bool Zlp)> PacketsOf(string protocol, byte[] frame)
+    {
+        switch (protocol)
+        {
+            case "chizhu-jpeg" or "chizhu-rgb565":
+                var (width, height, pixels) = protocol == "chizhu-jpeg" ? (480, 480, ThermalrightPixels.Jpeg) : (320, 320, ThermalrightPixels.Rgb565Be);
+                var packet = ChiZhuProtocol.FramePacket(frame, width, height, pixels);
+                return [(packet, ChiZhuProtocol.NeedsZeroLengthPacket(packet.Length))];
+            case "hid-jpeg":
+                return [.. TrofeoProtocol.FramePackets(frame, 1600, 720, ThermalrightPixels.Jpeg).Select(p => (TrofeoProtocol.HidReport(p), false))];
+            case "hid-rgb565":
+                return [.. TrofeoProtocol.FramePackets(frame, 240, 320, ThermalrightPixels.Rgb565Le).Select(p => (TrofeoProtocol.HidReport(p), false))];
+            case "ly":
+                var ly = TrofeoBulkProtocol.LyFrame(frame);
+                return [.. TrofeoBulkProtocol.LyTransfers(ly.Length).Select(t => (ly.AsSpan(t.Offset, t.Length).ToArray(), false))];
+            case "ly1":
+                return [(TrofeoBulkProtocol.Ly1Frame(frame), false)];
+            case "ali":
+                return [(AliProtocol.FramePacket(frame, AliProtocol.DefaultFrameBytes), false)];
+            default:
+                throw new ArgumentOutOfRangeException(nameof(protocol));
+        }
+    }
+
+    [Theory]
+    [InlineData("chizhu-jpeg")]
+    [InlineData("chizhu-rgb565")]
+    [InlineData("ly")]
+    [InlineData("ly1")]
+    [InlineData("ali")]
+    public void ABulkFrame_AllocatesNoFrameSizePacket(string protocol)
+    {
+        // A frame's header and bytes go from a buffer the session keeps: 100 equal frames, every one sent whole, allocate
+        // less than 4 KB a frame on this thread (the device seam here copies nothing).
+        var handle = new CountingHandle();
+        var (session, frameBytes) = SessionOf(protocol, handle);
+        var frame = new byte[frameBytes];
+        new Random(3).NextBytes(frame);
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(PanelDeviceStatus.Ok, Write(session, frame).Status);
+        var packets = PacketsOf(protocol, frame);
+        var packetBytes = packets.Sum(p => (long)p.Data.Length);
+
+        const int Frames = 100;
+        var (writes, bytes) = (handle.Writes, handle.BytesWritten);
+        var failed = 0;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < Frames; i++)
+            if (Write(session, frame).Status != PanelDeviceStatus.Ok)
+                failed++;
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        TestContext.Current.TestOutputHelper?.WriteLine($"{protocol}: {Frames} frames of {frameBytes:N0} bytes ({handle.Writes - writes:N0} writes, {handle.BytesWritten - bytes:N0} bytes) allocated {allocated:N0} bytes ({allocated / Frames:N0} a frame)");
+        Assert.Equal(0, failed);
+        Assert.Equal(Frames * packets.Count, handle.Writes - writes);
+        Assert.Equal(Frames * packetBytes, handle.BytesWritten - bytes);
+        Assert.True(allocated < Frames * 4096, $"{Frames} frames of {frameBytes:N0} bytes allocated {allocated:N0} bytes ({allocated / Frames:N0} a frame)");
+    }
+
+    [Theory]
+    [InlineData("hid-jpeg")]
+    [InlineData("hid-rgb565")]
+    public void AHidFrame_AllocatesNoArrayPerReport(string protocol)
+    {
+        // A Trofeo HID frame's 512-byte packets go as 513-byte reports from one report buffer the session keeps: 100 frames
+        // (a 400 KB JPEG is 782 reports), every report sent, allocate less than 8 KB a frame on this thread.
+        var handle = new CountingHandle();
+        var (session, frameBytes) = SessionOf(protocol, handle);
+        var frame = new byte[frameBytes];
+        new Random(4).NextBytes(frame);
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(PanelDeviceStatus.Ok, Write(session, frame).Status);
+        var reports = PacketsOf(protocol, frame).Count;
+
+        const int Frames = 100;
+        var (writes, bytes) = (handle.Writes, handle.BytesWritten);
+        var failed = 0;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < Frames; i++)
+            if (Write(session, frame).Status != PanelDeviceStatus.Ok)
+                failed++;
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        TestContext.Current.TestOutputHelper?.WriteLine($"{protocol}: {Frames} frames of {frameBytes:N0} bytes ({(handle.Writes - writes) / Frames} reports) allocated {allocated:N0} bytes ({allocated / Frames:N0} a frame)");
+        Assert.Equal(0, failed);
+        Assert.Equal(Frames * reports, handle.Writes - writes);
+        Assert.Equal(Frames * reports * 513L, handle.BytesWritten - bytes);
+        Assert.True(allocated < Frames * 8192, $"{Frames} frames of {frameBytes:N0} bytes allocated {allocated:N0} bytes ({allocated / Frames:N0} a frame)");
+    }
+
+    [Theory]
+    [InlineData("chizhu-jpeg")]
+    [InlineData("chizhu-rgb565")]
+    [InlineData("hid-jpeg")]
+    [InlineData("hid-rgb565")]
+    [InlineData("ly")]
+    [InlineData("ly1")]
+    [InlineData("ali")]
+    public void EveryWrite_IsThePacketsItsProtocolBuilds_AShortFrameAfterALongOneToo(string protocol)
+    {
+        // Each write's bytes, its length and its zero-length packet are what the protocol's builders make of the frame
+        // (held against 1.4.x by the protocol tests): a long frame, a short one after it (nothing of the long one's left
+        // in its packets or its padding), and a long one again.
+        var handle = new CountingHandle { Recorded = [] };
+        var (session, frameBytes) = SessionOf(protocol, handle);
+        var random = new Random(6);
+        byte[] Frame(int length)
+        {
+            var frame = new byte[length];
+            random.NextBytes(frame);
+            return frame;
+        }
+        var frames = new[] { Frame(frameBytes), Frame((frameBytes / 3) + 7), Frame(frameBytes), Frame(1001) };
+        var expected = new List<(byte[] Data, bool Zlp)>();
+        foreach (var frame in frames)
+        {
+            Assert.Equal(PanelDeviceStatus.Ok, Write(session, frame).Status);
+            expected.AddRange(PacketsOf(protocol, frame));
+        }
+
+        Assert.Equal(expected.Count, handle.Recorded!.Count);
+        for (var i = 0; i < expected.Count; i++)
+        {
+            Assert.Equal(expected[i].Zlp, handle.Recorded[i].Zlp);
+            Assert.True(expected[i].Data.AsSpan().SequenceEqual(handle.Recorded[i].Data), $"write {i}: {handle.Recorded[i].Data.Length} bytes, expected {expected[i].Data.Length}");
+        }
+    }
 }

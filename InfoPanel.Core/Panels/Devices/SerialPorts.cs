@@ -313,8 +313,12 @@ internal interface ISerialLine
 
     bool IsOpen { get; }
 
-    /// <summary>Writes all of <paramref name="data"/>; <see cref="TimeoutException"/> past <paramref name="timeoutMs"/>.</summary>
-    void Write(byte[] data, int timeoutMs);
+    /// <summary>
+    /// Writes the first <paramref name="count"/> bytes of <paramref name="data"/>; <see cref="TimeoutException"/> past
+    /// <paramref name="timeoutMs"/>. The caller may reuse <paramref name="data"/> once it returns; after a throw it doesn't,
+    /// as the port may still be sending from it.
+    /// </summary>
+    void Write(byte[] data, int count, int timeoutMs);
 
     /// <summary>Reads what has come, at least a byte; <see cref="TimeoutException"/> past <paramref name="timeoutMs"/>.</summary>
     int Read(byte[] buffer, int timeoutMs);
@@ -348,6 +352,7 @@ internal sealed class OpenedSerial(ISerialLine port, Func<int, DeviceDeadline>? 
     private readonly SemaphoreSlim _call = new(1, 1);
     private readonly CancellationTokenSource _disposing = new();
     private readonly Func<int, DeviceDeadline> _deadlines = deadlines ?? (ms => new DeviceDeadline(ms));
+    private byte[]? _staging; // a write's bytes, copied in under the call's turn (grown to the longest write; let go after a failed one)
     private volatile bool _disposed;
     private int _closed;
 
@@ -355,7 +360,12 @@ internal sealed class OpenedSerial(ISerialLine port, Func<int, DeviceDeadline>? 
 
     internal ISerialLine Line => port;
 
-    private PanelDeviceStatus Call(int timeoutMs, CancellationToken cancellationToken, Func<int, DeviceDeadline, PanelDeviceStatus> call)
+    private PanelDeviceStatus Call(int timeoutMs, CancellationToken cancellationToken, Func<int, DeviceDeadline, PanelDeviceStatus> call) =>
+        Call(call, timeoutMs, cancellationToken, static (call, left, deadline) => call(left, deadline));
+
+    /// <summary><see cref="Call(int, CancellationToken, Func{int, DeviceDeadline, PanelDeviceStatus})"/> with <paramref name="state"/> passed to the call (a span too).</summary>
+    private PanelDeviceStatus Call<TState>(TState state, int timeoutMs, CancellationToken cancellationToken, Func<TState, int, DeviceDeadline, PanelDeviceStatus> call)
+        where TState : allows ref struct
     {
         IPanelDevices.CheckTimeout(timeoutMs);
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -370,7 +380,7 @@ internal sealed class OpenedSerial(ISerialLine port, Func<int, DeviceDeadline>? 
                 return PanelDeviceStatus.Io;
             try
             {
-                var status = call(left, deadline);
+                var status = call(state, left, deadline);
                 if (_disposed)
                     return PanelDeviceStatus.Io;
                 cancellationToken.ThrowIfCancellationRequested();
@@ -396,10 +406,15 @@ internal sealed class OpenedSerial(ISerialLine port, Func<int, DeviceDeadline>? 
 
     public PanelDeviceStatus Write(ReadOnlySpan<byte> data, int timeoutMs, CancellationToken cancellationToken = default)
     {
-        var bytes = data.ToArray();
-        return Call(timeoutMs, cancellationToken, (left, _) =>
+        // Copied in once this call has its turn, so a write never sees another's bytes, and only its first count bytes
+        // (the data's length) are sent; a write that didn't end Ok lets the buffer go, as the port may still be sending from it.
+        return Call(data, timeoutMs, cancellationToken, (bytes, left, _) =>
         {
-            port.Write(bytes, left);
+            var staging = _staging is { } kept && kept.Length >= bytes.Length ? kept : new byte[bytes.Length];
+            _staging = null;
+            bytes.CopyTo(staging);
+            port.Write(staging, bytes.Length, left);
+            _staging = staging;
             return PanelDeviceStatus.Ok;
         });
     }
@@ -708,10 +723,10 @@ public sealed class SerialPorts(ILogger logger) : ISerialSystem
             }
         }
 
-        public void Write(byte[] data, int timeoutMs)
+        public void Write(byte[] data, int count, int timeoutMs)
         {
             port.WriteTimeout = timeoutMs;
-            port.Write(data, 0, data.Length);
+            port.Write(data, 0, count);
         }
 
         public int Read(byte[] buffer, int timeoutMs)

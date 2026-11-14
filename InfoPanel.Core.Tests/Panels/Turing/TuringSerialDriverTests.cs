@@ -749,4 +749,126 @@ public sealed class TuringSerialDriverTests
         Assert.True(failures.Count == 0, string.Join("\n", failures));
         _ = (width, height);
     }
+
+    // ---- Allocation: a new frame's sending ----
+
+    /// <summary>
+    /// The device seam with one serial port that keeps only counts (no trace, no copies), answering Hello and each
+    /// QueryStatus from fixed bytes: what a session allocates per frame is then its own.
+    /// </summary>
+    private sealed class CountingSerialDevices(string hello) : IPanelDevices
+    {
+        private readonly byte[] _hello = Hello(hello);
+        private static readonly byte[] Status = Encoding.ASCII.GetBytes("needReSend:0");
+
+        public long Writes { get; private set; }
+
+        public long BytesWritten { get; private set; }
+
+        public PanelDeviceStatus Describe(PanelCandidate device, out PanelUsbDescriptor? descriptor) { descriptor = null; return PanelDeviceStatus.NotSupported; }
+
+        public PanelDeviceStatus OpenUsb(PanelCandidate device, int interfaceNumber, int timeoutMs, out IPanelUsb? usb, CancellationToken cancellationToken = default) { usb = null; return PanelDeviceStatus.NotSupported; }
+
+        public PanelDeviceStatus ListHid(PanelCandidate device, PanelHidFilter filter, out IReadOnlyList<PanelHidCollection> collections) { collections = []; return PanelDeviceStatus.NotSupported; }
+
+        public PanelDeviceStatus OpenHid(PanelCandidate device, PanelHidFilter filter, int timeoutMs, out IPanelHid? hid, CancellationToken cancellationToken = default) { hid = null; return PanelDeviceStatus.NotSupported; }
+
+        public PanelDeviceStatus OpenHid(PanelCandidate device, PanelHidCollection collection, int timeoutMs, out IPanelHid? hid, CancellationToken cancellationToken = default) { hid = null; return PanelDeviceStatus.NotSupported; }
+
+        public PanelDeviceStatus OpenSerial(PanelCandidate device, PanelSerialOptions options, int timeoutMs, out IPanelSerial? serial, CancellationToken cancellationToken = default)
+        {
+            serial = new Port(this);
+            return PanelDeviceStatus.Ok;
+        }
+
+        private sealed class Port(CountingSerialDevices devices) : IPanelSerial
+        {
+            private byte[]? _reply;
+
+            public string PortName => "counting";
+
+            public PanelDeviceStatus Write(ReadOnlySpan<byte> data, int timeoutMs, CancellationToken cancellationToken = default)
+            {
+                devices.Writes++;
+                devices.BytesWritten += data.Length;
+                if (data.Length > 2 && data[0] == 0x01 && data[1] == 0xef && data[2] == 0x69)
+                    _reply = devices._hello;
+                else if (data.Length > 2 && data[0] == 0xcf && data[1] == 0xef && data[2] == 0x69)
+                    _reply = Status;
+                return PanelDeviceStatus.Ok;
+            }
+
+            public PanelDeviceStatus Read(Span<byte> buffer, int timeoutMs, out int read, CancellationToken cancellationToken = default)
+            {
+                read = 0;
+                if (_reply == null)
+                    return PanelDeviceStatus.Timeout;
+                read = Math.Min(buffer.Length, _reply.Length);
+                _reply.AsSpan(0, read).CopyTo(buffer);
+                _reply = null;
+                return PanelDeviceStatus.Ok;
+            }
+
+            public PanelDeviceStatus DiscardInput() => PanelDeviceStatus.Ok;
+
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    /// <summary>The side of the block <see cref="ChangeABlock"/> changes; every session's width and height divide by it.</summary>
+    private const int Block = 80;
+
+    /// <summary>A <see cref="Block"/> × <see cref="Block"/> block of <paramref name="frame"/> changed in place, its place moving with <paramref name="n"/>.</summary>
+    private static void ChangeABlock(byte[] frame, int width, int height, int bytesPerPixel, int n)
+    {
+        var across = width / Block;
+        var down = height / Block;
+        var left = n % across * Block;
+        var top = n / across % down * Block;
+        for (var y = top; y < top + Block; y++)
+            for (var i = ((y * width) + left) * bytesPerPixel; i < ((y * width) + left + Block) * bytesPerPixel; i++)
+                frame[i] = (byte)(frame[i] + 37);
+    }
+
+    [Theory]
+    [MemberData(nameof(Sessions))]
+    public void ANewFrame_AllocatesNoFrameSizeArrays(string usb, char letter, int width, int height)
+    {
+        // A new frame's sending copies what it needs into buffers the session keeps: 100 new frames, each a moving 80 x 80
+        // block changed (12,800 to 25,600 bytes of pixels sent a frame), allocate less than 8 KB a frame on this thread (the
+        // device seam here copies nothing), so neither a copy of the frame nor an array per piece is made.
+        var candidate = CandidateOf(usb);
+        var devices = new CountingSerialDevices(letter == 'C' ? "chs_5inch.dev1_rom1.88" : "chs_88inch.dev1_rom1.88");
+        var revision = SerialRevision.Of(letter.ToString())!;
+        using var session = Start(Driver(devices), candidate);
+        var frame = new byte[width * height * revision.BytesPerPixel];
+        new Random(5).NextBytes(frame);
+        var stop = TestContext.Current.CancellationToken;
+        var n = 0;
+        PanelWrite Next()
+        {
+            ChangeABlock(frame, width, height, revision.BytesPerPixel, n++);
+            return session.WriteFrame(new PanelFrameView(frame, revision.Format, n, false), stop);
+        }
+        Assert.Equal(PanelDeviceStatus.Ok, session.WriteFrame(new PanelFrameView(frame, revision.Format, 0, false), stop).Status); // whole
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(PanelDeviceStatus.Ok, Next().Status);
+
+        const int Frames = 100;
+        var bytes = devices.BytesWritten;
+        var failed = 0;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < Frames; i++)
+            if (Next().Status != PanelDeviceStatus.Ok)
+                failed++;
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var sent = devices.BytesWritten - bytes;
+
+        TestContext.Current.TestOutputHelper?.WriteLine($"{letter} {width}x{height}: {Frames} new frames of {frame.Length:N0} bytes sent {sent:N0} bytes and allocated {allocated:N0} bytes ({allocated / Frames:N0} a frame)");
+        Assert.Equal(0, failed);
+        Assert.True(sent >= (long)Frames * Block * Block * revision.BytesPerPixel, $"{Frames} new frames sent {sent:N0} bytes, less than their changed blocks");
+        Assert.True(allocated < Frames * 8 * 1024, $"{Frames} new frames of {frame.Length:N0} bytes allocated {allocated:N0} bytes ({allocated / Frames:N0} a frame)");
+    }
 }

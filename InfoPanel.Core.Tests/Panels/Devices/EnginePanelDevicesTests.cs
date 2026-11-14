@@ -1197,10 +1197,29 @@ public sealed class EnginePanelDevicesTests : IDisposable
         /// <summary>The writes and feature calls that reached it.</summary>
         public int Calls => Volatile.Read(ref _calls);
 
-        public PanelDeviceStatus Write(byte[] report, int timeoutMs)
+        /// <summary>The last report written's length.</summary>
+        public int LastLength;
+
+        /// <summary>Keeps each write in <see cref="Writes"/> (off, a write allocates nothing).</summary>
+        public bool Keep { get; set; }
+
+        /// <summary>Each write's array, the reference, its length and a copy of the bytes it wrote.</summary>
+        public List<(byte[] Array, int Length, byte[] Bytes)> Writes { get; } = [];
+
+        /// <summary>The next writes' answers, in order (then <see cref="PanelDeviceStatus.Ok"/>).</summary>
+        public Queue<PanelDeviceStatus> Answers { get; } = new();
+
+        public PanelDeviceStatus Write(byte[] report, int length, int timeoutMs)
         {
+            LastLength = length;
             Interlocked.Increment(ref _calls);
-            return Disposed ? PanelDeviceStatus.Io : PanelDeviceStatus.Ok;
+            if (Keep)
+                lock (Writes)
+                    Writes.Add((report, length, report[..length]));
+            if (Disposed)
+                return PanelDeviceStatus.Io;
+            lock (Answers)
+                return Answers.TryDequeue(out var answer) ? answer : PanelDeviceStatus.Ok;
         }
 
         public PanelDeviceStatus Read(byte[] buffer, int timeoutMs, out int read)
@@ -1313,6 +1332,256 @@ public sealed class EnginePanelDevicesTests : IDisposable
         }
     }
 
+    // What a write costs: the seam stages the caller's bytes in a buffer of the handle's, not a new array a write.
+
+    [Fact]
+    public void A_serial_write_allocates_no_copy_of_its_payload()
+    {
+        var line = new KeptLine();
+        var port = new OpenedSerial(line);
+        var payload = new byte[256 * 1024];
+        for (var i = 0; i < 5; i++)
+            Assert.Equal(PanelDeviceStatus.Ok, port.Write(payload, 1000));
+
+        // The write runs on the caller's thread, so this thread's count is the write's (other tests run in parallel).
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 100; i++)
+            port.Write(payload, 1000);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(105, line.Writes);
+        TestContext.Current.TestOutputHelper?.WriteLine($"100 writes of 256 KiB allocated {allocated:N0} B");
+        Assert.True(allocated < 100 * 4096, $"100 writes of 256 KiB allocated {allocated:N0} B");
+        port.Dispose();
+    }
+
+    [Fact]
+    public void Serial_writes_each_deliver_exactly_their_own_bytes_concurrent_cancelled_or_short_after_long()
+    {
+        var line = new KeptLine { Keep = true };
+        var port = new OpenedSerial(line);
+        static byte[] Filled(int length, byte value) => Enumerable.Repeat(value, length).ToArray();
+
+        // A short write after a long one: only its own bytes.
+        port.Write(Filled(4096, 0xAA), 1000);
+        port.Write(new byte[] { 1, 2, 3 }, 1000);
+        Assert.Equal([4096, 3], line.Kept.Select(k => k.Length));
+        Assert.Equal(new byte[] { 1, 2, 3 }, line.Kept[1]);
+
+        // A cancelled write sends nothing; the next sends its own bytes.
+        using (var cancelled = new CancellationTokenSource())
+        {
+            cancelled.Cancel();
+            Assert.ThrowsAny<OperationCanceledException>(() => port.Write(Filled(100, 0xCC), 1000, cancelled.Token));
+        }
+        port.Write(new byte[] { 9 }, 1000);
+        Assert.Equal(3, line.Kept.Count);
+        Assert.Equal(new byte[] { 9 }, line.Kept[2]);
+
+        // Two writers at once: every write arrives whole, of one value and its own length.
+        line.Kept.Clear();
+        var writers = Enumerable.Range(0, 2).Select(w => Task.Run(() =>
+        {
+            for (var i = 0; i < 200; i++)
+                Assert.Equal(PanelDeviceStatus.Ok, port.Write(Filled(w == 0 ? 3000 + i : 70_000 - i, (byte)(w + 1)), 5000));
+        })).ToArray();
+        Task.WaitAll(writers, TestContext.Current.CancellationToken);
+        Assert.Equal(400, line.Kept.Count);
+        var first = line.Kept.Where(k => k[0] == 1).ToList();
+        var second = line.Kept.Where(k => k[0] == 2).ToList();
+        Assert.Equal(Enumerable.Range(0, 200).Select(i => 3000 + i), first.Select(k => k.Length));
+        Assert.Equal(Enumerable.Range(0, 200).Select(i => 70_000 - i), second.Select(k => k.Length));
+        Assert.All(line.Kept, k => Assert.True(k.All(b => b == k[0]), "a write mixed with another's bytes"));
+        port.Dispose();
+    }
+
+    [Fact]
+    public void A_hid_write_allocates_no_copy_of_its_report()
+    {
+        var hid = new FakeHid([Hid("x", null, serial: "S1")]);
+        var seam = new EnginePanelDevices(null, hid, null, _log.Logger);
+        Assert.Equal(PanelDeviceStatus.Ok, seam.OpenHid(Candidate, new PanelHidFilter(), 1000, out var opened));
+        var report = new byte[513];
+        for (var i = 0; i < 5; i++)
+            opened!.Write(report, 1000);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 1000; i++)
+            opened!.Write(report, 1000);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(1005, hid.Streams[0].Calls);
+        Assert.Equal(513, hid.Streams[0].LastLength);
+        TestContext.Current.TestOutputHelper?.WriteLine($"1,000 reports of 513 B allocated {allocated:N0} B");
+        Assert.True(allocated < 1000 * 256, $"1,000 reports of 513 B allocated {allocated:N0} B");
+        opened!.Dispose();
+    }
+
+    // Who owns the array handed down: the port may still be sending from it after a write that didn't end Ok.
+
+    [Fact]
+    public void A_serial_array_kept_by_a_write_that_timed_out_is_never_written_into_again()
+    {
+        var line = new KeptLine { Keep = true, Timeouts = 1 };
+        var port = new OpenedSerial(line);
+        var first = Enumerable.Repeat((byte)0x11, 64).ToArray();
+
+        Assert.Equal(PanelDeviceStatus.Timeout, port.Write(first, 1000));
+        Assert.Equal(PanelDeviceStatus.Ok, port.Write(Enumerable.Repeat((byte)0x22, 64).ToArray(), 1000));
+
+        var (kept, count) = line.Arrays[0];
+        Assert.Equal(first, kept[..count]);
+        Assert.NotSame(kept, line.Arrays[1].Array);
+        port.Dispose();
+    }
+
+    [Fact]
+    public void A_hid_report_kept_by_a_write_that_timed_out_is_never_written_into_again()
+    {
+        var hid = new FakeHid([Hid("x", null, serial: "S1")]);
+        var seam = new EnginePanelDevices(null, hid, null, _log.Logger);
+        Assert.Equal(PanelDeviceStatus.Ok, seam.OpenHid(Candidate, new PanelHidFilter(), 1000, out var opened));
+        var stream = hid.Streams[0];
+        stream.Keep = true;
+        stream.Answers.Enqueue(PanelDeviceStatus.Timeout);
+        var first = Enumerable.Repeat((byte)0x11, 64).ToArray();
+
+        Assert.Equal(PanelDeviceStatus.Timeout, opened!.Write(first, 1000));
+        Assert.Equal(PanelDeviceStatus.Ok, opened.Write(Enumerable.Repeat((byte)0x22, 64).ToArray(), 1000));
+
+        var (kept, length, _) = stream.Writes[0];
+        Assert.Equal(first, kept[..length]);
+        Assert.NotSame(kept, stream.Writes[1].Array);
+        opened.Dispose();
+    }
+
+    [Fact]
+    public async Task A_serial_write_waiting_for_its_turn_leaves_the_write_under_way_its_bytes()
+    {
+        using var gate = new ManualResetEventSlim();
+        using var sending = new ManualResetEventSlim();
+        using var waiting = new ManualResetEventSlim();
+        var line = new KeptLine { Keep = true, Gate = gate, Sending = sending };
+        var calls = 0;
+        var port = new OpenedSerial(line, ms =>
+        {
+            if (Interlocked.Increment(ref calls) == 2)
+                waiting.Set(); // the second write has come as far as its turn
+            return new DeviceDeadline(ms);
+        });
+        var first = Enumerable.Repeat((byte)0x11, 64).ToArray();
+        var second = Enumerable.Repeat((byte)0x22, 64).ToArray();
+
+        Task<PanelDeviceStatus> one, two;
+        try
+        {
+            one = Task.Run(() => port.Write(first, 5000), TestContext.Current.CancellationToken);
+            Assert.True(sending.Wait(5000, TestContext.Current.CancellationToken));
+            two = Task.Run(() => port.Write(second, 5000), TestContext.Current.CancellationToken);
+            Assert.True(waiting.Wait(5000, TestContext.Current.CancellationToken));
+
+            // The first write is still sending: the second hasn't reached the line, nor touched the first's array.
+            Assert.Equal(1, Volatile.Read(ref line.Writes));
+            var (array, count) = line.Arrays[0];
+            Assert.Equal(first, array[..count]);
+        }
+        finally
+        {
+            gate.Set();
+        }
+
+        // Each write sent its own bytes.
+        Assert.Equal(PanelDeviceStatus.Ok, await one);
+        Assert.Equal(PanelDeviceStatus.Ok, await two);
+        Assert.Equal(new[] { first, second }, line.Kept);
+        port.Dispose();
+    }
+
+    [Fact]
+    public void A_short_hid_report_after_a_long_one_is_written_at_its_own_length()
+    {
+        var hid = new FakeHid([Hid("x", null, serial: "S1")]);
+        var seam = new EnginePanelDevices(null, hid, null, _log.Logger);
+        Assert.Equal(PanelDeviceStatus.Ok, seam.OpenHid(Candidate, new PanelHidFilter(), 1000, out var opened));
+        var stream = hid.Streams[0];
+        stream.Keep = true;
+        byte[][] reports = [Enumerable.Repeat((byte)0xAA, 513).ToArray(), Enumerable.Repeat((byte)0x0B, 10).ToArray(), Enumerable.Repeat((byte)0xCC, 513).ToArray()];
+
+        foreach (var report in reports)
+            Assert.Equal(PanelDeviceStatus.Ok, opened!.Write(report, 1000));
+
+        Assert.Equal(reports.Select(r => r.Length), stream.Writes.Select(w => w.Length));
+        Assert.Equal(reports, stream.Writes.Select(w => w.Bytes));
+        opened!.Dispose();
+    }
+
+    /// <summary>
+    /// A serial line that counts its writes and, when asked, keeps each one's array as given (the reference, as a port may
+    /// still send from it) and a copy of the bytes it sent (else nothing: it allocates nothing a write). Its first
+    /// <see cref="Timeouts"/> writes throw <see cref="TimeoutException"/>; with a <see cref="Gate"/>, its first write sets
+    /// <see cref="Sending"/> and waits for the gate before it sends.
+    /// </summary>
+    private sealed class KeptLine : ISerialLine
+    {
+        public bool Keep { get; init; }
+
+        public int Timeouts { get; init; }
+
+        public ManualResetEventSlim? Gate { get; init; }
+
+        public ManualResetEventSlim? Sending { get; init; }
+
+        public int Writes;
+
+        /// <summary>The bytes each write sent (not those that timed out).</summary>
+        public List<byte[]> Kept { get; } = [];
+
+        /// <summary>Each write's array, the reference, with its count.</summary>
+        public List<(byte[] Array, int Count)> Arrays { get; } = [];
+
+        public string PortName => "/dev/ttyACM1";
+
+        public bool IsOpen => true;
+
+        public void Write(byte[] data, int count, int timeoutMs)
+        {
+            var write = Interlocked.Increment(ref Writes);
+            if (Keep)
+                lock (Kept)
+                    Arrays.Add((data, count));
+            if (write == 1 && Gate is { } gate)
+            {
+                Sending?.Set();
+                Assert.True(gate.Wait(10_000), "the test never opened the gate");
+            }
+            if (write <= Timeouts)
+                throw new TimeoutException();
+            if (Keep)
+                lock (Kept)
+                    Kept.Add(data[..count]);
+        }
+
+        public int Read(byte[] buffer, int timeoutMs) => throw new TimeoutException();
+
+        public int BytesToWrite => 0;
+
+        public void DiscardInput()
+        {
+        }
+
+        public void DiscardOutput()
+        {
+        }
+
+        public void SetLines(bool dtr, bool rts)
+        {
+        }
+
+        public void Close()
+        {
+        }
+    }
+
     /// <summary>
     /// A raw serial port: a read waits a slice for nothing, or ends once it is closed; the close waits (up to 3 s) for the
     /// queued output to be thrown away, as System.IO.Ports' flush waits for it to go, or hangs 3 s whatever is done. What a
@@ -1369,12 +1638,12 @@ public sealed class EnginePanelDevicesTests : IDisposable
 
         public bool IsOpen => !_closed.IsSet;
 
-        public void Write(byte[] data, int timeoutMs)
+        public void Write(byte[] data, int count, int timeoutMs)
         {
             Step("write");
             lock (_steps)
             {
-                _queued = BytesToWriteLocked() + data.Length;
+                _queued = BytesToWriteLocked() + count;
                 _sinceWrite.Restart();
             }
         }
