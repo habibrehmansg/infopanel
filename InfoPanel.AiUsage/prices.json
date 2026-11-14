@@ -1,0 +1,23 @@
+{
+  "about": "Anthropic's list prices for its API, in US dollars per million tokens, as published on 3 November 2026. AI usage uses them to estimate what Claude Code's use would cost on the API; for a subscription that is not a bill. A cache write costs the input price times cacheWrite5m (written for 5 minutes) or cacheWrite1h (for 1 hour); a cache read costs the model's cacheRead, else its input price times cacheRead; fast mode (speed fast) costs every price times the model's fast, and a model with no fast price leaves fast use out of the cost.",
+  "cacheWrite5m": 1.25,
+  "cacheWrite1h": 2.0,
+  "cacheRead": 0.1,
+  "models": [
+    { "model": "claude-fable-5-2", "input": 8, "output": 40, "cacheRead": 0.20, "fast": 2 },
+    { "model": "claude-mythos-5-2", "input": 8, "output": 40, "cacheRead": 0.20, "fast": 2 },
+    { "model": "claude-fable-5-1", "input": 10, "output": 50 },
+    { "model": "claude-mythos-5-1", "input": 10, "output": 50 },
+    { "model": "claude-fable-5", "input": 10, "output": 50 },
+    { "model": "claude-opus-5-5", "input": 4, "output": 20, "cacheRead": 0.20, "fast": 2 },
+    { "model": "claude-opus-5", "input": 5, "output": 25, "fast": 2 },
+    { "model": "claude-opus-4-8", "input": 5, "output": 25, "fast": 2 },
+    { "model": "claude-opus-4-7", "input": 5, "output": 25 },
+    { "model": "claude-opus-4-6", "input": 5, "output": 25 },
+    { "model": "claude-sonnet-5-5", "input": 2, "output": 10, "cacheRead": 0.10 },
+    { "model": "claude-sonnet-5", "input": 2, "output": 10 },
+    { "model": "claude-sonnet-4-6", "input": 3, "output": 15 },
+    { "model": "claude-haiku-5-5", "input": 0.10, "output": 0.50 },
+    { "model": "claude-haiku-4-5", "input": 1, "output": 5 }
+  ]
+}

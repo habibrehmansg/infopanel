@@ -84,6 +84,28 @@ internal static class Fixtures
         """{"hook_event_name":"Status","session_id":"00000000-0000-4000-8000-000000000001","transcript_path":"/fixture/project/session.jsonl","cwd":"/fixture/project","model":{"id":"claude-fixture","display_name":"Fixture"},"workspace":{"current_dir":"/fixture/project","project_dir":"/fixture/project"},"version":"0.0.0","output_style":{"name":"default"},"cost":{"total_cost_usd":0.5,"total_duration_ms":1000,"total_api_duration_ms":500,"total_lines_added":1,"total_lines_removed":0},"exceeds_200k_tokens":false"""
         + (rateLimits == null ? "" : $",\"rate_limits\":{rateLimits}") + "}";
 
+    /// <summary>
+    /// An assistant line of a Claude Code transcript, in the shape Claude Code writes (its keys as found, <c>type</c> after
+    /// <c>message</c>), with made-up ids and text: one content block of <paramref name="text"/> and the usage given.
+    /// <paramref name="write5m"/> and <paramref name="write1h"/> are its cache writes for 5 minutes and 1 hour.
+    /// </summary>
+    public static string Assistant(DateTimeOffset at, string id, string model = "claude-opus-5-5", long input = 10, long write5m = 0, long write1h = 0,
+        long read = 0, long output = 5, string speed = "standard", string? request = null, string text = "fixture answer") =>
+        $$$"""{"parentUuid":"00000000-0000-4000-8000-0000000000a1","isSidechain":false,"userType":"external","cwd":"/fixture/project","sessionId":"00000000-0000-4000-8000-0000000000a2","version":"0.0.0","gitBranch":"main","message":{"id":"msg_{{{id}}}","type":"message","role":"assistant","model":"{{{model}}}","content":[{"type":"text","text":"{{{text}}}"}],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":{{{input}}},"cache_creation_input_tokens":{{{write5m + write1h}}},"cache_read_input_tokens":{{{read}}},"cache_creation":{"ephemeral_5m_input_tokens":{{{write5m}}},"ephemeral_1h_input_tokens":{{{write1h}}}},"output_tokens":{{{output}}},"service_tier":"standard","server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"speed":"{{{speed}}}","iterations":[]}},"requestId":"{{{request ?? "req_" + id}}}","type":"assistant","uuid":"00000000-0000-4000-8000-0000000000a3","timestamp":"{{{Iso(at)}}}"}""";
+
+    /// <summary>An assistant line whose message has no <c>usage</c>.</summary>
+    public static string AssistantWithoutUsage(DateTimeOffset at, string id) =>
+        $$$"""{"message":{"id":"msg_{{{id}}}","type":"message","role":"assistant","model":"claude-opus-5-5","content":[{"type":"text","text":"fixture answer"}]},"requestId":"req_{{{id}}}","type":"assistant","timestamp":"{{{Iso(at)}}}"}""";
+
+    /// <summary>Claude Code's own message (an error it shows, say): model <c>&lt;synthetic&gt;</c>, no request id, usage all 0.</summary>
+    public static string SyntheticAssistant(DateTimeOffset at, string id) =>
+        $$$"""{"message":{"id":"{{{id}}}","type":"message","role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"No response requested."}],"usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"type":"assistant","isApiErrorMessage":false,"timestamp":"{{{Iso(at)}}}"}""";
+
+    /// <summary>A user line whose text looks like an assistant line's usage (quoted, as JSON writes it in a string).</summary>
+    public static string User(DateTimeOffset at) =>
+        """{"parentUuid":null,"type":"user","message":{"role":"user","content":"what does {\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":999999}}} mean?"},"uuid":"00000000-0000-4000-8000-0000000000b1","timestamp":"""
+        + "\"" + Iso(at) + "\"}";
+
     /// <summary>Claude Code's two windows.</summary>
     public static string ClaudeBoth(double fiveHour, DateTimeOffset fiveHourResets, double weekly, DateTimeOffset weeklyResets) =>
         $$$"""{"five_hour":{"used_percentage":{{{Number(fiveHour)}}},"resets_at":{{{Epoch(fiveHourResets)}}}},"seven_day":{"used_percentage":{{{Number(weekly)}}},"resets_at":{{{Epoch(weeklyResets)}}}}}""";
@@ -182,11 +204,27 @@ internal sealed class CountingFiles : IUsageFiles
         return _disk.Files(path, pattern, max, maxEntries, stop);
     }
 
-    public FileStamp? Stat(string root, string path)
+    public FileListing RecentFiles(string path, string pattern, DateTimeOffset since, int max, int maxEntries, Func<bool>? stop = null)
+    {
+        Interlocked.Increment(ref FileLists);
+        return _disk.RecentFiles(path, pattern, since, max, maxEntries, stop);
+    }
+
+    public FileStamp? Stat(string root, string path) => Stat(root, path, out _);
+
+    public FileStamp? Stat(string root, string path, out bool unreadable)
     {
         Interlocked.Increment(ref Stats);
-        return _disk.Stat(root, path);
+        if (Unreadable?.Invoke(path) == true)
+        {
+            unreadable = true;
+            return null;
+        }
+        return _disk.Stat(root, path, out unreadable);
     }
+
+    /// <summary>Whether the file at a path may not be read (as a file without read permission): the seam a test refuses a file through.</summary>
+    public Func<string, bool>? Unreadable;
 
     /// <summary>Run just before a file is opened, with its path: the seam a test changes a file through between its check and its open.</summary>
     public Action<string>? BeforeOpen;
@@ -198,6 +236,8 @@ internal sealed class CountingFiles : IUsageFiles
     {
         Interlocked.Increment(ref Opens);
         BeforeOpen?.Invoke(path);
+        if (Unreadable?.Invoke(path) == true)
+            throw new UnauthorizedAccessException("the file may not be read");
         var file = _disk.Open(root, path);
         AfterOpen?.Invoke(path);
         return new UsageFile(new Counted(file.Stream, this), file.Stamp);
@@ -269,6 +309,27 @@ internal sealed class FixtureHome : IDisposable
         var folder = System.IO.Path.Combine(Path, name);
         Directory.CreateDirectory(System.IO.Path.Combine(folder, "projects"));
         return folder;
+    }
+
+    /// <summary>
+    /// A Claude Code transcript at <paramref name="relative"/> below <paramref name="folder"/>'s <c>projects/</c>
+    /// (<c>-fixture-project/session.jsonl</c>), holding <paramref name="lines"/>, each ended by a newline, last written at
+    /// the fixtures' now (or <paramref name="written"/>); its path.
+    /// </summary>
+    public string Transcript(string folder, string relative, IEnumerable<string> lines, DateTimeOffset? written = null)
+    {
+        var path = System.IO.Path.Combine(folder, "projects", relative);
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, string.Concat(lines.Select(l => l + "\n")));
+        File.SetLastWriteTimeUtc(path, (written ?? Clock.Now).UtcDateTime);
+        return path;
+    }
+
+    /// <summary>Appends <paramref name="text"/> as it is (no newline added) to the file at <paramref name="path"/>, last written at the clock's now.</summary>
+    public void Append(string path, string text)
+    {
+        File.AppendAllText(path, text);
+        File.SetLastWriteTimeUtc(path, Clock.Now.UtcDateTime);
     }
 
     /// <summary>Writes <paramref name="text"/> as <paramref name="folder"/>'s usage file, written at <paramref name="written"/>.</summary>

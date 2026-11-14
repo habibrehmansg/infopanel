@@ -26,6 +26,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The price table the cost estimate uses (Claude/Prices.cs), built into the DLL: a new table is a plugin release. -->
+    <EmbeddedResource Include="prices.json" LogicalName="InfoPanel.AiUsage.prices.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="PluginInfo.ini">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

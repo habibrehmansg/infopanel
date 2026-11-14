@@ -4,7 +4,7 @@ namespace InfoPanel.AiUsage;
 
 /// <summary>
 /// AI usage (<c>ai-usage</c>): how close Claude Code and Codex are to their five-hour and weekly limits, when those reset
-/// and how old the numbers are, as readings (docs/2.0/ai-usage.md). Its readers are on until the user turns them off
+/// and how old the numbers are, and their tokens (Claude Code's with an estimated cost), as readings (docs/2.0/ai-usage.md). Its readers are on until the user turns them off
 /// (Read Claude Code, Read Codex; a setting the user saved wins); while both are off it opens no file. It reads only
 /// usage numbers, never message text, and logs folder names and field paths, never a path below them or a value. Readings it can't give are NaN, which
 /// InfoPanel shows as "–", with the set's <c>status</c> saying why. Its two actions, Connect Claude Code limits and
@@ -26,9 +26,10 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
     private readonly UsageEnvironment _env;
     private readonly CodexReader _codex;
     private readonly LimitsReader _claude;
+    private readonly TranscriptScanner _transcripts;
     private readonly CodexEntries _codexEntries = new();
     private readonly ClaudeEntries _claudeEntries = new();
-    private readonly Dictionary<string, LimitEntries> _folderEntries = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ClaudeSetEntries> _folderEntries = new(StringComparer.Ordinal);
     private readonly object _refreshLock = new();
     private readonly object _settingsLock = new();
     private readonly object _connectLock = new();
@@ -41,11 +42,12 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
 
     /// <param name="places">Where Connect looks for the organisation's settings; none when not given, so a test never reads this computer's.</param>
     internal AiUsagePlugin(UsageEnvironment env, ConnectPlaces? places = null)
-        : base(PluginId, "AI usage", "Claude Code's and Codex's limits: how much of each five-hour and weekly window is used, when it resets and how old the number is.")
+        : base(PluginId, "AI usage", "Claude Code's and Codex's limits: how much of each five-hour and weekly window is used, when it resets and how old the number is; and their tokens, Claude Code's with an estimated cost.")
     {
         _env = env;
         _codex = new CodexReader(env);
         _claude = new LimitsReader(env);
+        _transcripts = new TranscriptScanner(env);
         Connector = new ClaudeConnect(env, places ?? ConnectPlaces.None);
     }
 
@@ -61,7 +63,7 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
 
     internal ClaudeEntries Claude => _claudeEntries;
 
-    internal IReadOnlyDictionary<string, LimitEntries> ClaudeFolderEntries => _folderEntries;
+    internal IReadOnlyDictionary<string, ClaudeSetEntries> ClaudeFolderEntries => _folderEntries;
 
     public override void Initialize()
     {
@@ -85,7 +87,7 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
         containers.Add(claude);
         foreach (var folder in _claudeFolders)
         {
-            var entries = new LimitEntries();
+            var entries = new ClaudeSetEntries();
             _folderEntries[folder.ContainerId] = entries;
             var container = new PluginContainer(folder.ContainerId, "Claude Code · " + folder.Name);
             container.Entries.AddRange(entries.Entries);
@@ -121,10 +123,12 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
                     type => new CodexReading(LimitsReading.None($"Codex's logs couldn't be read ({type})", "unreadable"), null, null, null, null)), now, zone);
 
             ClaudeReading claude;
+            TranscriptReading tokens;
             if (!settings.ReadClaudeCode)
             {
                 var off = LimitsReading.None("off: turn on Read Claude Code in AI usage's settings", "off");
                 claude = new ClaudeReading(_claudeFolders.ToDictionary(f => f.Path, _ => off), off, "");
+                tokens = new TranscriptReading(new Dictionary<string, TokenReading>(), TokenReading.None);
             }
             else
             {
@@ -134,11 +138,18 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
                     var unreadable = LimitsReading.None($"Claude Code's usage files couldn't be read ({type})", "unreadable");
                     return new ClaudeReading(_claudeFolders.ToDictionary(f => f.Path, _ => unreadable), unreadable, "");
                 });
+                tokens = Guarded(() => _transcripts.Read(folders, cancel), cancel, type =>
+                    new TranscriptReading(new Dictionary<string, TokenReading>(), TokenReading.None with { Note = $"Claude Code's transcripts couldn't be read ({type})" }));
             }
-            _claudeEntries.Show(claude.Combined, now, zone);
+            _claudeEntries.Show(claude.Combined, tokens.Combined, now, zone);
             _claudeEntries.Profile.Value = claude.Profile;
             foreach (var folder in _claudeFolders)
-                _folderEntries[folder.ContainerId].Show(claude.Folders.TryGetValue(folder.Path, out var reading) ? reading : LimitsReading.None(LimitsReader.NotConnected, "not connected"), now, zone);
+            {
+                var reading = claude.Folders.TryGetValue(folder.Path, out var limits) ? limits : LimitsReading.None(LimitsReader.NotConnected, "not connected");
+                var folderTokens = tokens.Folders.TryGetValue(folder.Path, out var counted) ? counted
+                    : tokens.Combined.Note is { } note && tokens.Combined.TokensToday == null ? TokenReading.None with { Note = note } : TokenReading.None;
+                _folderEntries[folder.ContainerId].Show(reading, folderTokens, now, zone);
+            }
         }
     }
 
@@ -204,7 +215,7 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
                 {
                     Key = ReadClaudeCode,
                     DisplayName = "Read Claude Code",
-                    Description = "Reads Claude Code's limits from the file its status line writes once you connect it (infopanel-usage.json in each Claude folder). Usage numbers only, never message text. On by default.",
+                    Description = "Reads Claude Code's limits from the file its status line writes once you connect it (infopanel-usage.json in each Claude folder), and its tokens and their estimated cost from its transcripts (projects/ in each Claude folder). Usage numbers only, never message text. On by default.",
                     Type = PluginConfigType.Boolean,
                     Value = settings.ReadClaudeCode,
                 },

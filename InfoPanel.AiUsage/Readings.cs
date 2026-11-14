@@ -98,8 +98,37 @@ internal sealed class CodexEntries : LimitEntries
     }
 }
 
-/// <summary>Claude Code's combined entries: the limits of the folder whose status line wrote last, and which folder that is.</summary>
-internal sealed class ClaudeEntries : LimitEntries
+/// <summary>
+/// A Claude Code set's entries (a Claude folder's, or the combined set's): its limits, and its tokens and their
+/// estimated cost from the transcripts (<see cref="TranscriptScanner"/>).
+/// </summary>
+internal class ClaudeSetEntries : LimitEntries
+{
+    public PluginSensor TokensToday { get; } = new("tokens-today", "Tokens today", float.NaN, "tokens");
+    public PluginSensor Tokens7d { get; } = new("tokens-7d", "Tokens 7 days", float.NaN, "tokens");
+    public PluginSensor CostToday { get; } = new("cost-today", "Cost today", float.NaN, "$");
+    public PluginSensor Cost7d { get; } = new("cost-7d", "Cost 7 days", float.NaN, "$");
+
+    public override IEnumerable<IPluginData> Entries => [.. base.Entries, TokensToday, Tokens7d, CostToday, Cost7d];
+
+    /// <summary>
+    /// Shows <paramref name="limits"/> and <paramref name="tokens"/>; the status is the limits' with the tokens' note
+    /// after it (the note alone when the limits are fine).
+    /// </summary>
+    public void Show(LimitsReading limits, TokenReading tokens, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        Show(limits, now, zone);
+        TokensToday.Value = tokens.TokensToday is { } today ? today : float.NaN;
+        Tokens7d.Value = tokens.Tokens7d is { } week ? week : float.NaN;
+        CostToday.Value = tokens.CostToday is { } costToday ? (float)costToday : float.NaN;
+        Cost7d.Value = tokens.Cost7d is { } costWeek ? (float)costWeek : float.NaN;
+        if (tokens.Note is { } note)
+            Status.Value = limits.Status == LimitsReading.Ok ? note : limits.Status + " · " + note;
+    }
+}
+
+/// <summary>Claude Code's combined entries: the limits of the folder whose status line wrote last, and which folder that is; every folder's tokens and cost summed.</summary>
+internal sealed class ClaudeEntries : ClaudeSetEntries
 {
     public PluginText Profile { get; } = new("profile", "Profile", "");
 

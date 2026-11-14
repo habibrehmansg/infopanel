@@ -44,6 +44,15 @@ internal readonly record struct Listing(IReadOnlyList<string> Paths, bool Trunca
     public static readonly Listing None = new([], false);
 }
 
+/// <summary>A file a listing found, with its length and last write time as the listing tells them (the file wasn't opened).</summary>
+internal readonly record struct ListedFile(string Path, long Length, DateTimeOffset LastWriteUtc);
+
+/// <summary>A folder's files as <see cref="IUsageFiles.RecentFiles"/> lists them; <see cref="Truncated"/> as <see cref="Listing"/>'s.</summary>
+internal readonly record struct FileListing(IReadOnlyList<ListedFile> Files, bool Truncated)
+{
+    public static readonly FileListing None = new([], false);
+}
+
 /// <summary>A link, or something other than a regular file (a FIFO, a socket, a device), where the plugin reads one; it wasn't read.</summary>
 internal sealed class RefusedFileException(string what) : IOException($"Not read: {what}.");
 
@@ -71,8 +80,17 @@ internal interface IUsageFiles
     /// </summary>
     Listing Files(string path, string pattern, int max, int maxEntries, Func<bool>? stop = null);
 
+    /// <summary>
+    /// <see cref="Files"/>, keeping only the files last written at or after <paramref name="since"/>, and no link, each
+    /// with its length and time as the listing tells them (no file is opened).
+    /// </summary>
+    FileListing RecentFiles(string path, string pattern, DateTimeOffset since, int max, int maxEntries, Func<bool>? stop = null);
+
     /// <summary>The stamp of the regular file at <paramref name="path"/> below <paramref name="root"/>; null when it is absent, refused (<see cref="Open"/>) or can't be read.</summary>
     FileStamp? Stat(string root, string path);
+
+    /// <summary><see cref="Stat(string, string)"/>, telling a file that may not be read (<paramref name="unreadable"/>) from one absent or refused.</summary>
+    FileStamp? Stat(string root, string path, out bool unreadable);
 
     /// <summary>
     /// Opens the regular file at <paramref name="path"/> below <paramref name="root"/> to read, sharing it with its
@@ -103,6 +121,52 @@ internal sealed class DiskFiles(Action<string>? onEntry = null) : IUsageFiles
 
     public Listing Files(string path, string pattern, int max, int maxEntries, Func<bool>? stop = null) =>
         List(path, pattern, folders: false, max, maxEntries, stop);
+
+    /// <summary>
+    /// Looks at <paramref name="path"/>'s entries one by one, every entry counted, and keeps the regular files (no link)
+    /// whose names match, last written at or after <paramref name="since"/>, with their lengths and times; stops,
+    /// truncated, as <see cref="List"/> does.
+    /// </summary>
+    public FileListing RecentFiles(string path, string pattern, DateTimeOffset since, int max, int maxEntries, Func<bool>? stop = null)
+    {
+        var options = new EnumerationOptions { AttributesToSkip = 0, IgnoreInaccessible = false, RecurseSubdirectories = false };
+        var found = new List<ListedFile>();
+        var looked = 0;
+        var sinceUtc = since.UtcDateTime;
+        try
+        {
+            // The name first, then the type, then the time: an entry that doesn't match costs no look at its time.
+            var entries = new FileSystemEnumerable<(ListedFile? File, string Path)>(path,
+                (ref FileSystemEntry e) =>
+                {
+                    if (FileSystemName.MatchesSimpleExpression(pattern, e.FileName) && !e.IsDirectory && (e.Attributes & FileAttributes.ReparsePoint) == 0)
+                    {
+                        var written = e.LastWriteTimeUtc;
+                        if (written >= sinceUtc)
+                        {
+                            var full = e.ToFullPath();
+                            return (new ListedFile(full, e.Length, written), full);
+                        }
+                    }
+                    return (null, onEntry == null ? "" : e.ToFullPath());
+                },
+                options);
+            foreach (var (file, full) in entries)
+            {
+                if (found.Count >= max || looked >= maxEntries || stop?.Invoke() == true)
+                    return new FileListing(found, true);
+                looked++;
+                onEntry?.Invoke(full);
+                if (file is { } match)
+                    found.Add(match);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return FileListing.None;
+        }
+        return new FileListing(found, false);
+    }
 
     /// <summary>
     /// Looks at <paramref name="path"/>'s entries one by one, every entry counted (a file, a folder, anything else), and
@@ -140,14 +204,22 @@ internal sealed class DiskFiles(Action<string>? onEntry = null) : IUsageFiles
         return new Listing(found, false);
     }
 
-    public FileStamp? Stat(string root, string path)
+    public FileStamp? Stat(string root, string path) => Stat(root, path, out _);
+
+    public FileStamp? Stat(string root, string path, out bool unreadable)
     {
+        unreadable = false;
         try
         {
             using var file = Open(root, path);
             return file.Stamp;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (UnauthorizedAccessException)
+        {
+            unreadable = true;
+            return null;
+        }
+        catch (IOException)
         {
             return null;
         }

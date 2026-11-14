@@ -113,8 +113,8 @@ public sealed class AiUsagePluginTests : IDisposable
         Assert.Equal(
             ["five-hour-used", "weekly-used", "five-hour-reset-in", "weekly-reset-in", "caption", "as-of-age", "status", "credits", "plan", "tokens-today", "tokens-7d"],
             containers[0].Entries.Select(e => e.Id));
-        Assert.Equal(["five-hour-used", "weekly-used", "five-hour-reset-in", "weekly-reset-in", "caption", "as-of-age", "status", "profile"], containers[1].Entries.Select(e => e.Id));
-        Assert.Equal(["five-hour-used", "weekly-used", "five-hour-reset-in", "weekly-reset-in", "caption", "as-of-age", "status"], containers[2].Entries.Select(e => e.Id));
+        Assert.Equal(["five-hour-used", "weekly-used", "five-hour-reset-in", "weekly-reset-in", "caption", "as-of-age", "status", "tokens-today", "tokens-7d", "cost-today", "cost-7d", "profile"], containers[1].Entries.Select(e => e.Id));
+        Assert.Equal(["five-hour-used", "weekly-used", "five-hour-reset-in", "weekly-reset-in", "caption", "as-of-age", "status", "tokens-today", "tokens-7d", "cost-today", "cost-7d"], containers[2].Entries.Select(e => e.Id));
         Assert.Equal(("ai-usage", "AI usage", TimeSpan.FromSeconds(5)), (plugin.Id, plugin.Name, plugin.UpdateInterval));
     }
 
