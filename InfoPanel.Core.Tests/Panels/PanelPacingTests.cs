@@ -313,6 +313,22 @@ public sealed class PanelPacingTests
         Assert.True(next.Green > 200 && next.Red < 60, $"the frame written next was {next}, not the newest (lime)");
     }
 
+    [Fact]
+    public void A_paced_runs_waits_fire_on_the_thread_that_waits_not_the_thread_pool()
+    {
+        // The runner waits on this clock after every write; a callback left to the pool would make each frame wait for a
+        // free pool thread, which a busy test run can hold up past a step's bound.
+        using var run = new PacedRun(frameRate: 30, drainFps: 60, buffer: 40, unloadedMs: 4.5, PanelEncoding.Auto);
+        var waiter = Environment.CurrentManagedThreadId;
+        var firedOn = 0;
+        var before = run.Now;
+        using var timer = run.Clock.CreateTimer(_ => firedOn = Environment.CurrentManagedThreadId, null, TimeSpan.FromMilliseconds(20), Timeout.InfiniteTimeSpan);
+
+        Assert.Equal(waiter, firedOn);
+        Assert.Equal(before + TimeSpan.FromMilliseconds(20), run.Now);
+        Assert.True(Task.Delay(TimeSpan.FromMilliseconds(20), run.Clock).IsCompletedSuccessfully, "a delay through the clock wasn't complete when made");
+    }
+
     /// <summary>A platform other than the T113's (5), and not a write-through one (1, 2): no ceiling, raw under auto.</summary>
     private const byte Other = 4;
 
@@ -328,7 +344,8 @@ public sealed class PanelPacingTests
     /// </summary>
     private sealed class PacedRun : IDisposable
     {
-        private readonly FakeUsbBackend _backend = new();
+        // The pace wait after every write is a timer on this clock: fired on the waiting thread, no frame waits for the pool.
+        private readonly FakeUsbBackend _backend = new(new FakeUsbClock { FiresInline = true });
         private readonly BufferedPanel _panel;
         private readonly SKBitmap _pixels = new(new SKImageInfo(8, 2, SKColorType.Rgba8888, SKAlphaType.Premul));
         private readonly List<int> _requests = [];
@@ -379,6 +396,9 @@ public sealed class PanelPacingTests
         public int Frames => _panel.Frames;
 
         public TimeSpan Now => TimeSpan.FromTicks(_backend.Clock.GetTimestamp());
+
+        /// <summary>The clock the runner and the device share.</summary>
+        public FakeUsbClock Clock => _backend.Clock;
 
         /// <summary>The device shows <paramref name="fps"/> frames a second from now on (lighter or heavier content).</summary>
         public void Drain(int fps)
@@ -514,9 +534,15 @@ public sealed class PanelPacingTests
         /// <summary>1 / <paramref name="fps"/> s, rounded up to a tick (so <paramref name="fps"/> of them never fit in less than a second).</summary>
         private static TimeSpan Every(int fps) => TimeSpan.FromTicks((TimeSpan.TicksPerSecond + fps - 1) / fps);
 
-        private static void Until(Func<bool> done, string what) =>
-            Assert.True(SpinWait.SpinUntil(done, TimeSpan.FromSeconds(10)), what);
+        private static void Until(Func<bool> done, string what) => Assert.True(Within(done, TimeSpan.FromSeconds(10)), what);
     }
+
+    /// <summary>
+    /// Whether <paramref name="done"/> holds within <paramref name="bound"/>, looked at once more when the bound has passed:
+    /// <see cref="SpinWait.SpinUntil(Func{bool}, TimeSpan)"/> gives up as soon as it sees the time passed, without looking
+    /// again, so a pause of the whole process longer than the bound would fail a step the panel's thread finished in it.
+    /// </summary>
+    private static bool Within(Func<bool> done, TimeSpan bound) => SpinWait.SpinUntil(done, bound) || done();
 
     /// <summary>A change through the render loop: when it was committed, when its frame's write began and when it was shown.</summary>
     private sealed record ChangeShown(TimeSpan Committed, TimeSpan WriteStarted, TimeSpan Shown);
@@ -530,7 +556,8 @@ public sealed class PanelPacingTests
     /// </summary>
     private sealed class LoopRun : IAsyncDisposable
     {
-        private readonly FakeUsbBackend _backend = new();
+        // As PacedRun's: the pace waits fire on the panel's thread, not the pool.
+        private readonly FakeUsbBackend _backend = new(new FakeUsbClock { FiresInline = true });
         private readonly BufferedPanel _panel;
         private readonly RenderHarness _render;
         private TimeSpan _nextTick;
@@ -644,8 +671,7 @@ public sealed class PanelPacingTests
 
         private static TimeSpan Every(int fps) => TimeSpan.FromTicks((TimeSpan.TicksPerSecond + fps - 1) / fps);
 
-        private static void Until(Func<bool> done, string what) =>
-            Assert.True(SpinWait.SpinUntil(done, TimeSpan.FromSeconds(10)), what);
+        private static void Until(Func<bool> done, string what) => Assert.True(Within(done, TimeSpan.FromSeconds(10)), what);
     }
 
     /// <summary>One frame write the device took: when it began, the runner's turn then, and when the frame was shown.</summary>

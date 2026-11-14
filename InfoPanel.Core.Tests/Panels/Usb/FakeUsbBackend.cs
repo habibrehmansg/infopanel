@@ -4,13 +4,22 @@ namespace InfoPanel.Core.Tests.Panels.Usb;
 
 /// <summary>
 /// A clock for USB tests: it moves only when something waits on it. A timer (a <c>Task.Delay</c> through it) moves
-/// the clock by its due time and fires at once; a fake device's write delay moves it too. So a session's waits and
-/// transfers land at exact, repeatable times.
+/// the clock by its due time and fires at once (on the thread pool, or with <see cref="FiresInline"/> on the thread
+/// that made it); a fake device's write delay moves it too. So a session's waits and transfers land at exact,
+/// repeatable times.
 /// </summary>
 public sealed class FakeUsbClock : TimeProvider
 {
     private static readonly DateTimeOffset Start = new(2026, 11, 7, 9, 0, 0, TimeSpan.Zero);
     private long _ticks;
+
+    /// <summary>
+    /// A timer's callback runs on the thread that made the timer, before the timer is returned (a <c>Task.Delay</c>
+    /// through the clock is complete when it is made), not on the thread pool: a run that waits on the clock at every
+    /// step then needs no pool thread, so a busy pool can't hold it up. Only where no timer callback takes a lock its
+    /// maker holds.
+    /// </summary>
+    public bool FiresInline { get; init; }
 
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
@@ -29,11 +38,16 @@ public sealed class FakeUsbClock : TimeProvider
         if (dueTime != Timeout.InfiniteTimeSpan)
         {
             Advance(dueTime);
-            ThreadPool.QueueUserWorkItem(_ =>
+            if (FiresInline)
+                callback(state);
+            else
             {
-                if (!timer.Disposed)
-                    callback(state);
-            });
+                ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    if (!timer.Disposed)
+                        callback(state);
+                });
+            }
         }
         return timer;
     }
