@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Serilog;
@@ -21,6 +22,11 @@ namespace InfoPanel.Desktop.MacOS;
 /// that fits arrives.</item>
 /// <item>A press on a window is reported once, when the mouse button is up again, moved or not; moves made by
 /// <see cref="IDesktopWindow.SetFrame"/> never are.</item>
+/// <item>AppKit resizes a resizable window from its edges but shows no cursor for it (the window is never key, the app
+/// never active), so the window draws its own edge handles (<see cref="EdgeHandles"/>): a shape layer above the content
+/// layer, in the window only, never in a frame. The pointer's place comes from the content view's tracking area, or from
+/// a poll of <c>+[NSEvent mouseLocation]</c> when the tracking area delivers nothing (<see cref="EdgeHoverChooser"/>,
+/// <c>INFOPANEL_EDGE_HOVER</c>).</item>
 /// </list>
 /// </summary>
 [SupportedOSPlatform("macos")]
@@ -61,6 +67,17 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
     private static readonly Serilog.ILogger Logger = Log.ForContext<MacDesktopPlatform>();
 
     private static readonly Dictionary<IntPtr, MacWindow> Windows = [];
+
+    /// <summary>Where the edge handles' pointer comes from (<c>INFOPANEL_EDGE_HOVER</c>: <c>tracking</c>, <c>poll</c>, <c>probe</c>, else auto).</summary>
+    private static readonly EdgeHoverChooser Hover = new(EdgeHoverChooser.ModeOf(Environment.GetEnvironmentVariable("INFOPANEL_EDGE_HOVER")));
+
+    private static readonly long Epoch = Stopwatch.GetTimestamp();
+
+    /// <summary>The edge handles' clock.</summary>
+    private static TimeSpan Now => Stopwatch.GetElapsedTime(Epoch);
+
+    /// <summary>Whether a poll of the pointer's place is scheduled.</summary>
+    private static bool _polling;
     private static MacDesktopPlatform? _current;
     private static IntPtr _delegateClass;
     private static IntPtr _viewClass;
@@ -145,7 +162,10 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
                 ("screenParametersChanged:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&ScreenParametersChanged, "v@:@"));
             _viewClass = ObjC.DefineClass("InfoPanelFrameView", "NSView",
                 ("acceptsFirstMouse:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, byte>)&Yes1, "c@:@"),
-                ("mouseDownCanMoveWindow", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, byte>)&Yes0, "c@:"));
+                ("mouseDownCanMoveWindow", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, byte>)&Yes0, "c@:"),
+                ("mouseEntered:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&PointerEntered, "v@:@"),
+                ("mouseMoved:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&PointerMoved, "v@:@"),
+                ("mouseExited:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&PointerExited, "v@:@"));
             _windowClass = ObjC.DefineClass("InfoPanelWindow", "NSWindow",
                 ("constrainFrameRect:toScreen:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, NSRect, IntPtr, NSRect>)&Unconstrained, "{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}@"),
                 ("sendEvent:", (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)&SendEvent, "v@:@"));
@@ -219,6 +239,75 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
         ObjC.SendSuperVoidId(&super, sel, nsEvent);
     }
 
+    /// <summary><c>-[InfoPanelFrameView mouseEntered:]</c>, from the view's tracking area.</summary>
+    [UnmanagedCallersOnly]
+    private static void PointerEntered(IntPtr self, IntPtr sel, IntPtr nsEvent) => Guard(() => ViewWindow(self)?.OnTracking("enter"));
+
+    /// <summary><c>-[InfoPanelFrameView mouseMoved:]</c>, from the view's tracking area.</summary>
+    [UnmanagedCallersOnly]
+    private static void PointerMoved(IntPtr self, IntPtr sel, IntPtr nsEvent) => Guard(() => ViewWindow(self)?.OnTracking("move"));
+
+    /// <summary><c>-[InfoPanelFrameView mouseExited:]</c>, from the view's tracking area.</summary>
+    [UnmanagedCallersOnly]
+    private static void PointerExited(IntPtr self, IntPtr sel, IntPtr nsEvent) => Guard(() => ViewWindow(self)?.OnTracking("exit"));
+
+    private static MacWindow? ViewWindow(IntPtr view) => Windows.GetValueOrDefault(ObjC.Send(view, Sel.Window));
+
+    /// <summary>The pointer's place, in AppKit's screen space.</summary>
+    private static NSPoint MouseLocation() => ObjC.SendPoint(Sel.NSEvent, Sel.MouseLocation);
+
+    /// <summary>Polls the pointer's place from now on while <see cref="Hover"/> needs it and a window would show handles.</summary>
+    private static void EnsurePolling()
+    {
+        if (_polling || !Hover.Polls || Windows.Count == 0 || _current == null)
+            return;
+        _polling = true;
+        _current.Post(PollPointer);
+    }
+
+    /// <summary>
+    /// One poll of the pointer's place: whether it is over a window that would show handles, with no other window above
+    /// it there, decides the source with <see cref="Hover"/>; when the poll is the source, each such window's handles
+    /// follow it. Fast while the pointer is near such a window, slow otherwise; stops once the tracking area is chosen.
+    /// </summary>
+    private static void PollPointer()
+    {
+        _polling = false;
+        if (!Hover.Polls || Windows.Count == 0 || _current is not { } platform)
+            return;
+
+        var windows = Windows.Values.Where(w => w.ShowsHandles).ToList();
+        if (windows.Count == 0)
+            return; // until a window is shown, resizable and taking clicks again (EnsurePolling)
+
+        var pointer = MouseLocation();
+        var under = ObjC.SendIntPointInt(Sel.NSWindow, Sel.WindowNumberAtPoint, pointer, 0);
+        var now = Now;
+        var near = false;
+        var inside = new bool[windows.Count];
+        for (var i = 0; i < windows.Count; i++)
+        {
+            var frame = windows[i].ScreenFrame;
+            near |= new PointRect(frame.X - EdgeHoverChooser.Near, frame.Y - EdgeHoverChooser.Near,
+                frame.Width + 2 * EdgeHoverChooser.Near, frame.Height + 2 * EdgeHoverChooser.Near).Contains(pointer.X, pointer.Y);
+            inside[i] = new PointRect(frame.X, frame.Y, frame.Width, frame.Height).Contains(pointer.X, pointer.Y)
+                && under == windows[i].Number;
+        }
+
+        var undecided = Hover.Source == EdgeHoverSource.Undecided;
+        var drives = Hover.Polled(inside.Any(x => x), now);
+        if (undecided && drives)
+            Logger.Information("Desktop windows' edge handles follow a poll of the pointer: no tracking event came within {Patience} of the pointer entering a window",
+                EdgeHoverChooser.Patience);
+        for (var i = 0; i < windows.Count; i++)
+            windows[i].OnPolled(inside[i], pointer, drives, now);
+
+        if (!Hover.Polls)
+            return;
+        _polling = true;
+        _ = Task.Delay(Hover.Interval(near)).ContinueWith(_ => platform.Post(PollPointer), TaskScheduler.Default);
+    }
+
     [UnmanagedCallersOnly]
     private static byte Yes1(IntPtr self, IntPtr sel, IntPtr arg) => 1;
 
@@ -271,7 +360,24 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
         public static readonly IntPtr IsVisible = ObjC.Sel("isVisible");
         public static readonly IntPtr Type = ObjC.Sel("type");
         public static readonly IntPtr CATransaction = ObjC.Class("CATransaction");
+        public static readonly IntPtr Window = ObjC.Sel("window");
+        public static readonly IntPtr WindowNumber = ObjC.Sel("windowNumber");
+        public static readonly IntPtr WindowNumberAtPoint = ObjC.Sel("windowNumberAtPoint:belowWindowWithWindowNumber:");
+        public static readonly IntPtr MouseLocation = ObjC.Sel("mouseLocation");
+        public static readonly IntPtr NSEvent = ObjC.Class("NSEvent");
+        public static readonly IntPtr NSWindow = ObjC.Class("NSWindow");
+        public static readonly IntPtr SetOpacity = ObjC.Sel("setOpacity:");
+        public static readonly IntPtr SetPath = ObjC.Sel("setPath:");
+        public static readonly IntPtr SetLineWidth = ObjC.Sel("setLineWidth:");
+        public static readonly IntPtr SetFrameRect = ObjC.Sel("setFrame:");
     }
+
+    /// <summary>
+    /// <c>NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSTrackingActiveAlways | NSTrackingInVisibleRect</c>
+    /// (<c>NSTrackingArea.h</c>): pointer events whether or not the app is active (the window is never key), over the
+    /// view's visible rect as it resizes.
+    /// </summary>
+    private const nuint PointerTracking = 0x01 | 0x02 | 0x80 | 0x200;
 
     private sealed class MacWindow : IDesktopWindow
     {
@@ -292,6 +398,15 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
         private int _frameWidth;
         private int _frameHeight;
         private (IntPtr Gravity, IntPtr Magnification, IntPtr Minification) _layerScaling = (TopLeftGravity, NearestFilter, NearestFilter);
+        // The edge handle: its state, the shape layer that draws it above the content layer, and what was last drawn.
+        private static readonly IntPtr HandleFill = ObjC.CGColorCreateGenericGray(1, 0.92);
+        private static readonly IntPtr HandleLine = ObjC.CGColorCreateGenericGray(0, 0.6);
+        private readonly EdgeHandles _handles = new();
+        private IntPtr _handleLayer;
+        private (ResizeEdge Edge, double Width, double Height, double Scale) _handleShape;
+        private float _handleOpacity;
+        private bool _handleFramePending;
+
         private bool _settingFrame;
         private bool _waitingForMouseUp;
         private bool _mouseDown;
@@ -319,9 +434,20 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             ObjC.SendVoidId(_layer, Sel.SetMinificationFilter, _layerScaling.Minification);
             ObjC.SendVoidBool(_layer, ObjC.Sel("setOpaque:"), 0);
 
+            // The edge handle, above the frame: a sublayer, so it is in the window only, never in a frame.
+            _handleLayer = ObjC.Send(ObjC.Send(ObjC.Class("CAShapeLayer"), ObjC.Sel("layer")), Sel.Retain);
+            ObjC.SendVoidId(_handleLayer, ObjC.Sel("setFillColor:"), HandleFill);
+            ObjC.SendVoidId(_handleLayer, ObjC.Sel("setStrokeColor:"), HandleLine);
+            ObjC.SendVoidFloat(_handleLayer, Sel.SetOpacity, 0);
+            ObjC.SendVoidId(_layer, ObjC.Sel("addSublayer:"), _handleLayer);
+
             var view = ObjC.SendIdRect(ObjC.Send(_viewClass, Sel.Alloc), ObjC.Sel("initWithFrame:"), new NSRect(0, 0, rect.Width, rect.Height));
             ObjC.SendVoidId(view, ObjC.Sel("setLayer:"), _layer);
             ObjC.SendVoidBool(view, ObjC.Sel("setWantsLayer:"), 1);
+            var tracking = ObjC.SendInitTrackingArea(ObjC.Send(ObjC.Class("NSTrackingArea"), Sel.Alloc),
+                ObjC.Sel("initWithRect:options:owner:userInfo:"), default, PointerTracking, view, IntPtr.Zero);
+            ObjC.SendVoidId(view, ObjC.Sel("addTrackingArea:"), tracking);
+            ObjC.SendVoid(tracking, Sel.Release);
             ObjC.SendVoidId(_window, ObjC.Sel("setContentView:"), view);
             ObjC.SendVoid(view, Sel.Release);
 
@@ -331,6 +457,7 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             ApplyStyle(style);
             _knownFrame = Frame;
             UpdateScale();
+            EnsurePolling();
         }
 
         public PointRect Frame => ToTopLeft(ObjC.SendRect(_window, Sel.Frame), PrimaryHeight());
@@ -367,6 +494,7 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             _knownFrame = Frame;
             UpdateScale();
             ApplyLayerScaling();
+            DrawHandle();
         }
 
         public void SetStyle(DesktopWindowStyle style)
@@ -397,6 +525,11 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             // An explicit NO is what makes transparent pixels take clicks; YES lets every click, scroll and the pointer
             // through to what's beneath, so no drag or resize reaches the window (Movable and the style mask are kept).
             ObjC.SendVoidBool(_window, ObjC.Sel("setIgnoresMouseEvents:"), style.ClickThrough ? (byte)1 : (byte)0);
+
+            if (!style.Resizable || style.ClickThrough)
+                DropHandle();
+
+            EnsurePolling();
         }
 
         public void SetVisible(bool visible)
@@ -405,9 +538,139 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
                 return;
             _visible = visible;
             if (visible)
+            {
                 ObjC.SendVoid(_window, ObjC.Sel("orderFrontRegardless"));
+                EnsurePolling();
+            }
             else
+            {
+                DropHandle();
                 ObjC.SendVoidId(_window, ObjC.Sel("orderOut:"), IntPtr.Zero);
+            }
+        }
+
+        /// <summary>No handle, at once (not resizable, letting clicks through, hidden); the next poll starts afresh.</summary>
+        private void DropHandle()
+        {
+            _handles.Disable(Now);
+            DrawHandle();
+        }
+
+        /// <summary>Whether the window would show its handles: shown, resizable and taking clicks.</summary>
+        internal bool ShowsHandles => _window != IntPtr.Zero && _visible && Style.Resizable && !Style.ClickThrough;
+
+        /// <summary>The window's frame in AppKit's screen space (y up).</summary>
+        internal NSRect ScreenFrame => ObjC.SendRect(_window, Sel.Frame);
+
+        /// <summary>The window server's number for the window.</summary>
+        internal nint Number => ObjC.SendIntRet(_window, Sel.WindowNumber);
+
+        /// <summary>The edge or corner at <paramref name="pointer"/>, in AppKit's screen space, by the current style.</summary>
+        private ResizeEdge BandAt(NSPoint pointer)
+        {
+            var frame = ScreenFrame;
+            return EdgeHandleBand.At(pointer.X - frame.X, frame.Y + frame.Height - pointer.Y, frame.Width, frame.Height, Style);
+        }
+
+        /// <summary>An event from the content view's tracking area (<paramref name="kind"/>: enter, move or exit).</summary>
+        internal void OnTracking(string kind)
+        {
+            if (_window == IntPtr.Zero)
+                return;
+
+            var pointer = MouseLocation();
+            if (Hover.Mode == EdgeHoverMode.Probe)
+                Logger.Information("Edge probe: tracking {Kind} at ({X:0.#}, {Y:0.#}), window {Frame}", kind, pointer.X, pointer.Y, Frame);
+
+            var undecided = Hover.Source == EdgeHoverSource.Undecided;
+            if (!Hover.Tracked())
+                return;
+            if (undecided)
+                Logger.Information("Desktop windows' edge handles follow the pointer through their tracking areas");
+            if (!_visible)
+                return;
+
+            _handles.Hover(kind == "exit" ? ResizeEdge.None : BandAt(pointer), Now);
+            DrawHandle();
+        }
+
+        /// <summary>
+        /// A poll of the pointer's place (<see cref="PollPointer"/>): <paramref name="inside"/> the window with none above
+        /// it there or not; the handle follows it when <paramref name="drives"/>. The probe logs each change.
+        /// </summary>
+        internal void OnPolled(bool inside, NSPoint pointer, bool drives, TimeSpan now)
+        {
+            var band = inside ? BandAt(pointer) : ResizeEdge.None;
+            var (wasInside, wasBand) = (_handles.PolledInside, _handles.PolledBand);
+            if (Hover.Mode == EdgeHoverMode.Probe && (inside != wasInside || band != wasBand || inside))
+            {
+                var kind = inside == wasInside ? "move" : inside ? "enter" : "exit";
+                Logger.Information("Edge probe: poll {Kind} at ({X:0.#}, {Y:0.#}), band {Band}, window {Frame}", kind, pointer.X, pointer.Y, band, Frame);
+            }
+
+            if (_handles.Polled(inside, band, drives, now))
+                DrawHandle();
+        }
+
+        /// <summary>
+        /// Draws the handle as <see cref="_handles"/> has it now: the shape for its edge and the window's size, at its
+        /// opacity, without implicit animations; while it fades, again about every 16 ms.
+        /// </summary>
+        private void DrawHandle()
+        {
+            if (_handleLayer == IntPtr.Zero)
+                return;
+
+            var now = Now;
+            var opacity = (float)_handles.Opacity(now);
+            var frame = Frame;
+            var shape = (_handles.Edge, frame.Width, frame.Height, _scale);
+            var reshape = opacity > 0 && shape != _handleShape;
+            if (reshape || opacity != _handleOpacity)
+            {
+                var transaction = Sel.CATransaction;
+                ObjC.SendVoid(transaction, Sel.Begin);
+                ObjC.SendVoidBool(transaction, Sel.SetDisableActions, 1);
+                if (reshape)
+                {
+                    // Core Animation's layer space here is y up from the bottom-left; the polygon's is y down.
+                    var path = ObjC.CGPathCreateMutable();
+                    var points = EdgeHandleLayout.Polygon(shape.Edge, frame.Width, frame.Height);
+                    for (var i = 0; i < points.Count; i++)
+                    {
+                        var (x, y) = points[i];
+                        if (i == 0)
+                            ObjC.CGPathMoveToPoint(path, IntPtr.Zero, x, frame.Height - y);
+                        else
+                            ObjC.CGPathAddLineToPoint(path, IntPtr.Zero, x, frame.Height - y);
+                    }
+
+                    if (points.Count > 0)
+                        ObjC.CGPathCloseSubpath(path);
+                    ObjC.SendVoidRect(_handleLayer, Sel.SetFrameRect, new NSRect(0, 0, frame.Width, frame.Height));
+                    ObjC.SendVoidDouble(_handleLayer, Sel.SetContentsScale, _scale > 0 ? _scale : 1);
+                    ObjC.SendVoidId(_handleLayer, Sel.SetPath, path);
+                    ObjC.CGPathRelease(path);
+
+                    // A hairline of one backing pixel each side of the outline: one pixel shows at the window's edge.
+                    ObjC.SendVoidDouble(_handleLayer, Sel.SetLineWidth, 2 / (_scale > 0 ? _scale : 1));
+                    _handleShape = shape;
+                }
+
+                ObjC.SendVoidFloat(_handleLayer, Sel.SetOpacity, opacity);
+                ObjC.SendVoid(transaction, Sel.Commit);
+                _handleOpacity = opacity;
+            }
+
+            if (_handles.Fading(now) && !_handleFramePending)
+            {
+                _handleFramePending = true;
+                _ = Task.Delay(TimeSpan.FromMilliseconds(16)).ContinueWith(_ => _platform.Post(() =>
+                {
+                    _handleFramePending = false;
+                    DrawHandle();
+                }), TaskScheduler.Default);
+            }
         }
 
         public void ShowFrame(DesktopFrame frame)
@@ -497,8 +760,10 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             Windows.Remove(_window);
             ObjC.SendVoid(_window, ObjC.Sel("close"));
             ObjC.SendVoid(_window, Sel.Release);
+            ObjC.SendVoid(_handleLayer, Sel.Release);
             ObjC.SendVoid(_layer, Sel.Release);
             _window = IntPtr.Zero;
+            _handleLayer = IntPtr.Zero;
             _layer = IntPtr.Zero;
             _visible = false;
         }
@@ -520,15 +785,26 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             }
 
             if (_mouseDown || LeftButtonDown())
+            {
+                _handles.Moved(Now); // a drag of the window, not of an edge
+                DrawHandle();
                 WaitForMouseUp();
+            }
             else
+            {
                 _knownFrame = Frame;
+            }
         }
 
-        /// <summary>The left button went down on this window (<c>-sendEvent:</c>): a drag may follow.</summary>
+        /// <summary>
+        /// The left button went down on this window (<c>-sendEvent:</c>): a drag may follow, of an edge (the handle stays
+        /// shown) or of the window.
+        /// </summary>
         internal void OnMouseDown()
         {
             _mouseDown = true;
+            _handles.Press(ShowsHandles ? BandAt(MouseLocation()) : ResizeEdge.None, Now);
+            DrawHandle();
             WaitForMouseUp();
         }
 
@@ -561,6 +837,8 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
             _waitingForMouseUp = false;
             _mouseDown = false;
             _knownFrame = Frame;
+            _handles.Release(Now);
+            DrawHandle();
             UserMoved?.Invoke();
         }
 
@@ -571,6 +849,9 @@ internal sealed unsafe class MacDesktopPlatform : IDesktopPlatform
 
             ApplyLayerScaling(); // a live-resize step: the picture stretched with the edge
             var frame = Frame;
+            if (frame != _knownFrame && ObjC.SendBool(_window, Sel.InLiveResize) != 0)
+                _handles.Resized(EdgeHandleBand.Moved(_knownFrame, frame), Now, ShowsHandles);
+            DrawHandle(); // laid out again at the new size
             if (frame == _knownFrame)
                 return;
             _knownFrame = frame;

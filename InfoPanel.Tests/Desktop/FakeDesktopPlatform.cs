@@ -167,11 +167,21 @@ public sealed class FakeWindow(FakeDesktopPlatform platform, DesktopWindowStyle 
 
     public int FramesShown { get; private set; }
 
+    /// <summary>The window's edge handle, kept by the window as the macOS window keeps its own; never part of a frame.</summary>
+    public EdgeHandles Handles { get; } = new();
+
     public event Action? UserMoved;
 
     public event Action? UserResized;
 
     public event Action? BackingScaleChanged;
+
+    /// <summary>The pointer rests at (<paramref name="x"/>, <paramref name="y"/>), in points from the window's top-left (UI thread).</summary>
+    public void HoverAt(double x, double y, TimeSpan now)
+    {
+        platform.AssertUiThread();
+        Handles.Hover(EdgeHandleBand.At(x, y, Frame.Width, Frame.Height, Style), now);
+    }
 
     public void SetFrame(PointRect frame)
     {

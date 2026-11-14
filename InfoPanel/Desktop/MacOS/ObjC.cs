@@ -84,6 +84,19 @@ internal static unsafe class ObjC
     public static readonly delegate* unmanaged<IntPtr, IntPtr, NSRect, IntPtr> SendIdRect = (delegate* unmanaged<IntPtr, IntPtr, NSRect, IntPtr>)MsgSend;
     public static readonly delegate* unmanaged<IntPtr, IntPtr, double, IntPtr> SendIdDouble = (delegate* unmanaged<IntPtr, IntPtr, double, IntPtr>)MsgSend;
     public static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr, nuint, IntPtr> SendIdPtrUInt = (delegate* unmanaged<IntPtr, IntPtr, IntPtr, nuint, IntPtr>)MsgSend;
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, float, void> SendVoidFloat = (delegate* unmanaged<IntPtr, IntPtr, float, void>)MsgSend;
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, NSRect, void> SendVoidRect = (delegate* unmanaged<IntPtr, IntPtr, NSRect, void>)MsgSend;
+
+    /// <summary>A method returning <c>NSPoint</c> (<c>+[NSEvent mouseLocation]</c>; 16 bytes, so the plain entry point on both architectures).</summary>
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, NSPoint> SendPoint = (delegate* unmanaged<IntPtr, IntPtr, NSPoint>)MsgSend;
+
+    /// <summary><c>+[NSWindow windowNumberAtPoint:belowWindowWithWindowNumber:]</c>: an <c>NSPoint</c> and an <c>NSInteger</c> in, an <c>NSInteger</c> out.</summary>
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, NSPoint, nint, nint> SendIntPointInt =
+        (delegate* unmanaged<IntPtr, IntPtr, NSPoint, nint, nint>)MsgSend;
+
+    /// <summary><c>-[NSTrackingArea initWithRect:options:owner:userInfo:]</c>.</summary>
+    public static readonly delegate* unmanaged<IntPtr, IntPtr, NSRect, nuint, IntPtr, IntPtr, IntPtr> SendInitTrackingArea =
+        (delegate* unmanaged<IntPtr, IntPtr, NSRect, nuint, IntPtr, IntPtr, IntPtr>)MsgSend;
 
     /// <summary><c>-[NSMenuItem initWithTitle:action:keyEquivalent:]</c>: an object, a selector, an object.</summary>
     public static readonly delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr, IntPtr> SendIdIdSelId =
@@ -179,6 +192,24 @@ internal static unsafe class ObjC
     /// <summary>The EDID product code of a <c>CGDirectDisplayID</c>'s monitor (<c>CGDisplayConfiguration.h</c>; both are <c>uint32_t</c>).</summary>
     [DllImport(CoreGraphicsPath, EntryPoint = "CGDisplayModelNumber")]
     public static extern uint CGDisplayModelNumber(uint display);
+
+    [DllImport(CoreGraphicsPath, EntryPoint = "CGColorCreateGenericGray")]
+    public static extern IntPtr CGColorCreateGenericGray(double gray, double alpha);
+
+    [DllImport(CoreGraphicsPath, EntryPoint = "CGPathCreateMutable")]
+    public static extern IntPtr CGPathCreateMutable();
+
+    [DllImport(CoreGraphicsPath, EntryPoint = "CGPathMoveToPoint")]
+    public static extern void CGPathMoveToPoint(IntPtr path, IntPtr transform, double x, double y);
+
+    [DllImport(CoreGraphicsPath, EntryPoint = "CGPathAddLineToPoint")]
+    public static extern void CGPathAddLineToPoint(IntPtr path, IntPtr transform, double x, double y);
+
+    [DllImport(CoreGraphicsPath, EntryPoint = "CGPathCloseSubpath")]
+    public static extern void CGPathCloseSubpath(IntPtr path);
+
+    [DllImport(CoreGraphicsPath, EntryPoint = "CGPathRelease")]
+    public static extern void CGPathRelease(IntPtr path);
 
     /// <summary><c>kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big</c>: bytes R, G, B, A, premultiplied (<c>SKColorType.Rgba8888</c>).</summary>
     public const uint RgbaPremultiplied = 1 | (4 << 12);

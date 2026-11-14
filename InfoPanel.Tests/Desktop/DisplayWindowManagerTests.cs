@@ -1331,6 +1331,37 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AWindowShowingItsEdgeHandle_GetsThePreviewsFramePixels_TheHandleInNoFrame()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var (edge, opacity) = await _platform.InvokeAsync(() =>
+        {
+            window.HoverAt(window.Frame.Width - 1, window.Frame.Height / 2, TimeSpan.Zero);
+            return (window.Handles.Edge, window.Handles.Opacity(EdgeHandles.FadeIn));
+        });
+        Assert.Equal((ResizeEdge.Right, 1.0), (edge, opacity));
+
+        await using var client = await PreviewClient.ConnectAsync(_factory, Ct);
+        await client.ReceiveTextAsync("hello", Ct);
+        await client.SendAsync(new { type = "subscribe", profileId = doc.Id, scale = 1, maxFps = 30 }, Ct);
+        await client.ReceiveTextAsync("doc", Ct);
+
+        // The window's frame and the preview's, from one tick, while the handle shows: the same pixels.
+        Assert.Equal(2, Render.Tick(doc.Id));
+        var (_, png) = await client.ReceiveFrameAsync(Ct);
+        await _platform.IdleAsync();
+        var shown = await _platform.InvokeAsync(() => window.LastFrame);
+        Assert.NotNull(shown);
+
+        using var decoded = SKBitmap.Decode(png.ToArray(), new SKImageInfo(shown.Width, shown.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+        var expected = decoded.GetPixelSpan().ToArray();
+        var actual = Unpremultiplied(shown);
+        Assert.True(expected.AsSpan().SequenceEqual(actual), "the window's frame differs from the preview's");
+        AssertNoErrors();
+    }
+
+    [Fact]
     public async Task AFrameWithUnchangedPixels_IsNotCopiedAgain()
     {
         await Start();
