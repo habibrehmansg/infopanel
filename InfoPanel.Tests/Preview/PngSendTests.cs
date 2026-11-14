@@ -130,6 +130,9 @@ public sealed class PngSendTests : IAsyncLifetime
     {
         var id = NewProfile();
         var sink = Sink(id);
+        // A fixed encode time well within the PNG budget at 60 fps: the pacing keeps every frame whatever the machine's
+        // real encode time, so the count below measures the sink, not the load.
+        sink.EncodeMs = _ => 1;
         var measured = new Measured(sink);
         Assert.True(Render.Attach(measured));
 
