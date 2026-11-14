@@ -67,8 +67,31 @@ internal sealed class FakeHost : IPluginHostService
     /// <summary>Its plugin's settings, when it has any; their values change as they are applied.</summary>
     public List<PluginConfigPropertyDto>? Settings { get; init; }
 
-    /// <summary>Its settings calls never answer.</summary>
-    public bool SettingsHang { get; init; }
+    /// <summary>
+    /// While set, its settings calls (read and apply) wait until the test answers or fails each one
+    /// (<see cref="HeldSettings"/>), or it exits.
+    /// </summary>
+    public bool HoldSettings { get; set; }
+
+    /// <summary>The settings calls it has held, in the order they came: answered with <c>SetResult</c>, failed with <c>SetException</c>.</summary>
+    public IReadOnlyList<TaskCompletionSource> HeldSettings
+    {
+        get
+        {
+            lock (_held)
+                return [.. _held];
+        }
+    }
+
+    private readonly List<TaskCompletionSource> _held = [];
+
+    /// <summary>How many settings calls it is running now, held or not.</summary>
+    public int SettingsInFlight => Volatile.Read(ref _settingsInFlight);
+    private int _settingsInFlight;
+
+    /// <summary>How many times it has been asked for its settings.</summary>
+    public int SettingsAsked => Volatile.Read(ref _settingsAsked);
+    private int _settingsAsked;
 
     /// <summary>The actions it was asked to run, in order: (plugin id, method).</summary>
     public List<(string Plugin, string Method)> ActionsRun { get; } = [];
@@ -156,20 +179,38 @@ internal sealed class FakeHost : IPluginHostService
 
     public async Task<List<PluginConfigPropertyDto>> GetConfigPropertiesAsync(string pluginId)
     {
-        if (SettingsHang)
-            await Task.Delay(Timeout.Infinite, Process.Dead);
+        Interlocked.Increment(ref _settingsAsked);
+        await SettingsCallAsync();
         return pluginId == PluginId ? Settings ?? [] : [];
     }
 
     public async Task<List<PluginConfigPropertyDto>> ApplyConfigAsync(string pluginId, string key, object? value)
     {
-        if (SettingsHang)
-            await Task.Delay(Timeout.Infinite, Process.Dead);
+        await SettingsCallAsync();
         lock (Applied)
             Applied.Add((pluginId, key, value));
         if (Settings?.FirstOrDefault(p => p.Key == key) is { } setting)
             setting.Value = value;
         return Settings ?? [];
+    }
+
+    // A settings call's wait: held, while HoldSettings is set, until the test answers or fails it, or the process dies.
+    private async Task SettingsCallAsync()
+    {
+        Interlocked.Increment(ref _settingsInFlight);
+        try
+        {
+            if (!HoldSettings)
+                return;
+            var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_held)
+                _held.Add(held);
+            await held.Task.WaitAsync(Process.Dead);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _settingsInFlight);
+        }
     }
 
     /// <summary>Reports its processor use, as a host does every 2 s.</summary>

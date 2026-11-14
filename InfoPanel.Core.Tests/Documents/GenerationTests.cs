@@ -8,6 +8,7 @@ using InfoPanel.Core.Tests.Scenes;
 using InfoPanel.Documents;
 using InfoPanel.Scenes;
 using InfoPanel.Spec;
+using SkiaSharp;
 using Xunit;
 using static InfoPanel.Core.Tests.Documents.DocKit;
 
@@ -16,7 +17,8 @@ namespace InfoPanel.Core.Tests.Documents;
 /// <summary>
 /// Generations: their size (<c>documentBytes</c>) is exactly the stored document (its canonical form), measured as
 /// validation measures; the scene runtime loads one checked with other limits or support as its own check would; a JSON
-/// load takes the document's own <c>rev</c>; and a chain of JSON loads keeps only the latest scenes.
+/// load takes the document's own <c>rev</c>; a chain of JSON loads keeps only the latest scenes; and a compiled scene lives
+/// only while something draws it, rebuilt from its JSON otherwise.
 /// </summary>
 [Collection(GoldenCollection.Name)]
 public sealed class GenerationTests
@@ -286,5 +288,129 @@ public sealed class GenerationTests
     {
         runtime.Load(Doc(Scene("a", scene: Rect("#ff0000"))));
         return new WeakReference(typeof(SceneRuntime).GetField("_scenes", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(runtime));
+    }
+
+    /// <summary>The compiled form <paramref name="facts"/> keeps, or null once it has been collected (or it keeps none).</summary>
+    private static CompiledScene? Kept(SceneFacts facts)
+    {
+        var field = typeof(SceneFacts).GetField("_compiled", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.True(field is not null, "SceneFacts keeps no weak reference to its compiled scene");
+        return field.GetValue(facts) is WeakReference<CompiledScene> weak && weak.TryGetTarget(out var scene) ? scene : null;
+    }
+
+    private static SceneFacts FactsOf(Generation g, string id) => g.Content.Entries[id].Design.Scene!;
+
+    private static void Collect()
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
+    }
+
+    /// <summary>Loads the document's current generation into the runtime and draws it once.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static SKBitmap Draw(SceneRuntime runtime, ProfileDocument doc)
+    {
+        runtime.Load(doc.Current);
+        using var snapshot = runtime.Snapshot(SceneKit.Now);
+        return snapshot.Render();
+    }
+
+    /// <summary>Whether <paramref name="id"/>'s compiled scene is kept, without holding it.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool IsKept(ProfileDocument doc, string id) => Kept(FactsOf(doc.Current, id)) is not null;
+
+    /// <summary>
+    /// A scene's compiled form lives only while something draws it: after a collection, an undo to a design no runtime
+    /// draws any more rebuilds it from its JSON, and the frame is the one first drawn; a redo likewise.
+    /// </summary>
+    [Fact]
+    public void Undo_and_redo_draw_the_same_pixels_after_a_collection()
+    {
+        using var doc = Open(Doc(Scene("a", 10, 10, Rect("#ff0000", 40, 20)), Scene("b", 60, 40, Rect("#0000ff", 30, 30))));
+        using var runtime = new SceneRuntime(SceneKit.Options());
+        using var a = Draw(runtime, doc);
+
+        doc.Ok(Commit(doc, "to-b", null, Design("a", Rect("#00ff00", 70, 25))));
+        using var b = Draw(runtime, doc);
+        Assert.True(SceneKit.DifferingPixels(a, b) > 0, "the two designs draw alike");
+
+        Collect();
+        doc.Undo();
+        Assert.False(IsKept(doc, "a"), "design A's compiled scene is still kept with no runtime drawing it");
+        using var undone = Draw(runtime, doc);
+        Assert.Equal(0, SceneKit.DifferingPixels(a, undone, tolerance: 0));
+
+        Collect();
+        doc.Redo();
+        Assert.False(IsKept(doc, "a"), "design B's compiled scene is still kept with no runtime drawing it");
+        using var redone = Draw(runtime, doc);
+        Assert.Equal(0, SceneKit.DifferingPixels(b, redone, tolerance: 0));
+    }
+
+    /// <summary>The scene of item <paramref name="id"/> in the runtime's loaded model.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static CompiledScene? Drawn(SceneRuntime runtime, string id)
+    {
+        var model = (SceneDocumentModel)typeof(SceneRuntime).GetField("_model", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(runtime)!;
+        return model.Items.OfType<DocScene>().Single(s => s.Id == id).Scene;
+    }
+
+    /// <summary>The scene of item <paramref name="id"/> in the runtime's loaded model, held weakly so the test keeps nothing alive.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference<CompiledScene> DrawnWeakly(SceneRuntime runtime, string id)
+    {
+        var scene = Drawn(runtime, id);
+        Assert.NotNull(scene);
+        return new WeakReference<CompiledScene>(scene);
+    }
+
+    /// <summary>Whether <paramref name="weak"/>'s scene is still alive and is the one the runtime draws for <paramref name="id"/>.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool IsDrawn(WeakReference<CompiledScene> weak, SceneRuntime runtime, string id) =>
+        weak.TryGetTarget(out var scene) && ReferenceEquals(scene, Drawn(runtime, id));
+
+    /// <summary>
+    /// A scene a runtime draws keeps its compiled instance: a change to another item, a collection and the next load
+    /// give the unchanged scene the same instance, so its items keep their state. The test holds the instance only
+    /// weakly, so what keeps it through the collection is the runtime.
+    /// </summary>
+    [Fact]
+    public void An_unchanged_scene_keeps_its_compiled_instance_while_it_is_drawn()
+    {
+        using var doc = Open(Doc(Scene("a", 10, 10, InputScene()), Scene("b", 60, 40, Rect("#0000ff", 30, 30))));
+        using var runtime = new SceneRuntime(SceneKit.Options());
+        runtime.Load(doc.Current);
+        var first = DrawnWeakly(runtime, "a");
+
+        doc.Ok(Commit(doc, "other", null, Design("b", Rect("#00ff00", 20, 20))));
+        Collect();
+        runtime.Load(doc.Current);
+        Collect();
+        Assert.True(IsDrawn(first, runtime, "a"), "the unchanged scene was compiled again (its first instance is gone or not drawn)");
+    }
+
+    /// <summary>Eight threads asking at once for a collected scene's compiled form all get one instance.</summary>
+    [Fact]
+    public void Threads_asking_at_once_for_a_collected_scene_get_one_instance()
+    {
+        using var doc = Open(Doc(Scene("a", 10, 10, InputScene())));
+        var facts = FactsOf(doc.Current, "a");
+        Collect();
+        Assert.Null(Kept(facts));
+
+        const int threads = 8;
+        var start = new Barrier(threads);
+        var got = new CompiledScene?[threads];
+        var workers = Enumerable.Range(0, threads).Select(i => new Thread(() =>
+        {
+            start.SignalAndWait();
+            got[i] = facts.Compiled;
+        })).ToList();
+        workers.ForEach(t => t.Start());
+        workers.ForEach(t => t.Join());
+
+        Assert.NotNull(got[0]);
+        Assert.All(got, scene => Assert.Same(got[0], scene));
     }
 }

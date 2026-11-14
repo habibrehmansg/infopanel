@@ -1086,7 +1086,7 @@ public sealed class Workspace : IDisposable
     /// A generation's document as stored, saved and exported: its canonical form (spec/docs/limits.md#sizes), without
     /// <c>rev</c> members. Its length is the generation's measured size (<c>documentBytes</c>).
     /// </summary>
-    public static byte[] Serialize(Generation generation) => CanonicalJson.Utf8(generation.Document);
+    public static byte[] Serialize(Generation generation) => CanonicalJson.Utf8(generation.Document, generation.Content.Bytes);
 
     private static JsonDocument? Parse(ReadOnlyMemory<byte> body, out IReadOnlyList<SpecError> errors)
     {
@@ -1276,12 +1276,13 @@ public sealed class Workspace : IDisposable
         {
             var @base = _base ?? SavedBase() ?? throw new IOException($"The saved document of profile {id} can't be read, so no changes can be kept against it.");
             _base = @base;
-            var bytes = RecoveryFile.Build(@base, workspace._options.Time.GetUtcNow(), Serialize(generation));
+            var head = RecoveryFile.Head(@base, workspace._options.Time.GetUtcNow());
+            var document = Serialize(generation);
             workspace.CheckpointWriting?.Invoke(id);
             try
             {
                 FlushFirst();
-                Store.WriteRecovery(id, bytes);
+                Store.WriteRecovery(id, head, document, RecoveryFile.Tail);
             }
             catch (KeyNotFoundException)
             {

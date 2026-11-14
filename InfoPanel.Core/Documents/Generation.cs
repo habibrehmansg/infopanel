@@ -11,10 +11,11 @@ namespace InfoPanel.Documents;
 /// <summary>
 /// One version of a document, immutable: its content (<see cref="Document"/>, with no <c>rev</c> members) and the
 /// revision <see cref="Rev"/> it is. Every commit, undo, redo and revert makes a new generation. Items a change didn't
-/// touch are the same records as in the generation before it, shared by reference, and so are their checked and
-/// compiled scenes, so a generation costs only what changed. Undo, redo and revert make a new generation over an
-/// earlier generation's content (<see cref="HasSameContent"/>). Engine code must never mutate a generation or anything
-/// reachable from it (its records, their lists and JSON values): every reader and later generation shares them.
+/// touch are the same records as in the generation before it, shared by reference, and so are their checked scenes
+/// (a compiled scene is shared while something draws it, and is rebuilt from its JSON otherwise), so a generation costs
+/// only what changed. Undo, redo and revert make a new generation over an earlier generation's content
+/// (<see cref="HasSameContent"/>). Engine code must never mutate a generation or anything reachable from it (its
+/// records, their lists and JSON values): every reader and later generation shares them.
 /// </summary>
 public sealed class Generation
 {
@@ -415,27 +416,60 @@ internal sealed class DesignFacts
 }
 
 /// <summary>
-/// What the engine knows about one scene value: its check, cost and compiled form (with the limits it was checked
-/// with) and its size. Computed once and shared by every item and generation holding it.
+/// What the engine knows about one scene value: its check (status, errors and cost) and size, the limits and support
+/// it was checked with, and its compiled form. Computed once and shared by every item and generation holding it. The
+/// compiled scene (which holds the parsed model) is shared while something draws it and is only weakly held here: once
+/// nothing draws it, it is collected and rebuilt from the scene's JSON when it is drawn again, so a generation that
+/// only the history keeps holds the scene's JSON, as the history is charged.
 /// </summary>
 internal sealed class SceneFacts
 {
-    private SceneFacts(JsonElement scene, SceneCheck check, CompiledScene? compiled, SpecError? compileError, long bytes)
+    private readonly SpecLimits _limits;
+    private readonly EngineSupport _support;
+
+    /// <summary>The compiled scene, weakly; null when the scene doesn't draw. Also the lock a rebuild runs under.</summary>
+    private readonly WeakReference<CompiledScene>? _compiled;
+
+    private SceneFacts(JsonElement scene, SceneCheck check, CompiledScene? compiled, SpecError? compileError, long bytes,
+        SpecLimits limits, EngineSupport support)
     {
         Scene = scene;
         Check = check;
-        Compiled = compiled;
+        _compiled = compiled is null ? null : new WeakReference<CompiledScene>(compiled);
         CompileError = compileError;
         Bytes = bytes;
         Depth = SpecJson.Depth(scene);
+        _limits = limits;
+        _support = support;
     }
 
     public JsonElement Scene { get; }
 
+    /// <summary>The scene's check without its parsed model (<see cref="SceneCheck.Scene"/> is null): <see cref="Compiled"/> holds that.</summary>
     public SceneCheck Check { get; }
 
-    /// <summary>The compiled scene, when it is valid and compiles.</summary>
-    public CompiledScene? Compiled { get; }
+    /// <summary>
+    /// The compiled scene, when it is valid and compiles: the instance something still draws, else one rebuilt from
+    /// <see cref="Scene"/> with the limits and support it was first checked with (so it compiles the same way again).
+    /// </summary>
+    public CompiledScene? Compiled
+    {
+        get
+        {
+            if (_compiled is not { } weak) return null;
+            if (weak.TryGetTarget(out var scene)) return scene;
+            lock (weak)
+            {
+                if (weak.TryGetTarget(out scene)) return scene;
+                var check = SceneValidator.CheckRead(Scene, _limits, _support);
+                if (check is not { Status: CheckStatus.Valid, Scene: { } model })
+                    throw new InvalidOperationException("A scene that compiled no longer checks as valid.");
+                scene = CompiledScene.Compile(model, Check.Cost, _limits);
+                weak.SetTarget(scene);
+                return scene;
+            }
+        }
+    }
 
     /// <summary>Why a valid scene couldn't be compiled (it is drawn as invalid); the path is relative to the scene.</summary>
     public SpecError? CompileError { get; }
@@ -456,7 +490,8 @@ internal sealed class SceneFacts
 
     public IReadOnlyList<SpecError> ErrorsAt(string path) => CompileError is { } e ? [e.Under(path)] : Check.Errors.Select(e => e.Under(path)).ToList();
 
-    public static SceneFacts Create(JsonElement scene, SceneCheck check, SpecLimits limits, long bytes)
+    /// <summary>The facts of a scene checked with <paramref name="limits"/> and <paramref name="support"/>: compiled once here, to learn whether it compiles.</summary>
+    public static SceneFacts Create(JsonElement scene, SceneCheck check, SpecLimits limits, EngineSupport support, long bytes)
     {
         CompiledScene? compiled = null;
         SpecError? error = null;
@@ -471,7 +506,7 @@ internal sealed class SceneFacts
                 error = new SpecError("", e.Code, e.Message);
             }
         }
-        return new SceneFacts(scene, check, compiled, error, bytes);
+        return new SceneFacts(scene, check with { Scene = null }, compiled, error, bytes, limits, support);
     }
 }
 
@@ -506,7 +541,7 @@ internal sealed class SceneChecker(SpecLimits limits, EngineSupport support, Sce
         // Every scene checked here is inside a document or commit that passed the JSON-level pass as received. Its size
         // is the one the check measured (one canonical measure a scene), or measured here when the check stopped first.
         var check = SceneValidator.CheckRead(scene, limits, support);
-        facts = SceneFacts.Create(scene, check, limits, check.Bytes >= 0 ? check.Bytes : GenerationContent.SizeOf(scene));
+        facts = SceneFacts.Create(scene, check, limits, support, check.Bytes >= 0 ? check.Bytes : GenerationContent.SizeOf(scene));
         _facts[text] = facts;
         return facts;
     }

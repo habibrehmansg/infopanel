@@ -30,6 +30,7 @@ internal sealed class RecoveryScheduler : IDisposable
     private readonly Lock _run = new();
     private readonly Dictionary<ProfileDocument, Pending> _pending = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<ProfileDocument> _warned = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<ProfileDocument> _watched = new(ReferenceEqualityComparer.Instance);
     private readonly ITimer _timer;
     private volatile bool _again;
     private bool _disposed;
@@ -42,7 +43,12 @@ internal sealed class RecoveryScheduler : IDisposable
     }
 
     /// <summary>Keeps <paramref name="document"/>'s changes from now on.</summary>
-    public void Watch(ProfileDocument document) => document.Changed += OnChanged;
+    public void Watch(ProfileDocument document)
+    {
+        lock (_lock)
+            _watched.Add(document);
+        document.Changed += OnChanged;
+    }
 
     /// <summary>Stops keeping <paramref name="document"/>'s changes (it was deleted).</summary>
     public void Forget(ProfileDocument document)
@@ -50,6 +56,7 @@ internal sealed class RecoveryScheduler : IDisposable
         document.Changed -= OnChanged;
         lock (_lock)
         {
+            _watched.Remove(document);
             _pending.Remove(document);
             _warned.Remove(document);
         }
@@ -72,7 +79,7 @@ internal sealed class RecoveryScheduler : IDisposable
         var now = _time.GetTimestamp();
         lock (_lock)
         {
-            if (_disposed)
+            if (_disposed || !_watched.Contains(document))
                 return;
             if (_pending.TryGetValue(document, out var pending))
                 pending.Due = Math.Min(now + Ticks(Quiet), pending.First + Ticks(Longest));
@@ -165,6 +172,9 @@ internal sealed class RecoveryScheduler : IDisposable
             bool first;
             lock (_lock)
             {
+                // Forgotten while it was being kept (deleted): nothing of it is held.
+                if (!_watched.Contains(document))
+                    return;
                 first = _warned.Add(document);
                 if (!_disposed && !_pending.ContainsKey(document))
                     _pending[document] = new Pending(now, now + Ticks(Longest));
@@ -183,6 +193,8 @@ internal sealed class RecoveryScheduler : IDisposable
                 return;
             _disposed = true;
             _pending.Clear();
+            _warned.Clear();
+            _watched.Clear();
         }
         _timer.Dispose();
         _run.Enter();

@@ -77,6 +77,15 @@ internal sealed class PluginHostConnection : IAsyncDisposable
     /// <summary>Completes with why, when the host exits or its connection ends.</summary>
     public Task<string> Ended { get; }
 
+    /// <summary>The most settings calls (read or applied) the engine has in this host at once.</summary>
+    public const int MaxSettingsCalls = 8;
+
+    /// <summary>The engine's settings calls in this host now; changed only under its runner's lock.</summary>
+    internal int SettingsCallsInFlight;
+
+    /// <summary>Those of <see cref="SettingsCallsInFlight"/> past their deadline and still unanswered; changed only under its runner's lock.</summary>
+    internal int SettingsCallsOverdue;
+
     /// <summary>
     /// A pipe name short enough that the Unix socket path it becomes (<c>{temp}/CoreFxPipe_{name}</c>) stays under
     /// macOS's 104 bytes: <c>ipph-</c> and 16 hex digits.

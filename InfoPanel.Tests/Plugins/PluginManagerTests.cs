@@ -692,7 +692,7 @@ public sealed class PluginManagerTests : IDisposable
         Package(Bundled, "InfoPanel.B");
         var launcher = new FakeLauncher(c => c.PluginDll.Contains("InfoPanel.A.")
             ? new FakeHost { PluginId = "plain" }
-            : new FakeHost { PluginId = "slow", Settings = Settings(), SettingsHang = true });
+            : new FakeHost { PluginId = "slow", Settings = Settings(), HoldSettings = true });
         await using var manager = Manager(launcher);
         _ = manager.StartAllAsync();
         var (a, b) = (manager.Find("InfoPanel.A")!, manager.Find("InfoPanel.B")!);
@@ -707,6 +707,323 @@ public sealed class PluginManagerTests : IDisposable
         Assert.False(asking.IsCompleted);
         await Advance(TimeSpan.FromMilliseconds(1));
         Assert.Equal(PluginCall.NoAnswer, (await asking.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken)).Outcome);
+    }
+
+    // A settings call the host doesn't answer stays outstanding (and, in a real host, may hold a thread) until the host
+    // answers. Asking again and again must not pile more on the host: until it answers, or its connection ends, a
+    // further settings call is answered NoAnswer at once.
+    [Fact]
+    public async Task A_host_that_never_answers_its_settings_is_not_asked_again_until_it_does()
+    {
+        Package(Bundled, "InfoPanel.B");
+        var launcher = Launcher(() => new FakeHost { PluginId = "slow", Settings = Settings(), HoldSettings = true });
+        await using var manager = Manager(launcher);
+        _ = manager.StartAllAsync();
+        var b = manager.Find("InfoPanel.B")!;
+        await Running(b);
+
+        var host = launcher.Started[0].Host;
+        await AskSettings20Times(b, host);
+        Assert.True(host.SettingsAsked == 1, $"20 settings requests left {host.SettingsAsked} calls outstanding in the host");
+
+        // A new host (a new connection) is asked again.
+        launcher.Started[0].Exit(1, "crash");
+        await Eventually.Until(() => b.State == PluginHostState.Restarting, "the host restarts");
+        await Armed(_now + TimeSpan.FromSeconds(2));
+        await Advance(TimeSpan.FromSeconds(2));
+        await Eventually.Until(() => launcher.Started.Count == 2, "a new host starts");
+        await Running(b);
+        var next = launcher.Started[1].Host;
+        await AskSettings20Times(b, next);
+        Assert.Equal(1, next.SettingsAsked);
+    }
+
+    /// <summary>
+    /// Asks for the plugin's settings 20 times in turn, each answered NoAnswer: one that waits, once
+    /// <paramref name="host"/> has it (a call cancelled before it is sent never reaches the host), after its 10 s.
+    /// </summary>
+    private async Task AskSettings20Times(PluginHostRunner runner, FakeHost host)
+    {
+        for (var i = 0; i < 20; i++)
+        {
+            var asked = host.SettingsAsked;
+            var asking = runner.GetSettingsAsync("slow");
+            await Eventually.Until(() => host.SettingsAsked > asked || asking.IsCompleted, "the host has the call, or the request has ended");
+            if (!asking.IsCompleted)
+            {
+                await Armed(_now + TimeSpan.FromSeconds(10));
+                await Advance(TimeSpan.FromSeconds(10));
+            }
+            Assert.Equal(PluginCall.NoAnswer, (await asking.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken)).Outcome);
+        }
+    }
+
+    // Calls to a host that hangs are bounded: at most 8 sit in it at once, and none is sent while one is past its
+    // deadline. A request over the bound is answered at once, never queued.
+    [Fact]
+    public async Task A_hanging_host_holds_at_most_8_settings_calls_and_gets_none_while_one_is_overdue()
+    {
+        Package(Bundled, "InfoPanel.B");
+        var launcher = Launcher(() => new FakeHost { PluginId = "slow", Settings = Settings(), HoldSettings = true });
+        await using var manager = Manager(launcher);
+        _ = manager.StartAllAsync();
+        var b = manager.Find("InfoPanel.B")!;
+        await Running(b);
+        var host = launcher.Started[0].Host;
+
+        var asking = Enumerable.Range(0, 20).Select(_ => b.GetSettingsAsync("slow")).ToList();
+        var refused = asking.Count(a => a.IsCompleted);
+        await Eventually.Until(() => host.HeldSettings.Count == 20 - refused, "the host has the calls not refused");
+        Assert.True(refused == 12 && host.SettingsAsked == 8, $"20 requests at once: {refused} answered at once, {host.SettingsAsked} reached the host");
+        foreach (var a in asking.Where(a => a.IsCompleted))
+            Assert.Equal(PluginCall.NoAnswer, (await a).Outcome);
+
+        await Eventually.Until(() => _time.TimersDueAt(_now + TimeSpan.FromSeconds(10)) >= 8, "the 8 calls' deadlines are armed");
+        await Advance(TimeSpan.FromSeconds(10));
+        foreach (var a in asking)
+            Assert.Equal(PluginCall.NoAnswer, (await a.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken)).Outcome);
+
+        var late = b.GetSettingsAsync("slow");
+        Assert.True(late.IsCompleted, "a request while calls are overdue is answered at once");
+        Assert.Equal(PluginCall.NoAnswer, (await late).Outcome);
+        Assert.Equal((8, 8), (host.SettingsAsked, host.SettingsInFlight));
+    }
+
+    // The bound never refuses a host that answers: eight requests at once all reach it and are answered.
+    [Fact]
+    public async Task Eight_settings_requests_at_once_to_a_host_that_answers_are_all_answered()
+    {
+        Package(Bundled, "InfoPanel.B");
+        var launcher = Launcher(() => new FakeHost { PluginId = "slow", Settings = Settings(), HoldSettings = true });
+        await using var manager = Manager(launcher);
+        _ = manager.StartAllAsync();
+        var b = manager.Find("InfoPanel.B")!;
+        await Running(b);
+        var host = launcher.Started[0].Host;
+
+        var asking = Enumerable.Range(0, 8).Select(_ => b.GetSettingsAsync("slow")).ToList();
+        await Eventually.Until(() => host.HeldSettings.Count == 8 || asking.Any(a => a.IsCompleted), "the host has the 8 calls");
+        Assert.Equal(8, host.HeldSettings.Count);
+        foreach (var held in host.HeldSettings)
+            held.SetResult();
+        foreach (var a in asking)
+            Assert.Equal(PluginCall.Done, (await a.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken)).Outcome);
+    }
+
+    // Two calls go past their deadlines, then are answered in the other order: the later one's answer leaves the earlier
+    // one in the host, so nothing is sent until that one is answered too.
+    [Fact]
+    public async Task Overdue_settings_calls_answered_out_of_order_keep_the_host_closed_until_both_are()
+    {
+        Package(Bundled, "InfoPanel.B");
+        var launcher = Launcher(() => new FakeHost { PluginId = "slow", Settings = Settings(), HoldSettings = true });
+        await using var manager = Manager(launcher);
+        _ = manager.StartAllAsync();
+        var b = manager.Find("InfoPanel.B")!;
+        await Running(b);
+        var host = launcher.Started[0].Host;
+
+        var first = b.GetSettingsAsync("slow");
+        await Eventually.Until(() => host.HeldSettings.Count == 1, "the host has the first call");
+        await Armed(_now + TimeSpan.FromSeconds(10));
+        await Advance(TimeSpan.FromSeconds(5));
+        var second = b.GetSettingsAsync("slow");
+        await Eventually.Until(() => host.HeldSettings.Count == 2, "the host has the second call");
+        await Armed(_now + TimeSpan.FromSeconds(10));
+        await Advance(TimeSpan.FromSeconds(5));
+        Assert.Equal(PluginCall.NoAnswer, (await first.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken)).Outcome);
+        await Advance(TimeSpan.FromSeconds(5));
+        Assert.Equal(PluginCall.NoAnswer, (await second.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken)).Outcome);
+
+        host.HeldSettings[1].SetResult();
+        await Eventually.Until(() => host.SettingsInFlight == 1, "the host answers the second call");
+        await Eventually.Stays(() => RefusedAtOnce(b), TimeSpan.FromMilliseconds(500), "a request is refused while the first call is overdue");
+        Assert.Equal(2, host.SettingsAsked);
+
+        host.HoldSettings = false;
+        host.HeldSettings[0].SetResult();
+        Assert.Equal(PluginCall.Done, (await NotRefusedAsync(b)).Outcome);
+        Assert.Equal(3, host.SettingsAsked);
+    }
+
+    // A call past its deadline that then fails (its plugin threw) has ended: the host is asked again.
+    [Fact]
+    public async Task An_overdue_settings_call_that_fails_lets_the_next_request_through()
+    {
+        Package(Bundled, "InfoPanel.B");
+        var launcher = Launcher(() => new FakeHost { PluginId = "slow", Settings = Settings(), HoldSettings = true });
+        await using var manager = Manager(launcher);
+        _ = manager.StartAllAsync();
+        var b = manager.Find("InfoPanel.B")!;
+        await Running(b);
+        var host = launcher.Started[0].Host;
+
+        var asking = b.GetSettingsAsync("slow");
+        await Eventually.Until(() => host.HeldSettings.Count == 1, "the host has the call");
+        await Armed(_now + TimeSpan.FromSeconds(10));
+        await Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(PluginCall.NoAnswer, (await asking.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken)).Outcome);
+        Assert.True(RefusedAtOnce(b), "a request is refused while the call is overdue");
+
+        host.HoldSettings = false;
+        host.HeldSettings[0].SetException(new InvalidOperationException("the plugin failed"));
+        Assert.Equal(PluginCall.Done, (await NotRefusedAsync(b)).Outcome);
+        Assert.Equal(2, host.SettingsAsked);
+    }
+
+    // A host stopped while a call is overdue in it, and slow to go, is replaced while it goes. The new host's calls are
+    // counted apart: it is asked at once, and the old host's call failing later, as its connection ends, doesn't open
+    // the new host while a call is overdue there.
+    [Fact]
+    public async Task An_old_hosts_call_ending_late_does_not_open_its_replacement()
+    {
+        Package(Bundled, "InfoPanel.B");
+        var started = 0;
+        var launcher = Launcher(() => new FakeHost
+        {
+            PluginId = "slow", Settings = Settings(), HoldSettings = true, IgnoresShutdown = Interlocked.Increment(ref started) == 1,
+        });
+        await using var manager = Manager(launcher);
+        _ = manager.StartAllAsync();
+        var b = manager.Find("InfoPanel.B")!;
+        await Running(b);
+        var first = launcher.Started[0].Host;
+
+        var asking = b.GetSettingsAsync("slow");
+        await Eventually.Until(() => first.HeldSettings.Count == 1, "the first host has the call");
+        await Armed(_now + TimeSpan.FromSeconds(10));
+        await Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(PluginCall.NoAnswer, (await asking.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken)).Outcome);
+
+        // Stopped, it ignores its shutdown and has a minute to go; started again meanwhile, the second host runs.
+        var stopAt = _now + TimeSpan.FromMinutes(1);
+        var stopping = b.StopAsync(TimeSpan.FromMinutes(1));
+        await Armed(stopAt);
+        _ = b.StartAsync();
+        await Eventually.Until(() => launcher.Started.Count == 2, "a second host starts");
+        await Running(b);
+        var second = launcher.Started[1].Host;
+
+        asking = b.GetSettingsAsync("slow");
+        await Eventually.Until(() => second.HeldSettings.Count == 1 || asking.IsCompleted, "the second host has the call");
+        Assert.Equal(1, second.SettingsAsked);
+        await Armed(_now + TimeSpan.FromSeconds(10));
+        await Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(PluginCall.NoAnswer, (await asking.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken)).Outcome);
+
+        // The first host goes at last, and its call fails with its connection.
+        await Advance(stopAt - _now);
+        await stopping.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken);
+        Assert.True(launcher.Started[0].Killed);
+        await Eventually.Stays(() => RefusedAtOnce(b), TimeSpan.FromMilliseconds(500), "the second host is refused while its call is overdue");
+        Assert.Equal(1, second.SettingsAsked);
+    }
+
+    // A caller that hears its answer goes on at once: it asks again, or applies the setting it read. Its call's place is
+    // free by then, whenever the call's own clean-up runs (here: never): eight callers answered at once, each sending its
+    // next call at once (four reading again, four applying a value), are never refused.
+    [Fact]
+    public async Task Eight_callers_answered_at_once_are_never_refused_when_each_calls_again_at_once()
+    {
+        Package(Bundled, "InfoPanel.B");
+        var launcher = Launcher(() => new FakeHost { PluginId = "slow", Settings = Settings(), HoldSettings = true });
+        await using var manager = Manager(launcher);
+        _ = manager.StartAllAsync();
+        var b = manager.Find("InfoPanel.B")!;
+        await Running(b);
+        var host = launcher.Started[0].Host;
+        b.LateCallScheduler = new HeldScheduler();
+
+        async Task<PluginCall[]> ReadTwice()
+        {
+            var first = await b.GetSettingsAsync("slow");
+            var again = await b.GetSettingsAsync("slow");
+            return [first.Outcome, again.Outcome];
+        }
+        async Task<PluginCall[]> ApplyThenRead(int value)
+        {
+            var applied = await b.ApplySettingAsync("slow", "count", Json($"{value}"));
+            var again = await b.GetSettingsAsync("slow");
+            return [applied.Outcome, again.Outcome];
+        }
+        var callers = Enumerable.Range(0, 4).Select(_ => ReadTwice()).Concat(Enumerable.Range(10, 4).Select(ApplyThenRead)).ToList();
+
+        // The 8 reads, answered together; then the 8 calls their callers send as they hear them (4 reads, 4 applies).
+        await Eventually.Until(() => host.HeldSettings.Count == 8 || callers.Any(c => c.IsCompleted), "the host has the 8 reads");
+        Assert.Equal(8, host.HeldSettings.Count);
+        foreach (var held in host.HeldSettings)
+            held.SetResult();
+        await Eventually.Until(() => host.HeldSettings.Count == 16 || callers.Any(c => c.IsCompleted), "the host has each caller's next call");
+        Assert.True(host.HeldSettings.Count == 16, $"the host got {host.HeldSettings.Count - 8} of the 8 next calls");
+        host.HoldSettings = false;
+        foreach (var held in host.HeldSettings.Skip(8))
+            held.SetResult();
+
+        foreach (var caller in callers)
+            Assert.Equal(new[] { PluginCall.Done, PluginCall.Done }, await caller.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken));
+        Assert.Equal((16, 4), (host.SettingsAsked, host.Applied.Count));
+    }
+
+    // A call answered after its deadline frees its place and its overdue mark when its clean-up runs, once: until then a
+    // request is refused; after, 8 calls reach the host and a 9th is refused, and a call overdue again closes it again.
+    [Fact]
+    public async Task An_overdue_call_answered_late_frees_its_place_once_when_its_clean_up_runs()
+    {
+        Package(Bundled, "InfoPanel.B");
+        var launcher = Launcher(() => new FakeHost { PluginId = "slow", Settings = Settings(), HoldSettings = true });
+        await using var manager = Manager(launcher);
+        _ = manager.StartAllAsync();
+        var b = manager.Find("InfoPanel.B")!;
+        await Running(b);
+        var host = launcher.Started[0].Host;
+        var cleanUp = new HeldScheduler();
+        b.LateCallScheduler = cleanUp;
+
+        var asking = b.GetSettingsAsync("slow");
+        await Eventually.Until(() => host.HeldSettings.Count == 1, "the host has the call");
+        await Armed(_now + TimeSpan.FromSeconds(10));
+        await Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(PluginCall.NoAnswer, (await asking.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken)).Outcome);
+        host.HeldSettings[0].SetResult();
+        await Eventually.Until(() => cleanUp.Queued == 1, "the late answer's clean-up is queued");
+        Assert.True(RefusedAtOnce(b), "a request is refused until the clean-up runs");
+
+        cleanUp.RunAll();
+        var nine = Enumerable.Range(0, 9).Select(_ => b.GetSettingsAsync("slow")).ToList();
+        Assert.Equal(1, nine.Count(a => a.IsCompleted));
+        Assert.Equal(PluginCall.NoAnswer, (await nine.Single(a => a.IsCompleted)).Outcome);
+        await Eventually.Until(() => host.HeldSettings.Count == 9, "the host has the 8 calls");
+        foreach (var held in host.HeldSettings.Skip(1))
+            held.SetResult();
+        await Task.WhenAll(nine).WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken);
+        Assert.Equal(8, nine.Count(a => a.Result.Outcome == PluginCall.Done));
+        cleanUp.RunAll();
+
+        asking = b.GetSettingsAsync("slow");
+        await Eventually.Until(() => host.HeldSettings.Count == 10, "the host has the next call");
+        await Armed(_now + TimeSpan.FromSeconds(10));
+        await Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(PluginCall.NoAnswer, (await asking.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken)).Outcome);
+        Assert.True(RefusedAtOnce(b), "a request is refused while that call is overdue");
+    }
+
+    /// <summary>Whether a request for the plugin's settings is answered NoAnswer at once, never reaching its host.</summary>
+    private static bool RefusedAtOnce(PluginHostRunner runner)
+    {
+        var asking = runner.GetSettingsAsync("slow");
+        return asking.IsCompletedSuccessfully && asking.Result.Outcome == PluginCall.NoAnswer;
+    }
+
+    /// <summary>Asks for the plugin's settings until a request isn't refused at once; what that request answers.</summary>
+    private static async Task<(PluginCall Outcome, IReadOnlyList<InfoPanel.Spec.PluginSettingBody>? Settings)> NotRefusedAsync(PluginHostRunner runner)
+    {
+        Task<(PluginCall Outcome, IReadOnlyList<InfoPanel.Spec.PluginSettingBody>? Settings)>? asking = null;
+        await Eventually.Until(() =>
+        {
+            asking = runner.GetSettingsAsync("slow");
+            return !asking.IsCompletedSuccessfully || asking.Result.Outcome != PluginCall.NoAnswer;
+        }, "a request reaches the host");
+        return await asking!.WaitAsync(Eventually.Limit, TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -774,6 +1091,47 @@ public sealed class PluginManagerTests : IDisposable
     private static readonly SensorKey Key = SensorKey.Plugin("/fake/c/v");
 
     private static System.Text.Json.JsonElement Json(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement.Clone();
+
+    /// <summary>A scheduler that runs what is queued on it only when the test says so.</summary>
+    private sealed class HeldScheduler : TaskScheduler
+    {
+        private readonly List<Task> _queued = [];
+
+        public int Queued
+        {
+            get
+            {
+                lock (_queued)
+                    return _queued.Count;
+            }
+        }
+
+        public void RunAll()
+        {
+            List<Task> run;
+            lock (_queued)
+            {
+                run = [.. _queued];
+                _queued.Clear();
+            }
+            foreach (var task in run)
+                TryExecuteTask(task);
+        }
+
+        protected override void QueueTask(Task task)
+        {
+            lock (_queued)
+                _queued.Add(task);
+        }
+
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
+
+        protected override IEnumerable<Task> GetScheduledTasks()
+        {
+            lock (_queued)
+                return [.. _queued];
+        }
+    }
 
     /// <summary>Every log line, formatted, whatever its level.</summary>
     private sealed class CapturingLoggerProvider : Microsoft.Extensions.Logging.ILoggerProvider

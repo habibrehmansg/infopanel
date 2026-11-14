@@ -972,13 +972,10 @@ public sealed class ProfileDocument : IDisposable
 
     private CommitResult Result(long rev, ChangeSet? changes, IReadOnlyList<CommitWarning>? warnings)
     {
-        var items = new Dictionary<string, long>(StringComparer.Ordinal);
-        if (changes is not null)
-            foreach (var id in changes.Items.Keys) items[id] = rev;
         return new CommitResult
         {
             Rev = rev,
-            Items = items,
+            Items = new SameRevItems(changes is null ? [] : [.. changes.Items.Keys], rev),
             Removed = changes is { Removed.Count: > 0 } ? changes.Removed.ToArray() : null,
             ProfileRev = changes is { Profile: not ProfileField.None } ? rev : null,
             Dirty = DirtyCore,

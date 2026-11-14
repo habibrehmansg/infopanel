@@ -1186,8 +1186,9 @@ public sealed class UpdateItemsTool(ProfileChanges changes) : McpTool
 
         if (!change.Changed)
             return Task.FromResult(ToolResult.Text("Nothing changed: every item already was as asked."));
-        var changedOnes = found.Where(i => change.Result.Items.ContainsKey(i.Id)).Select(ItemNames.Label).ToList();
-        var already = found.Where(i => !change.Result.Items.ContainsKey(i.Id)).Select(ItemNames.Label).ToList();
+        var changedIds = new HashSet<string>(change.Result.Items.Keys, StringComparer.Ordinal);
+        var changedOnes = found.Where(i => changedIds.Contains(i.Id)).Select(ItemNames.Label).ToList();
+        var already = found.Where(i => !changedIds.Contains(i.Id)).Select(ItemNames.Label).ToList();
         return Task.FromResult(ToolResult.Text(
             $"Changed {changedOnes.Count} item{(changedOnes.Count == 1 ? "" : "s")} in {change.Name} in one change: {string.Join(", ", changedOnes)}" +
             $"{(already.Count > 0 ? $"; already as asked: {string.Join(", ", already)}" : "")}.{ProfileChanges.Warnings(change.Result)} {change.Saving}"));

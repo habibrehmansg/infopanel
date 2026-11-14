@@ -128,6 +128,9 @@ internal sealed class PluginHostRunner : IAsyncDisposable
     /// <summary>The tests' barrier: awaited once a settings change has read the settings it checks the value against.</summary>
     internal Func<Task>? AfterSettingsRead { get; set; }
 
+    /// <summary>Where a call's clean-up runs when it ends after its caller was answered (late, or with its connection): the tests' seam.</summary>
+    internal TaskScheduler LateCallScheduler { get; set; } = TaskScheduler.Default;
+
     /// <summary>
     /// Tests only: given a host's update call (its generation, and its hand-off to the source) once it was found current,
     /// to run the hand-off when it likes.
@@ -681,7 +684,7 @@ internal sealed class PluginHostRunner : IAsyncDisposable
             return (outcome, null, null);
         if (!plugin!.Configurable)
             return (PluginCall.NotFound, null, null);
-        var (asked, properties) = await CallAsync<List<PluginConfigPropertyDto>>(connection!, nameof(IPluginHostService.GetConfigPropertiesAsync), [pluginId]).ConfigureAwait(false);
+        var (asked, properties) = await CallAsync<List<PluginConfigPropertyDto>>(connection!, nameof(IPluginHostService.GetConfigPropertiesAsync), [pluginId], settings: true).ConfigureAwait(false);
         return asked == PluginCall.Done ? (PluginCall.Done, connection, PluginSettings.Bodies(properties)) : (asked, null, null);
     }
 
@@ -710,7 +713,7 @@ internal sealed class PluginHostRunner : IAsyncDisposable
             if (_state != PluginHostState.Running || _connection != connection)
                 return (PluginCall.NotRunning, null, null);
         }
-        var (applied, after) = await CallAsync<List<PluginConfigPropertyDto>>(connection!, nameof(IPluginHostService.ApplyConfigAsync), [pluginId, key, send]).ConfigureAwait(false);
+        var (applied, after) = await CallAsync<List<PluginConfigPropertyDto>>(connection!, nameof(IPluginHostService.ApplyConfigAsync), [pluginId, key, send], settings: true).ConfigureAwait(false);
         return applied == PluginCall.Done ? (PluginCall.Done, null, PluginSettings.Bodies(after)) : (applied, null, null);
     }
 
@@ -756,22 +759,77 @@ internal sealed class PluginHostRunner : IAsyncDisposable
         }
     }
 
-    /// <summary>A call of the host's, raced against <see cref="PluginHostTimeouts.Call"/> on the engine's clock and the connection's end (a call's cancellation doesn't end it until the host answers).</summary>
-    private async Task<(PluginCall, T?)> CallAsync<T>(PluginHostConnection connection, string method, object?[] arguments)
+    /// <summary>
+    /// A call of the host's, raced against <see cref="PluginHostTimeouts.Call"/> on the engine's clock and the connection's
+    /// end (a call's cancellation doesn't end it until the host answers). A settings call (<paramref name="settings"/>:
+    /// read or apply, which the host can't cancel) takes a place on its connection until it ends, answered, failed or
+    /// with the connection: while a settings call there is past its deadline and unanswered, or
+    /// <see cref="PluginHostConnection.MaxSettingsCalls"/> are in flight, another is answered
+    /// <see cref="PluginCall.NoAnswer"/> at once rather than sent, and nobody queues. So at most that many sit in a host
+    /// that hangs, none sent while one is overdue, and a host that answers is never refused below the cap.
+    /// </summary>
+    private async Task<(PluginCall, T?)> CallAsync<T>(PluginHostConnection connection, string method, object?[] arguments, bool settings = false)
     {
+        if (settings)
+        {
+            lock (_lock)
+            {
+                if (connection.SettingsCallsOverdue > 0 || connection.SettingsCallsInFlight >= PluginHostConnection.MaxSettingsCalls)
+                    return (PluginCall.NoAnswer, default);
+                connection.SettingsCallsInFlight++;
+            }
+        }
         using var deadline = new CancellationTokenSource(_settings.Timeouts.Call, _time);
         Task<T> call;
         try
         {
             call = connection.Rpc.InvokeWithCancellationAsync<T>(method, arguments, deadline.Token);
         }
-        catch (Exception ex) when (ex is ObjectDisposedException or ConnectionLostException or IOException)
+        catch (Exception ex)
         {
-            return (PluginCall.NotRunning, default);
+            if (settings)
+            {
+                lock (_lock)
+                    connection.SettingsCallsInFlight--;
+            }
+            if (ex is ObjectDisposedException or ConnectionLostException or IOException)
+                return (PluginCall.NotRunning, default);
+            throw;
         }
-        _ = call.ContinueWith(static t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
         var expired = Task.Delay(Timeout.Infinite, deadline.Token);
         var first = await Task.WhenAny(call, expired, connection.Ended).ConfigureAwait(false);
+        // A settings call's place is freed here when the call has ended, before its caller hears the outcome (and may call
+        // again at once); else by the call's own end, later, with its overdue mark when it went past its deadline. Either,
+        // once.
+        bool ended, overdue = false;
+        lock (_lock)
+        {
+            ended = call.IsCompleted;
+            if (settings && ended)
+                connection.SettingsCallsInFlight--;
+            else if (settings && first == expired)
+            {
+                overdue = true;
+                connection.SettingsCallsOverdue++;
+            }
+        }
+        if (ended)
+            _ = call.Exception;
+        else
+        {
+            _ = call.ContinueWith(t =>
+            {
+                _ = t.Exception;
+                if (!settings)
+                    return;
+                lock (_lock)
+                {
+                    connection.SettingsCallsInFlight--;
+                    if (overdue)
+                        connection.SettingsCallsOverdue--;
+                }
+            }, CancellationToken.None, TaskContinuationOptions.None, settings ? LateCallScheduler : TaskScheduler.Default);
+        }
         if (first == connection.Ended)
             return (PluginCall.NotRunning, default);
         if (first != call)

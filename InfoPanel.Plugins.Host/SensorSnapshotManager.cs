@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Data;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using InfoPanel.Plugins.Ipc;
 using InfoPanel.Plugins.Loader;
@@ -25,6 +26,10 @@ namespace InfoPanel.Plugins.Host
         private readonly ConcurrentDictionary<string, int> _skipStreaks = new();
         // The text and table keys whose cut has been reported (once each).
         private readonly ConcurrentDictionary<string, bool> _cutReported = new();
+        // Per plugin: the entries it listed and the read that last listed each. What a complete read no longer lists
+        // is forgotten in every map above and in the picture state (Forget): a plugin may drop entries and list new
+        // ones as it runs.
+        private readonly ConcurrentDictionary<PluginWrapper, Listed> _listed = new();
         private readonly ILogger _logger;
         private readonly Action<string, string>? _reportCut;
 
@@ -264,11 +269,20 @@ namespace InfoPanel.Plugins.Host
         public List<EntryUpdateDto> GetChangedEntries(PluginWrapper wrapper)
         {
             var updates = new List<EntryUpdateDto>();
+            var listed = _listed.GetOrAdd(wrapper, static _ => new Listed());
+            var read = ++listed.Read;
+            var count = 0;
 
             foreach (var container in wrapper.PluginContainers)
             {
                 foreach (var entry in container.Entries)
                 {
+                    ref var lastRead = ref CollectionsMarshal.GetValueRefOrAddDefault(listed.Reads, (container.Id, entry.Id), out _);
+                    if (lastRead != read)
+                    {
+                        lastRead = read;
+                        count++;
+                    }
                     var key = Key(wrapper.Id, container.Id, entry.Id);
                     EntryUpdateDto? update;
                     try
@@ -296,7 +310,35 @@ namespace InfoPanel.Plugins.Host
                 }
             }
 
+            // Every entry was read (a plugin failure part way throws past this; a skipped table counts as listed).
+            if (listed.Reads.Count > count)
+                Forget(wrapper.Id, listed, read);
+
             return updates;
+        }
+
+        // The plugin's entries that its read number `read` didn't list, removed from every map.
+        private void Forget(string pluginId, Listed listed, int read)
+        {
+            foreach (var (ids, lastRead) in listed.Reads)
+            {
+                if (lastRead == read) continue;
+                listed.Reads.Remove(ids);
+                if (!_keyCache.TryRemove((pluginId, ids.ContainerId, ids.EntryId), out var key)) continue;
+                _lastValues.TryRemove(key, out _);
+                _pending.TryRemove(key, out _);
+                _skipStreaks.TryRemove(key, out _);
+                _cutReported.TryRemove(key, out _);
+                _waiting.TryRemove(key, out _);
+                lock (_images)
+                    _images.Remove(key);
+            }
+        }
+
+        private sealed class Listed
+        {
+            public readonly Dictionary<(string ContainerId, string EntryId), int> Reads = new();
+            public int Read;
         }
 
         /// <summary>
@@ -344,19 +386,21 @@ namespace InfoPanel.Plugins.Host
         // Each entry is read once per cycle. The change check compares what was read with what was last delivered,
         // and the payload is built from the same read, so the check always describes the payload sent. Texts, units and
         // tables are cut to what the engine takes first (IpcLimits), as it would cut them, so no update can make a
-        // message the engine refuses, and what is compared is what is sent.
+        // message the engine refuses, and what is compared is what is sent. Nothing is built for an entry that hasn't
+        // changed: the host runs this every 100 ms.
         private EntryUpdateDto? CreateUpdateIfChanged(string pluginId, string key, string containerId, IPluginData entry)
         {
-            object state;
-            EntryUpdateDto update;
+            _lastValues.TryGetValue(key, out var last);
 
             if (entry is IPluginSensor sensor)
             {
                 var read = PluginSensorReading.Of(sensor);
                 var reading = new SensorReading(read.Value, read.ValueMin, read.ValueMax, read.ValueAvg,
                     TableDtoConverter.Cut(sensor.Unit, IpcLimits.NameChars));
-                state = reading;
-                update = new EntryUpdateDto
+                if (last is SensorReading delivered && delivered == reading)
+                    return null;
+                _pending[key] = reading;
+                return new EntryUpdateDto
                 {
                     ContainerId = containerId,
                     EntryId = entry.Id,
@@ -371,14 +415,17 @@ namespace InfoPanel.Plugins.Host
                     }
                 };
             }
-            else if (entry is IPluginText text)
+
+            if (entry is IPluginText text)
             {
                 var whole = text.Value;
                 var value = TableDtoConverter.Cut(whole, IpcLimits.TextChars);
                 if (whole?.Length > IpcLimits.TextChars)
                     ReportCut(pluginId, key, $"Text '{entry.Id}' is over {IpcLimits.TextChars} characters; the rest is cut");
-                state = value;
-                update = new EntryUpdateDto
+                if (last is string delivered && delivered == value)
+                    return null;
+                _pending[key] = value;
+                return new EntryUpdateDto
                 {
                     ContainerId = containerId,
                     EntryId = entry.Id,
@@ -386,16 +433,25 @@ namespace InfoPanel.Plugins.Host
                     TextValue = value
                 };
             }
-            else if (entry is IPluginTable table)
+
+            if (entry is IPluginTable table)
             {
-                // The payload is the table's only read; it is compared whole, never through a hash of a second read. It is
-                // cut to what the engine takes and what fits a message, so no table can make a message the engine refuses.
-                var (tableValue, _, cut) = TableDtoConverter.Convert(table, IpcLimits.HostTableBytes);
+                // The table's only read; it is compared whole, never through a hash of a second read. An unchanged table is
+                // compared cell by cell as it is read, against what was delivered. A changed one is converted, cut to what
+                // the engine takes and what fits a message, so no table can make a message the engine refuses.
+                var format = table.DefaultFormat;
+                var data = table.Value;
+                if (last is TableValueDto delivered && TableDtoConverter.Matches(format, data, delivered, IpcLimits.HostTableBytes))
+                    return null;
+                var (tableValue, _, cut) = TableDtoConverter.Convert(format, data, IpcLimits.HostTableBytes);
                 if (cut)
                     ReportCut(pluginId, key, $"Table '{entry.Id}' is over {IpcLimits.TableRows} rows, {IpcLimits.TableColumns} columns, " +
                         $"{IpcLimits.CellChars} characters a cell or {IpcLimits.HostTableBytes / (1024 * 1024)} MiB; the rest is cut");
-                state = tableValue;
-                update = new EntryUpdateDto
+                // What is sent is one whole read, compared with what was delivered.
+                if (last is TableValueDto sent && SameTable(sent, tableValue))
+                    return null;
+                _pending[key] = tableValue;
+                return new EntryUpdateDto
                 {
                     ContainerId = containerId,
                     EntryId = entry.Id,
@@ -403,16 +459,8 @@ namespace InfoPanel.Plugins.Host
                     TableValue = tableValue
                 };
             }
-            else
-            {
-                return null;
-            }
 
-            if (_lastValues.TryGetValue(key, out var last) && SameState(last, state))
-                return null;
-
-            _pending[key] = state;
-            return update;
+            return null;
         }
 
         // A cut is logged and reported once per entry: an entry stays over the limit every cycle it changes.
@@ -425,14 +473,6 @@ namespace InfoPanel.Plugins.Host
 
         // Everything a sensor's payload carries, the unit included: a change of unit alone is an update.
         private readonly record struct SensorReading(float Value, float ValueMin, float ValueMax, float ValueAvg, string? Unit);
-
-        private static bool SameState(object? last, object state) => (last, state) switch
-        {
-            (SensorReading a, SensorReading b) => a == b,
-            (string a, string b) => a == b,
-            (TableValueDto a, TableValueDto b) => SameTable(a, b),
-            _ => false
-        };
 
         private static bool SameTable(TableValueDto a, TableValueDto b)
         {
@@ -472,6 +512,10 @@ namespace InfoPanel.Plugins.Host
                   && a.ValueAvg.Equals(b.ValueAvg)
                   && a.Unit == b.Unit;
 
+        /// <summary>How many entries each of the manager's maps holds (for tests).</summary>
+        internal (int Keys, int Delivered, int Pending, int CutReported, int SkipStreaks) Counts =>
+            (_keyCache.Count, _lastValues.Count, _pending.Count, _cutReported.Count, _skipStreaks.Count);
+
         public void Clear()
         {
             _lastValues.Clear();
@@ -479,6 +523,7 @@ namespace InfoPanel.Plugins.Host
             _keyCache.Clear();
             _skipStreaks.Clear();
             _cutReported.Clear();
+            _listed.Clear();
             _waiting.Clear();
             lock (_images)
             {

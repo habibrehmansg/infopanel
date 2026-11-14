@@ -1,5 +1,9 @@
+using System.Reflection;
 using System.Text.Json.Nodes;
+using InfoPanel.Core.Tests.Scenes;
+using InfoPanel.Core.Tests.Golden;
 using InfoPanel.Documents;
+using InfoPanel.Scenes;
 using InfoPanel.Spec;
 using Xunit;
 using static InfoPanel.Core.Tests.Documents.DocKit;
@@ -619,5 +623,121 @@ public sealed class HistoryTests
         for (var i = 0; i < 120; i++)
             nodes.Add(new JsonObject { ["kind"] = "rect", ["x"] = i + seed, ["y"] = i % 7, ["w"] = 2, ["h"] = 2, ["fill"] = "#336699" });
         return new JsonObject { ["format"] = "infopanel.scene/1", ["nodes"] = nodes };
+    }
+
+    /// <summary>
+    /// An invalid scene and an unsupported one keep their problems and errors through an undo after a collection, in the
+    /// generation and as the runtime draws them: only a scene that compiled is ever rebuilt.
+    /// </summary>
+    [Fact]
+    public void Scenes_with_problems_keep_them_through_an_undo_after_a_collection()
+    {
+        using var doc = Open(Doc(Scene("a", 10, 10), Scene("broken", 0, 0, InvalidScene()), Scene("later", 0, 0, FutureScene())));
+        string Problems() => string.Join("; ", doc.Current.Problems.Select(p => $"{p.Id}:{p.Problem}:{Errors(p.Errors)}"));
+        static string Errors(IEnumerable<SpecError> errors) => string.Join(",", errors.Select(e => $"{e.Code}@{e.Path}"));
+        string Drawn()
+        {
+            using var runtime = new SceneRuntime(SceneKit.Options());
+            runtime.Load(doc.Current);
+            var model = (SceneDocumentModel)typeof(SceneRuntime).GetField("_model", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(runtime)!;
+            return string.Join("; ", model.Items.OfType<DocScene>().Select(s => $"{s.Id}:{s.Problem}:{Errors(s.Errors)}"));
+        }
+        var problems = Problems();
+        var drawn = Drawn();
+        Assert.Contains("broken:invalid:ref.input@/items/1/scene", problems);
+        Assert.Contains("later:unsupported:", problems);
+        Assert.Contains("broken:invalid:ref.input@/items/1/scene", drawn);
+
+        doc.Ok(Commit(doc, "drop", null, Remove("broken"), Remove("later"), Design("a", Rect("#00ff00"))));
+        Assert.Empty(doc.Current.Problems);
+        for (var i = 0; i < 2; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+        doc.Undo();
+
+        Assert.Equal(problems, Problems());
+        Assert.Equal(drawn, Drawn());
+    }
+}
+
+/// <summary>
+/// What a retained undo step costs against what it is charged: a scene of 200 nodes edited 100 times keeps 100 earlier
+/// scenes in the history, and the heap they hold is at most two and a half times the bytes the budget charges them
+/// (they hold about 1.8 times: a step keeps its scene's parsed JSON and drops its compiled form, rebuilt when drawn
+/// again; kept compiled forms hold about 6.6 times). Storing each scene as its compact canonical bytes, parsed when
+/// read, would lower it further. In the non-parallel collection, so the heap readings are this test's alone.
+/// </summary>
+[Collection(GoldenCollection.Name)]
+public sealed class HistoryChargeTests
+{
+    /// <summary>A scene of 200 nodes (rects, texts and rects sized by an expression); <paramref name="edit"/> is one literal.</summary>
+    private static JsonObject BigScene(int edit)
+    {
+        var nodes = new JsonArray();
+        for (var j = 0; j < 200; j++)
+        {
+            nodes.Add((j % 3) switch
+            {
+                0 => new JsonObject { ["kind"] = "rect", ["x"] = j == 0 ? edit : j % 190, ["y"] = j * 7 % 90, ["w"] = 10 + j % 30, ["h"] = 8, ["fill"] = $"#{j * 40503 & 0xffffff:x6}" },
+                1 => new JsonObject { ["kind"] = "text", ["x"] = j % 190, ["y"] = j * 13 % 90, ["font"] = new JsonObject { ["family"] = "Inter", ["size"] = 12 }, ["fill"] = "#ffffff", ["text"] = $"label {j}" },
+                _ => new JsonObject
+                {
+                    ["kind"] = "rect", ["x"] = j % 190, ["y"] = j * 11 % 90, ["h"] = 6, ["fill"] = "#00ff00",
+                    ["w"] = new JsonObject { ["op"] = "add", ["args"] = new JsonArray(new JsonObject { ["op"] = "input", ["name"] = "v" }, j % 40) },
+                },
+            });
+        }
+        return new JsonObject
+        {
+            ["format"] = "infopanel.scene/1",
+            ["inputs"] = new JsonObject { ["v"] = new JsonObject { ["type"] = "number" } },
+            ["nodes"] = nodes,
+        };
+    }
+
+    /// <summary>
+    /// The bytes live on the managed heap: what a full blocking collection marks (its promoted bytes), which counts
+    /// each reachable object once. Not <see cref="GC.GetTotalMemory"/>: it reads the survivors of a collection at up to
+    /// twice their size, by an amount that moves with the heap's layout, so the same 100 steps read anywhere from under
+    /// twice to over five times their charge.
+    /// </summary>
+    private static long Heap()
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        return GC.GetGCMemoryInfo(GCKind.FullBlocking).PromotedBytes;
+    }
+
+    [Fact]
+    public void A_retained_step_holds_at_most_two_and_a_half_times_what_it_is_charged()
+    {
+        // Settle the process's heap before this test allocates: what earlier tests left for a full collection to release
+        // (and what that collection's own trims and finalizers release after it) is gone before the first reading, so the
+        // readings below differ only by what this test's document holds.
+        Heap();
+        var budget = new HistoryBudget(HistoryBudget.DefaultMaxBytes);
+        using var doc = Open(Doc(Scene("s", 0, 0, BigScene(0))), Options(budget: budget));
+        doc.Ok(Commit(doc, "warm", null, Design("s", BigScene(1))));
+        doc.Undo();
+        for (var i = 0; i < 100; i++)
+            doc.Ok(Commit(doc, $"edit-{i}", null, Design("s", BigScene(i + 2))));
+
+        var charged = budget.Used;
+        var held = Heap();
+        doc.Dispose();
+        var released = Heap();
+        Assert.Equal(0, budget.Used);
+        GC.KeepAlive(doc);
+
+        var retained = held - released;
+        var sceneBytes = CanonicalJson.Utf8(Element(BigScene(0))).Length;
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"scene {sceneBytes / 1024.0:F1} KiB; 100 steps charged {charged / 1048576.0:F2} MiB ({charged / 100 / 1024.0:F1} KiB a step), " +
+            $"held {retained / 1048576.0:F2} MiB ({retained / 100 / 1024.0:F1} KiB a step): {(double)retained / charged:F1}x what they are charged");
+        Assert.True(2 * retained <= 5 * charged,
+            $"100 steps hold {retained / 1048576.0:F2} MiB but are charged {charged / 1048576.0:F2} MiB ({(double)retained / charged:F1}x)");
     }
 }

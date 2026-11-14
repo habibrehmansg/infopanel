@@ -541,6 +541,54 @@ public sealed class RecoveryTests : IDisposable
         Assert.False(HasRecovery(C));
     }
 
+    /// <summary>
+    /// A checkpoint of a large document (about 5 MiB) allocates no second copy of it: the recovery file is written from
+    /// the serialised document as it is, so a checkpoint costs what serialising the document costs, plus a little.
+    /// </summary>
+    [Fact]
+    public void ACheckpointOfALargeDocumentMakesNoSecondCopyOfIt()
+    {
+        var workspace = StartWorkspace();
+        var items = new JsonObject[600];
+        for (var i = 0; i < items.Length; i++)
+        {
+            var nodes = new JsonArray();
+            for (var n = 0; n < 190; n++)
+                nodes.Add(new JsonObject { ["kind"] = "rect", ["w"] = 20, ["h"] = 10, ["fill"] = "#ff0000" });
+            items[i] = Scene($"i{i}", i % 100, 10, new JsonObject { ["format"] = "infopanel.scene/1", ["nodes"] = nodes });
+        }
+        var created = workspace.Create(Encoding.UTF8.GetBytes($"{{\"id\":\"{A}\",\"document\":{DocJson(A, items)}}}"));
+        Assert.True(created.Entry is not null, created.Invalid?.Errors.FirstOrDefault()?.Message);
+        var doc = workspace.Open(A)!;
+        // One checkpoint first, so the measured one runs warm.
+        Move(doc, 20, item: "i0");
+        Assert.True(doc.Checkpoint());
+        Move(doc, 30, item: "i0");
+
+        var size = Workspace.Serialize(doc.Current).Length;
+        Assert.True(size > 5_000_000, $"{size} bytes");
+        var serialize = AllocatedBy(() => Workspace.Serialize(doc.Current));
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.True(doc.Checkpoint());
+        var checkpoint = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"document {size / 1048576.0:F2} MiB; Serialize allocates {serialize / 1048576.0:F2} MiB, a checkpoint {checkpoint / 1048576.0:F2} MiB (+{(checkpoint - serialize) / 1024.0:F0} KiB)");
+        Assert.True(checkpoint < serialize + 64 * 1024,
+            $"a checkpoint allocated {checkpoint} bytes, {checkpoint - serialize} more than serialising the {size}-byte document");
+        Assert.True(HasRecovery());
+        using var kept = JsonDocument.Parse(File.ReadAllBytes(RecoveryPath()));
+        Assert.Equal(30, kept.RootElement.GetProperty("document").GetProperty("items")[0].GetProperty("placement").GetProperty("x").GetDouble());
+    }
+
+    private static long AllocatedBy(Action action)
+    {
+        action();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        action();
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
     [Fact]
     public void AFailingWriteIsLoggedOnceAndTriedAgainAndNeverFailsACommit()
     {
@@ -564,6 +612,60 @@ public sealed class RecoveryTests : IDisposable
         Advance(10_000);
         Assert.True(HasRecovery());
         Assert.Equal(40, ReadRecovery().A);
+    }
+
+    /// <summary>A persistence whose checkpoint waits for the test, then fails.</summary>
+    private sealed class GatedFailingPersistence(ManualResetEventSlim writing, ManualResetEventSlim release) : IDocumentPersistence
+    {
+        public void Save(Generation generation) { }
+
+        public void Checkpoint(Generation generation)
+        {
+            writing.Set();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(30)));
+            throw new IOException("injected: the checkpoint failed");
+        }
+
+        public void ClearCheckpoint() { }
+    }
+
+    /// <summary>
+    /// A checkpoint that fails after its document was forgotten (deleted while the write was under way) holds nothing of
+    /// it: neither its retry nor its warning keeps the deleted document alive.
+    /// </summary>
+    [Fact]
+    public void ACheckpointThatFailsAfterItsDocumentIsForgottenKeepsNothingOfIt()
+    {
+        using var scheduler = new RecoveryScheduler(_time, Logger.None);
+        var weak = ForgetDuringAFailingCheckpoint(scheduler);
+
+        // The retry a failure schedules, Longest later: the document is disposed by now.
+        Advance(10_000);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.False(weak.IsAlive, "the scheduler still holds the forgotten document");
+        GC.KeepAlive(scheduler);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private WeakReference ForgetDuringAFailingCheckpoint(RecoveryScheduler scheduler)
+    {
+        using var writing = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var doc = Sample(Options(persistence: new GatedFailingPersistence(writing, release)));
+        scheduler.Watch(doc);
+        Move(doc, 20);
+
+        // The scheduler's run starts and waits inside the write.
+        var run = Task.Run(() => Advance(2000));
+        Assert.True(writing.Wait(TimeSpan.FromSeconds(30)));
+        // Deleted meanwhile: the workspace forgets it, then disposes it once the write gives up.
+        scheduler.Forget(doc);
+        release.Set();
+        Assert.True(run.Wait(TimeSpan.FromSeconds(30)));
+        doc.Dispose();
+        return new WeakReference(doc);
     }
 
     /// <summary>

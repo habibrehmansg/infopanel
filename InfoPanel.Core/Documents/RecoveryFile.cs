@@ -21,17 +21,15 @@ internal static class RecoveryFile
     /// <summary>The <c>base</c> of a recovery made against <paramref name="saved"/>: its SHA-256 in lower-case hex.</summary>
     public static string BaseOf(ReadOnlySpan<byte> saved) => Convert.ToHexStringLower(SHA256.HashData(saved));
 
-    /// <summary>The file's bytes: <paramref name="document"/> (canonical, as saved) wrapped with its base and the time.</summary>
-    public static byte[] Build(string @base, DateTimeOffset written, ReadOnlySpan<byte> document)
-    {
-        var head = Encoding.UTF8.GetBytes(
-            $"{{\"format\":\"{Format}\",\"base\":\"{@base}\",\"written\":\"{Written(written)}\",\"document\":");
-        var bytes = new byte[head.Length + document.Length + 1];
-        head.CopyTo(bytes, 0);
-        document.CopyTo(bytes.AsSpan(head.Length));
-        bytes[^1] = (byte)'}';
-        return bytes;
-    }
+    /// <summary>
+    /// The file's bytes before its document: the file is <see cref="Head"/>, the document (canonical, as saved), then
+    /// <see cref="Tail"/>, written in turn so the document is never copied.
+    /// </summary>
+    public static byte[] Head(string @base, DateTimeOffset written) => Encoding.UTF8.GetBytes(
+        $"{{\"format\":\"{Format}\",\"base\":\"{@base}\",\"written\":\"{Written(written)}\",\"document\":");
+
+    /// <summary>The file's last byte, after its document.</summary>
+    public static readonly byte[] Tail = "}"u8.ToArray();
 
     /// <summary><paramref name="time"/> as <see cref="Written(DateTimeOffset)"/>; null for null.</summary>
     public static string? TextOf(DateTimeOffset? time) => time is { } t ? Written(t) : null;

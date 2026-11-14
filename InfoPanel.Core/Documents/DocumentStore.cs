@@ -379,7 +379,14 @@ public sealed partial class DocumentStore
     /// </summary>
     /// <exception cref="KeyNotFoundException">No profile has this id (deleted meanwhile); nothing was written.</exception>
     /// <exception cref="IOException">The write failed (the previous file is unchanged), or its folder couldn't be flushed.</exception>
-    public void WriteRecovery(string id, ReadOnlyMemory<byte> bytes)
+    public void WriteRecovery(string id, ReadOnlyMemory<byte> bytes) =>
+        WriteRecovery(id, bytes[..(bytes.Length / 2)], bytes[(bytes.Length / 2)..], ReadOnlyMemory<byte>.Empty);
+
+    /// <summary>
+    /// As <see cref="WriteRecovery(string, ReadOnlyMemory{byte})"/>, for a file made of <paramref name="first"/>,
+    /// <paramref name="middle"/> and <paramref name="last"/>, written in turn rather than joined into one array first.
+    /// </summary>
+    public void WriteRecovery(string id, ReadOnlyMemory<byte> first, ReadOnlyMemory<byte> middle, ReadOnlyMemory<byte> last)
     {
         lock (_lock)
         {
@@ -387,7 +394,14 @@ public sealed partial class DocumentStore
             // AtomicFile makes a missing folder: never the profile's, which only a create makes.
             if (RegularFile.StateOf(Paths.ProfileFolder(id)) != PathState.Folder)
                 throw new KeyNotFoundException($"Profile {id} has no folder.");
-            AtomicFile.Write(Paths.RecoveryFile(id), bytes, Paths.Root, _faults);
+            var path = Paths.RecoveryFile(id);
+            AtomicFile.Write(path, stream =>
+            {
+                stream.Write(first.Span);
+                _faults?.Before(StorageStep.WriteTemp, path);
+                stream.Write(middle.Span);
+                stream.Write(last.Span);
+            }, Paths.Root, _faults);
         }
     }
 

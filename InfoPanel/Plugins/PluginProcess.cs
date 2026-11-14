@@ -1,5 +1,10 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using InfoPanel.Plugins.Host;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Win32.SafeHandles;
 
 namespace InfoPanel.Plugins;
 
@@ -54,7 +59,7 @@ public interface IPluginProcess : IDisposable
 /// reader hold all of it): stdout is dropped (the host logs to its file), and only stderr's last 4 KiB are kept, for the
 /// reason a host failed.
 /// </summary>
-public sealed class PluginProcessLauncher : IPluginProcessLauncher
+public sealed class PluginProcessLauncher(ILogger<PluginProcessLauncher>? logger = null) : IPluginProcessLauncher
 {
     public IPluginProcess Start(PluginHostCommand command)
     {
@@ -70,7 +75,7 @@ public sealed class PluginProcessLauncher : IPluginProcessLauncher
             start.ArgumentList.Add(arg);
 
         var process = Process.Start(start) ?? throw new InvalidOperationException($"The plugin host {file} didn't start.");
-        return new HostProcess(process);
+        return new HostProcess(process, logger);
     }
 
     /// <summary>The engine executable and the arguments that come before the host's own.</summary>
@@ -84,7 +89,7 @@ public sealed class PluginProcessLauncher : IPluginProcessLauncher
         return (processPath, [Path.Combine(AppContext.BaseDirectory, "InfoPanel.dll")]);
     }
 
-    private sealed class HostProcess : IPluginProcess
+    internal sealed class HostProcess : IPluginProcess
     {
         private const int ChunkBytes = 4096;
         private const int TailBytes = 4096;
@@ -92,18 +97,95 @@ public sealed class PluginProcessLauncher : IPluginProcessLauncher
         /// <summary>How long an exited host's stderr is read on, so its last words are in the reason (wall clock).</summary>
         private static readonly TimeSpan StderrGrace = TimeSpan.FromMilliseconds(500);
 
+        /// <summary>How long disposal waits for a disposed host's reads to end before it returns (wall clock).</summary>
+        private static readonly TimeSpan DrainWait = TimeSpan.FromSeconds(1);
+
+        /// <summary>How often, within <see cref="DrainWait"/>, disposal ends its reads again while one goes on (wall clock).</summary>
+        private static readonly TimeSpan EndAgain = TimeSpan.FromMilliseconds(20);
+
+        /// <summary>The longest pause between ends of reads that go on past <see cref="DrainWait"/> (wall clock).</summary>
+        private static readonly TimeSpan EndAgainAtMost = TimeSpan.FromSeconds(1);
+
         private readonly Process _process;
+        // Its output and errors, owned here: Process.Dispose doesn't close streams that were read.
+        private readonly Stream _stdout;
+        private readonly Stream _stderr;
+        // Ends the reads waiting on them now. On Windows they are synchronous file streams over anonymous pipes, whose
+        // read already waiting on a pipe that a process the host started still holds open ends neither by a token nor by
+        // Dispose, and a read let in may not wait yet; cancelling the handle's I/O ends one waiting, and is done again
+        // until the reads end, however long (a disposed stream's handle takes no more calls, so the streams are disposed
+        // only once both reads have ended). Elsewhere the streams are disposed, which ends their reads.
+        private readonly Action _endReads;
+        // Taken by a read to check _stopping and start, and by disposal to set it and end the reads: each read either
+        // starts before the stop, and is ended, or doesn't start.
+        private readonly Lock _reading = new();
+        private bool _stopping;
+        private int _disposed;
+        private readonly ILogger _logger;
         private readonly byte[] _tail = new byte[TailBytes];
         private int _tailLength;
 
-        public HostProcess(Process process)
+        public HostProcess(Process process, ILogger? logger = null)
+            : this(process, process.StandardOutput.BaseStream, process.StandardError.BaseStream, logger)
+        {
+        }
+
+        private HostProcess(Process process, Stream stdout, Stream stderr, ILogger? logger)
+            : this(process, stdout, stderr, EndReadsOf(stdout, stderr), logger)
+        {
+        }
+
+        /// <summary>A host over <paramref name="stdout"/> and <paramref name="stderr"/>, whose waiting reads <paramref name="endReads"/> ends (the tests' seam).</summary>
+        internal HostProcess(Process process, Stream stdout, Stream stderr, Action endReads, ILogger? logger)
         {
             _process = process;
             Id = process.Id;
-            _ = DrainAsync(process.StandardOutput.BaseStream, keep: false);
-            var stderr = DrainAsync(process.StandardError.BaseStream, keep: true);
-            Exited = ExitAsync(stderr);
+            _stdout = stdout;
+            _stderr = stderr;
+            _endReads = endReads;
+            _logger = logger ?? NullLogger.Instance;
+            var stdoutRead = DrainAsync(_stdout, keep: false);
+            var stderrRead = DrainAsync(_stderr, keep: true);
+            Drained = Task.WhenAll(stdoutRead, stderrRead);
+            Exited = ExitAsync(stderrRead);
         }
+
+        private static Action EndReadsOf(Stream stdout, Stream stderr) =>
+            OperatingSystem.IsWindows() ? CancelWindowsReadsOf(stdout, stderr) : () =>
+            {
+                stdout.Dispose();
+                stderr.Dispose();
+            };
+
+        [SupportedOSPlatform("windows")]
+        private static Action CancelWindowsReadsOf(Stream stdout, Stream stderr)
+        {
+            var (stdoutHandle, stderrHandle) = ((stdout as FileStream)?.SafeFileHandle, (stderr as FileStream)?.SafeFileHandle);
+            return () =>
+            {
+                CancelReads(stdoutHandle);
+                CancelReads(stderrHandle);
+            };
+        }
+
+        [SupportedOSPlatform("windows")]
+        private static void CancelReads(SafeFileHandle? handle)
+        {
+            if (handle == null || handle.IsClosed || handle.IsInvalid)
+                return;
+            try
+            {
+                // Nothing pending is no error worth a word (ERROR_NOT_FOUND).
+                _ = HostPipeInterop.CancelIoEx(handle, 0);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Closed meanwhile: its reads have ended.
+            }
+        }
+
+        /// <summary>Completes when the reads of its output and its errors have both ended.</summary>
+        internal Task Drained { get; }
 
         public int Id { get; }
 
@@ -159,7 +241,65 @@ public sealed class PluginProcessLauncher : IPluginProcessLauncher
             }
         }
 
-        public void Dispose() => _process.Dispose();
+        /// <summary>
+        /// Ends the reads of its output and errors (a process it started may still hold them open, and its reads would wait
+        /// for that process): no read starts after this, those started are ended, again every <see cref="EndAgain"/> until
+        /// they have, waiting at most <see cref="DrainWait"/>; then both streams are closed and the process disposed. Reads
+        /// still going on then are logged, and ended again in the background, the pauses doubling up to
+        /// <see cref="EndAgainAtMost"/>, until both have ended; only then are the streams closed and the process disposed.
+        /// </summary>
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+            EndReads(stop: true);
+            var waited = Stopwatch.StartNew();
+            while (Task.WaitAny([Drained], EndAgain) < 0 && waited.Elapsed < DrainWait)
+                EndReads(stop: false);
+            if (Drained.IsCompleted)
+            {
+                Release();
+                return;
+            }
+            _logger.LogWarning("plugin host (process {Pid}): its output reads didn't end within {Wait} of its disposal", Id, DrainWait);
+            _ = EndReadsUntilDrainedAsync();
+        }
+
+        /// <summary>Ends the reads waiting now; with <paramref name="stop"/>, lets no read start after.</summary>
+        private void EndReads(bool stop)
+        {
+            lock (_reading)
+            {
+                _stopping |= stop;
+                _endReads();
+            }
+        }
+
+        /// <summary>Ends the reads again, ever less often, until both have ended; then releases the streams and the process.</summary>
+        private async Task EndReadsUntilDrainedAsync()
+        {
+            try
+            {
+                var again = EndAgain;
+                while (await Task.WhenAny(Drained, Task.Delay(again)).ConfigureAwait(false) != Drained)
+                {
+                    EndReads(stop: false);
+                    again = TimeSpan.FromTicks(Math.Min(again.Ticks * 2, EndAgainAtMost.Ticks));
+                }
+            }
+            finally
+            {
+                Release();
+            }
+        }
+
+        /// <summary>Closes both streams and disposes the process, once: by disposal, or by its background ends of reads.</summary>
+        private void Release()
+        {
+            _stdout.Dispose();
+            _stderr.Dispose();
+            _process.Dispose();
+        }
 
         private int? SafeExitCode()
         {
@@ -180,16 +320,25 @@ public sealed class PluginProcessLauncher : IPluginProcessLauncher
             var buffer = new byte[ChunkBytes];
             try
             {
-                int read;
-                while ((read = await stream.ReadAsync(buffer).ConfigureAwait(false)) > 0)
+                while (true)
                 {
+                    ValueTask<int> reading;
+                    lock (_reading)
+                    {
+                        if (_stopping)
+                            return;
+                        reading = stream.ReadAsync(buffer);
+                    }
+                    var read = await reading.ConfigureAwait(false);
+                    if (read == 0)
+                        return;
                     if (keep)
                         Keep(buffer.AsSpan(0, read));
                 }
             }
-            catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException or OperationCanceledException)
             {
-                // The process was disposed, or its stream ended badly: nothing more to read.
+                // The process was disposed, its read cancelled, or its stream ended badly: nothing more to read.
             }
         });
 
@@ -216,4 +365,14 @@ public sealed class PluginProcessLauncher : IPluginProcessLauncher
             }
         }
     }
+}
+
+/// <summary>The kernel32 call that ends a plugin host's pending pipe reads on Windows.</summary>
+[SupportedOSPlatform("windows")]
+internal static partial class HostPipeInterop
+{
+    // BOOL CancelIoEx(HANDLE hFile, LPOVERLAPPED lpOverlapped): with no OVERLAPPED, every I/O pending on the handle, from
+    // any thread.
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    public static partial int CancelIoEx(SafeFileHandle file, nint overlapped);
 }

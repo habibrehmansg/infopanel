@@ -372,6 +372,172 @@ public class SensorSnapshotManagerTests
         Assert.Empty(events.Events);
     }
 
+    // The host compares every entry every 100 ms. A table that hasn't changed must be compared as it is read, not
+    // converted whole first: a 1,000-row table would otherwise make thousands of objects ten times a second.
+    [Fact]
+    public void An_unchanged_table_is_compared_without_building_its_payload()
+    {
+        const int rows = 1000, textColumns = 19, cycles = 100;
+        var data = new DataTable();
+        for (var c = 0; c < textColumns; c++) data.Columns.Add($"c{c}", typeof(string));
+        data.Columns.Add("sensor", typeof(object));
+        for (var r = 0; r < rows; r++)
+        {
+            var row = data.NewRow();
+            for (var c = 0; c < textColumns; c++) row[c] = $"r{r}c{c}";
+            row[textColumns] = new PluginSensor($"s{r}", $"Sensor {r}", r, "°C");
+            data.Rows.Add(row);
+        }
+        var wrapper = Wrap(new PluginSensor("temp", "Temperature", 21, "°C"), new PluginText("label", "Label", "hello"),
+            new PluginTable("table", "Table", data, "{0}"));
+        var manager = new SensorSnapshotManager();
+        Assert.Equal(3, Deliver(manager, wrapper).Count);
+        Assert.Empty(manager.GetChangedEntries(wrapper));
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var cycle = 0; cycle < cycles; cycle++)
+        {
+            if (manager.GetChangedEntries(wrapper).Count != 0) Assert.Fail($"cycle {cycle} found a change");
+        }
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.True(allocated < cycles * 16 * 1024, $"{cycles} unchanged cycles allocated {allocated:N0} bytes ({allocated / cycles:N0} a cycle)");
+
+        // A change in the last row's sensor is still an update, and carries the whole table.
+        ((PluginSensor)data.Rows[rows - 1][textColumns]).Value = -1;
+        var changed = Assert.Single(Deliver(manager, wrapper));
+        Assert.Equal(rows, changed.TableValue!.Rows.Count);
+        Assert.Equal(-1, changed.TableValue.Rows[rows - 1][textColumns].SensorValue!.Value);
+        Assert.Empty(Deliver(manager, wrapper));
+    }
+    // A table too big for the host's share of a message is delivered cut by its bytes. Unchanged, it must still be
+    // compared as it is read, not converted whole every cycle.
+    [Fact]
+    public void An_unchanged_table_cut_by_its_bytes_is_compared_without_building_its_payload()
+    {
+        const int rows = 1000, cycles = 100;
+        var data = TextTable(rows, columns: 20, chars: 300);
+        var wrapper = Wrap(new PluginTable("table", "Table", data, "{0}"));
+        var manager = new SensorSnapshotManager();
+        var delivered = Assert.Single(Deliver(manager, wrapper)).TableValue!;
+        Assert.InRange(delivered.Rows.Count, 1, rows - 1);
+        Assert.Empty(manager.GetChangedEntries(wrapper));
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var cycle = 0; cycle < cycles; cycle++)
+        {
+            if (manager.GetChangedEntries(wrapper).Count != 0) Assert.Fail($"cycle {cycle} found a change");
+        }
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.True(allocated < cycles * 16 * 1024,
+            $"{cycles} unchanged cycles of a table cut at {delivered.Rows.Count} rows allocated {allocated:N0} bytes ({allocated / cycles:N0} a cycle)");
+    }
+
+    // Where a table is cut by its bytes moves with its rows: the first row left out may come to fit, and a delivered
+    // row may grow so the last one no longer does. Each is an update, and what is sent is the table converted whole.
+    [Fact]
+    public void A_table_cut_by_its_bytes_is_sent_again_when_its_cut_moves()
+    {
+        var data = TextTable(1000, columns: 20, chars: 300);
+        var wrapper = Wrap(new PluginTable("table", "Table", data, "{0}"));
+        var manager = new SensorSnapshotManager();
+        var first = Assert.Single(Deliver(manager, wrapper)).TableValue!;
+        var cut = first.Rows.Count;
+        Assert.Equal(Json(TableDtoConverter.Convert("{0}", data, IpcLimits.HostTableBytes).Table), Json(first));
+
+        // The first row left out shrinks so it fits, and the row after it still doesn't.
+        var bytes = JsonSize.Of(first);
+        Assert.True(bytes + RowBytes(20, 200) <= IpcLimits.HostTableBytes && bytes + RowBytes(20, 200) + RowBytes(20, 300) > IpcLimits.HostTableBytes);
+        SetRow(data.Rows[cut], 200);
+        var grown = Assert.Single(Deliver(manager, wrapper)).TableValue!;
+        Assert.Equal(cut + 1, grown.Rows.Count);
+        Assert.Equal(Json(TableDtoConverter.Convert("{0}", data, IpcLimits.HostTableBytes).Table), Json(grown));
+        Assert.Empty(Deliver(manager, wrapper));
+
+        // A delivered row grows, so the last delivered row no longer fits.
+        SetRow(data.Rows[0], 700);
+        var shrunk = Assert.Single(Deliver(manager, wrapper)).TableValue!;
+        Assert.True(shrunk.Rows.Count < cut + 1, $"{shrunk.Rows.Count} rows sent");
+        Assert.Equal(Json(TableDtoConverter.Convert("{0}", data, IpcLimits.HostTableBytes).Table), Json(shrunk));
+        Assert.Empty(Deliver(manager, wrapper));
+    }
+
+    // A plugin may keep the same sensor object in its table's cell and change only its value.
+    [Fact]
+    public void A_sensor_cell_whose_value_changes_in_place_is_sent_on_the_next_cycle()
+    {
+        var data = new DataTable();
+        data.Columns.Add("name", typeof(string));
+        data.Columns.Add("value", typeof(object));
+        var sensor = new PluginSensor("s", "Sensor", 1, "°C");
+        data.Rows.Add("cpu", sensor);
+        var wrapper = Wrap(new PluginTable("table", "Table", data, "{0}"));
+        var manager = new SensorSnapshotManager();
+        Assert.Single(Deliver(manager, wrapper));
+        Assert.Empty(Deliver(manager, wrapper));
+
+        sensor.Value = 2;
+        var changed = Assert.Single(Deliver(manager, wrapper));
+        Assert.Equal(2, changed.TableValue!.Rows[0][1].SensorValue!.Value);
+        Assert.Empty(Deliver(manager, wrapper));
+    }
+
+    /// <summary>A table of <paramref name="rows"/> rows of text cells, each <paramref name="chars"/> characters long and different.</summary>
+    private static DataTable TextTable(int rows, int columns, int chars)
+    {
+        var data = new DataTable();
+        for (var c = 0; c < columns; c++) data.Columns.Add($"c{c}", typeof(string));
+        for (var r = 0; r < rows; r++)
+        {
+            var row = data.NewRow();
+            data.Rows.Add(row);
+            SetRow(row, chars);
+        }
+        return data;
+    }
+
+    private static void SetRow(DataRow row, int chars)
+    {
+        var index = row.Table.Rows.IndexOf(row);
+        for (var c = 0; c < row.Table.Columns.Count; c++) row[c] = $"r{index}c{c}".PadRight(chars, 'x');
+    }
+
+    /// <summary>What a row of <paramref name="columns"/> text cells of <paramref name="chars"/> characters adds to a table's bytes.</summary>
+    private static long RowBytes(int columns, int chars) =>
+        JsonSize.Of(Enumerable.Range(0, columns).Select(_ => new TableCellDto { Type = "text", TextValue = new string('x', chars) }).ToList());
+
+    private static string Json(TableValueDto table) => System.Text.Json.JsonSerializer.Serialize(table);
+
+    // A plugin may list new entries and drop old ones as it runs (ephemeral containers). What the manager keeps for an
+    // entry must go with it: a plugin that renames one entry every cycle would otherwise grow the host for its life.
+    [Fact]
+    public void Entries_a_plugin_no_longer_lists_are_forgotten()
+    {
+        const int replaced = 10_000;
+        var manager = new SensorSnapshotManager(new LoggerConfiguration().CreateLogger());
+        var wrapper = Wrap();
+        var entries = wrapper.PluginContainers[0].Entries;
+        var cut = new string('x', IpcLimits.TextChars + 1);
+
+        // An entry read but never delivered (its send failed), then dropped.
+        entries.Add(new PluginText("unsent", "Unsent", "a"));
+        Assert.Single(manager.GetChangedEntries(wrapper));
+        // A table whose reads fail, then dropped.
+        entries[0] = new FlakyTable("failing", [new InvalidOperationException("Collection was modified.")]);
+        Assert.Empty(Deliver(manager, wrapper));
+        // A text over the limit, cut and reported, under a new id every cycle.
+        for (var i = 0; i < replaced; i++)
+        {
+            entries[0] = new PluginText($"t{i}", "Text", cut);
+            Assert.Single(Deliver(manager, wrapper));
+        }
+
+        Assert.Equal((Keys: 1, Delivered: 1, Pending: 0, CutReported: 1, SkipStreaks: 0), manager.Counts);
+        // The entry still listed is still compared with what was delivered.
+        Assert.Empty(Deliver(manager, wrapper));
+    }
+
     /// <summary>One host cycle that reaches the client: the changes are read, then confirmed delivered.</summary>
     private static List<EntryUpdateDto> Deliver(SensorSnapshotManager manager, PluginWrapper wrapper)
     {

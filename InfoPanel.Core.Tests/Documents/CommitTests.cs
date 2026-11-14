@@ -857,6 +857,59 @@ public sealed class CommitTests
         }
     }
 
+    /// <summary>
+    /// The results kept for <c>opId</c> retries stay small when each lists many items: 1,000 reorders of 2,000 siblings
+    /// (each moving the first to the end, so every sibling's position changes) remember 1,000 results of 2,000 items each,
+    /// and that costs at most 20 bytes an item listed (a dictionary of them cost about 65). Once the window is full it
+    /// stops growing.
+    /// </summary>
+    [Fact]
+    public void Remembered_results_of_large_reorders_stay_small()
+    {
+        // Settle the process's heap before this test allocates (as HistoryChargeTests does), so the readings below differ
+        // only by what this test's document holds.
+        CompactedHeap();
+        const int siblings = 2000;
+        var items = new JsonObject[siblings];
+        for (var i = 0; i < siblings; i++) items[i] = Group($"s{i}");
+        using var doc = Open(Doc(items));
+        var order = new Queue<string>(Enumerable.Range(0, siblings).Select(i => $"s{i}"));
+        void ToBack(int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var first = order.Dequeue();
+                var result = doc.Ok(Commit(doc, $"op-back-{Guid.NewGuid():N}", "back", Move(first, null, siblings - 1)));
+                Assert.Equal(siblings, result.Items.Count);
+                order.Enqueue(first);
+            }
+        }
+
+        ToBack(1);
+        var before = CompactedHeap();
+        ToBack(1000);
+        var full = CompactedHeap();
+        ToBack(200);
+        var after = CompactedHeap();
+        GC.KeepAlive(doc);
+
+        var growth = full - before;
+        var perItem = growth / (1000.0 * siblings);
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"1,000 reorders: heap +{growth / 1048576.0:F1} MiB ({perItem:F1} B an item listed); 200 more: {(after - full) / 1048576.0:+0.0;-0.0} MiB");
+        Assert.True(growth < 1000L * siblings * 20, $"1,000 remembered results of {siblings} items grew the heap by {growth / 1048576.0:F1} MiB ({perItem:F1} B an item)");
+        Assert.True(after - full < 2L * 1024 * 1024, $"200 more reorders grew the heap by {(after - full) / 1048576.0:F1} MiB once the window was full");
+    }
+
+    /// <summary>The managed heap in use after compacting collections, so freed space between survivors isn't counted.</summary>
+    private static long CompactedHeap()
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        return GC.GetTotalMemory(forceFullCollection: false);
+    }
+
     private static ExpiredProblem Expired(ProfileDocument doc, JsonElement body)
     {
         var outcome = doc.Commit(body);

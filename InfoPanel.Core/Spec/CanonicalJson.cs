@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -39,6 +40,20 @@ internal static class CanonicalJson
 
     /// <summary>The canonical form of a model value as <see cref="SpecJson"/> writes it.</summary>
     public static byte[] Utf8<T>(T value) => Utf8(SpecJson.Write(value));
+
+    /// <summary>
+    /// <see cref="Utf8{T}(T)"/> for a large value whose canonical length is known (a generation's measured size): the
+    /// value's JSON is read in place, its index rented, and the canonical form written into an array of that length. The
+    /// same bytes; a wrong length costs only a copy.
+    /// </summary>
+    public static byte[] Utf8<T>(T value, long size)
+    {
+        using var json = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(value, SpecJson.Options), SpecJson.DocumentOptions);
+        Measuring?.Invoke(json.RootElement);
+        var output = new Output(keep: true, size);
+        Write(json.RootElement, output, 0);
+        return output.ToArray();
+    }
 
     /// <summary>The length of <paramref name="value"/>'s canonical form in bytes, counted without writing it.</summary>
     public static long Size(JsonElement value)
@@ -127,6 +142,48 @@ internal static class CanonicalJson
     private static void WriteObject(JsonElement e, Output output, int depth, Revisions revisions)
     {
         var count = e.GetPropertyCount();
+        // Names in ASCII without escapes, almost every object: their bytes sort as their UTF-16 code units, so they are
+        // sorted as they are, in a rented array, with no string made. Any other name: as below.
+        var rented = ArrayPool<JsonProperty>.Shared.Rent(count);
+        try
+        {
+            var n = 0;
+            foreach (var p in e.EnumerateObject())
+            {
+                var raw = JsonMarshal.GetRawUtf8PropertyName(p);
+                if (!System.Text.Ascii.IsValid(raw) || raw.IndexOf((byte)'\\') >= 0)
+                {
+                    n = -1;
+                    break;
+                }
+                if (revisions != Revisions.None && p.NameEquals("rev"))
+                    continue;
+                rented[n++] = p;
+            }
+            if (n >= 0)
+            {
+                rented.AsSpan(0, n).Sort(ByRawName);
+                output.Put((byte)'{');
+                for (var k = 0; k < n; k++)
+                {
+                    if (k > 0) output.Put((byte)',');
+                    var name = Unquoted(JsonMarshal.GetRawUtf8PropertyName(rented[k]));
+                    output.Put((byte)'"');
+                    output.Put(name);
+                    output.Put((byte)'"');
+                    output.Put((byte)':');
+                    Write(rented[k].Value, output, depth + 1, Inner(revisions, rented[k]));
+                }
+                output.Put((byte)'}');
+                return;
+            }
+        }
+        finally
+        {
+            // Cleared: a rented array must not keep the document alive.
+            ArrayPool<JsonProperty>.Shared.Return(rented, clearArray: true);
+        }
+
         var names = new string[count];
         var members = new JsonProperty[count];
         var i = 0;
@@ -158,12 +215,28 @@ internal static class CanonicalJson
     }
 
     /// <summary>Where a member of a value at <paramref name="revisions"/> sits (<see cref="DocumentSize"/>).</summary>
+    private static Revisions Inner(Revisions revisions, JsonProperty member) => revisions switch
+    {
+        Revisions.Document when member.NameEquals("profile") => Revisions.Profile,
+        Revisions.Document when member.NameEquals("items") => Revisions.Items,
+        Revisions.Item when member.NameEquals("children") => Revisions.Items,
+        _ => Revisions.None,
+    };
+
+    /// <summary>Where a member of a value at <paramref name="revisions"/> sits (<see cref="DocumentSize"/>).</summary>
     private static Revisions Inner(Revisions revisions, string name) => (revisions, name) switch
     {
         (Revisions.Document, "profile") => Revisions.Profile,
         (Revisions.Document, "items") or (Revisions.Item, "children") => Revisions.Items,
         _ => Revisions.None,
     };
+
+    /// <summary>
+    /// Members by their names' raw UTF-8 bytes, without quotes: for ASCII names without escapes, their UTF-16 code units'
+    /// order. One delegate, so a sort allocates nothing.
+    /// </summary>
+    private static readonly Comparison<JsonProperty> ByRawName = static (x, y) =>
+        Unquoted(JsonMarshal.GetRawUtf8PropertyName(x)).SequenceCompareTo(Unquoted(JsonMarshal.GetRawUtf8PropertyName(y)));
 
     /// <summary>A string or member name's raw text without its quotes, escapes undecoded.</summary>
     private static ReadOnlySpan<byte> Unquoted(ReadOnlySpan<byte> raw) =>
@@ -332,9 +405,9 @@ internal static class CanonicalJson
     }
 
     /// <summary>Where the canonical form goes: a growing buffer, or only its length (<c>keep</c> false).</summary>
-    private sealed class Output(bool keep)
+    private sealed class Output(bool keep, long capacity = 256)
     {
-        private byte[] _buffer = keep ? new byte[256] : [];
+        private byte[] _buffer = keep ? new byte[Math.Clamp(capacity, 256, Array.MaxLength)] : [];
 
         public long Length { get; private set; }
 
@@ -390,6 +463,6 @@ internal static class CanonicalJson
             Array.Resize(ref _buffer, (int)Math.Min(Array.MaxLength, Math.Max(needed, 2L * _buffer.Length)));
         }
 
-        public byte[] ToArray() => _buffer.AsSpan(0, (int)Length).ToArray();
+        public byte[] ToArray() => Length == _buffer.Length ? _buffer : _buffer.AsSpan(0, (int)Length).ToArray();
     }
 }

@@ -45,9 +45,9 @@ internal sealed class DocScene : DocItem
 
 /// <summary>
 /// A document loaded for rendering: one generation (<see cref="Generation"/>), already checked. Each scene was checked on
-/// its own (a bad scene is a placeholder) and compiled once when the generation got it; aggregate budgets were admitted
-/// in document order. Loading only builds the item tree around them, so a generation that changed one item costs one
-/// item's work.
+/// its own (a bad scene is a placeholder) and compiled when the generation got it; aggregate budgets were admitted in
+/// document order. Loading only builds the item tree around them, so a generation that changed one item costs one
+/// item's work. A compiled scene collected because nothing drew it is rebuilt from its JSON here.
 /// </summary>
 internal sealed class SceneDocumentModel
 {
@@ -104,6 +104,7 @@ internal sealed class SceneDocumentModel
                         d.Errors = [over];
                         return d;
                     }
+                    // The instance the runtime still draws, or one rebuilt from the scene's JSON (SceneFacts.Compiled).
                     var scene = facts.Compiled!;
                     d.Scene = scene;
                     nodes += scene.NodeCount;
