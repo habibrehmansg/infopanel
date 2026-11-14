@@ -286,6 +286,10 @@ namespace InfoPanel.Plugins.Simulator
                     return 2;
                 }
 
+                // Each plugin's own task once the settings given are applied, as the host starts it: its first update sees them.
+                foreach (var wrapper in pluginDescriptor.PluginWrappers.Values)
+                    await wrapper.Start();
+
                 await Task.Delay(1000, cancellationToken);
                 Console.Clear();
 

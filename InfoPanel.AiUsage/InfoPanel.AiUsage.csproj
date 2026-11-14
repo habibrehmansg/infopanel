@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- AI usage, a first-party plugin bundled with the engine (plugins/InfoPanel.AiUsage/, InfoPanel/InfoPanel.csproj's
-       BundledPlugin list): Claude Code's and Codex's limits as readings, its readers off until the user turns them on
+       BundledPlugin list): Claude Code's and Codex's limits as readings, its readers on by default, the user turning either off
        (docs/2.0/ai-usage.md). A plugin like any other: it builds against the SDK, which the host hands it, so it carries
        no copy of its own. -->
   <PropertyGroup>

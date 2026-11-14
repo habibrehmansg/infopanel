@@ -713,6 +713,7 @@ public sealed class ConnectTests : IDisposable
         var settings = Settings(main, Written);
         var plugin = new AiUsagePlugin(_home.Environment, new ConnectPlaces([], Windows: false));
         plugin.Initialize();
+        plugin.ApplyConfig(AiUsagePlugin.ReadClaudeCode, false); // saved off: the reader's default is on
         plugin.Load([]);
         var (opens, stats) = (_home.Files.Opens, _home.Files.Stats);
 

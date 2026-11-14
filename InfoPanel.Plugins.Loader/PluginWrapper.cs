@@ -75,6 +75,10 @@ namespace InfoPanel.Plugins.Loader
             }
         }
 
+        /// <summary>
+        /// Runs the plugin's Initialize and Load. It starts nothing: the plugin's own task starts at <see cref="Start"/>, which
+        /// the host calls once the plugin's start is done (its saved settings applied), so the first update sees them.
+        /// </summary>
         public async Task Initialize()
         {
             using var _ = await _startStopLock.LockAsync();
@@ -82,9 +86,18 @@ namespace InfoPanel.Plugins.Loader
             _initialized = true;
             Plugin.Load(PluginContainers);
             IsLoaded = true;
+        }
 
-            // If the plugin is running or the interval is not set to >0, we don't want to start it
-            if (IsRunning || Plugin.UpdateInterval.TotalMilliseconds <= 0) return;
+        /// <summary>
+        /// Starts the plugin's own update task, when it has an interval (above zero): after <see cref="Initialize"/>, once.
+        /// A plugin without one is updated by its host's cycle (<see cref="Update"/>). Nothing once it has been stopped.
+        /// </summary>
+        public async Task Start()
+        {
+            using var _ = await _startStopLock.LockAsync();
+
+            // If the plugin isn't loaded, has been stopped, is running or the interval is not set to >0, we don't start it
+            if (!IsLoaded || _closed || IsRunning || Plugin.UpdateInterval.TotalMilliseconds <= 0) return;
             _cts = new CancellationTokenSource();
             _task = Task.Run(() => DoWorkAsync(_cts.Token), _cts.Token);
         }

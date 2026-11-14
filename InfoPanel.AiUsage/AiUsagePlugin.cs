@@ -4,9 +4,9 @@ namespace InfoPanel.AiUsage;
 
 /// <summary>
 /// AI usage (<c>ai-usage</c>): how close Claude Code and Codex are to their five-hour and weekly limits, when those reset
-/// and how old the numbers are, as readings (docs/2.0/ai-usage.md). Its readers are off until the user turns them on
-/// (Read Claude Code, Read Codex); while both are off it opens no file. It reads only usage numbers, never message text,
-/// and logs folder names and field paths, never a path below them or a value. Readings it can't give are NaN, which
+/// and how old the numbers are, as readings (docs/2.0/ai-usage.md). Its readers are on until the user turns them off
+/// (Read Claude Code, Read Codex; a setting the user saved wins); while both are off it opens no file. It reads only
+/// usage numbers, never message text, and logs folder names and field paths, never a path below them or a value. Readings it can't give are NaN, which
 /// InfoPanel shows as "–", with the set's <c>status</c> saying why. Its two actions, Connect Claude Code limits and
 /// Disconnect, put a wrapper in Claude Code's status line and take it out (<see cref="ClaudeConnect"/>), each shown
 /// before it runs.
@@ -33,7 +33,7 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
     private readonly object _settingsLock = new();
     private readonly object _connectLock = new();
     private IReadOnlyList<ClaudeFolder> _claudeFolders = [];
-    private volatile Settings _settings = new(false, false, "", "");
+    private volatile Settings _settings = new(true, true, "", "");
 
     public AiUsagePlugin() : this(UsageEnvironment.Default(), ConnectPlaces.Default())
     {
@@ -70,7 +70,8 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
     /// <summary>
     /// Lists the sets: Codex, Claude Code (combined) and one per Claude folder found now (folders only: whether
     /// <c>~/.claude</c>, <c>~/.claude-*</c> and the rest hold <c>projects/</c>; no file is opened). A folder made later
-    /// gets its own set at the next reload; it counts in the combined set at once when a setting names it.
+    /// gets its own set at the next reload; it counts in the combined set at once when a setting names it. It reads
+    /// nothing: the host applies the saved settings after Load, so the first read is the first update's, with them.
     /// </summary>
     public override void Load(List<IPluginContainer> containers)
     {
@@ -90,7 +91,6 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
             container.Entries.AddRange(entries.Entries);
             containers.Add(container);
         }
-        Refresh();
     }
 
     public override void Update() => Refresh();
@@ -204,7 +204,7 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
                 {
                     Key = ReadClaudeCode,
                     DisplayName = "Read Claude Code",
-                    Description = "Reads Claude Code's limits from the file its status line writes once you connect it (infopanel-usage.json in each Claude folder). Usage numbers only, never message text. Off until you turn it on.",
+                    Description = "Reads Claude Code's limits from the file its status line writes once you connect it (infopanel-usage.json in each Claude folder). Usage numbers only, never message text. On by default.",
                     Type = PluginConfigType.Boolean,
                     Value = settings.ReadClaudeCode,
                 },
@@ -212,7 +212,7 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActi
                 {
                     Key = ReadCodex,
                     DisplayName = "Read Codex",
-                    Description = "Reads Codex's limits and tokens from its session logs (~/.codex/sessions). Usage numbers only, never message text. Off until you turn it on.",
+                    Description = "Reads Codex's limits and tokens from its session logs (~/.codex/sessions). Usage numbers only, never message text. On by default.",
                     Type = PluginConfigType.Boolean,
                     Value = settings.ReadCodex,
                 },

@@ -2,14 +2,14 @@
 
 AI usage (`ai-usage`, package `InfoPanel.AiUsage`) is a plugin that comes with the engine: how close Claude Code and Codex are to their five-hour and weekly limits, when those reset and how old the numbers are, as readings a panel can show. It is an ordinary plugin ([plugins](plugins.md)), built against the SDK like any other and bundled in `{engine folder}/plugins/InfoPanel.AiUsage/` (`InfoPanel/InfoPanel.csproj`'s `BundledPlugin` list builds it into the engine's build and publish).
 
-## Off until turned on
+## On until turned off
 
-Its two readers are off until the user turns them on in its settings (Plugins › AI usage), and while both are off it opens no file: each set's `status` reads `off: turn on Read … in AI usage's settings` and every number "–". What it does look at when it loads is which Claude folders exist (folders only, below), so each can have readings of its own.
+Its two readers are on by default, for a plugin with no saved setting, and the user can turn either off in its settings (Plugins › AI usage; a setting the user saved, on or off, wins). While both are off it opens no file: each set's `status` reads `off: turn on Read … in AI usage's settings` and every number "–". What it does look at when it loads is which Claude folders exist (folders only, below), so each can have readings of its own.
 
 | Setting | Key | What |
 |---|---|---|
-| Read Claude Code | `readClaudeCode` | Off by default. Reads Claude Code's limits from the usage file its status line writes once connected |
-| Read Codex | `readCodex` | Off by default. Reads Codex's limits and tokens from its session logs |
+| Read Claude Code | `readClaudeCode` | On by default. Reads Claude Code's limits from the usage file its status line writes once connected |
+| Read Codex | `readCodex` | On by default. Reads Codex's limits and tokens from its session logs |
 | Other Claude folders | `otherClaudeFolders` | Claude folders besides the ones it finds, separated by `;` (`~/` is the home folder); they count in the combined Claude Code set |
 | Codex folder | `codexFolder` | Empty for the default: `CODEX_HOME` when it is set, else `~/.codex` |
 

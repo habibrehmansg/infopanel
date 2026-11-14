@@ -83,8 +83,15 @@ namespace InfoPanel.Plugins.Host
             {
                 Logger.Information("Skipped plugin type {Type}: it runs only on {Platforms}", skipped.TypeName, string.Join(", ", skipped.Platforms));
             }
-            var plugins = loaded.Plugins;
-            var pluginInfo = PluginLoader.GetPluginInfo(Path.GetDirectoryName(_pluginPath)!);
+            return await StartPluginsAsync(loaded.Plugins, PluginLoader.GetPluginInfo(Path.GetDirectoryName(_pluginPath)!));
+        }
+
+        /// <summary>
+        /// Starts <paramref name="plugins"/> and sends the catalogue, as <see cref="LoadPluginsAsync"/> does with the DLL's;
+        /// a test entry point too, for plugins a test has built itself.
+        /// </summary>
+        internal async Task<List<PluginMetadataDto>> StartPluginsAsync(IReadOnlyList<IPlugin> plugins, PluginInfo? pluginInfo)
+        {
             var descriptor = new PluginDescriptor(_pluginPath, pluginInfo);
             var metadataList = new List<PluginMetadataDto>();
             var containersByPluginId = new Dictionary<string, List<ContainerDto>>();
@@ -254,6 +261,10 @@ namespace InfoPanel.Plugins.Host
                             + imagesContainer.Entries.Sum(JsonSize.Of);
                         containerDtos.Add(imagesContainer);
                     }
+
+                    // Its own update task last, once its saved settings are applied and its image buffers handed over:
+                    // its first update sees them.
+                    await wrapper.Start();
 
                     // Listed only once everything about it converted: a plugin whose start fails isn't listed.
                     metadataList.Add(metadata);

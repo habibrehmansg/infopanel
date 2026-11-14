@@ -79,6 +79,8 @@ public class HostServiceUpdateErrorTests
         var host = new HostService("plugin.dll", logger: new LoggerConfiguration().WriteTo.Sink(log).CreateLogger());
         var wrapper = new PluginWrapper(new PluginDescriptor("plugin.dll", null), plugin);
         await wrapper.Initialize();
+        // Its own task, when it has an interval, as the host starts it once the plugin's start is done.
+        await wrapper.Start();
         host.AddInitializedWrapper(wrapper);
 
         var transport = new ErrorTransport();

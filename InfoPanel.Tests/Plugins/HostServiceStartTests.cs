@@ -112,6 +112,58 @@ public sealed class HostServiceStartTests : IDisposable
         }
     }
 
+    // The wrapper's Initialize runs the plugin's Initialize and Load and starts nothing: the plugin's own task starts only
+    // when the host starts it (Start), once the plugin's start is done.
+    [Fact]
+    public async Task A_plugins_own_task_starts_only_when_the_host_starts_it()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var plugin = new StubPlugin(TimeSpan.FromMilliseconds(1));
+        var wrapper = new PluginWrapper(new PluginDescriptor("plugin.dll", null), plugin);
+
+        try
+        {
+            await wrapper.Initialize();
+            Assert.True(wrapper.IsLoaded);
+            Assert.False(wrapper.IsRunning, "Initialize started the plugin's own task");
+
+            await wrapper.Start();
+            Assert.True(wrapper.IsRunning);
+            await plugin.Entered.Task.WaitAsync(Bound, ct);
+        }
+        finally
+        {
+            plugin.Release.TrySetResult();
+            await wrapper.StopAsync();
+        }
+    }
+
+    // The host applies a plugin's saved settings before its first update: its own task starts once they are applied. The
+    // plugin's ApplyConfig waits (up to a bound) for an update to begin, so an update that could begin before the saved
+    // settings are applied does, and sees the setting as it was; the host's order never lets one.
+    [Fact]
+    public async Task A_plugins_first_update_comes_after_its_saved_settings_are_applied()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var settings = Path.Combine(_root, "settings");
+        Directory.CreateDirectory(settings);
+        File.WriteAllText(Path.Combine(settings, "configurable.json"), """{"on": true}""");
+        var host = new HostService(Path.Combine(_root, "plugin.dll"), settings);
+        var plugin = new ConfigurablePlugin();
+
+        try
+        {
+            await host.StartPluginsAsync([plugin], null);
+
+            Assert.True(plugin.Applied);
+            Assert.True(await plugin.FirstUpdateSaw.Task.WaitAsync(Bound, ct), "the first update came before the saved settings were applied");
+        }
+        finally
+        {
+            await host.ShutdownAsync();
+        }
+    }
+
     // A plugin without an interval has no task of its own, but its Initialize or Load may have started something (a
     // timer, a connection): stopping it closes it, once.
     [Fact]
@@ -143,6 +195,7 @@ public sealed class HostServiceStartTests : IDisposable
         var writer = new PluginImageWriter("test-image", mmf, view, 4, 2);
 
         await wrapper.Initialize();
+        await wrapper.Start();
         await plugin.Entered.Task.WaitAsync(Bound, ct);
         var drop = host.DropAsync(descriptor, wrapper, [writer]);
 
@@ -189,6 +242,49 @@ public sealed class HostServiceStartTests : IDisposable
         }
 
         public void Close() => Interlocked.Increment(ref _closes);
+    }
+
+    /// <summary>
+    /// A plugin with one setting, <c>on</c> (off by default), and an interval: its first update says whether it saw the
+    /// setting on. Its ApplyConfig waits up to two seconds for an update to begin before it applies the value.
+    /// </summary>
+    private sealed class ConfigurablePlugin : IPlugin, IPluginConfigurable
+    {
+        private readonly TaskCompletionSource _updating = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private volatile bool _on;
+
+        public TaskCompletionSource<bool> FirstUpdateSaw { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool Applied { get; private set; }
+
+        public string Id => "configurable";
+        public string Name => "Configurable";
+        public string Description => "";
+        public string? ConfigFilePath => null;
+        public TimeSpan UpdateInterval => TimeSpan.FromMilliseconds(1);
+        public void Initialize() { }
+        public void Load(List<IPluginContainer> containers) { }
+        public void Update() { }
+
+        public Task UpdateAsync(CancellationToken cancellationToken)
+        {
+            // Read before the signal that releases a waiting ApplyConfig.
+            var on = _on;
+            FirstUpdateSaw.TrySetResult(on);
+            _updating.TrySetResult();
+            return Task.CompletedTask;
+        }
+
+        public void Close() { }
+
+        public IReadOnlyList<PluginConfigProperty> ConfigProperties =>
+            [new PluginConfigProperty { Key = "on", DisplayName = "On", Type = PluginConfigType.Boolean, Value = _on }];
+
+        public void ApplyConfig(string key, object? value)
+        {
+            _updating.Task.Wait(TimeSpan.FromSeconds(2));
+            _on = (bool)value!;
+            Applied = true;
+        }
     }
 
     /// <summary>

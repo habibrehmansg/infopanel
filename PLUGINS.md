@@ -521,7 +521,7 @@ Config values are automatically persisted by the host process. When a user chang
 5. **Container Setup**: `Load()` is called — register all containers and data items here
 6. **Config Restore**: If the plugin implements `IPluginConfigurable`, stored config values are applied via `ApplyConfig()` calls
 7. **Image Setup**: If `IPluginImageProvider` is implemented, `OnImageBuffersReady()` is called with writers
-8. **Updates**: `UpdateAsync()` is called every `UpdateInterval` (or `Update()` every 100 ms when it is zero or less)
+8. **Updates**: `UpdateAsync()` is called every `UpdateInterval` (or `Update()` every 100 ms when it is zero or less), the first once the steps above are done, so it sees the restored settings
 9. **Shutdown**: `Close()` is called when InfoPanel exits or the plugin is turned off or reloaded
 
 ## Examples
