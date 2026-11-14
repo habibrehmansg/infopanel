@@ -324,19 +324,95 @@ public sealed class PanelSinkTests : IAsyncLifetime
         }
     }
 
-    /// <summary>A clock frozen except when the test advances it (timers still run on real time).</summary>
+    /// <summary>
+    /// A clock frozen except when the test advances it, its timers too: each fires as <see cref="Advance"/> passes its due
+    /// time, never on real time. The engine's own timers run on it (the mock sensors' steps, the sensor hub's and the
+    /// history's), so with timers on real time a mock step landing between two of a test's ticks changed the picture, and
+    /// an unchanged frame the test expected skipped was copied (whenever a step, once a real second, fell between them).
+    /// </summary>
     private sealed class ManualClock : TimeProvider
     {
+        private readonly Lock _lock = new();
+        private readonly List<ManualTimer> _timers = [];
         private long _ticks;
 
-        public override DateTimeOffset GetUtcNow() => new DateTimeOffset(2026, 11, 7, 9, 0, 0, TimeSpan.Zero).AddTicks(Interlocked.Read(ref _ticks));
+        public override DateTimeOffset GetUtcNow() => new DateTimeOffset(2026, 11, 7, 9, 0, 0, TimeSpan.Zero).AddTicks(GetTimestamp());
 
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
 
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
-        public override long GetTimestamp() => Interlocked.Read(ref _ticks);
+        public override long GetTimestamp()
+        {
+            lock (_lock)
+                return _ticks;
+        }
 
-        public void Advance(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new ManualTimer(this, callback, state);
+            lock (_lock)
+                _timers.Add(timer);
+            timer.Change(dueTime, period);
+            return timer;
+        }
+
+        /// <summary>Moves the clock forward, firing each timer at each due time it passes, in time order.</summary>
+        public void Advance(TimeSpan by)
+        {
+            long end;
+            lock (_lock)
+                end = _ticks + by.Ticks;
+
+            while (true)
+            {
+                ManualTimer? next;
+                lock (_lock)
+                {
+                    next = _timers.Where(t => t.Due is { } due && due <= end).MinBy(t => t.Due!.Value);
+                    if (next == null)
+                    {
+                        _ticks = end;
+                        return;
+                    }
+
+                    _ticks = next.Due!.Value;
+                    next.Due = next.Period is { } period ? _ticks + period : null;
+                }
+
+                next.Fire();
+            }
+        }
+
+        private sealed class ManualTimer(ManualClock owner, TimerCallback callback, object? state) : ITimer
+        {
+            public long? Due;
+            public long? Period;
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                lock (owner._lock)
+                {
+                    Due = dueTime == Timeout.InfiniteTimeSpan ? null : owner._ticks + dueTime.Ticks;
+                    Period = period == Timeout.InfiniteTimeSpan || period == TimeSpan.Zero ? null : period.Ticks;
+                }
+
+                return true;
+            }
+
+            public void Fire() => callback(state);
+
+            public void Dispose()
+            {
+                lock (owner._lock)
+                    owner._timers.Remove(this);
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 }

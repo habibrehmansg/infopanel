@@ -365,13 +365,15 @@ public class FfmpegDiscoveryTests
 
             var (first, _) = await client.ReceiveFrameAsync(Ct, h => h.Encoding == "h264", TimeSpan.FromSeconds(15));
             Assert.Equal(("software", true), (first.Encoder, first.Keyframe));
-            var pid = Assert.Single(backend.ProcessIds);
-            Assert.True(FfmpegH264Tests.IsRunning(pid), "the stream's ffmpeg runs");
+            // The pids are this backend's own sessions (the probe's not counted). A stream may start more than one: under
+            // load it retires a session and starts the next (a keyframe owed after an episode's PNG frames, a new frame
+            // rate), so the stop is checked against every session it started, and one of them runs before it.
+            await InfoPanel.Tests.Plugins.Eventually.Until(() => backend.ProcessIds.Any(FfmpegH264Tests.IsRunning), "the stream's ffmpeg runs");
 
             // The engine stops with the client still connected, never answering the close: the stop itself ends the
             // stream and waits until its ffmpeg is killed and collected.
             withFfmpeg.Dispose();
-            Assert.False(FfmpegH264Tests.IsRunning(pid), $"ffmpeg {pid} still runs after the engine stopped");
+            Assert.All(backend.ProcessIds, pid => Assert.False(FfmpegH264Tests.IsRunning(pid), $"ffmpeg {pid} still runs after the engine stopped"));
         }
         finally
         {

@@ -118,8 +118,13 @@ public sealed class EnginePanelDevicesTests : IDisposable
     [Fact]
     public void A_read_that_gets_nothing_waits_its_whole_timeout_in_slices_and_a_cancel_ends_it_at_the_next()
     {
-        var backend = new Backend(Descriptor());
-        Seam(backend).OpenUsb(Candidate, 1, 1000, out var usb);
+        // A backend that answers at once and a deadline that never runs down: only the read's own count of the slices
+        // it has waited out can end it, and no test thread late between slices (a loaded machine) can shorten the last
+        // one, as a deadline on real time did. A fourth read fails at once instead of looping.
+        var reads = 0;
+        var backend = new Backend(Descriptor()) { OnRead = () => Assert.True(++reads <= 3, "a fourth read: the read's own count didn't end it") };
+        var seam = new EnginePanelDevices(backend, null, null, _log.Logger) { Deadlines = timeoutMs => new DeviceDeadline(() => timeoutMs) };
+        seam.OpenUsb(Candidate, 1, 1000, out var usb);
         var buffer = new byte[512];
 
         Assert.Equal(PanelDeviceStatus.Timeout, usb!.BulkRead(0x81, buffer, 250, out var read));
