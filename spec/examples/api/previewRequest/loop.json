@@ -1,0 +1,29 @@
+{
+  "document": {
+    "format": "infopanel.document/1",
+    "profile": { "name": "Load bar", "width": 120, "height": 20, "background": "#00000000" },
+    "items": [
+      {
+        "kind": "scene",
+        "id": "bar",
+        "placement": { "x": 0, "y": 0 },
+        "bindings": { "v": { "key": "infopanel:/system/cpu/load" } },
+        "scene": {
+          "format": "infopanel.scene/1",
+          "inputs": { "v": { "type": "number" } },
+          "nodes": [{ "kind": "rect", "w": { "op": "input", "name": "v" }, "h": 10, "fill": "#ffffff" }]
+        }
+      }
+    ]
+  },
+  "width": 360,
+  "answer": "loop",
+  "states": [
+    { "frames": 13, "readings": { "infopanel:/system/cpu/load": { "value": 30, "unit": "%" } } },
+    { "frames": 12, "readings": { "infopanel:/system/cpu/load": { "value": 60, "unit": "%" } } },
+    { "frames": 13, "readings": { "infopanel:/system/cpu/load": { "value": 95, "unit": "%" } } },
+    { "frames": 12, "readings": {} }
+  ],
+  "background": "#15191F",
+  "maxBytes": 393216
+}

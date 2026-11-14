@@ -111,6 +111,50 @@ public sealed record DuplicateProfileRequest
     public required string Id { get; init; }
 }
 
+/// <summary><c>POST /api/preview</c> (the schema's <c>previewRequest</c>): a document drawn with given readings, stored nowhere.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/previewRequest")]
+public sealed record PreviewRequest
+{
+    public required ImportDocument Document { get; init; }
+    public required int Width { get; init; }
+    /// <summary><c>loop</c> or <c>still</c>.</summary>
+    public required string Answer { get; init; }
+    public required IReadOnlyList<PreviewState> States { get; init; }
+    /// <summary>An opaque <c>#RRGGBB</c> every frame is drawn over; null: the document's own background.</summary>
+    public string? Background { get; init; }
+    public required long MaxBytes { get; init; }
+}
+
+[SpecDef("urn:infopanel:api:1#/$defs/previewState")]
+public sealed record PreviewState
+{
+    public required int Frames { get; init; }
+    public required IReadOnlyDictionary<string, PreviewReading> Readings { get; init; }
+}
+
+/// <summary>A preview's reading (the schema's <c>previewReading</c>): a number (<see cref="Value"/>, <see cref="Unit"/>), a text or a table.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/previewNumber", "urn:infopanel:api:1#/$defs/previewText", "urn:infopanel:api:1#/$defs/previewTable")]
+public sealed record PreviewReading
+{
+    public double? Value { get; init; }
+    public string? Unit { get; init; }
+    public string? Text { get; init; }
+    public IReadOnlyList<string>? Columns { get; init; }
+    public IReadOnlyList<IReadOnlyList<string>>? Rows { get; init; }
+}
+
+/// <summary>A preview's loop: the animated WebP in base64, its key frames, its quality and its size.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/previewLoop")]
+public sealed record PreviewLoop
+{
+    public required string Webp { get; init; }
+    public required IReadOnlyList<int> KeyFrames { get; init; }
+    /// <summary><c>lossless</c>, <c>lossy85</c> or <c>lossy70</c>.</summary>
+    public required string Quality { get; init; }
+    public required int Width { get; init; }
+    public required int Height { get; init; }
+}
+
 /// <summary>
 /// 409: a profile with the requested id already exists, or a saved device has the 1.x device id, or the family and
 /// serial, a save names.

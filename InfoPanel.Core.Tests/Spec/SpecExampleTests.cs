@@ -661,6 +661,28 @@ internal static class ApiBodyRules
                 if (body.TryGetProperty("profileRev", out var profileRev) && profileRev.GetInt64() != rev) errors.Add(("/profileRev", "rev.mismatch"));
                 break;
             }
+            case "previewRequest":
+            {
+                // 50 frames at most together; the height the width gives the canvas, 1,280 at most.
+                if (body.GetProperty("states").EnumerateArray().Sum(s => s.GetProperty("frames").GetInt32()) > 50)
+                    errors.Add(("/states", "preview.frames"));
+                var profile = body.GetProperty("document").GetProperty("profile");
+                var (_, height, _) = InfoPanel.Output.LoopRecorder.Size(profile.GetProperty("width").GetInt32(), profile.GetProperty("height").GetInt32(),
+                    body.GetProperty("width").GetInt32());
+                if (height > 1280)
+                    errors.Add(("/width", "preview.height"));
+                break;
+            }
+            case "previewLoop":
+            {
+                // The WebP decodes at the size it states, and holds a frame at every key frame it lists.
+                using var codec = SkiaSharp.SKCodec.Create(new SkiaSharp.SKMemoryStream(Convert.FromBase64String(body.GetProperty("webp").GetString()!)));
+                if (codec is null || codec.Info.Width != body.GetProperty("width").GetInt32() || codec.Info.Height != body.GetProperty("height").GetInt32())
+                    errors.Add(("/webp", "example.webp"));
+                else if (body.GetProperty("keyFrames").EnumerateArray().Any(k => k.GetInt32() >= codec.FrameCount))
+                    errors.Add(("/keyFrames", "example.webp"));
+                break;
+            }
             case "frameHeader":
             {
                 var seen = new HashSet<string>(StringComparer.Ordinal);

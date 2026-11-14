@@ -508,6 +508,23 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "GET", $"/api/profiles/{AbsentProfile}/thumbnail", 404);
         await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.Unsupported}/thumbnail", 409);
 
+        // A preview of a given document: a loop and a still, refused (422), and refused while another is drawn (409).
+        JsonObject Preview(string answer) => new()
+        {
+            ["document"] = Doc("Tour preview", 200, 100, Scene("a", 10, 10)),
+            ["width"] = 100,
+            ["answer"] = answer,
+            ["states"] = new JsonArray(new JsonObject { ["frames"] = 2, ["readings"] = new JsonObject() }),
+            ["maxBytes"] = 1024 * 1024,
+        };
+        await Send(session, "POST", "/api/preview", 200, Json(Preview("loop")));
+        await Send(session, "POST", "/api/preview", 200, Json(Preview("still")));
+        await Send(session, "POST", "/api/preview", 422, Body("{}"));
+        var previews = factory.Services.GetRequiredService<InfoPanel.Api.PreviewGate>();
+        Assert.True(previews.TryEnter());
+        await Send(session, "POST", "/api/preview", 409, Json(Preview("still")));
+        previews.Exit();
+
         // Commits, undo, redo, revert and save, with their refusals.
         await Send(session, "POST", $"/api/profiles/{id}/commit", 200, Json(CommitBody(instance, await Rev(), Place("a", 20, 20))));
         await Send(session, "POST", $"/api/profiles/{id}/commit", 409, Json(CommitBody("another-instance", await Rev(), Place("a", 30, 30))));

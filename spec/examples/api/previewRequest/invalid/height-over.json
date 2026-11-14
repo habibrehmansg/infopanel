@@ -1,0 +1,11 @@
+{
+  "document": {
+    "format": "infopanel.document/1",
+    "profile": { "name": "Tall", "width": 100, "height": 1000 },
+    "items": []
+  },
+  "width": 200,
+  "answer": "still",
+  "states": [{ "frames": 1, "readings": {} }],
+  "maxBytes": 1048576
+}

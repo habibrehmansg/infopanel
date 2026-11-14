@@ -368,6 +368,11 @@ try
     builder.Services.AddSingleton(ImportLimits.Default);
     builder.Services.AddSingleton(sp => new V1Folder(v1Root, sp.GetRequiredService<ImportLimits>()));
     builder.Services.AddSingleton<ImportGate>();
+    builder.Services.AddSingleton<PreviewGate>();
+    builder.Services.AddSingleton(new PreviewLimits());
+    // A preview's media: the stored blobs only, each recording decoding its own pictures (never the shared media cache;
+    // no video decoder: a preview plays no video).
+    builder.Services.AddSingleton(new PreviewMedia(new BlobMediaStore(workspace.Blobs)));
     // Made by a factory so the container disposes it, removing its handlers, when the host stops; the finally below
     // covers a start that fails before the host is built.
     builder.Services.AddSingleton(_ => crashLogging);
@@ -668,6 +673,7 @@ try
     app.MapPluginEndpoints();
     app.MapDisplayEndpoints();
     app.MapDeviceEndpoints();
+    app.MapPreviewEndpoints();
     app.MapPreviewSocket();
     app.MapClientFallback(webRoot);
 

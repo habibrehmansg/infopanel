@@ -1,0 +1,12 @@
+{
+  "document": {
+    "format": "infopanel.document/1",
+    "profile": { "name": "Empty", "width": 120, "height": 20 },
+    "items": []
+  },
+  "width": 240,
+  "answer": "still",
+  "states": [{ "frames": 1, "readings": {} }],
+  "background": "#15191F80",
+  "maxBytes": 1048576
+}

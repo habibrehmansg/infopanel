@@ -1,0 +1,14 @@
+{
+  "document": {
+    "format": "infopanel.document/1",
+    "profile": { "name": "Empty", "width": 120, "height": 20 },
+    "items": []
+  },
+  "width": 240,
+  "answer": "loop",
+  "states": [
+    { "frames": 30, "readings": {} },
+    { "frames": 21, "readings": {} }
+  ],
+  "maxBytes": 393216
+}

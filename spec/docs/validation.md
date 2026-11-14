@@ -92,6 +92,7 @@ Each code is reported at the value it is about ([versioning](versioning.md#error
 | `rev.mismatch` | Not a check on content: an engine API body whose revisions disagree, such as a document response whose `rev` isn't its document's ([API](api.md#checks-beyond-the-schema)). |
 | `frame.video` | Not a check on content: a frame header whose video members disagree with its `encoding` ([API](api.md#checks-beyond-the-schema)). |
 | `setting.value` | Not a check on content: a plugin setting's new value that the setting, as its plugin answers it, doesn't take: of another type, outside its range, not one of its options, or too long ([API](api.md#plugin-settings)). |
+| `preview.frames`, `preview.height`, `preview.size`, `preview.time` | Not a check on content: a preview's bounds ([API](api.md#previews)): its states' frames together over 50; the height its width gives over 1,280; no quality whose file fits its `maxBytes` (the message names the smallest size reached); drawing it took longer than the engine allows. |
 | `op.target` | `setDesign` or `setBindings` on a group. |
 | `op.parent` | An `insert` or `move` into an item that isn't a group. |
 | `op.cycle` | A group moved into itself or into something it contains. |

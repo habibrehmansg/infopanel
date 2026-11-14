@@ -63,6 +63,18 @@ public sealed class SchemaSet
     }
 
     /// <summary>
+    /// <see cref="Validate"/> for a request whose root object holds content checked on its own (a document): the
+    /// JSON-level pass is <see cref="CheckJsonMembers"/>, so each root member's nesting is counted from it and reported at
+    /// it, as a create counts its document's.
+    /// </summary>
+    public SchemaValidationResult ValidateMembers(JsonElement root, string schemaRef, int maxDepth = MaxInstanceDepth)
+    {
+        var node = Find(schemaRef) ?? throw new ArgumentException($"Unknown schema reference \"{schemaRef}\".", nameof(schemaRef));
+        var json = CheckJsonMembers(root, maxDepth);
+        return json.IsValid ? Apply(node, root) : json;
+    }
+
+    /// <summary>
     /// The schema alone, for an instance that already passed <see cref="CheckJson"/>, on its own or inside the content
     /// that was checked (a scene inside its document or commit, a create's envelope inside its body): the JSON-level pass
     /// runs once, first, and never again inside the schema.

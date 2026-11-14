@@ -271,9 +271,10 @@ public static partial class ReadEndpoints
     /// not the engine hosts plugins; <c>devices</c>, the USB panel devices' requests and message (<see cref="DeviceEndpoints"/>),
     /// listed whether or not the engine drives panels; <c>simulated.text</c>, a <c>simulated</c> subscription that makes up
     /// text and tables as well as numbers (spec/docs/api.md, "Simulated sensors"), so a client can say every value is
-    /// made up; <c>sensors.image</c>, an image sensor's picture by request (<c>GET /api/sensors/image</c>).
+    /// made up; <c>sensors.image</c>, an image sensor's picture by request (<c>GET /api/sensors/image</c>); <c>preview</c>, a
+    /// given document drawn as a loop or a still (<c>POST /api/preview</c>, <see cref="PreviewEndpoints"/>).
     /// </summary>
-    public static IReadOnlyList<string> Features { get; } = ["plugins", "devices", "simulated.text", "sensors.image"];
+    public static IReadOnlyList<string> Features { get; } = ["plugins", "devices", "simulated.text", "sensors.image", "preview"];
 
     /// <summary>What the engine reads, by format string: each format's newest minor version, its capabilities the engine has and its limits.</summary>
     public static IReadOnlyDictionary<string, SupportedFormat> FormatSupportOf(Workspace workspace) =>

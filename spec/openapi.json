@@ -861,6 +861,34 @@
         }
       }
     },
+    "/api/preview": {
+      "post": {
+        "operationId": "drawPreview",
+        "summary": "Draws a document the request gives, with readings it gives, as an animated WebP loop or a PNG still; stores nothing (the preview feature).",
+        "description": "docs/api.md#previews.",
+        "security": [{"bearer": ["edit"]}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/previewRequest"}}}},
+        "responses": {
+          "200": {
+            "description": "The loop (`answer` loop) as previewLoop, or the still (`answer` still) as a PNG; Cache-Control: no-store.",
+            "content": {
+              "application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/previewLoop"}},
+              "image/png": {}
+            }
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "409": {
+            "description": "Another preview is being drawn: the engine draws one at a time. Nothing was drawn; the client asks again.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "422": {
+            "description": "The body breaks its definition or a check beyond it (preview.frames, preview.height), the document one a create makes (under /document), no quality fits maxBytes (preview.size, its message naming the smallest size reached), or the drawing took longer than the engine allows (preview.time).",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/invalidProblem"}}}
+          }
+        }
+      }
+    },
     "/api/profiles/{id}/commit": {
       "parameters": [{"$ref": "#/components/parameters/profileId"}],
       "post": {

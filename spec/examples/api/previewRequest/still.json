@@ -1,0 +1,33 @@
+{
+  "document": {
+    "format": "infopanel.document/1",
+    "id": "5b0c2f4e-8d1a-4c3b-9e7f-2a6d8c4b1e30",
+    "profile": { "name": "Load bar", "width": 200, "height": 40 },
+    "items": [
+      {
+        "kind": "scene",
+        "id": "bar",
+        "placement": { "x": 8, "y": 8 },
+        "bindings": { "v": { "key": "infopanel:/system/cpu/load" } },
+        "scene": {
+          "format": "infopanel.scene/1",
+          "inputs": { "v": { "type": "number" } },
+          "nodes": [{ "kind": "rect", "w": { "op": "input", "name": "v" }, "h": 10, "fill": "#ffffff" }]
+        }
+      }
+    ]
+  },
+  "width": 400,
+  "answer": "still",
+  "states": [
+    {
+      "frames": 1,
+      "readings": {
+        "infopanel:/system/cpu/load": { "value": 42.5, "unit": "%" },
+        "infopanel:/system/host": { "text": "MY-PC" },
+        "infopanel:/system/processes": { "columns": ["Name", "CPU"], "rows": [["Browser", "12"], ["Mail", "4"]] }
+      }
+    }
+  ],
+  "maxBytes": 1048576
+}

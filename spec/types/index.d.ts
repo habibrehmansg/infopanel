@@ -26,7 +26,7 @@ export interface Session {
   /** When this run of the engine started, in UTC to the second. The same for the whole run, like `instance`. */
   started: Timestamp;
   /**
-   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels, `simulated.text` (a `simulated` subscription makes up text and tables as well as numbers, docs/api.md#simulated-sensors), and `sensors.image` (GET /api/sensors/image, an image sensor's picture, docs/api.md#sensor-pictures). A client ignores a name it doesn't know.
+   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels, `simulated.text` (a `simulated` subscription makes up text and tables as well as numbers, docs/api.md#simulated-sensors), `sensors.image` (GET /api/sensors/image, an image sensor's picture, docs/api.md#sensor-pictures) and `preview` (POST /api/preview, a given document drawn as a loop or a still, docs/api.md#previews). A client ignores a name it doesn't know.
    * Unique items.
    */
   features: ApiFeature[];
@@ -185,6 +185,90 @@ export interface CreateProfileFromDocument {
   /** The new profile's id, chosen by the client. */
   id: DocumentId;
   document: ImportDocument;
+}
+
+/** POST /api/preview (the preview feature): a document drawn with readings the request gives, as an animated WebP loop or a PNG still; nothing is stored (docs/api.md#previews). The document is checked as a create checks it; the states' frames together are at most 50 (else 422 preview.frames at /states), and the height the width gives at most 1,280 (else 422 preview.height at /width). */
+export interface PreviewRequest {
+  document: ImportDocument;
+  /**
+   * The picture's width in pixels; its height is the canvas height in proportion, rounded and at least 1.
+   * Range: 16–1280.
+   */
+  width: number;
+  /** `loop`: the states one after another, 10 frames a second, as an animated WebP (previewLoop). `still`: the first frame of the first state, as a PNG. */
+  answer: "loop" | "still";
+  /**
+   * The states in order, each its frames at 10 a second; the loop plays them one after another and then again.
+   * Items: 1–5.
+   */
+  states: PreviewState[];
+  /**
+   * An opaque sRGB colour, #RRGGBB, that every frame is drawn over, so the picture has no transparency; absent: the frames are as an output draws them, over the document's own background.
+   * Pattern: `^#[0-9A-Fa-f]{6}$`.
+   */
+  background?: string;
+  /**
+   * The most bytes the loop's WebP (or the still's PNG) may have: a loop is encoded at the best quality that fits, lossless, then lossy at 85 and 70; when none fits, 422 preview.size at /maxBytes.
+   * Range: 1–8388608.
+   */
+  maxBytes: number;
+}
+
+/** One state of a preview: how many frames it lasts and the reading each key gives throughout it. A key it doesn't list reads as unavailable. */
+export interface PreviewState {
+  /**
+   * Frames at 10 a second.
+   * Range: 1–50.
+   */
+  frames: number;
+  /** Readings by sensor key (a binding's key). A reading reads for an input of its type only (a number's for a number input); an input of another type reads it as unavailable. */
+  readings: { [key: string]: PreviewReading };
+}
+
+export type PreviewReading = PreviewNumber | PreviewText | PreviewTable;
+
+/** A number reading: its value (its minimum, maximum and average too) and its unit. */
+export interface PreviewNumber {
+  value: number;
+  /** Length: ≤ 64. */
+  unit?: string;
+}
+
+/** A text reading. */
+export interface PreviewText {
+  /** Length: ≤ 4096. */
+  text: string;
+}
+
+/** A table reading: its columns and rows, each row a cell's text per column. */
+export interface PreviewTable {
+  /** Items: ≤ 32. */
+  columns: string[];
+  /** Items: ≤ 100. */
+  rows: string[][];
+}
+
+/** POST /api/preview's loop: an animated WebP of the states one after another at 10 frames a second, looping, each state's first frame whole (at 0,0, the canvas's size, not blended), so it can be cut out as a still. */
+export interface PreviewLoop {
+  /**
+   * The WebP file's bytes in base64 (RFC 4648, with padding).
+   * Length: ≥ 1.
+   */
+  webp: string;
+  /** The index in the file of each state's first frame, in state order (the file's frames, not the recorded ones: frames alike in a row are one frame in the file). */
+  keyFrames: number[];
+  /** How the WebP is encoded: `lossless`, or lossy at 85 or 70, the first of these that fits maxBytes. A client treats a value it doesn't know as lossy. */
+  quality: "lossless" | "lossy85" | "lossy70";
+  /**
+   * The picture's width in pixels.
+   * Range: ≥ 1.
+   */
+  width: number;
+  /**
+   * The picture's height in pixels.
+   * Range: ≥ 1.
+   */
+  height: number;
 }
 
 /** A document (infopanel.document/1) as a create takes it: the document format with its `id` and `rev` members optional (they are ignored: the create's `id` replaces the document's) and every scene taken as stored (storedScene), so a document the engine exported, with scenes it draws as placeholders, can be created again. Its scenes are then checked as a stored document's are (docs/api.md). */
@@ -5638,6 +5722,28 @@ export interface ApiOperations {
       404: Problem;
       /** The profile's document can't be opened: its status is unsupported or unreadable. */
       409: ProfileStatusProblem;
+    };
+  };
+  /**
+   * drawPreview: Draws a document the request gives, with readings it gives, as an animated WebP loop or a PNG still; stores nothing (the preview feature).
+   *
+   * docs/api.md#previews.
+   */
+  "POST /api/preview": {
+    params: { [key: string]: never };
+    query: { [key: string]: never };
+    request: PreviewRequest;
+    responses: {
+      /** The loop (`answer` loop) as previewLoop, or the still (`answer` still) as a PNG; Cache-Control: no-store. */
+      200: PreviewLoop | "image/png";
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** Another preview is being drawn: the engine draws one at a time. Nothing was drawn; the client asks again. */
+      409: Problem;
+      /** The body breaks its definition or a check beyond it (preview.frames, preview.height), the document one a create makes (under /document), no quality fits maxBytes (preview.size, its message naming the smallest size reached), or the drawing took longer than the engine allows (preview.time). */
+      422: InvalidProblem;
     };
   };
   /**
