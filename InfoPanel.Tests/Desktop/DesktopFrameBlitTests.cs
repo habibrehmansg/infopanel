@@ -6,8 +6,9 @@ namespace InfoPanel.Tests.Desktop;
 
 /// <summary>
 /// A frame (RGBA, premultiplied) drawn into a window's BGRA pixels: swizzled byte for byte at one pixel per pixel,
-/// rows and pooled buffers honoured, anchored top-left over the floor, stretched when rendered below scale 1, and the
-/// floor (alpha 1/255) where the frame is transparent so every pixel takes clicks, or alpha 0 without it.
+/// rows and pooled buffers honoured, stretched when rendered below scale 1, a frame that doesn't fit the window
+/// stretched over the whole of it, and the floor (alpha 1/255) where the frame is transparent so every pixel takes
+/// clicks, or alpha 0 without it.
 /// </summary>
 public sealed class DesktopFrameBlitTests
 {
@@ -85,21 +86,47 @@ public sealed class DesktopFrameBlitTests
     }
 
     [Theory]
-    [InlineData(true, 1)]
-    [InlineData(false, 0)]
-    public void AFrameSmallerThanTheWindow_IsAnchoredTopLeft_TheRestAtTheFloor(bool floor, byte floorAlpha)
+    [InlineData(20, 10, true, 1)] // smaller than the window
+    [InlineData(20, 10, false, 0)]
+    [InlineData(80, 40, true, 1)] // larger
+    [InlineData(80, 40, false, 0)]
+    [InlineData(60, 10, true, 1)] // wider, shorter: each axis on its own
+    public void AFrameOfAnotherSizeThanTheWindow_IsStretchedOverTheWholeWindow(int frameWidth, int frameHeight, bool floor, byte floorAlpha)
     {
-        var frame = Frame(2, 1, (_, _) => (200, 100, 50, 255));
-        var target = Draw(frame, 4, 3, floor);
+        // Top half: the left half orange, the right half blue; bottom half transparent. In a 40×20 window each quarter is
+        // sampled well inside, away from the edges linear filtering blends.
+        var frame = Frame(frameWidth, frameHeight, (x, y) =>
+            y >= frameHeight / 2 ? ((byte)0, (byte)0, (byte)0, (byte)0)
+            : x < frameWidth / 2 ? ((byte)200, (byte)100, (byte)50, (byte)255)
+            : ((byte)10, (byte)20, (byte)230, (byte)255));
+        var target = Draw(frame, 40, 20, floor);
 
-        for (var y = 0; y < 3; y++)
-        {
-            for (var x = 0; x < 4; x++)
-            {
-                var expected = x < 2 && y < 1 ? ((byte)50, (byte)100, (byte)200, (byte)255) : ((byte)0, (byte)0, (byte)0, floorAlpha);
-                Assert.Equal(expected, At(target, 16, x, y));
-            }
-        }
+        (byte, byte, byte, byte) orange = (50, 100, 200, 255), blue = (230, 20, 10, 255), bare = (0, 0, 0, floorAlpha);
+        foreach (var (x, y) in new[] { (2, 2), (16, 7) })
+            Assert.Equal(orange, At(target, 160, x, y));
+        foreach (var (x, y) in new[] { (24, 2), (37, 7) })
+            Assert.Equal(blue, At(target, 160, x, y));
+        foreach (var (x, y) in new[] { (2, 13), (37, 17), (39, 19) })
+            Assert.Equal(bare, At(target, 160, x, y));
+    }
+
+    [Theory]
+    [InlineData(400, 200, 1f, 400, 200, true)] // exact
+    [InlineData(399, 200, 1f, 400, 200, false)] // a pixel off, either side, either axis
+    [InlineData(401, 200, 1f, 400, 200, false)]
+    [InlineData(400, 199, 1f, 400, 200, false)]
+    [InlineData(400, 201, 1f, 400, 200, false)]
+    [InlineData(200, 100, 0.5f, 400, 200, true)] // scale 0.5, exact
+    [InlineData(400, 200, 0.5f, 400, 200, false)] // the window's size, but rendered at half: it needs a stretch
+    [InlineData(201, 100, 0.5f, 400, 200, false)]
+    [InlineData(166, 100, 0.5f, 333, 201, true)] // 166.5 and 100.5 round as the frame's size did (to even)
+    [InlineData(167, 101, 0.5f, 333, 201, false)]
+    [InlineData(76, 76, 0.75f, 101, 101, true)] // 75.75 rounds up
+    [InlineData(75, 75, 0.75f, 101, 101, false)]
+    [InlineData(400, 200, 0f, 400, 200, true)] // a scale out of range is 1, as Draw takes it
+    public void Fits_IsTheFrameAtItsScale_BeingTheWindowsPixelSize(int frameWidth, int frameHeight, float scale, int width, int height, bool fits)
+    {
+        Assert.Equal(fits, DesktopFrameBlit.Fits(frameWidth, frameHeight, scale, width, height));
     }
 
     [Fact]

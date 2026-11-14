@@ -1,12 +1,15 @@
+using InfoPanel.Output;
 using SkiaSharp;
 
 namespace InfoPanel.Desktop;
 
 /// <summary>
 /// Draws a <see cref="DesktopFrame"/> (RGBA, premultiplied) into a window's BGRA, premultiplied pixels, as a desktop
-/// window shows it: the target first cleared to the floor, then the frame anchored top-left at one frame pixel per
-/// pixel, or, for a frame rendered below scale 1 (over the frame pixel cap), stretched by 1 / <c>Scale</c> with linear
-/// filtering. Skia swizzles and copies in one pass. A target larger than the frame keeps the floor outside it.
+/// window shows it: the target first cleared to the floor, then a frame that <see cref="Fits"/> the target at one frame
+/// pixel per pixel, or, for a frame rendered below scale 1 (over the frame pixel cap), stretched by 1 / <c>Scale</c>
+/// with linear filtering. A frame of any other size (one rendered before the window was resized) is stretched over the
+/// whole target, each axis on its own, filtered linearly, until one that fits arrives. Skia swizzles and copies in one
+/// pass.
 /// <para>
 /// The floor: black at alpha 1/255 (invisible on any background) when <c>floor</c> is true, so no pixel of the
 /// window is fully transparent and every pixel takes clicks, as on macOS (a layered window on Windows passes clicks
@@ -17,6 +20,21 @@ public static class DesktopFrameBlit
 {
     /// <summary>The floor colour: black at alpha 1 (premultiplied, the same).</summary>
     public static readonly SKColor Floor = new(0, 0, 0, 1);
+
+    /// <summary>
+    /// Whether a <paramref name="frameWidth"/> × <paramref name="frameHeight"/> frame rendered at
+    /// <paramref name="frameScale"/> is exactly a <paramref name="width"/> × <paramref name="height"/> target at
+    /// 1 / <c>Scale</c>: the size <see cref="FrameScale.PixelSize"/> gives the target at that scale (a scale of 1 or over,
+    /// or not above 0, is 1). Such a frame is drawn one frame pixel per pixel, or stretched by 1 / <c>Scale</c>; any
+    /// other is stretched over the whole target.
+    /// </summary>
+    public static bool Fits(int frameWidth, int frameHeight, float frameScale, int width, int height)
+    {
+        if (!(frameScale > 0 && frameScale < 1))
+            return frameWidth == width && frameHeight == height;
+        var (w, h) = FrameScale.PixelSize(frameScale, width, height);
+        return frameWidth == w && frameHeight == h;
+    }
 
     /// <summary>
     /// Draws <paramref name="frame"/> into the <paramref name="width"/> × <paramref name="height"/> BGRA premultiplied
@@ -43,15 +61,20 @@ public static class DesktopFrameBlit
         {
             using var pixmap = new SKPixmap(new SKImageInfo(frame.Width, frame.Height, SKColorType.Rgba8888, SKAlphaType.Premul), (nint)pixels, frame.RowBytes);
             using var image = SKImage.FromPixels(pixmap);
-            if (frame.Scale >= 1 || frame.Scale <= 0)
+            // Over the transparent floor nothing needs blending: copied as it is.
+            using var paint = new SKPaint { BlendMode = floor ? SKBlendMode.SrcOver : SKBlendMode.Src };
+            if (!Fits(frame.Width, frame.Height, frame.Scale, width, height))
             {
-                // One frame pixel per pixel. Over the transparent floor nothing needs blending: copied as it is.
-                using var paint = new SKPaint { BlendMode = floor ? SKBlendMode.SrcOver : SKBlendMode.Src };
+                // Another size than the window (a frame from before a resize): stretched over all of it, each axis on its own.
+                canvas.DrawImage(image, new SKRect(0, 0, width, height), new SKSamplingOptions(SKFilterMode.Linear), paint);
+            }
+            else if (frame.Scale >= 1 || frame.Scale <= 0)
+            {
+                // One frame pixel per pixel.
                 canvas.DrawImage(image, 0, 0, new SKSamplingOptions(SKFilterMode.Nearest), paint);
             }
             else
             {
-                using var paint = new SKPaint { BlendMode = floor ? SKBlendMode.SrcOver : SKBlendMode.Src };
                 var dest = new SKRect(0, 0, frame.Width / frame.Scale, frame.Height / frame.Scale);
                 canvas.DrawImage(image, dest, new SKSamplingOptions(SKFilterMode.Linear), paint);
             }

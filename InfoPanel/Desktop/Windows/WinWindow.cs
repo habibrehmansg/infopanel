@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using InfoPanel.Output;
 using Serilog;
 using SkiaSharp;
 
@@ -23,9 +24,13 @@ namespace InfoPanel.Desktop.Windows;
 /// window is turned off.</item>
 /// <item>Frames: a per-pixel-alpha layered window updated by <c>UpdateLayeredWindow</c> from a top-down 32-bit BGRA
 /// premultiplied DIB section the window's size, which <see cref="DesktopFrameBlit"/> draws into over the floor (alpha
-/// 1/255, so every pixel takes clicks unless click-through is on, as on macOS). A resize carries the shown pixels over, top-left, the rest at the
-/// floor. A DIB that can't be allocated is logged once and the window stays as it was. A failed update (a disconnected
-/// session) is logged once and tried again with the same pixels every half second until one succeeds, since a static
+/// 1/255, so every pixel takes clicks unless click-through is on, as on macOS); a frame of another size than the window
+/// is stretched over all of it. In the system's size loop (a press on an edge or corner) the window keeps a copy of the
+/// picture shown (scaled down to within <see cref="FrameScale.MaxPixels"/> when the window is larger; one that can't be
+/// taken is logged and the loop goes without it), taken at the press and replaced by each frame shown in the loop, and
+/// stretches it over the window at each size change; the copy is dropped when the loop returns. Any other resize (<see cref="SetFrame"/>) carries the
+/// shown pixels over, top-left, the rest at the floor. A DIB that can't be allocated is logged once and the window stays
+/// as it was. A failed update (a disconnected session) is logged once and tried again with the same pixels every half second until one succeeds, since a static
 /// panel sends no new frame; a retry message still waiting once one has succeeded is ignored.</item>
 /// <item>Drag and resize: <c>WM_NCHITTEST</c> answers an edge or corner within the resize band when resizable, else the
 /// caption when movable, else the client (<see cref="WinHitTest"/>), so Windows runs its own move or size loop and shows
@@ -96,6 +101,10 @@ internal sealed unsafe class WinWindow : IDesktopWindow
     private bool _settingFrame;
     private bool _inLoop;
     private bool _pressed;
+
+    // During the system's size loop only: a copy of the picture shown (at the press, then each frame shown in the loop),
+    // stretched over the window at each size change. Null outside a size loop.
+    private DesktopFrame? _sizingPicture;
 
     // The desktop level: set around the engine's own z-order changes, which the guard lets through.
     private bool _placing;
@@ -226,6 +235,12 @@ internal sealed unsafe class WinWindow : IDesktopWindow
 
     /// <summary>For tests: replaces the system's move and size loop (<c>DefWindowProc</c> of the press), given its wParam and lParam.</summary>
     internal Action<nint, nint>? SystemLoop { get; set; }
+
+    /// <summary>For tests: the picture kept for the size loop in progress, null outside one or with no copy.</summary>
+    internal DesktopFrame? SizingPicture => _sizingPicture;
+
+    /// <summary>For tests: run first in taking the size loop's picture copy (a test makes it throw, as an allocation failure would).</summary>
+    internal Action? BeforePictureCopy { get; set; }
 
     /// <summary>Never raised: the scale is always 1.</summary>
     public event Action? BackingScaleChanged
@@ -421,6 +436,8 @@ internal sealed unsafe class WinWindow : IDesktopWindow
 
         DesktopFrameBlit.Draw(frame, (nint)_bits, _width, _height, _dibWidth * 4, TransparentPixelsTakeClicks);
         _hasContent = true;
+        if (_sizingPicture is not null)
+            _sizingPicture = frame with { Pixels = frame.Pixels.AsSpan(0, frame.RowBytes * frame.Height).ToArray() };
         Present();
     }
 
@@ -714,6 +731,8 @@ internal sealed unsafe class WinWindow : IDesktopWindow
         _inLoop = true;
         try
         {
+            if ((int)wParam is >= WinHitTest.HTLEFT and <= WinHitTest.HTBOTTOMRIGHT)
+                _sizingPicture = TakeShownPicture();
             if (SystemLoop is { } loop)
                 loop(wParam, lParam);
             else
@@ -722,10 +741,65 @@ internal sealed unsafe class WinWindow : IDesktopWindow
         finally
         {
             _inLoop = false;
+            _sizingPicture = null;
         }
 
         UserMoved?.Invoke();
         return 0;
+    }
+
+    /// <summary>
+    /// <see cref="ShownPicture"/> for the size loop's start: a copy that can't be taken (an allocation failure) is
+    /// logged and the loop goes on without one, the window carrying its pixels as before.
+    /// </summary>
+    private DesktopFrame? TakeShownPicture()
+    {
+        try
+        {
+            return ShownPicture();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning(ex, "A desktop window's picture couldn't be copied for its resize; it carries its pixels over instead");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A copy of the window's pixels as shown (RGBA premultiplied), for the size loop to stretch: the window's size, or,
+    /// for a window over <see cref="FrameScale.MaxPixels"/>, the picture scaled down to within it, keeping its aspect.
+    /// Null when nothing is shown yet.
+    /// </summary>
+    private DesktopFrame? ShownPicture()
+    {
+        var (width, height) = (Math.Min(_shownWidth, _dibWidth), Math.Min(_shownHeight, _dibHeight));
+        if (!_hasContent || _bits == null || width <= 0 || height <= 0)
+            return null;
+
+        var (copyWidth, copyHeight) = (width, height);
+        if ((long)width * height > FrameScale.MaxPixels)
+        {
+            var scale = Math.Sqrt(FrameScale.MaxPixels / ((double)width * height));
+            copyWidth = Math.Max(1, (int)(width * scale));
+            copyHeight = Math.Max(1, (int)(height * scale));
+            while ((long)copyWidth * copyHeight > FrameScale.MaxPixels)
+                (copyWidth, copyHeight) = copyWidth > copyHeight ? (copyWidth - 1, copyHeight) : (copyWidth, copyHeight - 1);
+        }
+
+        BeforePictureCopy?.Invoke();
+        var pixels = new byte[copyWidth * copyHeight * 4];
+        using var shown = new SKPixmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul), (nint)_bits, _dibWidth * 4);
+        fixed (byte* copy = pixels)
+        {
+            using var target = new SKPixmap(new SKImageInfo(copyWidth, copyHeight, SKColorType.Rgba8888, SKAlphaType.Premul), (nint)copy, copyWidth * 4);
+            var done = copyWidth == width && copyHeight == height
+                ? shown.ReadPixels(target)
+                : shown.ScalePixels(target, new SKSamplingOptions(SKFilterMode.Linear));
+            if (!done)
+                return null;
+        }
+
+        return new DesktopFrame(pixels, copyWidth, copyHeight, copyWidth * 4);
     }
 
     /// <summary>A press on the client (a window that doesn't move): held, with the mouse, until its release.</summary>
@@ -747,8 +821,9 @@ internal sealed unsafe class WinWindow : IDesktopWindow
     }
 
     /// <summary>
-    /// The window's size changed other than through <see cref="SetFrame"/>: its pixels follow, carried over, and during
-    /// the system's size loop each change is reported (<see cref="UserResized"/>).
+    /// The window's size changed other than through <see cref="SetFrame"/>: its pixels follow (in the system's size loop
+    /// the picture stretched over the window, else carried over), and during the loop each change is reported
+    /// (<see cref="UserResized"/>).
     /// </summary>
     private void OnSized()
     {
@@ -763,8 +838,21 @@ internal sealed unsafe class WinWindow : IDesktopWindow
             return;
 
         (_width, _height) = (width, height);
-        if (_hasContent && EnsureDib(carry: true))
+        if (_sizingPicture is { } picture)
+        {
+            // The system's size loop: the picture stretched over the whole window, from the copy (never the DIB stretched
+            // again, which would blur more at each step).
+            if (EnsureDib(carry: false))
+            {
+                DesktopFrameBlit.Draw(picture, (nint)_bits, _width, _height, _dibWidth * 4, TransparentPixelsTakeClicks);
+                Present();
+            }
+        }
+        else if (_hasContent && EnsureDib(carry: true))
+        {
             Present();
+        }
+
         if (_inLoop)
             UserResized?.Invoke();
     }

@@ -121,7 +121,9 @@ public interface IDesktopWindow : IDisposable
 
     /// <summary>
     /// Shows <paramref name="frame"/> anchored top-left at one frame pixel per backing pixel, or, rendered at a
-    /// <see cref="DesktopFrame.Scale"/> below 1, stretched by 1 / <c>Scale</c> to fill the window. The pixels are copied.
+    /// <see cref="DesktopFrame.Scale"/> below 1, stretched by 1 / <c>Scale</c> to fill the window. A frame that doesn't fit
+    /// the window (<see cref="DesktopFrameBlit.Fits"/>: one rendered before a resize) fills it, stretched. The pixels are
+    /// copied.
     /// </summary>
     void ShowFrame(DesktopFrame frame);
 

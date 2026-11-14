@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.Versioning;
 using InfoPanel.Desktop;
 using InfoPanel.Desktop.Windows;
+using InfoPanel.Output;
 using Xunit;
 
 namespace InfoPanel.Tests.Desktop.Windows;
@@ -16,7 +17,8 @@ namespace InfoPanel.Tests.Desktop.Windows;
 /// <item>A window: exactly a layered tool popup that never activates, topmost when asked, per-monitor DPI aware (v2), as
 /// large as 16,384 pixels whatever the screens (its track sizes too), keeping its pixel size when the DPI changes, deaf
 /// to <c>WM_CLOSE</c>; a failed update tried again until one succeeds, a retry already waiting then ignored; grown
-/// again, the floor where its last frame didn't reach.</item>
+/// again, the floor where its last frame didn't reach; resized from an edge, its picture and the frames shown meanwhile
+/// stretched over it.</item>
 /// </list>
 /// </summary>
 public sealed class WinUiThreadTests
@@ -451,6 +453,164 @@ public sealed class WinUiThreadTests
         {
             thread.Stop(TimeSpan.FromSeconds(5));
         }
+    }
+
+    [Fact]
+    public async Task AWindowResizedFromAnEdge_ShowsItsPictureStretched_AndTheFramesThatCome()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        if (OperatingSystem.IsWindows())
+            await StretchedInTheSizeLoop();
+    }
+
+    /// <summary>
+    /// Red and blue halves at 400×200; a press on the right edge, whose size loop grows the window to 600×200, shows a
+    /// newer frame (green and yellow, still 400×200: the profile's size changes only at the release), then grows it to
+    /// 800×300. The grown area is the right half's colour, stretched, never the floor, and the newer frame's once shown.
+    /// After the loop a <c>SetFrame</c> carries again: the floor where the picture didn't reach.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static async Task StretchedInTheSizeLoop()
+    {
+        const uint red = 0xFFFF0000, blue = 0xFF0000FF, green = 0xFF00FF00, yellow = 0xFFFFFF00, floor = 0x01000000;
+        const uint WM_NCLBUTTONDOWN = 0x00A1;
+        const uint size = Win32.SWP_NOACTIVATE | Win32.SWP_NOZORDER | Win32.SWP_NOMOVE;
+        var thread = new WinUiThread();
+        try
+        {
+            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(-30_000, -30_000, 400, 200)));
+            await On(thread, () => window.ShowFrame(Halves(400, 200, (255, 0, 0), (0, 0, 255))));
+            var seen = new List<(uint Left, uint Right, uint Corner)>();
+            await On(thread, () => window.SystemLoop = (_, _) =>
+            {
+                Win32.SetWindowPos(window.Handle, 0, 0, 0, 600, 200, size);
+                seen.Add((window.PixelAt(100, 100), window.PixelAt(550, 100), window.PixelAt(595, 195)));
+                window.ShowFrame(Halves(400, 200, (0, 255, 0), (255, 255, 0)));
+                seen.Add((window.PixelAt(100, 100), window.PixelAt(550, 100), window.PixelAt(595, 195)));
+                Win32.SetWindowPos(window.Handle, 0, 0, 0, 800, 300, size);
+                seen.Add((window.PixelAt(100, 250), window.PixelAt(750, 100), window.PixelAt(795, 295)));
+            });
+
+            WinTestInterop.SendMessageW(window.Handle, WM_NCLBUTTONDOWN, WinHitTest.HTRIGHT, IntPtr.Zero);
+            Assert.Equal([(red, blue, blue), (green, yellow, yellow), (green, yellow, yellow)], seen);
+
+            await On(thread, () => window.SetFrame(new PointRect(-30_000, -30_000, 1000, 300)));
+            Assert.Equal((yellow, floor), await On(thread, () => (window.PixelAt(750, 100), window.PixelAt(950, 100))));
+            await On(thread, window.Dispose);
+        }
+        finally
+        {
+            thread.Stop(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
+    public async Task ThePictureCopiedForTheSizeLoop_OfAVeryLargeWindow_IsWithinTheFramePixelCap()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        if (OperatingSystem.IsWindows())
+            await CopyWithinTheCap();
+    }
+
+    /// <summary>
+    /// A 5000×4000 window (20 Mpx, over <see cref="FrameScale.MaxPixels"/>) pressed on its right edge: the copy it keeps is
+    /// within the cap, keeps the window's aspect and its halves' colours, and the window grown in the loop shows the right
+    /// half's colour stretched over the new area.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static async Task CopyWithinTheCap()
+    {
+        const uint blue = 0xFF0000FF;
+        const uint WM_NCLBUTTONDOWN = 0x00A1;
+        var thread = new WinUiThread();
+        try
+        {
+            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(-30_000, -30_000, 5000, 4000)));
+            await On(thread, () => window.ShowFrame(Halves(5000, 4000, (255, 0, 0), (0, 0, 255))));
+            DesktopFrame? copy = null;
+            uint grown = 0;
+            await On(thread, () => window.SystemLoop = (_, _) =>
+            {
+                copy = window.SizingPicture;
+                Win32.SetWindowPos(window.Handle, 0, 0, 0, 5100, 4000, Win32.SWP_NOACTIVATE | Win32.SWP_NOZORDER | Win32.SWP_NOMOVE);
+                grown = window.PixelAt(5050, 100);
+            });
+
+            WinTestInterop.SendMessageW(window.Handle, WM_NCLBUTTONDOWN, WinHitTest.HTRIGHT, IntPtr.Zero);
+
+            Assert.NotNull(copy);
+            var pixels = (long)copy.Width * copy.Height;
+            Assert.InRange(pixels, FrameScale.MaxPixels / 2, FrameScale.MaxPixels);
+            Assert.True(Math.Abs(copy.Width / (double)copy.Height - 5000 / 4000.0) < 0.01, $"{copy.Width}×{copy.Height}");
+            Assert.True(copy.Pixels.Length >= (long)copy.RowBytes * copy.Height);
+            Assert.Equal(new byte[] { 255, 0, 0, 255 }, copy.Pixels[(10 * copy.RowBytes + 10 * 4)..(10 * copy.RowBytes + 10 * 4 + 4)]);
+            Assert.Equal(new byte[] { 0, 0, 255, 255 }, copy.Pixels[(10 * copy.RowBytes + (copy.Width - 10) * 4)..(10 * copy.RowBytes + (copy.Width - 10) * 4 + 4)]);
+            Assert.Equal(blue, grown);
+            await On(thread, window.Dispose);
+        }
+        finally
+        {
+            thread.Stop(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
+    public async Task APictureCopyThatFails_LeavesTheSizeLoopRunning_AndTheWindowFree()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
+        if (OperatingSystem.IsWindows())
+            await CopyFails();
+    }
+
+    /// <summary>
+    /// The copy taken at the press throws (an allocation failure): the loop still runs, with no copy, and ends with the
+    /// window free (not moving, <see cref="WinWindow.UserMoved"/> raised); the next press runs a loop of its own, with a copy.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static async Task CopyFails()
+    {
+        const uint WM_NCLBUTTONDOWN = 0x00A1;
+        var thread = new WinUiThread();
+        try
+        {
+            var window = await On(thread, () => new WinWindow(new DesktopWindowStyle(WindowLevel.Normal, true, true), new PointRect(-30_000, -30_000, 400, 200)));
+            await On(thread, () => window.ShowFrame(Solid(400, 200, 255, 0, 0)));
+            var loops = new List<(bool Moving, bool HasCopy)>();
+            var moved = 0;
+            await On(thread, () =>
+            {
+                window.UserMoved += () => moved++;
+                window.SystemLoop = (_, _) => loops.Add((window.UserMoving, window.SizingPicture is not null));
+                window.BeforePictureCopy = () => throw new OutOfMemoryException("a test's allocation failure");
+            });
+
+            WinTestInterop.SendMessageW(window.Handle, WM_NCLBUTTONDOWN, WinHitTest.HTRIGHT, IntPtr.Zero);
+            Assert.Equal([(true, false)], loops);
+            Assert.Equal((1, false), (moved, await On(thread, () => window.UserMoving)));
+
+            await On(thread, () => window.BeforePictureCopy = null);
+            WinTestInterop.SendMessageW(window.Handle, WM_NCLBUTTONDOWN, WinHitTest.HTRIGHT, IntPtr.Zero);
+            Assert.Equal([(true, false), (true, true)], loops);
+            Assert.Equal((2, false), (moved, await On(thread, () => window.UserMoving)));
+            await On(thread, window.Dispose);
+        }
+        finally
+        {
+            thread.Stop(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    /// <summary>An opaque frame, its left half one colour and its right half another.</summary>
+    private static DesktopFrame Halves(int width, int height, (byte R, byte G, byte B) left, (byte R, byte G, byte B) right)
+    {
+        var pixels = new byte[width * height * 4];
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            var (r, g, b) = i / 4 % width < width / 2 ? left : right;
+            (pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]) = (r, g, b, 255);
+        }
+
+        return new DesktopFrame(pixels, width, height, width * 4);
     }
 
     /// <summary>An opaque frame of one colour.</summary>
