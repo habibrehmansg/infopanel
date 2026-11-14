@@ -7,9 +7,11 @@ namespace InfoPanel.AiUsage;
 /// and how old the numbers are, as readings (docs/2.0/ai-usage.md). Its readers are off until the user turns them on
 /// (Read Claude Code, Read Codex); while both are off it opens no file. It reads only usage numbers, never message text,
 /// and logs folder names and field paths, never a path below them or a value. Readings it can't give are NaN, which
-/// InfoPanel shows as "–", with the set's <c>status</c> saying why.
+/// InfoPanel shows as "–", with the set's <c>status</c> saying why. Its two actions, Connect Claude Code limits and
+/// Disconnect, put a wrapper in Claude Code's status line and take it out (<see cref="ClaudeConnect"/>), each shown
+/// before it runs.
 /// </summary>
-public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable
+public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable, IPluginActionStates
 {
     public const string PluginId = "ai-usage";
 
@@ -29,20 +31,26 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable
     private readonly Dictionary<string, LimitEntries> _folderEntries = new(StringComparer.Ordinal);
     private readonly object _refreshLock = new();
     private readonly object _settingsLock = new();
+    private readonly object _connectLock = new();
     private IReadOnlyList<ClaudeFolder> _claudeFolders = [];
     private volatile Settings _settings = new(false, false, "", "");
 
-    public AiUsagePlugin() : this(UsageEnvironment.Default())
+    public AiUsagePlugin() : this(UsageEnvironment.Default(), ConnectPlaces.Default())
     {
     }
 
-    internal AiUsagePlugin(UsageEnvironment env)
+    /// <param name="places">Where Connect looks for the organisation's settings; none when not given, so a test never reads this computer's.</param>
+    internal AiUsagePlugin(UsageEnvironment env, ConnectPlaces? places = null)
         : base(PluginId, "AI usage", "Claude Code's and Codex's limits: how much of each five-hour and weekly window is used, when it resets and how old the number is.")
     {
         _env = env;
         _codex = new CodexReader(env);
         _claude = new LimitsReader(env);
+        Connector = new ClaudeConnect(env, places ?? ConnectPlaces.None);
     }
+
+    /// <summary>Connect Claude Code limits and Disconnect.</summary>
+    internal ClaudeConnect Connector { get; }
 
     public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(5);
 
@@ -133,6 +141,43 @@ public sealed class AiUsagePlugin : BasePlugin, IPluginConfigurable
                 _folderEntries[folder.ContainerId].Show(claude.Folders.TryGetValue(folder.Path, out var reading) ? reading : LimitsReading.None(LimitsReader.NotConnected, "not connected"), now, zone);
         }
     }
+
+    /// <summary>
+    /// Puts InfoPanel's wrapper in Claude Code's status line, in each Claude folder's settings file (shared files once),
+    /// so Claude Code's limits reach the usage files this plugin reads; shown before it runs (<see cref="Describe"/>).
+    /// </summary>
+    [PluginAction("Connect Claude Code limits")]
+    public void ConnectClaudeCodeLimits()
+    {
+        lock (_connectLock)
+            Connector.Connect(ConnectFolders(), _settings.ReadClaudeCode);
+    }
+
+    /// <summary>Puts each status line Connect changed back as it was, and removes the wrappers.</summary>
+    [PluginAction("Disconnect Claude Code limits")]
+    public void DisconnectClaudeCodeLimits()
+    {
+        lock (_connectLock)
+            Connector.Disconnect(ConnectFolders(), _settings.ReadClaudeCode);
+    }
+
+    /// <summary>Connect's and Disconnect's states and confirmations; the other actions have none.</summary>
+    public PluginActionState? Describe(string method)
+    {
+        lock (_connectLock)
+        {
+            return method switch
+            {
+                nameof(ConnectClaudeCodeLimits) => Connector.DescribeConnect(ConnectFolders(), _settings.ReadClaudeCode),
+                nameof(DisconnectClaudeCodeLimits) => Connector.DescribeDisconnect(ConnectFolders(), _settings.ReadClaudeCode),
+                _ => null,
+            };
+        }
+    }
+
+    /// <summary>The Claude folders Connect works on: those found at load and those Other Claude folders names.</summary>
+    private List<ClaudeFolder> ConnectFolders() =>
+        [.. _claudeFolders, .. Folders.OtherClaude(_env, _settings.OtherClaudeFolders, _claudeFolders)];
 
     /// <summary>A reader's answer; past a failure it didn't expect, <paramref name="failed"/>'s, with the failure logged by its kind.</summary>
     private static T Guarded<T>(Func<T> read, CancellationToken cancel, Func<string, T> failed)
