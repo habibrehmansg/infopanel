@@ -7,7 +7,7 @@ namespace InfoPanel.Plugins;
 /// What a package's <c>PluginInfo.ini</c> says of it, read by the engine when it finds the package (never through the
 /// loader's ini parser): the <c>[PluginInfo]</c> section's <c>Name</c> (else the folder's name), <c>Description</c>,
 /// <c>Author</c>, <c>Version</c>, <c>Website</c> (only an <c>http</c> or <c>https</c> URL) and <c>Platforms</c>, the
-/// operating systems it runs on, in lower case (empty: anywhere).
+/// operating systems it runs on, in lower case (empty: anywhere); and its <c>Access</c> lines (<see cref="Access"/>).
 /// </summary>
 public sealed record PluginPackageInfo(string Name, string? Version, string? Author, string? Description, string? Website, IReadOnlyList<string> Platforms)
 {
@@ -15,6 +15,16 @@ public sealed record PluginPackageInfo(string Name, string? Version, string? Aut
 
     /// <summary>The largest <c>PluginInfo.ini</c> read (64 KiB).</summary>
     public const int MaxBytes = 64 * 1024;
+
+    /// <summary>The most <see cref="Access"/> lines kept; the rest are left out.</summary>
+    public const int MaxAccessLines = 8;
+
+    /// <summary>
+    /// What the package says its plugins read or change, one line each, in the order written: its section's <c>Access</c>
+    /// keys, each line cut to <see cref="PluginLimits.NameChars"/>, empty ones left out, at most
+    /// <see cref="MaxAccessLines"/>. Declared, not enforced: a client shows them with the package.
+    /// </summary>
+    public IReadOnlyList<string> Access { get; init; } = [];
 
     private const string Section = "PluginInfo";
 
@@ -27,9 +37,9 @@ public sealed record PluginPackageInfo(string Name, string? Version, string? Aut
     // A record's equality would compare the list by reference.
     public bool Equals(PluginPackageInfo? other) =>
         other is not null && Name == other.Name && Version == other.Version && Author == other.Author && Description == other.Description
-        && Website == other.Website && Platforms.SequenceEqual(other.Platforms);
+        && Website == other.Website && Platforms.SequenceEqual(other.Platforms) && Access.SequenceEqual(other.Access);
 
-    public override int GetHashCode() => HashCode.Combine(Name, Version, Author, Description, Website, Platforms.Count);
+    public override int GetHashCode() => HashCode.Combine(Name, Version, Author, Description, Website, Platforms.Count, Access.Count);
 
     /// <summary>
     /// Reads <c>{directory}/PluginInfo.ini</c>: a regular file, not a link, of at most <see cref="MaxBytes"/>, UTF-8 with
@@ -66,6 +76,7 @@ public sealed record PluginPackageInfo(string Name, string? Version, string? Aut
             text = text[1..];
 
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var access = new List<string>();
         var inSection = false;
         foreach (var raw in text.Split('\n'))
         {
@@ -81,7 +92,15 @@ public sealed record PluginPackageInfo(string Name, string? Version, string? Aut
             var equals = line.IndexOf('=');
             if (!inSection || equals <= 0)
                 continue;
-            values.TryAdd(line[..equals].Trim(), line[(equals + 1)..].Trim());
+            var (key, value) = (line[..equals].Trim(), line[(equals + 1)..].Trim());
+            // Access is the one key written once a line.
+            if (string.Equals(key, "Access", StringComparison.OrdinalIgnoreCase))
+            {
+                if (value.Length > 0 && access.Count < MaxAccessLines)
+                    access.Add(value.Length > limits.NameChars ? value[..limits.NameChars] : value);
+                continue;
+            }
+            values.TryAdd(key, value);
         }
 
         string? Value(string key, int chars) =>
@@ -99,7 +118,10 @@ public sealed record PluginPackageInfo(string Name, string? Version, string? Aut
             Value("Author", limits.NameChars),
             Value("Description", limits.TextChars),
             WebsiteOf(values.GetValueOrDefault("Website"), limits.NameChars),
-            platforms);
+            platforms)
+        {
+            Access = access,
+        };
     }
 
     /// <summary>The website when it is an absolute <c>http</c> or <c>https</c> URL with a host, within <paramref name="chars"/>; else null (never cut into another address).</summary>

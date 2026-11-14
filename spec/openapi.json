@@ -463,13 +463,35 @@
           "schema": {"type": "string"}
         }
       ],
-      "post": {
-        "operationId": "runPluginAction",
-        "summary": "Asks a plugin to run one of the actions it lists, through its package's host as it runs then.",
+      "get": {
+        "operationId": "getPluginActionState",
+        "summary": "An action's state: whether it can run now, its line and its confirmation as its plugin describes them, and whether a run of it is under way.",
         "description": "docs/api.md#plugin-actions.",
         "security": [{"bearer": ["session"]}],
         "responses": {
-          "202": {"description": "The request was sent to the host; the engine doesn't wait for the action. An error it meets is the package's (pluginPackage's `errors`)."},
+          "200": {
+            "description": "Its state, asked of the package's host as it runs (enabled, with no state or confirmation, for a plugin that doesn't describe its actions).",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/pluginActionState"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {
+            "description": "No package in that folder, its running host lists no plugin with that id, or the plugin lists no action of that name.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          },
+          "409": {
+            "description": "The package's host isn't running, or didn't answer within 10 seconds.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      },
+      "post": {
+        "operationId": "runPluginAction",
+        "summary": "Asks a plugin to run one of the actions it lists, through its package's host as it runs then, when its state says it can.",
+        "description": "docs/api.md#plugin-actions.",
+        "security": [{"bearer": ["session"]}],
+        "responses": {
+          "202": {"description": "The host has started the action; the engine doesn't wait for it to end (its state's `running` says when it has). An error it meets is the package's (pluginPackage's `errors`)."},
           "401": {"$ref": "#/components/responses/unauthorized"},
           "403": {"$ref": "#/components/responses/forbidden"},
           "404": {
@@ -477,7 +499,7 @@
             "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
           },
           "409": {
-            "description": "The package's host isn't running.",
+            "description": "The package's host isn't running or didn't answer within 10 seconds, or the action can't run now: its state isn't `enabled` (and says why), and it wasn't run.",
             "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
           }
         }

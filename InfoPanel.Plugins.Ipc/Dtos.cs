@@ -31,6 +31,22 @@ namespace InfoPanel.Plugins.Ipc
         public string DisplayName { get; set; } = "";
     }
 
+    /// <summary>An action's state, as the plugin describes it (<c>IPluginActionStates</c>), and whether it runs now.</summary>
+    public class ActionStateDto
+    {
+        public bool Enabled { get; set; } = true;
+        public string? State { get; set; }
+        public ActionConfirmDto? Confirm { get; set; }
+        public bool Running { get; set; }
+    }
+
+    /// <summary>What a person confirms before an action runs: a title and plain text.</summary>
+    public class ActionConfirmDto
+    {
+        public string Title { get; set; } = "";
+        public string Text { get; set; } = "";
+    }
+
     public class ContainerDto
     {
         public string Id { get; set; } = "";

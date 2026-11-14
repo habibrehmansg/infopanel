@@ -841,6 +841,8 @@ public sealed record PluginPackageBody
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? Website { get; init; }
     public required bool Bundled { get; init; }
     public required IReadOnlyList<string> Platforms { get; init; }
+    /// <summary>What it says it reads or changes, its PluginInfo.ini's <c>Access</c> lines; null (absent) when none.</summary>
+    public IReadOnlyList<string>? Access { get; init; }
     public required bool On { get; init; }
     public required string State { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required PluginReasonBody? Reason { get; init; }
@@ -877,6 +879,24 @@ public sealed record PluginActionBody
 {
     public required string Method { get; init; }
     public required string Name { get; init; }
+}
+
+/// <summary>An action's state now: whether it can run, one line for people, the confirmation before it runs, whether it runs.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginActionState")]
+public sealed record PluginActionStateBody
+{
+    public required bool Enabled { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required string? State { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)] public required PluginActionConfirmBody? Confirm { get; init; }
+    public required bool Running { get; init; }
+}
+
+/// <summary>What a person confirms before an action runs, in the plugin's words: a title and plain text.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/pluginActionConfirm")]
+public sealed record PluginActionConfirmBody
+{
+    public required string Title { get; init; }
+    public required string Text { get; init; }
 }
 
 /// <summary>An error of a package's: when (UTC, milliseconds), from which plugin (null: the package's own), and what.</summary>

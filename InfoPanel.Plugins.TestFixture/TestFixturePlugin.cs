@@ -4,12 +4,14 @@ using InfoPanel.Plugins;
 namespace InfoPanel.TestFixture;
 
 /// <summary>
-/// The engine tests' plugin: a sensor, a text and a table in a container, a sensor in an ephemeral container, two actions
-/// (Reset counter; Report an error, which throws), and a setting of each type, its Label setting, when applied, becoming
-/// its Status text (a setting changing a reading live); it logs two lines as it starts (<see cref="StartedLine"/> and, at
-/// Debug, <see cref="DebugLine"/>); <see cref="FixtureMode"/> makes it misbehave on request, or adds a picture (<c>image</c>).
+/// The engine tests' plugin: a sensor, a text and a table in a container, a sensor in an ephemeral container, actions
+/// with their states (<see cref="Describe"/>: Reset counter, which asks first; Report an error, which throws; Connect
+/// elsewhere, which can't run; Hold, which runs until Release), and a setting of each type, its Label setting, when
+/// applied, becoming its Status text (a setting changing a reading live); it logs two lines as it starts
+/// (<see cref="StartedLine"/> and, at Debug, <see cref="DebugLine"/>); <see cref="FixtureMode"/> makes it misbehave on
+/// request, or adds a picture (<c>image</c>).
 /// </summary>
-public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
+public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable, IPluginActionStates
 {
     public const string DefaultId = "test-fixture";
 
@@ -120,6 +122,38 @@ public sealed class TestFixturePlugin : BasePlugin, IPluginConfigurable
 
     [PluginAction("Reset counter")]
     public void ResetCounter() => _counter.Value = 0;
+
+    /// <summary>The disabled action's state line.</summary>
+    public const string ElsewhereState = "Not possible in the test fixture";
+
+    /// <summary>Its state says it can't run, so the host never runs it; if it ran, it would report an error.</summary>
+    [PluginAction("Connect elsewhere")]
+    public void ConnectElsewhere() => throw new InvalidOperationException("fixture: a disabled action ran");
+
+    // Each Release lets one Hold end (one waiting now, or the next to start).
+    private readonly SemaphoreSlim _releases = new(0);
+
+    /// <summary>Runs until Release runs (at most a minute): an action that reads running meanwhile.</summary>
+    [PluginAction("Hold")]
+    public void Hold() => _releases.Wait(TimeSpan.FromMinutes(1));
+
+    [PluginAction("Release")]
+    public void Release() => _releases.Release();
+
+    /// <summary>
+    /// Reset counter says where the counter is and asks first; Connect elsewhere can't run; the others are enabled, with
+    /// no state and no confirmation.
+    /// </summary>
+    public PluginActionState? Describe(string method) => method switch
+    {
+        nameof(ResetCounter) => new PluginActionState
+        {
+            State = $"Counter at {_counter.Value:0}",
+            Confirm = new PluginActionConfirmation { Title = "Reset the counter?", Text = "The counter goes back to 0 and counts up again.\n\nNothing else changes." },
+        },
+        nameof(ConnectElsewhere) => new PluginActionState { Enabled = false, State = ElsewhereState },
+        _ => null,
+    };
 
     public const string ReportedError = "fixture: an error on request";
 

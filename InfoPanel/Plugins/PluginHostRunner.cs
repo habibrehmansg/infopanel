@@ -30,6 +30,9 @@ public enum PluginCall
 
     /// <summary>The setting doesn't take the value.</summary>
     Invalid,
+
+    /// <summary>The action isn't enabled now (its state says why): it wasn't run.</summary>
+    Disabled,
 }
 
 /// <summary>Where the engine writes for its plugin hosts, and how it starts them.</summary>
@@ -604,30 +607,63 @@ internal sealed class PluginHostRunner : IAsyncDisposable
 
     /// <summary>
     /// Asks <paramref name="pluginId"/> to run <paramref name="method"/> through the host as it runs now, when the plugin
-    /// lists that action (no other name is ever sent: the host runs any public method it is given); done once sent, the
-    /// action not waited for.
+    /// lists that action (no other name is ever sent), within <see cref="PluginHostTimeouts.Call"/>: done once the host
+    /// has started it, the action itself not waited for; <see cref="PluginCall.Disabled"/> when its state says it can't
+    /// run now, and the host didn't run it.
     /// </summary>
     public async Task<PluginCall> RunActionAsync(string pluginId, string method)
     {
-        var (outcome, connection, plugin) = Running(pluginId);
+        var (outcome, connection, _) = RunningAction(pluginId, method);
         if (outcome != PluginCall.Done)
             return outcome;
-        if (!plugin!.Actions.Any(a => a.Method == method))
-            return PluginCall.NotFound;
+        var (asked, state) = await CallAsync<ActionStateDto>(connection!, nameof(IPluginHostService.InvokeActionAsync), [pluginId, method]).ConfigureAwait(false);
+        if (asked != PluginCall.Done)
+            return asked;
+        // Enabled but not started: the host's own limit for a start passed, or it is stopping; the action never runs.
+        return state == null ? PluginCall.NoAnswer : !state.Enabled ? PluginCall.Disabled : state.Running ? PluginCall.Done : PluginCall.NoAnswer;
+    }
 
-        try
+    /// <summary>
+    /// The action <paramref name="method"/>'s state, asked of the host as it runs now within
+    /// <see cref="PluginHostTimeouts.Call"/>, when the plugin lists that action: whether it can run, its line and its
+    /// confirmation as the plugin describes them (a plugin that doesn't: enabled, neither), cut to their limits, and
+    /// whether a run of it is under way.
+    /// </summary>
+    public async Task<(PluginCall Outcome, PluginActionStateBody? State)> DescribeActionAsync(string pluginId, string method)
+    {
+        var (outcome, connection, action) = RunningAction(pluginId, method);
+        if (outcome != PluginCall.Done)
+            return (outcome, null);
+        var (asked, state) = await CallAsync<ActionStateDto>(connection!, nameof(IPluginHostService.DescribeActionAsync), [pluginId, method]).ConfigureAwait(false);
+        if (asked != PluginCall.Done)
+            return (asked, null);
+        if (state == null)
+            return (PluginCall.NoAnswer, null);
+        var confirm = state.Confirm is { } c
+            ? new PluginActionConfirmBody
+            {
+                Title = Cut(string.IsNullOrEmpty(c.Title) ? (action!.Name.Length > 0 ? action.Name : method) : c.Title, PluginActionConfirmation.TitleChars),
+                Text = Cut(c.Text ?? "", PluginActionConfirmation.TextChars),
+            }
+            : null;
+        return (PluginCall.Done, new PluginActionStateBody
         {
-            var sent = connection!.Rpc.NotifyAsync(nameof(IPluginHostService.InvokeActionAsync), pluginId, method);
-            var first = await Task.WhenAny(sent, Task.Delay(_settings.Timeouts.Call, _time), connection.Ended).ConfigureAwait(false);
-            if (first != sent)
-                return first == connection.Ended ? PluginCall.NotRunning : PluginCall.NoAnswer;
-            await sent.ConfigureAwait(false);
-            return PluginCall.Done;
-        }
-        catch (Exception ex) when (ex is ObjectDisposedException or ConnectionLostException or IOException)
-        {
-            return PluginCall.NotRunning;
-        }
+            Enabled = state.Enabled,
+            State = string.IsNullOrEmpty(state.State) ? null : Cut(state.State, PluginActionState.StateChars),
+            Confirm = confirm,
+            Running = state.Running,
+        });
+    }
+
+    /// <summary>The host's connection while it runs, and the action <paramref name="method"/> of the plugin <paramref name="pluginId"/> it lists.</summary>
+    private (PluginCall Outcome, PluginHostConnection? Connection, PluginActionInfo? Action) RunningAction(string pluginId, string method)
+    {
+        var (outcome, connection, plugin) = Running(pluginId);
+        if (outcome != PluginCall.Done)
+            return (outcome, null, null);
+        return plugin!.Actions.FirstOrDefault(a => a.Method == method) is { } action
+            ? (PluginCall.Done, connection, action)
+            : (PluginCall.NotFound, null, null);
     }
 
     /// <summary>The plugin's settings, asked of its host as it runs, within <see cref="PluginHostTimeouts.Call"/>.</summary>

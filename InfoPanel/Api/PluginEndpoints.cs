@@ -11,7 +11,8 @@ namespace InfoPanel.Api;
 /// <summary>
 /// The plugins (spec/docs/api.md "Plugins", the <c>plugins</c> feature): <c>GET /api/plugins</c> (every token's) lists the
 /// packages found at start, never a setting's value; the session token's requests turn a package on or off, reload it,
-/// open its folder, run a plugin's action and read and change its settings. Every request naming a package answers 404
+/// open its folder, read a plugin's action's state and run it (not when its state says it can't), and read and change its
+/// settings. Every request naming a package answers 404
 /// for a folder that names none (all of them under <c>--no-plugins</c>).
 /// </summary>
 public static class PluginEndpoints
@@ -83,7 +84,24 @@ public static class PluginEndpoints
             return await runner.RunActionAsync(id, method) switch
             {
                 PluginCall.Done => Results.Accepted(),
-                PluginCall.NotFound => Problems.NotFound($"The plugin {folder} has no running plugin '{id}' with the action '{method}'."),
+                PluginCall.NotFound => NoAction(folder, id, method),
+                PluginCall.Disabled => Conflict($"The action '{method}' of the plugin {folder}'s '{id}' can't run now; its state says why. It wasn't run."),
+                PluginCall.NoAnswer => NoAnswer(folder),
+                _ => NotRunning(folder),
+            };
+        }).RequireScope(ApiScope.Session);
+
+        plugins.MapGet("/{folder}/plugins/{id}/actions/{method}", async (string folder, string id, string method, PluginHostManager manager, HttpContext context) =>
+        {
+            if (manager.Find(folder) is not { } runner)
+                return NoPackage(folder);
+            context.Response.Headers.CacheControl = "no-store";
+            var (outcome, state) = await runner.DescribeActionAsync(id, method);
+            return outcome switch
+            {
+                PluginCall.Done => Json(state!),
+                PluginCall.NotFound => NoAction(folder, id, method),
+                PluginCall.NoAnswer => NoAnswer(folder),
                 _ => NotRunning(folder),
             };
         }).RequireScope(ApiScope.Session);
@@ -144,6 +162,7 @@ public static class PluginEndpoints
             Website = info.Website,
             Bundled = package.Bundled,
             Platforms = info.Platforms,
+            Access = info.Access.Count > 0 ? info.Access : null,
             On = manager.IsOn(runner),
             State = !supported ? "unsupported" : state switch
             {
@@ -198,6 +217,9 @@ public static class PluginEndpoints
     }
 
     private static IResult NoPackage(string folder) => Problems.NotFound($"No plugin package '{folder}'.");
+
+    private static IResult NoAction(string folder, string id, string method) =>
+        Problems.NotFound($"The plugin {folder} has no running plugin '{id}' with the action '{method}'.");
 
     private static IResult NotRunning(string folder) => Conflict($"The plugin {folder}'s host isn't running.");
 

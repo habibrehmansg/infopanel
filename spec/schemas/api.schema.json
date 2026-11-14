@@ -1307,6 +1307,13 @@
           "items": { "type": "string", "minLength": 1, "maxLength": 256 },
           "uniqueItems": true
         },
+        "access": {
+          "description": "What the package says its plugins read or change, one line each, for people, in the order its PluginInfo.ini's `Access` lines give them (each cut at 256 characters, empty ones left out, at most 8); absent when it declares none. Declared by the package, not enforced by the engine: a client shows them with the package.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "minItems": 1,
+          "maxItems": 8
+        },
         "on": { "description": "The user's choice: false once turned off (PUT /api/plugins/{folder}/on), kept across restarts. A failure never turns a package off.", "type": "boolean" },
         "state": {
           "description": "`starting` (its host is starting, or restarting after it ended), `running` (its host runs), `off` (turned off, or not started), `failed` (`reason` says why; its sensors are unavailable until it is reloaded or turned on again) or `unsupported` (it doesn't run on this operating system: no host starts). A client treats a state it doesn't know as `failed`.",
@@ -1372,6 +1379,31 @@
       "properties": {
         "method": { "description": "Its name in the request that runs it.", "type": "string", "minLength": 1, "maxLength": 256 },
         "name": { "description": "Its name, for people.", "type": "string", "maxLength": 256 }
+      }
+    },
+    "pluginActionState": {
+      "description": "GET /api/plugins/{folder}/plugins/{id}/actions/{method}: an action's state now, as its plugin describes it, and whether a run of it is under way (docs/api.md#plugin-actions). A plugin that doesn't describe its actions (every 1.x plugin) has each enabled, with no state and no confirmation.",
+      "type": "object",
+      "required": ["enabled", "state", "confirm", "running"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "description": "Whether it can run now. One that can't is refused (POST answers 409) and `state` says why.", "type": "boolean" },
+        "state": { "description": "One line for people, in the plugin's words, shown with the action (\"Connected · 5 folders\"), or why it can't run; null when it gives none.", "type": ["string", "null"], "minLength": 1, "maxLength": 256 },
+        "confirm": {
+          "description": "What a person confirms before a client runs it, or null: a client asks with it, and runs the action only once confirmed. The engine doesn't hold a run to it.",
+          "oneOf": [{ "$ref": "#/$defs/pluginActionConfirm" }, { "type": "null" }]
+        },
+        "running": { "description": "Whether a run of it, started through the engine, is under way: a client asks again while it is, to see it end.", "type": "boolean" }
+      }
+    },
+    "pluginActionConfirm": {
+      "description": "The confirmation a person sees before an action runs, in its plugin's words (docs/api.md#plugin-actions).",
+      "type": "object",
+      "required": ["title", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "description": "Its title, a question or the action's name (the action's name when the plugin gives none).", "type": "string", "minLength": 1, "maxLength": 256 },
+        "text": { "description": "What the action will do: plain text, shown as given (no markup), paragraphs separated by blank lines; may be empty.", "type": "string", "maxLength": 4096 }
       }
     },
     "pluginError": {

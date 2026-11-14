@@ -58,6 +58,23 @@ public sealed class PluginPackageInfoTests : IDisposable
     }
 
     [Fact]
+    public void Its_access_lines_are_every_Access_key_in_order_each_cut_empty_ones_left_out_and_at_most_eight()
+    {
+        var ini = new StringBuilder("[PluginInfo]\nName=Sample\nAccess=Reads usage numbers from its logs, never message text\naccess =  \n");
+        ini.Append("ACCESS = ").Append(new string('a', 300)).Append('\n');
+        for (var i = 3; i <= 10; i++)
+            ini.Append("Access=Line ").Append(i).Append('\n');
+        ini.Append("[Other]\nAccess=Not this section's\n");
+
+        var info = Read(Utf8(ini.ToString()));
+
+        Assert.Equal(
+            ["Reads usage numbers from its logs, never message text", new string('a', 256), "Line 3", "Line 4", "Line 5", "Line 6", "Line 7", "Line 8"],
+            info.Access);
+        Assert.Empty(Read(Utf8("[PluginInfo]\nName=Sample\n")).Access);
+    }
+
+    [Fact]
     public void Without_a_file_the_folder_is_the_name_and_the_rest_null()
     {
         var info = Read(null);

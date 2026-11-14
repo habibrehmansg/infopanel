@@ -49,10 +49,11 @@ Called by the main application to control the plugin host (2.0's engine calls `I
 | Method | Description |
 |---|---|
 | `InitializeAsync()` | Load plugin assembly, call `Initialize()` and `Load()`, start update loop. Returns `List<PluginMetadataDto>` |
-| `InvokeActionAsync(pluginId, methodName)` | Invoke a `[PluginAction]` method on the plugin |
+| `InvokeActionAsync(pluginId, methodName)` | Ask a `[PluginAction]` method's state and, when it is enabled, start it on a task of its own, which checks the call's cancellation, the host's 8 s start limit and shutdown immediately before the method; returns its `ActionStateDto` once that task has decided, `Running` true when it started (not waited on the action) |
+| `DescribeActionAsync(pluginId, methodName)` | An action's state (`IPluginActionStates`, else enabled with none) and whether a run of it is under way. Returns `ActionStateDto` |
 | `GetConfigPropertiesAsync(pluginId)` | Get current configuration properties |
 | `ApplyConfigAsync(pluginId, key, value)` | Apply a config change and return updated properties |
-| `ShutdownAsync()` | Stop updates, call `Close()`, clean up resources |
+| `ShutdownAsync()` | Start no more actions, wait up to 1 s for those under way, stop updates, call `Close()`, clean up resources |
 
 ### IPluginClientCallback (host → app)
 

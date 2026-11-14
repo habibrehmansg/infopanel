@@ -1,0 +1,1 @@
+{"folder": "InfoPanel.Usage", "name": "Usage", "version": null, "author": null, "description": null, "website": null, "bundled": true, "platforms": [], "access": ["Reads logs", ""], "on": true, "state": "off", "reason": null, "cpu": null, "memory": null, "sensors": 0, "plugins": [], "errors": []}

@@ -710,6 +710,47 @@ public sealed class PluginManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task An_actions_state_or_run_the_host_doesnt_answer_is_answered_at_10_seconds()
+    {
+        Package(Bundled, "InfoPanel.A");
+        var launcher = new FakeLauncher(() => new FakeHost { Actions = ["Refresh"], ActionsHang = true });
+        await using var manager = Manager(launcher);
+        _ = manager.StartAllAsync();
+        var a = manager.Find("InfoPanel.A")!;
+        await Running(a);
+
+        var describing = a.DescribeActionAsync("fake", "Refresh");
+        await Armed(_now + TimeSpan.FromSeconds(10));
+        await Advance(TimeSpan.FromSeconds(10) - TimeSpan.FromMilliseconds(1));
+        Assert.False(describing.IsCompleted);
+        await Advance(TimeSpan.FromMilliseconds(1));
+        var (outcome, state) = await describing.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal(PluginCall.NoAnswer, outcome);
+        Assert.Null(state);
+
+        var running = a.RunActionAsync("fake", "Refresh");
+        await Armed(_now + TimeSpan.FromSeconds(10));
+        await Advance(TimeSpan.FromSeconds(10) - TimeSpan.FromMilliseconds(1));
+        Assert.False(running.IsCompleted);
+        await Advance(TimeSpan.FromMilliseconds(1));
+        Assert.Equal(PluginCall.NoAnswer, await running.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Assert.Equal(PluginHostState.Running, a.State);
+    }
+
+    [Fact]
+    public async Task An_enabled_action_the_host_answers_as_not_started_is_no_answer()
+    {
+        Package(Bundled, "InfoPanel.A");
+        var launcher = new FakeLauncher(() => new FakeHost { Actions = ["Refresh"], ActionsNotStarted = true });
+        await using var manager = Manager(launcher);
+        _ = manager.StartAllAsync();
+        var a = manager.Find("InfoPanel.A")!;
+        await Running(a);
+
+        Assert.Equal(PluginCall.NoAnswer, await a.RunActionAsync("fake", "Refresh").WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task A_settings_change_never_logs_its_value()
     {
         Package(Bundled, "InfoPanel.A");

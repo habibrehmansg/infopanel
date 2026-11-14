@@ -1216,6 +1216,11 @@ export interface PluginPackage {
    * Unique items.
    */
   platforms: string[];
+  /**
+   * What the package says its plugins read or change, one line each, for people, in the order its PluginInfo.ini's `Access` lines give them (each cut at 256 characters, empty ones left out, at most 8); absent when it declares none. Declared by the package, not enforced by the engine: a client shows them with the package.
+   * Items: 1–8.
+   */
+  access?: string[];
   /** The user's choice: false once turned off (PUT /api/plugins/{folder}/on), kept across restarts. A failure never turns a package off. */
   on: boolean;
   /** `starting` (its host is starting, or restarting after it ended), `running` (its host runs), `off` (turned off, or not started), `failed` (`reason` says why; its sensors are unavailable until it is reloaded or turned on again) or `unsupported` (it doesn't run on this operating system: no host starts). A client treats a state it doesn't know as `failed`. */
@@ -1300,6 +1305,35 @@ export interface PluginAction {
    * Length: ≤ 256.
    */
   name: string;
+}
+
+/** GET /api/plugins/{folder}/plugins/{id}/actions/{method}: an action's state now, as its plugin describes it, and whether a run of it is under way (docs/api.md#plugin-actions). A plugin that doesn't describe its actions (every 1.x plugin) has each enabled, with no state and no confirmation. */
+export interface PluginActionState {
+  /** Whether it can run now. One that can't is refused (POST answers 409) and `state` says why. */
+  enabled: boolean;
+  /**
+   * One line for people, in the plugin's words, shown with the action ("Connected · 5 folders"), or why it can't run; null when it gives none.
+   * Length: 1–256.
+   */
+  state: string | null;
+  /** What a person confirms before a client runs it, or null: a client asks with it, and runs the action only once confirmed. The engine doesn't hold a run to it. */
+  confirm: PluginActionConfirm | null;
+  /** Whether a run of it, started through the engine, is under way: a client asks again while it is, to see it end. */
+  running: boolean;
+}
+
+/** The confirmation a person sees before an action runs, in its plugin's words (docs/api.md#plugin-actions). */
+export interface PluginActionConfirm {
+  /**
+   * Its title, a question or the action's name (the action's name when the plugin gives none).
+   * Length: 1–256.
+   */
+  title: string;
+  /**
+   * What the action will do: plain text, shown as given (no markup), paragraphs separated by blank lines; may be empty.
+   * Length: ≤ 4096.
+   */
+  text: string;
 }
 
 /** An error of a plugin package's, as the engine logged it (a warning). */
@@ -5193,7 +5227,36 @@ export interface ApiOperations {
     };
   };
   /**
-   * runPluginAction: Asks a plugin to run one of the actions it lists, through its package's host as it runs then.
+   * getPluginActionState: An action's state: whether it can run now, its line and its confirmation as its plugin describes them, and whether a run of it is under way.
+   *
+   * docs/api.md#plugin-actions.
+   */
+  "GET /api/plugins/{folder}/plugins/{id}/actions/{method}": {
+    params: {
+      /** The package's folder name (pluginPackage's `folder`), matched ignoring case. */
+      folder: string;
+      /** The plugin's id (pluginInfo's `id`). */
+      id: string;
+      /** The action, as the plugin lists it (pluginAction's `method`). */
+      method: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** Its state, asked of the package's host as it runs (enabled, with no state or confirmation, for a plugin that doesn't describe its actions). */
+      200: PluginActionState;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No package in that folder, its running host lists no plugin with that id, or the plugin lists no action of that name. */
+      404: Problem;
+      /** The package's host isn't running, or didn't answer within 10 seconds. */
+      409: Problem;
+    };
+  };
+  /**
+   * runPluginAction: Asks a plugin to run one of the actions it lists, through its package's host as it runs then, when its state says it can.
    *
    * docs/api.md#plugin-actions.
    */
@@ -5209,7 +5272,7 @@ export interface ApiOperations {
     query: { [key: string]: never };
     request: never;
     responses: {
-      /** The request was sent to the host; the engine doesn't wait for the action. An error it meets is the package's (pluginPackage's `errors`). */
+      /** The host has started the action; the engine doesn't wait for it to end (its state's `running` says when it has). An error it meets is the package's (pluginPackage's `errors`). */
       202: null;
       /** No token, or one the engine doesn't know or has revoked. */
       401: Problem;
@@ -5217,7 +5280,7 @@ export interface ApiOperations {
       403: ScopeProblem;
       /** No package in that folder, its running host lists no plugin with that id, or the plugin lists no action of that name. The engine sends no other. */
       404: Problem;
-      /** The package's host isn't running. */
+      /** The package's host isn't running or didn't answer within 10 seconds, or the action can't run now: its state isn't `enabled` (and says why), and it wasn't run. */
       409: Problem;
     };
   };

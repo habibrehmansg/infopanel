@@ -111,9 +111,11 @@ Author=Your Name
 Version=1.0.0
 Website=https://yourwebsite.com
 Platforms=windows, macos, linux
+Access=Reads usage numbers from the app's logs, never message text
+Access=Changes the app's settings when you Connect, with a backup
 ```
 
-> **Important:** The section header must be `[PluginInfo]`, not `[Plugin]`. `Platforms` is optional (without it the package runs anywhere); a plugin built on a Windows-only library says `Platforms=windows`.
+> **Important:** The section header must be `[PluginInfo]`, not `[Plugin]`. `Platforms` is optional (without it the package runs anywhere); a plugin built on a Windows-only library says `Platforms=windows`. `Access` is optional and may be written up to 8 times, one line each (at most 256 characters): what your plugin reads or changes beyond its own folder, in plain words. InfoPanel shows the lines with your plugin; they are declared, not enforced.
 
 ### 4. Implement Your Plugin
 
@@ -389,7 +391,40 @@ public class MyPlugin : BasePlugin
 }
 ```
 
-Action methods must be `public`, take no parameters, and return `void`. The display name is shown in the UI. An action that throws is reported as the plugin's error, its message shown with it.
+Action methods must be `public`, take no parameters, and return `void` (or a `Task`, which runs until it completes). The display name is shown in the UI. An action runs on a thread of its own, so a long one holds neither your updates nor your other actions; the Plugins page shows it running until it returns. An action that throws is reported as the plugin's error, its message shown with it.
+
+### Action States and Confirmation (2.0)
+
+An action that changes something outside InfoPanel can say, before it runs, whether it can run now, one line of its state, and what a person confirms first. Implement `IPluginActionStates`:
+
+```csharp
+public class MyPlugin : BasePlugin, IPluginActionStates
+{
+    [PluginAction("Connect")]
+    public void Connect() { /* ... */ }
+
+    public PluginActionState? Describe(string method) => method switch
+    {
+        nameof(Connect) when _connected => new PluginActionState { Enabled = false, State = "Connected" },
+        nameof(Connect) => new PluginActionState
+        {
+            State = "Not connected · 2 folders",
+            Confirm = new PluginActionConfirmation
+            {
+                Title = "Connect?",
+                Text = "This changes one settings file, keeping a backup beside it.\n\nDisconnect puts it back.",
+            },
+        },
+        _ => null, // the default: enabled, no state, no confirmation
+    };
+}
+```
+
+- `Enabled`: whether it can run now. InfoPanel asks before every run and never runs a disabled action; its `State` should say why.
+- `State`: one line shown with the action (at most 256 characters), or null.
+- `Confirm`: a title (empty: the action's name; at most 256 characters) and plain text (no markup; paragraphs separated by blank lines; at most 4,096 characters) the Plugins page shows before it runs the action, or null to run it at once.
+
+`Describe` is called on any thread, while your plugin updates and while the action itself runs: keep it quick and guard what it reads. One that throws, or takes over 5 seconds, makes the action disabled, saying so, and is reported as your plugin's error once until it answers again; while one call for an action hasn't returned, it isn't called again for that action. A plugin without `IPluginActionStates` (every 1.x plugin) has every action enabled, with no state and no confirmation.
 
 ## Plugin Configuration
 

@@ -445,42 +445,245 @@ namespace InfoPanel.Plugins.Host
             }
         }
 
-        public Task InvokeActionAsync(string pluginId, string methodName)
+        /// <summary>
+        /// How long a plugin's <see cref="IPluginActionStates.Describe"/> is waited for: within the engine's 10 s for a
+        /// call, so an action whose state didn't come in time is answered as not run, and never runs later.
+        /// </summary>
+        internal static readonly TimeSpan DescribeLimit = TimeSpan.FromSeconds(5);
+
+        /// <summary>
+        /// How long after its call reached the host an action may still start: within the engine's 10 s for a call, with
+        /// time left for the answer, so an action the engine has answered as not run never starts.
+        /// </summary>
+        internal static readonly TimeSpan StartLimit = TimeSpan.FromSeconds(8);
+
+        /// <summary>
+        /// How long shutdown waits for the actions under way to end before it closes the plugins: within the engine's
+        /// budget for a host's stop.
+        /// </summary>
+        internal static readonly TimeSpan ActionStopLimit = TimeSpan.FromSeconds(1);
+
+        // The runs under way, by plugin id and action, each run's end (what shutdown waits for) and whether shutdown has
+        // begun (no run starts after it), all under _running's lock; the Describe asked of each action and not yet ended
+        // (at most one at a time), and the actions whose Describe failed the last time it was asked (reported once a
+        // streak).
+        private readonly Dictionary<(string PluginId, string Method), int> _running = [];
+        private readonly HashSet<Task> _runs = [];
+        private bool _stopping;
+        private readonly Dictionary<(string PluginId, string Method), Task<PluginActionState?>> _describing = [];
+        private readonly HashSet<(string PluginId, string Method)> _describeFailing = [];
+
+        /// <summary>Test seam: awaited by an action's worker as it begins, before its last check and the method.</summary>
+        internal Func<Task>? BeforeActionStarts { get; set; }
+
+        /// <summary>
+        /// Runs the action when its state says it is enabled: on a task of its own, so a long action holds neither the
+        /// connection's calls nor its other actions, the run counted in <see cref="ActionStateDto.Running"/> until it ends.
+        /// The call is answered once that task has decided, immediately before the method: it starts the action only while
+        /// the call isn't cancelled (the engine's deadline), within <see cref="StartLimit"/> of the call reaching the host
+        /// and before shutdown has begun; else the answer reads not running and the action never runs. Only a method the
+        /// plugin lists as an action (<see cref="PluginActionAttribute"/>, no parameters) is run; an action that returns a
+        /// task is running until the task ends. A failure is the package's error, as in 1.x.
+        /// </summary>
+        public async Task<ActionStateDto> InvokeActionAsync(string pluginId, string methodName, CancellationToken cancellationToken = default)
+        {
+            var received = _time.GetTimestamp();
+            if (FindAction(pluginId, methodName) is not (PluginWrapper wrapper, MethodInfo method, string name))
+            {
+                Logger.Warning("Plugin {PluginId} has no action {MethodName}", pluginId, methodName);
+                return new ActionStateDto { Enabled = false };
+            }
+
+            var state = await StateOfAsync(wrapper, methodName, name);
+            if (!state.Enabled)
+                return state;
+
+            var key = (pluginId, methodName);
+            var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    if (BeforeActionStarts is { } before)
+                        await before();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Starting action {MethodName} on plugin {PluginId} failed", methodName, pluginId);
+                }
+
+                // The last check, in the task that runs the method, immediately before it: a call the engine has given up
+                // on, or one shutdown has overtaken, never starts its action.
+                lock (_running)
+                {
+                    if (_stopping || cancellationToken.IsCancellationRequested || _time.GetElapsedTime(received) >= StartLimit)
+                    {
+                        started.SetResult(false);
+                        return;
+                    }
+                    _running[key] = _running.GetValueOrDefault(key) + 1;
+                    _runs.Add(ended.Task);
+                }
+                started.SetResult(true);
+
+                try
+                {
+                    if (method.Invoke(wrapper.Plugin, null) is Task task)
+                        await task;
+                }
+                catch (Exception ex)
+                {
+                    var cause = ex is TargetInvocationException { InnerException: { } inner } ? inner : ex;
+                    Logger.Error(cause, "Error invoking action {MethodName} on plugin {PluginId}", methodName, pluginId);
+                    NotifyError(pluginId, $"Action '{methodName}' failed: {cause.Message}");
+                }
+                finally
+                {
+                    lock (_running)
+                    {
+                        if (--_running[key] == 0)
+                            _running.Remove(key);
+                        _runs.Remove(ended.Task);
+                    }
+                    ended.SetResult();
+                }
+            }, CancellationToken.None);
+
+            state.Running = await started.Task;
+            if (!state.Running)
+                Logger.Information("Action {MethodName} on plugin {PluginId} wasn't started: its call ended or the host is stopping", methodName, pluginId);
+            return state;
+        }
+
+        public async Task<ActionStateDto> DescribeActionAsync(string pluginId, string methodName, CancellationToken cancellationToken = default)
+        {
+            if (FindAction(pluginId, methodName) is not (PluginWrapper wrapper, _, string name))
+                return new ActionStateDto { Enabled = false };
+            return await StateOfAsync(wrapper, methodName, name);
+        }
+
+        /// <summary>The plugin <paramref name="pluginId"/> and its action <paramref name="methodName"/>, when it lists one by that name; else null.</summary>
+        private (PluginWrapper Wrapper, MethodInfo Method, string Name)? FindAction(string pluginId, string methodName)
         {
             var wrapper = _wrappers.FirstOrDefault(w => w.Id == pluginId);
-            if (wrapper == null)
-            {
-                Logger.Warning("Plugin {PluginId} not found for action {MethodName}", pluginId, methodName);
-                return Task.CompletedTask;
-            }
+            var method = wrapper?.Plugin.GetType().GetMethod(methodName, Type.EmptyTypes);
+            return method?.GetCustomAttributes(typeof(PluginActionAttribute), false).FirstOrDefault() is PluginActionAttribute attribute
+                ? (wrapper!, method, attribute.DisplayName ?? "")
+                : null;
+        }
 
-            try
+        /// <summary>
+        /// The action's state as its plugin describes it (<see cref="IPluginActionStates"/>; a plugin without it: enabled,
+        /// no state, no confirmation), cut to its limits, with whether it runs now. A Describe that throws or doesn't
+        /// answer within <see cref="DescribeLimit"/> is taken as disabled, saying so, and reported once until it answers
+        /// again; it runs on a task of its own, so one that hangs holds no other call.
+        /// </summary>
+        private async Task<ActionStateDto> StateOfAsync(PluginWrapper wrapper, string method, string name)
+        {
+            var dto = new ActionStateDto();
+            if (wrapper.Plugin is IPluginActionStates states)
             {
-                var method = wrapper.Plugin.GetType().GetMethod(methodName, Type.EmptyTypes);
-                if (method == null)
+                var key = (wrapper.Id, method);
+                var asked = Describing(key, states);
+                string? failure = null;
+                try
                 {
-                    Logger.Warning("Action method {MethodName} not found on plugin {PluginId}", methodName, pluginId);
-                    return Task.CompletedTask;
+                    if (await Task.WhenAny(asked, Task.Delay(DescribeLimit, _time)) == asked)
+                    {
+                        var state = await asked;
+                        dto.Enabled = state?.Enabled ?? true;
+                        dto.State = state?.State is { Length: > 0 } line ? TableDtoConverter.Cut(line, PluginActionState.StateChars) : null;
+                        if (state?.Confirm is { } confirm)
+                        {
+                            var title = string.IsNullOrEmpty(confirm.Title) ? (name.Length > 0 ? name : method) : confirm.Title;
+                            dto.Confirm = new ActionConfirmDto
+                            {
+                                Title = TableDtoConverter.Cut(title, PluginActionConfirmation.TitleChars)!,
+                                Text = TableDtoConverter.Cut(confirm.Text ?? "", PluginActionConfirmation.TextChars)!,
+                            };
+                        }
+                    }
+                    else
+                    {
+                        failure = $"its state didn't come within {DescribeLimit.TotalSeconds:0} seconds";
+                    }
                 }
-                method.Invoke(wrapper.Plugin, null);
-            }
-            catch (TargetInvocationException ex) when (ex.InnerException != null)
-            {
-                Logger.Error(ex.InnerException, "Error invoking action {MethodName} on plugin {PluginId}", methodName, pluginId);
-                NotifyError(pluginId, $"Action '{methodName}' failed: {ex.InnerException.Message}");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error invoking action {MethodName} on plugin {PluginId}", methodName, pluginId);
-                NotifyError(pluginId, $"Action '{methodName}' failed: {ex.Message}");
+                catch (Exception ex)
+                {
+                    failure = $"its state failed: {ex.Message}";
+                }
+
+                var report = false;
+                lock (_describeFailing)
+                {
+                    if (failure == null)
+                        _describeFailing.Remove(key);
+                    else
+                        report = _describeFailing.Add(key);
+                }
+                if (failure != null)
+                {
+                    dto = new ActionStateDto { Enabled = false, State = TableDtoConverter.Cut($"It can't run: {failure}", PluginActionState.StateChars) };
+                    if (report)
+                    {
+                        Logger.Warning("Plugin {PluginId}'s action {MethodName}: {Failure}; reported once until it answers", wrapper.Id, method, failure);
+                        NotifyError(wrapper.Id, $"Action '{method}': {failure}");
+                    }
+                }
             }
 
-            return Task.CompletedTask;
+            lock (_running)
+                dto.Running = _running.ContainsKey((wrapper.Id, method));
+            return dto;
+        }
+
+        /// <summary>
+        /// The plugin's Describe of the action <paramref name="key"/>, on a task of its own: the one already asked while it
+        /// hasn't ended, so a Describe that hangs holds one task however often its action is asked about; a new one once it
+        /// has. Its failure is observed here, whoever waited for it.
+        /// </summary>
+        private Task<PluginActionState?> Describing((string PluginId, string Method) key, IPluginActionStates states)
+        {
+            lock (_describing)
+            {
+                if (_describing.TryGetValue(key, out var asking) && !asking.IsCompleted)
+                    return asking;
+                var asked = Task.Run(() => states.Describe(key.Method));
+                _describing[key] = asked;
+                _ = asked.ContinueWith(t =>
+                {
+                    _ = t.Exception;
+                    lock (_describing)
+                    {
+                        if (_describing.TryGetValue(key, out var current) && current == t)
+                            _describing.Remove(key);
+                    }
+                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                return asked;
+            }
         }
 
         public async Task ShutdownAsync()
         {
             Logger.Information("Shutdown requested");
+
+            // No action starts from here on (one whose state is still being asked included); those under way get up to
+            // ActionStopLimit to end before the plugins close.
+            Task[] runs;
+            lock (_running)
+            {
+                _stopping = true;
+                runs = [.. _runs];
+            }
+            if (runs.Length > 0)
+            {
+                var all = Task.WhenAll(runs);
+                using var limit = new CancellationTokenSource();
+                if (await Task.WhenAny(all, Task.Delay(ActionStopLimit, _time, limit.Token)) != all)
+                    Logger.Warning("{Count} action(s) still running at shutdown; closing the plugins", runs.Count(r => !r.IsCompleted));
+                limit.Cancel();
+            }
 
             if (_updateCts != null)
             {

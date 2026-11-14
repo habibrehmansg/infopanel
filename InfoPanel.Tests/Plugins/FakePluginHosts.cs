@@ -120,12 +120,39 @@ internal sealed class FakeHost : IPluginHostService
         return [Metadata];
     }
 
-    public Task InvokeActionAsync(string pluginId, string methodName)
+    /// <summary>Its actions' states, by method; one not here is enabled, with no state or confirmation (a 1.x plugin's).</summary>
+    public Dictionary<string, ActionStateDto> ActionStates { get; init; } = [];
+
+    /// <summary>Its action calls (running one and asking a state) never answer.</summary>
+    public bool ActionsHang { get; init; }
+
+    /// <summary>Its actions are enabled but answered as not started (a host whose own start limit passed).</summary>
+    public bool ActionsNotStarted { get; init; }
+
+    public async Task<ActionStateDto> InvokeActionAsync(string pluginId, string methodName, CancellationToken cancellationToken)
     {
+        if (ActionsHang)
+            await Task.Delay(Timeout.Infinite, Process.Dead);
+        var state = StateOf(methodName);
+        if (!state.Enabled || ActionsNotStarted)
+            return state;
         lock (ActionsRun)
             ActionsRun.Add((pluginId, methodName));
-        return Task.CompletedTask;
+        state.Running = true;
+        return state;
     }
+
+    public async Task<ActionStateDto> DescribeActionAsync(string pluginId, string methodName, CancellationToken cancellationToken)
+    {
+        if (ActionsHang)
+            await Task.Delay(Timeout.Infinite, Process.Dead);
+        return StateOf(methodName);
+    }
+
+    private ActionStateDto StateOf(string method) =>
+        ActionStates.TryGetValue(method, out var state)
+            ? new ActionStateDto { Enabled = state.Enabled, State = state.State, Confirm = state.Confirm, Running = state.Running }
+            : new ActionStateDto();
 
     public async Task<List<PluginConfigPropertyDto>> GetConfigPropertiesAsync(string pluginId)
     {

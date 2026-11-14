@@ -310,7 +310,8 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         var pluginHosts = new FakeLauncher(c => new FakeHost
         {
             PluginId = c.PluginDll.Contains("InfoPanel.TourA.", StringComparison.Ordinal) ? "tour" : "other",
-            Actions = ["Refresh"],
+            Actions = ["Refresh", "Connect"],
+            ActionStates = { ["Connect"] = new InfoPanel.Plugins.Ipc.ActionStateDto { Enabled = false, State = "Not possible here" } },
             Settings = [new() { Key = "count", DisplayName = "Count", Type = "Integer", Value = 3L, MinValue = 0, MaxValue = 10 }],
         });
         using (var hosting = factory.WithWebHostBuilder(b => b.UseSetting("Engine:DataDir", pluginData).UseSetting("Engine:NoPlugins", "false")
@@ -329,7 +330,11 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
             await Send(hostingSession, "PATCH", $"{running}/plugins/tour/settings", 422, Body("""{"key":"count","value":11}"""));
             await Send(hostingSession, "PATCH", $"{running}/plugins/tour/settings", 404, Body("""{"key":"nope","value":1}"""));
             await Send(hostingSession, "PATCH", $"{off}/plugins/other/settings", 409, Body("""{"key":"count","value":4}"""));
+            await Send(hostingSession, "GET", $"{running}/plugins/tour/actions/Refresh", 200);
+            await Send(hostingSession, "GET", $"{running}/plugins/tour/actions/Dispose", 404);
+            await Send(hostingSession, "GET", $"{off}/plugins/other/actions/Refresh", 409);
             await Send(hostingSession, "POST", $"{running}/plugins/tour/actions/Refresh", 202);
+            await Send(hostingSession, "POST", $"{running}/plugins/tour/actions/Connect", 409);
             await Send(hostingSession, "POST", $"{running}/plugins/tour/actions/Dispose", 404);
             await Send(hostingSession, "POST", $"{off}/plugins/other/actions/Refresh", 409);
             await Send(hostingSession, "POST", $"{running}/open", 204);

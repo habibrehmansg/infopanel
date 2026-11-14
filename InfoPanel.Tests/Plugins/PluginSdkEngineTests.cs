@@ -13,7 +13,8 @@ namespace InfoPanel.Tests.Plugins;
 
 // The plugin SDK as plugins meet it in the engine: the SDK and its host on .NET 10 with a plugin built as 1.x plugins are
 // (net8.0, against 1.x's SDK) loading, reading, taking a setting and running an action; a number a plugin can't read
-// (NaN) unavailable while its neighbours stay live; and PluginLog's lines in the package's log.
+// (NaN) unavailable while its neighbours stay live; PluginLog's lines in the package's log; and actions' states through the
+// API: the test plugin's (a confirmation, a disabled action refused, a long one running), and a 1.x plugin's, which has none.
 public sealed class PluginSdkEngineTests : IDisposable
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -95,6 +96,58 @@ public sealed class PluginSdkEngineTests : IDisposable
         Assert.Equal(PluginCall.Done, (await runner.ApplySettingAsync(V1Id, "known", JsonDocument.Parse("true").RootElement.Clone())).Outcome);
         await Until(async () => (await Values(client)).TryGetValue(Maybe, out var maybe) && maybe.GetProperty("status").GetString() == "live"
             && maybe.GetProperty("now").GetDouble() == 42, "Maybe reads 42 again");
+    }
+
+    [Fact]
+    public async Task The_test_plugins_actions_say_their_states_through_the_API_a_disabled_one_is_refused_and_a_long_one_reads_running()
+    {
+        using var factory = new EngineFactory();
+        using var engine = WithPlugins(factory, PluginFixtures.CopyFixture(Path.Combine(_root, "bundled")));
+        using var client = Client(engine);
+        var runner = await Runner(engine);
+        const string actions = "/api/plugins/InfoPanel.TestFixture/plugins/test-fixture/actions/";
+
+        var reset = await Json(client, "GET", actions + "ResetCounter", 200);
+        Assert.True(reset.GetProperty("enabled").GetBoolean());
+        Assert.StartsWith("Counter at ", reset.GetProperty("state").GetString());
+        Assert.Equal("""{"title":"Reset the counter?","text":"The counter goes back to 0 and counts up again.\n\nNothing else changes."}""",
+            reset.GetProperty("confirm").GetRawText());
+        Assert.Equal("""{"enabled":false,"state":"Not possible in the test fixture","confirm":null,"running":false}""",
+            (await Json(client, "GET", actions + "ConnectElsewhere", 200)).GetRawText());
+        Assert.Equal("""{"enabled":true,"state":null,"confirm":null,"running":false}""", (await Json(client, "GET", actions + "Hold", 200)).GetRawText());
+
+        await Json(client, "POST", actions + "ConnectElsewhere", 409);
+        await Json(client, "POST", actions + "Hold", 202);
+        Assert.True((await Json(client, "GET", actions + "Hold", 200)).GetProperty("running").GetBoolean());
+        await Json(client, "POST", actions + "Release", 202);
+        await Until(async () => !(await Json(client, "GET", actions + "Hold", 200)).GetProperty("running").GetBoolean(), "Hold has ended");
+        await Json(client, "GET", actions + "Nope", 404);
+        Assert.Empty(runner.ErrorLog);
+    }
+
+    [Fact]
+    public async Task A_1x_plugins_action_is_enabled_with_no_state_or_confirmation_and_runs_as_before()
+    {
+        using var factory = new EngineFactory();
+        using var engine = WithPlugins(factory, PluginFixtures.Copy(V1Folder, Path.Combine(_root, "bundled")));
+        using var client = Client(engine);
+        await Runner(engine);
+        await Until(async () => (await Values(client)).ContainsKey(Marks), "the plugin reads live");
+
+        Assert.Equal("""{"enabled":true,"state":null,"confirm":null,"running":false}""",
+            (await Json(client, "GET", "/api/plugins/InfoPanel.V1Fixture/plugins/v1-fixture/actions/Mark", 200)).GetRawText());
+        await Json(client, "POST", "/api/plugins/InfoPanel.V1Fixture/plugins/v1-fixture/actions/Mark", 202);
+        await Until(async () => (await Values(client))[Marks].GetProperty("now").GetDouble() == 1, "Mark has counted");
+    }
+
+    /// <summary>A request's answer, its status checked, as JSON (default when it has no body).</summary>
+    private static async Task<JsonElement> Json(HttpClient client, string method, string path, int status)
+    {
+        using var request = new HttpRequestMessage(new HttpMethod(method), path);
+        using var response = await client.SendAsync(request, Ct);
+        var text = await response.Content.ReadAsStringAsync(Ct);
+        Assert.True((int)response.StatusCode == status, $"{method} {path}: expected {status}, got {(int)response.StatusCode} {text}");
+        return text.Length > 0 ? JsonDocument.Parse(text).RootElement.Clone() : default;
     }
 
     [Fact]

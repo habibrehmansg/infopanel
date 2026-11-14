@@ -211,6 +211,89 @@ public sealed class PluginEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task An_actions_state_is_the_hosts_answer_cut_to_its_limits_the_session_tokens_and_404_or_409_as_its_run()
+    {
+        var launcher = new FakeLauncher(() => new FakeHost
+        {
+            Actions = ["Refresh", "Plain", "Long"],
+            ActionStates =
+            {
+                ["Refresh"] = new ActionStateDto { State = "Ready", Confirm = new ActionConfirmDto { Title = "Refresh?", Text = "It reads again.\n\nNothing else changes." } },
+                ["Long"] = new ActionStateDto { State = new string('s', 300), Confirm = new ActionConfirmDto { Title = "", Text = new string('t', 5000) }, Running = true },
+            },
+        });
+        using var factory = new EngineFactory();
+        using var engine = WithFakePlugins(factory, launcher, "InfoPanel.A");
+        using var session = Client(engine);
+        await RunningRunner(engine, "InfoPanel.A");
+        using var reader = Client(engine, await Token(session, "read"));
+
+        using (var response = await session.GetAsync("/api/plugins/InfoPanel.A/plugins/fake/actions/Refresh", Ct))
+        {
+            Assert.Equal(200, (int)response.StatusCode);
+            Assert.True(response.Headers.CacheControl?.NoStore);
+            Assert.Equal("""{"enabled":true,"state":"Ready","confirm":{"title":"Refresh?","text":"It reads again.\n\nNothing else changes."},"running":false}""",
+                await response.Content.ReadAsStringAsync(Ct));
+        }
+        // A plugin that doesn't describe an action: enabled, no state, no confirmation.
+        Assert.Equal("""{"enabled":true,"state":null,"confirm":null,"running":false}""",
+            (await Get(session, "/api/plugins/InfoPanel.A/plugins/fake/actions/Plain", 200)).GetRawText());
+        // Cut as the engine cuts them; an empty title is the action's name.
+        var long_ = await Get(session, "/api/plugins/InfoPanel.A/plugins/fake/actions/Long", 200);
+        Assert.Equal(new string('s', 256), long_.GetProperty("state").GetString());
+        Assert.Equal(("Do Long", 4096), (long_.GetProperty("confirm").GetProperty("title").GetString(), long_.GetProperty("confirm").GetProperty("text").GetString()!.Length));
+        Assert.True(long_.GetProperty("running").GetBoolean());
+
+        await Send(reader, "GET", "/api/plugins/InfoPanel.A/plugins/fake/actions/Refresh", 403);
+        await Send(session, "GET", "/api/plugins/InfoPanel.A/plugins/fake/actions/Dispose", 404);
+        await Send(session, "GET", "/api/plugins/InfoPanel.A/plugins/other/actions/Refresh", 404);
+        await Send(session, "GET", "/api/plugins/InfoPanel.None/plugins/fake/actions/Refresh", 404);
+        await Send(session, "GET", "/api/plugins/InfoPanel.A/plugins/fake/actions/Refresh%2F..%2FDispose", 404);
+        await Send(session, "PUT", "/api/plugins/InfoPanel.A/on", 200, """{"on":false}""");
+        await Send(session, "GET", "/api/plugins/InfoPanel.A/plugins/fake/actions/Refresh", 409);
+    }
+
+    [Fact]
+    public async Task An_action_its_state_disables_is_refused_409_and_isnt_run()
+    {
+        var launcher = new FakeLauncher(() => new FakeHost
+        {
+            Actions = ["Refresh", "Connect"],
+            ActionStates = { ["Connect"] = new ActionStateDto { Enabled = false, State = "Not possible here" } },
+        });
+        using var factory = new EngineFactory();
+        using var engine = WithFakePlugins(factory, launcher, "InfoPanel.A");
+        using var session = Client(engine);
+        await RunningRunner(engine, "InfoPanel.A");
+        var host = launcher.Started[0].Host;
+
+        Assert.Equal("""{"enabled":false,"state":"Not possible here","confirm":null,"running":false}""",
+            (await Get(session, "/api/plugins/InfoPanel.A/plugins/fake/actions/Connect", 200)).GetRawText());
+        var refused = await Send(session, "POST", "/api/plugins/InfoPanel.A/plugins/fake/actions/Connect", 409);
+        Assert.Contains("Connect", refused.GetProperty("detail").GetString());
+        await Send(session, "POST", "/api/plugins/InfoPanel.A/plugins/fake/actions/Refresh", 202);
+
+        Assert.Equal([("fake", "Refresh")], host.ActionsRun);
+    }
+
+    [Fact]
+    public async Task A_packages_access_lines_are_listed_and_absent_when_it_declares_none()
+    {
+        var launcher = new FakeLauncher(() => new FakeHost());
+        using var factory = new EngineFactory();
+        using var engine = WithFakePlugins(factory, launcher, "InfoPanel.A", "InfoPanel.B");
+        File.WriteAllText(Path.Combine(_root, "bundled", "InfoPanel.A", "PluginInfo.ini"),
+            "[PluginInfo]\nName=Reader\nAccess=Reads usage numbers from its logs, never message text\nAccess=Changes a status line when you Connect, with a backup\n");
+        using var session = Client(engine);
+        await RunningRunner(engine, "InfoPanel.A");
+
+        var packages = (await Get(session, "/api/plugins", 200)).GetProperty("packages");
+        Assert.Equal("""["Reads usage numbers from its logs, never message text","Changes a status line when you Connect, with a backup"]""",
+            packages[0].GetProperty("access").GetRawText());
+        Assert.False(packages[1].TryGetProperty("access", out _));
+    }
+
+    [Fact]
     public async Task Settings_are_read_and_changed_through_the_host_and_a_value_they_dont_take_is_422_without_it()
     {
         var launcher = new FakeLauncher(c => c.PluginDll.Contains("InfoPanel.A.") ? new FakeHost { Settings = Settings() } : new FakeHost { PluginId = "plain" });
