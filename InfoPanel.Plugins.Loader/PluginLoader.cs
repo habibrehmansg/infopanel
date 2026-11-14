@@ -13,6 +13,8 @@ namespace InfoPanel.Plugins.Loader
             if(File.Exists(pluginInfo))
             {
                 var parser = new FileIniDataParser();
+                // A package writes one Access line a thing it reads or changes; the engine reads those lines itself.
+                parser.Parser.Configuration.AllowDuplicateKeys = true;
                 var config = parser.ReadFile(pluginInfo);
 
                 return new PluginInfo

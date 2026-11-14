@@ -24,6 +24,28 @@ public class PluginLoaderTests
         Assert.Equal(["test-fixture", mine], loaded.Plugins.Select(p => p.Id).Order().ToArray());
     }
 
+    /// <summary>PLUGINS.md has a package write one Access line a thing it reads or changes: the same key more than once.</summary>
+    [Fact]
+    public void A_PluginInfo_ini_with_several_Access_lines_is_read_and_the_engine_keeps_every_line()
+    {
+        var root = PluginFixtures.NewTempRoot("ip-dup-");
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "PluginInfo.ini"), "[PluginInfo]\nName=Sample\nAccess=Reads its logs\nAccess=Changes its settings\n");
+
+            var info = PluginLoader.GetPluginInfo(root);
+
+            Assert.Equal("Sample", info?.Name);
+            Assert.Equal(
+                ["Reads its logs", "Changes its settings"],
+                InfoPanel.Plugins.PluginPackageInfo.Read(root, "Sample", InfoPanel.Plugins.PluginLimits.Default, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance).Access);
+        }
+        finally
+        {
+            PluginFixtures.DeleteQuietly(root);
+        }
+    }
+
     /// <summary>
     /// A package built with a plain project reference to the SDK, as PLUGINS.md's step 2 shows: its output folder holds
     /// its own copy of InfoPanel.Plugins.dll, which its deps.json lists. The plugin still implements the host's
