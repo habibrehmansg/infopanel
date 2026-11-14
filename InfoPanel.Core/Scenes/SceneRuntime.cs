@@ -429,8 +429,9 @@ public sealed class SceneRuntime : IDisposable
                 {
                     try
                     {
+                        // A snapshot the source never changes (ISceneInputSource.History): kept as handed over, not copied a tick.
                         var samples = _options.Inputs.History(binding.Key);
-                        history = samples.Count > 4096 ? samples.Skip(samples.Count - 4096).ToArray() : samples.ToArray();
+                        history = samples.Count > 4096 ? samples.Skip(samples.Count - 4096).ToArray() : samples;
                     }
                     catch (Exception e)
                     {

@@ -12,8 +12,8 @@ namespace InfoPanel.Tests.Preview;
 /// <list type="bullet">
 /// <item><see cref="ReceiveTextAsync"/> hands the session a client message and returns once the session has handled it
 /// (its receive loop asked for the next message).</item>
-/// <item><see cref="PauseWhen"/> makes the first send that matches block (after it is recorded) until <see cref="Resume"/>,
-/// so the test can change state while the send loop is stuck on the wire.</item>
+/// <item><see cref="PauseWhen"/> makes the first send that matches block (after it is recorded) until <see cref="Resume"/>
+/// (or <see cref="Fail"/>, or the send's cancellation), so the test can change state while the send loop is stuck on the wire.</item>
 /// <item><see cref="NextAsync"/> reads what the session sent, in order.</item>
 /// </list>
 /// </summary>
@@ -85,6 +85,16 @@ internal sealed class FakeWebSocket : WebSocket
         {
             _pauseWhen = null;
             _gate?.TrySetResult();
+        }
+    }
+
+    /// <summary>The paused send fails with <paramref name="error"/> instead of completing.</summary>
+    public void Fail(Exception error)
+    {
+        lock (_lock)
+        {
+            _pauseWhen = null;
+            _gate?.TrySetException(error);
         }
     }
 

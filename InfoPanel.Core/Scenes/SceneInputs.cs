@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using InfoPanel.Models;
 using InfoPanel.Sensors;
 
@@ -47,7 +48,10 @@ public interface ISceneInputSource
 {
     SceneReading Read(string key, string inputType);
 
-    /// <summary>The key's samples, oldest first, at most 4,096. Reading registers interest, as <see cref="ISensorHistory"/>.</summary>
+    /// <summary>
+    /// The key's samples, oldest first, at most 4,096. Reading registers interest, as <see cref="ISensorHistory"/>. The
+    /// list is a snapshot the caller may keep: never change one after handing it over (a new sample makes a new list).
+    /// </summary>
     IReadOnlyList<double> History(string key);
 }
 
@@ -77,12 +81,40 @@ public sealed class SensorSceneInputs(ISensorReader sensors, ISensorHistory hist
 
     private readonly ISensorStatusReader? _statuses = sensors as ISensorStatusReader;
 
+    /// <summary>
+    /// Each table reading as converted, held by the table itself: a source hands over a new table for a new reading and
+    /// never changes one after (<see cref="SensorSample.SetTable"/>), so a live table converts once, and its conversion
+    /// goes with it. Readers of the same table get the one conversion kept.
+    /// </summary>
+    private readonly ConditionalWeakTable<DataTable, SceneTable> _tables = new();
+
+    private static readonly ConditionalWeakTable<DataTable, SceneTable>.CreateValueCallback Conversion =
+        static table => FromDataTable(table);
+
+    /// <summary>
+    /// Each key text as parsed, held by the text itself: a binding's key is parsed on its first read, not on every read and
+    /// history read, and the entry goes when the binding's text does.
+    /// </summary>
+    private readonly ConditionalWeakTable<string, ParsedKey> _parsed = new();
+
+    private sealed record ParsedKey(bool Valid, SensorKey Key);
+
+    private static readonly ConditionalWeakTable<string, ParsedKey>.CreateValueCallback Parse =
+        static text => SensorKey.TryParse(text, out var key) ? new ParsedKey(true, key) : new ParsedKey(false, default);
+
+    private bool TryParse(string key, out SensorKey parsed)
+    {
+        var entry = _parsed.GetValue(key, Parse);
+        parsed = entry.Key;
+        return entry.Valid;
+    }
+
     /// <summary>The sensors' list (their display names) when the reader is the hub; null otherwise.</summary>
     internal Func<IReadOnlyList<SensorInfo>>? Catalogue => sensors is SensorHub hub ? hub.GetSensors : null;
 
     public SceneReading Read(string key, string inputType)
     {
-        if (!SensorKey.TryParse(key, out var parsed)) return SceneReading.Unavailable;
+        if (!TryParse(key, out var parsed)) return SceneReading.Unavailable;
         var state = _statuses?.ReadState(parsed)
             ?? (sensors.TryRead(parsed, out var plain)
                 ? new SensorState(SensorStatus.Live, SensorState.TypeOf(plain), plain)
@@ -120,12 +152,12 @@ public sealed class SensorSceneInputs(ISensorReader sensors, ISensorHistory hist
                 Unit = reading.Unit ?? "",
             },
             SensorKind.Text => new SceneReading { Status = status, Text = reading.ValueText ?? "" },
-            _ => new SceneReading { Status = status, Text = reading.ValueText ?? "", Table = FromDataTable(reading.ValueTable!) },
+            _ => new SceneReading { Status = status, Text = reading.ValueText ?? "", Table = _tables.GetValue(reading.ValueTable!, Conversion) },
         };
     }
 
     public IReadOnlyList<double> History(string key) =>
-        SensorKey.TryParse(key, out var parsed) ? history.GetSamples(parsed) : [];
+        TryParse(key, out var parsed) ? history.GetSamples(parsed) : [];
 
     /// <summary>
     /// <paramref name="table"/> as a scene reads it: its column names and the text of its first <paramref name="maxRows"/>

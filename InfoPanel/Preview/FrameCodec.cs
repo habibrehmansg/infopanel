@@ -1,6 +1,7 @@
 using InfoPanel.Output;
 using InfoPanel.Spec;
 using InfoPanel.Spec.Schema;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -47,13 +48,43 @@ public static class FrameCodec
     /// <summary>Everything before the payload: magic, header length and header. The socket sends the payload after it in the same message.</summary>
     public static byte[] EncodePrefix(FrameHeader header)
     {
-        var json = HeaderJson(header);
-        var prefix = new byte[PrefixSize + json.Length];
-        Magic.CopyTo(prefix);
-        BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(4), (uint)json.Length);
-        json.CopyTo(prefix.AsSpan(PrefixSize));
-        return prefix;
+        // The header is written after 8 reserved bytes in this thread's buffer, and copied out once.
+        var buffer = t_buffer ??= new ArrayBufferWriter<byte>(4096);
+        var writer = t_writer ??= new Utf8JsonWriter(buffer, WriterOptions);
+        try
+        {
+            buffer.ResetWrittenCount();
+            buffer.Advance(PrefixSize);
+            writer.Reset(buffer);
+            JsonSerializer.Serialize(writer, header, SpecJson.Options);
+            writer.Flush();
+            var prefix = buffer.WrittenSpan.ToArray();
+            Magic.CopyTo(prefix);
+            BinaryPrimitives.WriteUInt32LittleEndian(prefix.AsSpan(4), (uint)(prefix.Length - PrefixSize));
+            return prefix;
+        }
+        finally
+        {
+            writer.Reset();
+            if (buffer.Capacity > MaxKeptBuffer)
+                (t_buffer, t_writer) = (null, null); // a very large header's buffer isn't kept for the next
+        }
     }
+
+    /// <summary>The largest header buffer a thread keeps between frames.</summary>
+    private const int MaxKeptBuffer = 1024 * 1024;
+
+    [ThreadStatic] private static ArrayBufferWriter<byte>? t_buffer;
+    [ThreadStatic] private static Utf8JsonWriter? t_writer;
+
+    /// <summary>What <see cref="JsonSerializer.SerializeToUtf8Bytes{TValue}(TValue, JsonSerializerOptions?)"/> writes with for the formats' options.</summary>
+    private static readonly JsonWriterOptions WriterOptions = new()
+    {
+        Encoder = SpecJson.Options.Encoder,
+        Indented = SpecJson.Options.WriteIndented,
+        MaxDepth = SpecJson.Options.MaxDepth,
+        SkipValidation = true,
+    };
 
     /// <summary>The whole message: <see cref="EncodePrefix"/> followed by <paramref name="payload"/>.</summary>
     public static byte[] Encode(FrameHeader header, ReadOnlySpan<byte> payload)
@@ -108,8 +139,6 @@ public static class FrameCodec
 
         return (header, message[(PrefixSize + (int)length)..]);
     }
-
-    private static byte[] HeaderJson(FrameHeader header) => JsonSerializer.SerializeToUtf8Bytes(header, SpecJson.Options);
 
     /// <summary>The formats' options, except that a member the model doesn't have is skipped; a repeated one is still refused.</summary>
     private static readonly JsonSerializerOptions Tolerant = CreateTolerant();

@@ -1,6 +1,7 @@
 using InfoPanel.Spec;
 using SkiaSharp;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -32,6 +33,7 @@ public sealed class RenderedFrame
     private readonly Lock _lock = new();
     private SKImage? _image;
     private ReadOnlyMemory<byte>? _png;
+    private PngLease? _lease;
     private double _pngMs;
     private bool _closed;
 
@@ -92,14 +94,45 @@ public sealed class RenderedFrame
             if (_closed)
                 throw new InvalidOperationException("GetPng() was called after OnFrame returned; call it inside OnFrame and keep the bytes.");
 
-            var started = Stopwatch.GetTimestamp();
-            using var pixmap = _image!.PeekPixels();
-            using var data = pixmap.Encode(PngOptions)
-                ?? throw new InvalidOperationException("PNG encoding failed.");
-            png = data.ToArray();
+            png = Encoded().Memory.ToArray();
             _png = png;
-            _pngMs = Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds, 2);
             return png;
+        }
+    }
+
+    /// <summary>The frame's PNG in a pooled array, encoded once (under the lock); the frame holds one reference until <see cref="Close"/>.</summary>
+    private PngLease Encoded()
+    {
+        if (_lease != null)
+            return _lease;
+
+        var started = Stopwatch.GetTimestamp();
+        using var pixmap = _image!.PeekPixels();
+        using var data = pixmap.Encode(PngOptions)
+            ?? throw new InvalidOperationException("PNG encoding failed.");
+        var pool = PngPool;
+        var length = checked((int)data.Size);
+        var array = pool.Rent(length);
+        data.AsSpan().CopyTo(array);
+        _lease = new PngLease(array, length, a => pool.Return(a));
+        _pngMs = Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds, 2);
+        return _lease;
+    }
+
+    /// <summary>The pool <see cref="LeasePng"/>'s storage comes from (tests).</summary>
+    internal ArrayPool<byte> PngPool { get; init; } = ArrayPool<byte>.Shared;
+
+    /// <summary>
+    /// The frame as a PNG, encoded on first use and shared, as a reference the caller releases once (<see cref="PngLease.Release"/>)
+    /// when it no longer reads the bytes. Call it during <see cref="IFrameSink.OnFrame"/>.
+    /// </summary>
+    public PngLease LeasePng()
+    {
+        lock (_lock)
+        {
+            if (_closed)
+                throw new InvalidOperationException("LeasePng() was called after OnFrame returned; call it inside OnFrame and keep the lease.");
+            return Encoded().AddRef();
         }
     }
 
@@ -112,7 +145,7 @@ public sealed class RenderedFrame
     /// <summary>True once <see cref="GetPng"/> has encoded the frame (for the render loop's statistics and tests).</summary>
     internal bool IsEncoded
     {
-        get { lock (_lock) return _png != null; }
+        get { lock (_lock) return _lease != null; }
     }
 
     /// <summary>Called by the render loop after every sink's <c>OnFrame</c>: releases the image over the reused bitmap.</summary>
@@ -126,6 +159,61 @@ public sealed class RenderedFrame
             _closed = true;
             _image?.Dispose();
             _image = null;
+            _lease?.Release(); // the frame's own reference: the array goes back once every holder has let go
         }
+    }
+}
+
+/// <summary>
+/// A frame's PNG in an array shared by reference: each holder releases its reference once, and the last release gives the
+/// array back (to its pool). <see cref="Memory"/> is valid only while the reader holds a reference.
+/// </summary>
+public sealed class PngLease
+{
+    private readonly byte[] _array;
+    private readonly int _length;
+    private readonly Action<byte[]>? _returned;
+    private int _references = 1;
+
+    /// <param name="returned">Called with the array once the last reference is released (null: nothing to give back).</param>
+    public PngLease(byte[] array, int length, Action<byte[]>? returned)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, array.Length);
+        _array = array;
+        _length = length;
+        _returned = returned;
+    }
+
+    public int Length => _length;
+
+    public ReadOnlyMemory<byte> Memory => _array.AsMemory(0, _length);
+
+    /// <summary>The references held (tests).</summary>
+    internal int References => Volatile.Read(ref _references);
+
+    /// <summary>One more reference, for a holder that releases it once.</summary>
+    public PngLease AddRef()
+    {
+        // Compare-and-swap: a count that reached 0 stays 0 (the array is back in its pool), however often this is asked.
+        var current = Volatile.Read(ref _references);
+        while (true)
+        {
+            if (current <= 0)
+                throw new InvalidOperationException("The PNG was already given back.");
+            var seen = Interlocked.CompareExchange(ref _references, current + 1, current);
+            if (seen == current)
+                return this;
+            current = seen;
+        }
+    }
+
+    /// <summary>Gives one reference back; the last one gives the array back.</summary>
+    public void Release()
+    {
+        var left = Interlocked.Decrement(ref _references);
+        if (left == 0)
+            _returned?.Invoke(_array);
+        else if (left < 0)
+            throw new InvalidOperationException("The PNG was released more times than it was referenced.");
     }
 }

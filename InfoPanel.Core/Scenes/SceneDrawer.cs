@@ -62,21 +62,35 @@ internal static class SceneDrawer
     /// </summary>
     internal const long MaxPictureBytes = 64L << 20;
 
+    /// <summary>A test hook: the shape and text paints made on this thread.</summary>
+    [ThreadStatic] internal static int PaintsMade;
+
+    /// <summary>A test hook: the clip paths built for groups on this thread.</summary>
+    [ThreadStatic] internal static int ClipPathsMade;
+
     /// <summary>A test hook: a smaller <see cref="MaxPictureBytes"/> on this thread.</summary>
     [ThreadStatic] internal static long? PictureBound;
 
     public static void Draw(SKCanvas canvas, RNode[] nodes)
     {
-        foreach (var n in nodes) Draw(canvas, n);
+        var paints = new ShapePaints();
+        try
+        {
+            foreach (var n in nodes) Draw(canvas, n, ref paints);
+        }
+        finally
+        {
+            paints.Dispose();
+        }
     }
 
-    private static void Draw(SKCanvas canvas, RNode node)
+    private static void Draw(SKCanvas canvas, RNode node, ref ShapePaints paints)
     {
         if (node.Opacity <= 0) return;
         switch (node)
         {
             case RGroup g: DrawGroup(canvas, g); break;
-            case RShape s: DrawShape(canvas, s); break;
+            case RShape s: DrawShape(canvas, s, ref paints); break;
             case RText t: if (!WithoutText) DrawText(canvas, t); break;
             case RMedia m: DrawMedia(canvas, m); break;
         }
@@ -111,12 +125,22 @@ internal static class SceneDrawer
             if (hint is { } bounds) canvas.SaveLayer(bounds, paint);
             else canvas.SaveLayer(paint);
         }
-        if (g.Clip is { } clip)
+        if (g.Clip is RectGeom { Radii: null } box) canvas.ClipRect(box.Rect, SKClipOperation.Intersect, true);
+        else if (g.Clip is { } clip)
         {
+            ClipPathsMade++;
             using var path = clip.ToPath();
             canvas.ClipPath(path, SKClipOperation.Intersect, true);
         }
-        foreach (var child in g.Children) Draw(canvas, child);
+        var paints = new ShapePaints();
+        try
+        {
+            foreach (var child in g.Children) Draw(canvas, child, ref paints);
+        }
+        finally
+        {
+            paints.Dispose();
+        }
         Panel?.RestoreToCount(panelCount);
         canvas.RestoreToCount(count);
     }
@@ -164,6 +188,7 @@ internal static class SceneDrawer
     /// <summary>A paint for <paramref name="p"/> at <paramref name="opacity"/>; the caller disposes the paint and its shader.</summary>
     private static SKPaint MakePaint(RPaint p, float opacity, SKPaintStyle style)
     {
+        PaintsMade++;
         var paint = new SKPaint { IsAntialias = true, Style = style };
         if (p.SolidColor is { } c) paint.Color = SceneColor.ToSk(c, opacity);
         else
@@ -209,7 +234,60 @@ internal static class SceneDrawer
         paint.Dispose();
     }
 
-    private static void DrawShape(SKCanvas canvas, RShape s)
+    /// <summary>
+    /// The paints of the shapes drawn one after another in one list of nodes, within one draw call: a shape whose fill (or
+    /// stroke) is the same resolved paint (or stroke) at the same opacity, under the same matrix, as the shape drawn
+    /// before it draws with that shape's paint (every bar of a series). Disposed by the list's caller.
+    /// </summary>
+    private struct ShapePaints
+    {
+        private SKPaint? _fill, _stroke;
+        private RPaint? _fillOf;
+        private RStroke? _strokeOf;
+        private float _fillOpacity, _strokeOpacity;
+        private SKMatrix _strokeMatrix;
+        private bool _strokeZeroLength;
+
+        public SKPaint Fill(RPaint p, float opacity)
+        {
+            if (_fill is not null && ReferenceEquals(p, _fillOf) && opacity == _fillOpacity) return _fill;
+            if (_fill is not null) SceneDrawer.Dispose(_fill);
+            _fill = null;
+            _fill = MakePaint(p, opacity, SKPaintStyle.Fill);
+            (_fillOf, _fillOpacity) = (p, opacity);
+            return _fill;
+        }
+
+        public SKPaint Stroke(RStroke s, float opacity, in SKMatrix total, bool zeroLength)
+        {
+            if (_stroke is not null && ReferenceEquals(s, _strokeOf) && opacity == _strokeOpacity && total == _strokeMatrix
+                && zeroLength == _strokeZeroLength) return _stroke;
+            if (_stroke is not null) SceneDrawer.Dispose(_stroke);
+            _stroke = null;
+            var paint = MakePaint(s.Paint, opacity, SKPaintStyle.Stroke);
+            try
+            {
+                ApplyStroke(paint, s, total, zeroLength);
+            }
+            catch
+            {
+                SceneDrawer.Dispose(paint);
+                throw;
+            }
+            _stroke = paint;
+            (_strokeOf, _strokeOpacity, _strokeMatrix, _strokeZeroLength) = (s, opacity, total, zeroLength);
+            return _stroke;
+        }
+
+        public void Dispose()
+        {
+            if (_fill is not null) SceneDrawer.Dispose(_fill);
+            if (_stroke is not null) SceneDrawer.Dispose(_stroke);
+            (_fill, _stroke) = (null, null);
+        }
+    }
+
+    private static void DrawShape(SKCanvas canvas, RShape s, ref ShapePaints paints)
     {
         if (s.Fill is null && s.Stroke is null) return;
         var opacity = s.Opacity;
@@ -228,31 +306,16 @@ internal static class SceneDrawer
         {
             if (s.Fill is { } fill && s.Geom is not LineGeom)
             {
-                var paint = MakePaint(fill, opacity, SKPaintStyle.Fill);
-                try
-                {
-                    if (!s.Geom.TryDrawFast(canvas, paint)) canvas.DrawPath(Path(), paint);
-                }
-                finally
-                {
-                    Dispose(paint);
-                }
+                var paint = paints.Fill(fill, opacity);
+                if (!s.Geom.TryDrawFast(canvas, paint)) canvas.DrawPath(Path(), paint);
             }
             if (s.Stroke is { } stroke)
             {
-                var paint = MakePaint(stroke.Paint, opacity, SKPaintStyle.Stroke);
-                try
-                {
-                    // Zero length as measured on the path drawn (the budget's), not as the geometry asks for it.
-                    var zeroLength = stroke.Dash is not null && s.Geom.Drawn is not null && s.Geom.Measured.Length == 0;
-                    ApplyStroke(paint, stroke, canvas.TotalMatrix, zeroLength);
-                    if (StrokeProbe is { } probe && paint.PathEffect is not null) probe(stroke, Path(), paint, canvas.TotalMatrix);
-                    if (paint.PathEffect is not null || !s.Geom.TryDrawFast(canvas, paint)) canvas.DrawPath(Path(), paint);
-                }
-                finally
-                {
-                    Dispose(paint);
-                }
+                // Zero length as measured on the path drawn (the budget's), not as the geometry asks for it.
+                var zeroLength = stroke.Dash is not null && s.Geom.Drawn is not null && s.Geom.Measured.Length == 0;
+                var paint = paints.Stroke(stroke, opacity, canvas.TotalMatrix, zeroLength);
+                if (StrokeProbe is { } probe && paint.PathEffect is not null) probe(stroke, Path(), paint, canvas.TotalMatrix);
+                if (paint.PathEffect is not null || !s.Geom.TryDrawFast(canvas, paint)) canvas.DrawPath(Path(), paint);
             }
         }
         finally
@@ -618,6 +681,14 @@ internal sealed class PanelFrame(int width, int height, SKColorType colorType) :
 
     public void RestoreToCount(int count) => _matrices.RestoreToCount(count);
 
+    /// <summary>Back to identity for another frame, keeping its picture and enlargement (each media clears what it covers).</summary>
+    public PanelFrame Reset()
+    {
+        _matrices.RestoreToCount(1);
+        _matrices.ResetMatrix();
+        return this;
+    }
+
     /// <summary>
     /// The canvas-size picture, made the first time raster media needs it and kept for the rest of the frame (each media
     /// clears what it covers), so a frame allocates one however many rasters it has; null when it would be over
@@ -651,8 +722,13 @@ internal sealed class PanelFrame(int width, int height, SKColorType colorType) :
     /// </summary>
     public SKBitmap? Enlargement(float s, long bound)
     {
-        if (_enlarged is not null) return _enlarged;
         var (w, h) = (SceneDrawer.First(Width, s), SceneDrawer.First(Height, s));
+        if (_enlarged is not null)
+        {
+            if (_enlarged.Width == w && _enlarged.Height == h) return _enlarged;
+            _enlarged.Dispose(); // kept from a frame at another scale
+            _enlarged = null;
+        }
         if (!SceneDrawer.Fits(w, h, Sides(s), bound)) return null;
         var info = new SKImageInfo(w, h, ColorType, SKAlphaType.Premul);
         SceneDrawer.EnlargementProbe?.Invoke(info);

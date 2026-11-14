@@ -722,6 +722,221 @@ public class RenderLoopTests
         Assert.InRange(sink.Frames.Count, count, count + 1); // at most a tick already under way
     }
 
+    [Fact]
+    public async Task Static_document_is_drawn_once()
+    {
+        // A rect and a literal text: no time, input, media, animation or state, no stats overlay.
+        var label = SceneKit.Obj("{'format': 'infopanel.scene/1', 'nodes': [{'kind': 'text', 'font': {'family': 'Inter', 'size': 24}, 'fill': '#ffffff', 'text': 'Hello'}]}");
+        JsonObject StaticDoc() => RenderHarness.Doc(300, 100,
+            DocKit.Scene("shape", 220, 50, DocKit.Rect("#00ff00", 40, 40)), DocKit.Scene("label", 10, 10, label.DeepClone().AsObject()));
+        await using var h = new RenderHarness(StaticDoc());
+        var sink = h.Attach(maxFps: 30);
+
+        RenderLoop.DrawsMade = 0;
+        for (var i = 0; i < 30; i++) h.Tick(34);
+
+        Assert.Single(sink.Frames);
+        Assert.True(RenderLoop.DrawsMade <= 1, $"{RenderLoop.DrawsMade} draws in 30 ticks of a static document");
+
+        // A new sink still gets the frame, at another scale too.
+        var late = h.Attach(scale: 2);
+        h.Tick(34);
+        Assert.Single(late.Frames);
+        Assert.Equal(600, late.Frames[0].Frame.PixelWidth);
+        Assert.Equal(sink.Frames[0].Frame.ContentHash, sink.Frames[^1].Frame.ContentHash);
+
+        // The late sink's scale-2 picture is the content a fresh render of the same document at scale 2 draws.
+        await using var fresh = new RenderHarness(StaticDoc());
+        var expected = fresh.Attach(scale: 2);
+        fresh.Tick(34);
+        Assert.Equal(expected.Frames[0].Frame.ContentHash, late.Frames[0].Frame.ContentHash);
+        Assert.NotEqual(sink.Frames[0].Frame.ContentHash, late.Frames[0].Frame.ContentHash);
+    }
+
+    [Fact]
+    public async Task A_changing_time_or_state_is_drawn_every_tick()
+    {
+        var clock = SceneKit.Obj("{'format': 'infopanel.scene/1', 'nodes': [{'kind': 'rect', 'w': {'op': 'mod', 'args': [{'op': 'mul', 'args': [{'op': 'time', 'field': 'elapsed'}, 30]}, 200]}, 'h': 10, 'fill': '#0000ff'}]}");
+        await using var h = new RenderHarness(RenderHarness.Doc(300, 100,
+            DocKit.Scene("bar", 10, 10, RenderHarness.BarScene(), new JsonObject { ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = RenderHarness.Load.ToString() } } }),
+            DocKit.Scene("clock", 10, 60, clock)));
+        h.Attach();
+
+        // Elapsed time moves the clock's bar every tick: every tick draws and sends a new frame.
+        RenderLoop.DrawsMade = 0;
+        for (var i = 0; i < 5; i++) Assert.Equal(1, h.Tick(34));
+        Assert.Equal(5, RenderLoop.DrawsMade);
+
+        // A state cell that grows every tick is drawn every tick.
+        await using var g = Growing();
+        var grown = g.Attach();
+        RenderLoop.DrawsMade = 0;
+        for (var i = 0; i < 5; i++) Assert.Equal(1, g.Tick(34));
+        Assert.Equal(5, RenderLoop.DrawsMade);
+        Assert.Equal(5, grown.Frames.Select(f => f.Frame.ContentHash).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task A_sensor_change_is_drawn_on_its_tick_and_only_then()
+    {
+        // Only the bound bar: nothing else on the canvas changes, so a draw and new pixels come from the sensor alone.
+        await using var h = new RenderHarness(RenderHarness.Doc(300, 100,
+            DocKit.Scene("bar", 10, 10, RenderHarness.BarScene(), new JsonObject { ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = RenderHarness.Load.ToString() } } })));
+        var sink = h.Attach();
+
+        RenderLoop.DrawsMade = 0;
+        Assert.Equal(1, h.Tick(34));
+        Assert.Equal(1, RenderLoop.DrawsMade);
+
+        // Nothing changed: no draw, no frame.
+        Assert.Equal(0, h.Tick(34));
+        Assert.Equal(1, RenderLoop.DrawsMade);
+
+        // The sensor changes: one draw and a frame with other pixels.
+        var before = sink.Frames[^1].Pixels;
+        h.SetLoad(90);
+        Assert.Equal(1, h.Tick(34));
+        Assert.Equal(2, RenderLoop.DrawsMade);
+        Assert.NotEqual(before, sink.Frames[^1].Pixels);
+    }
+
+    [Fact]
+    public async Task A_change_that_draws_the_same_pixels_is_delivered_without_a_draw()
+    {
+        await using var h = Bars();
+        var sink = h.Attach();
+        var large = h.Attach(scale: 2);
+        Assert.Equal(2, h.Tick());
+        Assert.Equal(0, h.Tick());
+
+        // A shape's name: a new revision, the same pixels. Each sink gets it, as it would after a draw; nothing is drawn.
+        RenderLoop.DrawsMade = 0;
+        var revision = h.Commit(DocKit.Attrs("shape", name: "Renamed")).Rev;
+        Assert.Equal(2, h.Tick());
+        Assert.Equal(0, RenderLoop.DrawsMade);
+        foreach (var s in new[] { sink, large })
+        {
+            Assert.Equal(2, s.Frames.Count);
+            Assert.Equal(revision, s.Frames[^1].Frame.Rev);
+            Assert.Equal(s.Frames[0].Pixels, s.Frames[^1].Pixels);
+            Assert.Equal(s.Frames[0].Frame.ContentHash, s.Frames[^1].Frame.ContentHash);
+        }
+        Assert.Equal(0, h.Tick());
+    }
+
+    [Fact]
+    public async Task An_animated_gif_is_drawn_once_per_scale_on_each_tick_its_frame_changes_and_not_between()
+    {
+        // Two 100 ms frames, red then blue, beside a still shape; sinks at scale 1 and 2.
+        var gif = TestGif.Build(8, 8, new TestGif.Frame(0, 0, 8, 8, 1), new TestGif.Frame(0, 0, 8, 8, 3));
+        var hash = InfoPanel.Documents.BlobStore.IdOf(gif);
+        var picture = SceneKit.Obj($"{{'format': 'infopanel.scene/1', 'nodes': [{{'kind': 'media', 'w': 40, 'h': 40, 'source': {{'asset': '{hash}'}}}}]}}");
+        await using var h = new RenderHarness(RenderHarness.Doc(300, 100,
+            DocKit.Scene("shape", 220, 50, DocKit.Rect("#00ff00", 40, 40)),
+            DocKit.Scene("picture", 20, 20, picture)));
+        var assets = new MemoryAssets();
+        assets.Assets[hash] = gif;
+        using var media = SceneKit.SyncMedia(assets);
+        var scenes = RenderHarness.Scenes(h.Workspace, h.Sensors, h.History);
+        await using var service = new RenderService(h.Workspace, new InfoPanel.Scenes.SceneRuntimeOptions
+        {
+            Inputs = scenes.Inputs, Media = media, Limits = scenes.Limits, Support = EngineSupport.All,
+            LocalZone = scenes.LocalZone, Locale = scenes.Locale,
+        }, h.Time, new RenderServiceOptions(false));
+        var small = new FakeSink(h.ProfileId, new FrameRequest(1, 30));
+        var large = new FakeSink(h.ProfileId, new FrameRequest(2, 30));
+        Assert.True(service.Attach(small, h.Document));
+        Assert.True(service.Attach(large, h.Document));
+
+        // Tick k is k × 34 ms into the animation: frame 0 below 100 ms, frame 1 to 200 ms, and round again.
+        var shown = new Dictionary<int, (byte[] Small, byte[] Large)>();
+        var previous = -1;
+        var changes = 0;
+        for (var k = 0; k < 24; k++)
+        {
+            var frame = (34 * k % 200) < 100 ? 0 : 1;
+            var draws = RenderLoop.DrawsMade;
+            var (smallCount, largeCount) = (small.Frames.Count, large.Frames.Count);
+            if (k > 0) h.Clock.Advance(34);
+            var delivered = service.Tick(h.ProfileId);
+            if (frame == previous)
+            {
+                Assert.True(delivered == 0, $"tick {k}: {delivered} frames sent with the GIF's frame unchanged");
+                Assert.Equal(draws, RenderLoop.DrawsMade);
+                continue;
+            }
+
+            Assert.True(delivered == 2, $"tick {k}: {delivered} frames sent as the GIF's frame changed to {frame}");
+            Assert.Equal(draws + 2, RenderLoop.DrawsMade);
+            Assert.Equal(smallCount + 1, small.Frames.Count);
+            Assert.Equal(largeCount + 1, large.Frames.Count);
+            if (previous >= 0)
+            {
+                changes++;
+                Assert.NotEqual(small.Frames[^2].Pixels, small.Frames[^1].Pixels);
+                Assert.NotEqual(large.Frames[^2].Pixels, large.Frames[^1].Pixels);
+            }
+            // Each frame shows as it did the first time.
+            if (shown.TryGetValue(frame, out var first))
+            {
+                Assert.Equal(first.Small, small.Frames[^1].Pixels);
+                Assert.Equal(first.Large, large.Frames[^1].Pixels);
+            }
+            else shown[frame] = (small.Frames[^1].Pixels, large.Frames[^1].Pixels);
+            previous = frame;
+        }
+        Assert.True(changes >= 6, $"{changes} frame changes in 24 ticks");
+        Assert.Equal(600, large.Frames[^1].Frame.PixelWidth);
+    }
+
+    [Fact]
+    public async Task Raster_media_at_scale_2_reuses_one_picture_of_the_canvas_across_ticks()
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(40, 30, SKColorType.Rgba8888, SKAlphaType.Premul));
+        bitmap.Erase(new SKColor(200, 100, 50));
+        var png = InfoPanel.Core.Tests.Golden.GoldenImage.EncodePng(bitmap);
+        var hash = InfoPanel.Documents.BlobStore.IdOf(png);
+        var picture = SceneKit.Obj($"{{'format': 'infopanel.scene/1', 'nodes': [{{'kind': 'media', 'x': 0.3, 'y': 0.6, 'source': {{'asset': '{hash}'}}}}]}}");
+        await using var h = new RenderHarness(RenderHarness.Doc(300, 100,
+            DocKit.Scene("bar", 10, 60, RenderHarness.BarScene(), new JsonObject { ["bindings"] = new JsonObject { ["v"] = new JsonObject { ["key"] = RenderHarness.Load.ToString() } } }),
+            DocKit.Scene("picture", 200, 20, picture)));
+        var assets = new MemoryAssets();
+        assets.Assets[hash] = png;
+        using var media = SceneKit.SyncMedia(assets);
+        var scenes = RenderHarness.Scenes(h.Workspace, h.Sensors, h.History);
+        await using var service = new RenderService(h.Workspace, new InfoPanel.Scenes.SceneRuntimeOptions
+        {
+            Inputs = scenes.Inputs, Media = media, Limits = scenes.Limits, Support = EngineSupport.All,
+            LocalZone = scenes.LocalZone, Locale = scenes.Locale,
+        }, h.Time, new RenderServiceOptions(false));
+        var sink = new FakeSink(h.ProfileId, new FrameRequest(2, 30));
+        Assert.True(service.Attach(sink, h.Document));
+
+        // Every tick changes the bar, so every tick draws the raster above scale 1.
+        var pictures = 0;
+        InfoPanel.Scenes.SceneDrawer.PictureProbe = _ => pictures++;
+        try
+        {
+            for (var i = 0; i < 30; i++)
+            {
+                h.SetLoad(i + 1);
+                h.Clock.Advance(34);
+                service.Tick(h.ProfileId);
+            }
+        }
+        finally
+        {
+            InfoPanel.Scenes.SceneDrawer.PictureProbe = null;
+        }
+
+        Assert.Equal(30, sink.Frames.Count);
+        Assert.Equal(600, sink.Frames[^1].Frame.PixelWidth);
+        // The raster is drawn: its colour at its centre, (200.3 + 20, 20.6 + 15) × 2.
+        var at = (71 * 600 + 440) * 4;
+        Assert.Equal(new byte[] { 200, 100, 50, 255 }, sink.Frames[^1].Pixels[at..(at + 4)]);
+        Assert.True(pictures <= 1, $"{pictures} canvas-size pictures allocated in 30 ticks");
+    }
+
     private static async Task WaitUntil(Func<bool> condition, CancellationToken ct)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);

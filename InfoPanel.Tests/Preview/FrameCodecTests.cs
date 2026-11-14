@@ -214,6 +214,38 @@ public class FrameCodecTests
         Assert.Throws<FormatException>(() => FrameCodec.Decode(message));
     }
 
+    [Fact]
+    public void EncodePrefix_WithManyBounds_AllocatesTheHeaderOnce_AndKeepsItsBytes()
+    {
+        var header = Header with
+        {
+            ItemBounds = [.. Enumerable.Range(0, 2000).Select(i => new ItemBounds
+            {
+                Id = $"item-{i:D5}", Frame = Rect(i, i * 0.5, 120.25, 40), Ink = Rect(i - 1, i * 0.5 - 1, 122.25, 42), Rotation = i % 7 == 0 ? 15 : 0,
+            })],
+        };
+        var json = JsonSerializer.SerializeToUtf8Bytes(header, SpecJson.Options);
+        var expected = new byte[8 + json.Length];
+        "IPF1"u8.CopyTo(expected);
+        BinaryPrimitives.WriteUInt32LittleEndian(expected.AsSpan(4), (uint)json.Length);
+        json.CopyTo(expected, 8);
+
+        // The same bytes as before, call after call.
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(expected, FrameCodec.EncodePrefix(header));
+
+        const int calls = 100;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < calls; i++)
+            FrameCodec.EncodePrefix(header);
+        var perCall = (GC.GetAllocatedBytesForCurrentThread() - before) / (double)calls;
+
+        TestContext.Current.TestOutputHelper?.WriteLine($"MEASURED {perCall:F0} B per EncodePrefix, prefix {expected.Length} B ({perCall / expected.Length:F2}x)");
+        // One array of the prefix's length a call (plus small change), not the JSON and then a copy of it.
+        Assert.True(perCall < expected.Length * 1.25,
+            $"{perCall:F0} B allocated per EncodePrefix for a {expected.Length} B prefix ({perCall / expected.Length:F2}×)");
+    }
+
     private static string Json(FrameHeader header)
     {
         var prefix = FrameCodec.EncodePrefix(header);

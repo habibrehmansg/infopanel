@@ -262,7 +262,14 @@ public sealed class TickSnapshot : IDisposable
     /// Skia samples the same draw a little differently into RGBA and BGRA pixels (a sample on a pixel's edge can go either
     /// way): a frame then shows the pixels the frame at scale 1 in the same colour type has.
     /// </summary>
-    public void Draw(SKCanvas canvas, float scale, bool withoutText, SKColorType colorType)
+    public void Draw(SKCanvas canvas, float scale, bool withoutText, SKColorType colorType) => Draw(canvas, scale, withoutText, colorType, null);
+
+    /// <summary>
+    /// <see cref="Draw(SKCanvas, float, bool, SKColorType)"/>, above scale 1 with <paramref name="scratch"/> as the frame's
+    /// panel side when it is the canvas's size and colour type (a render loop's, kept from frame to frame by one drawing
+    /// thread, so raster media allocates no canvas-size picture per frame); else with one of its own.
+    /// </summary>
+    internal void Draw(SKCanvas canvas, float scale, bool withoutText, SKColorType colorType, PanelFrame? scratch)
     {
         if (IsReleased) throw new ObjectDisposedException(nameof(TickSnapshot));
         if (colorType is not (SKColorType.Rgba8888 or SKColorType.Bgra8888))
@@ -272,7 +279,8 @@ public sealed class TickSnapshot : IDisposable
         var wasZoom = SceneDrawer.Zoom;
         var wasRoot = SceneDrawer.ZoomRoot;
         var wasPanel = SceneDrawer.Panel;
-        var panel = scale > 1 ? new PanelFrame(Width, Height, colorType) : null;
+        var reused = scale > 1 && scratch is not null && scratch.Width == Width && scratch.Height == Height && scratch.ColorType == colorType;
+        var panel = reused ? scratch!.Reset() : scale > 1 ? new PanelFrame(Width, Height, colorType) : null;
         SceneDrawer.WithoutText = withoutText;
         SceneDrawer.Zoom = scale > 1 ? scale : 0;
         SceneDrawer.ZoomRoot = canvas.TotalMatrix;
@@ -290,10 +298,97 @@ public sealed class TickSnapshot : IDisposable
             SceneDrawer.Zoom = wasZoom;
             SceneDrawer.ZoomRoot = wasRoot;
             SceneDrawer.Panel = wasPanel;
-            panel?.Dispose();
+            if (!reused) panel?.Dispose();
             canvas.RestoreToCount(count);
         }
     }
+
+    /// <summary>
+    /// Whether drawing this snapshot gives the pixels drawing <paramref name="other"/> gives, at any scale: the same canvas
+    /// and background, and item by item the same placement and nodes, every field a draw reads compared by value, media
+    /// samples and text layouts by reference. Conservative: what it can't compare (a composed paint, a compiled path that
+    /// isn't the same object) counts as different.
+    /// </summary>
+    internal bool DrawsAs(TickSnapshot other) =>
+        ReferenceEquals(this, other)
+        || Width == other.Width && Height == other.Height && Background == other.Background && SameItems(_items, other._items);
+
+    private static bool SameItems(SnapItem[] a, SnapItem[] b)
+    {
+        if (a.Length != b.Length) return false;
+        for (var i = 0; i < a.Length; i++)
+        {
+            if (!a[i].World.Equals(b[i].World)) return false;
+            var same = (a[i], b[i]) switch
+            {
+                (SnapGroup g, SnapGroup h) => SameItems(g.Children, h.Children),
+                (SnapScene s, SnapScene t) => s.Nodes is { } m && t.Nodes is { } n ? SameNodes(m, n)
+                    : s.Nodes is null && t.Nodes is null && s.PlaceholderBox == t.PlaceholderBox,
+                _ => false,
+            };
+            if (!same) return false;
+        }
+        return true;
+    }
+
+    private static bool SameNodes(RNode[] a, RNode[] b)
+    {
+        if (a.Length != b.Length) return false;
+        for (var i = 0; i < a.Length; i++)
+            if (!SameNode(a[i], b[i])) return false;
+        return true;
+    }
+
+    private static bool SameNode(RNode a, RNode b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a.Opacity != b.Opacity) return false;
+        return (a, b) switch
+        {
+            (RGroup g, RGroup h) => g.Matrix.Equals(h.Matrix) && g.Blend == h.Blend && g.Effects.AsSpan().SequenceEqual(h.Effects)
+                && SameGeom(g.Clip, h.Clip) && Nullable.Equals(g.BoundsOverride, h.BoundsOverride) && SameNodes(g.Children, h.Children),
+            (RShape s, RShape t) => SameGeom(s.Geom, t.Geom) && SamePaint(s.Fill, t.Fill) && SameStroke(s.Stroke, t.Stroke),
+            (RText s, RText t) => ReferenceEquals(s.Layout, t.Layout) && s.Left == t.Left && s.Top == t.Top && s.AlignWidth == t.AlignWidth
+                && s.AlignFraction == t.AlignFraction && SamePaints(s.SpanFills, t.SpanFills) && SameStroke(s.Stroke, t.Stroke)
+                && Nullable.Equals(s.ClipRect, t.ClipRect) && s.Marquee == t.Marquee && s.MarqueeOffset == t.MarqueeOffset
+                && s.MarqueePeriod == t.MarqueePeriod && s.Underline.AsSpan().SequenceEqual(t.Underline)
+                && s.Strike.AsSpan().SequenceEqual(t.Strike) && s.Outline == t.Outline,
+            (RMedia m, RMedia n) => ReferenceEquals(m.Sample, n.Sample) && ReferenceEquals(m.Over, n.Over) && m.FadeOpacity == n.FadeOpacity
+                && m.Dest == n.Dest && m.Box == n.Box && m.ClipToBox == n.ClipToBox && m.Nearest == n.Nearest,
+            _ => false,
+        };
+    }
+
+    private static bool SameGeom(RGeom? a, RGeom? b) => ReferenceEquals(a, b) || (a, b) switch
+    {
+        (RectGeom r, RectGeom q) => r.Rect == q.Rect && (ReferenceEquals(r.Radii, q.Radii) || r.Radii is { } x && q.Radii is { } y && x.AsSpan().SequenceEqual(y)),
+        (EllipseGeom e, EllipseGeom f) => e.Oval == f.Oval,
+        (ArcGeom r, ArcGeom q) => r.Cx == q.Cx && r.Cy == q.Cy && r.R == q.R && r.Inner == q.Inner && r.Start == q.Start && r.Sweep == q.Sweep && r.Open == q.Open,
+        (LineGeom l, LineGeom m) => l.P1 == m.P1 && l.P2 == m.P2,
+        (PolyGeom p, PolyGeom q) => p.Closed == q.Closed && p.Fill == q.Fill && p.Points.AsSpan().SequenceEqual(q.Points),
+        _ => false, // a compiled path is compared by reference only
+    };
+
+    private static bool SamePaint(RPaint? a, RPaint? b) => ReferenceEquals(a, b) || (a, b) switch
+    {
+        (RSolid s, RSolid t) => s.Color == t.Color,
+        (RGradient g, RGradient h) => g.Kind == h.Kind && g.Tile == h.Tile && g.Geometry.AsSpan().SequenceEqual(h.Geometry)
+            && g.Colors.AsSpan().SequenceEqual(h.Colors) && g.Positions.AsSpan().SequenceEqual(h.Positions),
+        _ => false, // a composed paint is compared by reference only
+    };
+
+    private static bool SamePaints(RPaint?[] a, RPaint?[] b)
+    {
+        if (a.Length != b.Length) return false;
+        for (var i = 0; i < a.Length; i++)
+            if (!SamePaint(a[i], b[i])) return false;
+        return true;
+    }
+
+    private static bool SameStroke(RStroke? a, RStroke? b) => ReferenceEquals(a, b)
+        || a is not null && b is not null && SamePaint(a.Paint, b.Paint) && a.Width == b.Width && a.Cap == b.Cap && a.Join == b.Join
+        && a.Miter == b.Miter && a.DashOffset == b.DashOffset && a.TrimStart == b.TrimStart && a.TrimEnd == b.TrimEnd
+        && (ReferenceEquals(a.Dash, b.Dash) || a.Dash is { } x && b.Dash is { } y && x.AsSpan().SequenceEqual(y));
 
     /// <summary>Renders the frame to a new bitmap (premultiplied, the platform's byte order) at <paramref name="scale"/>.</summary>
     public SKBitmap Render(float scale = 1)

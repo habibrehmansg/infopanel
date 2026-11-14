@@ -79,6 +79,9 @@ internal sealed class SimulatedSceneInputs(ISceneInputSource live, TimeProvider 
         private double[]? _ring = keepsHistory ? new double[FirstCapacity] : null;
         private int _first, _length;
 
+        // The history as last handed out, until the next value: a reader may keep it, so it is never changed.
+        private double[]? _snapshot;
+
         public bool KeepsHistory => _ring is not null;
 
         /// <summary>The values the history holds room for.</summary>
@@ -93,6 +96,7 @@ internal sealed class SimulatedSceneInputs(ISceneInputSource live, TimeProvider 
 
             if (_ring is null)
                 return;
+            _snapshot = null;
             if (_length == _ring.Length && _ring.Length < SensorHistory.MaxSamples)
             {
                 var grown = new double[Math.Min(_ring.Length * 2, SensorHistory.MaxSamples)];
@@ -114,16 +118,18 @@ internal sealed class SimulatedSceneInputs(ISceneInputSource live, TimeProvider 
             }
         }
 
-        /// <summary>A copy of the history, oldest first (as the live history's read): the ring is the only one kept.</summary>
+        /// <summary>The history, oldest first (as the live history's read): a copy of the ring, made once a value.</summary>
         public double[] History()
         {
             if (_ring is null)
                 return [];
+            if (_snapshot is not null)
+                return _snapshot;
             var history = new double[_length];
             for (var i = 0; i < _length; i++)
                 history[i] = _ring[(_first + i) % _ring.Length];
             Copied += _length;
-            return history;
+            return _snapshot = history;
         }
     }
 

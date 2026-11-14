@@ -716,7 +716,7 @@ internal sealed class PreviewSession
             return;
         }
 
-        if (!TryReadRequest(message, sink.Request, out var request))
+        if (!TryReadRequest(message, sink.Requested, out var request))
             return;
 
         sink.Request = request;
@@ -1061,10 +1061,19 @@ internal sealed class PreviewSession
             var frames = 0;
             while (frames < FramesPerTurn && !_closing && sink.TryTakeFrame(out var frame))
             {
-                if (!CanSend)
-                    return;
-                await _socket.SendAsync(frame.Prefix, WebSocketMessageType.Binary, false, ct);
-                await _socket.SendAsync(frame.Payload, WebSocketMessageType.Binary, true, ct);
+                try
+                {
+                    if (!CanSend)
+                        return;
+                    await _socket.SendAsync(frame.Prefix, WebSocketMessageType.Binary, false, ct);
+                    await _socket.SendAsync(frame.Payload, WebSocketMessageType.Binary, true, ct);
+                }
+                finally
+                {
+                    // Once the awaited send has ended, whatever its outcome, the payload is no longer read: its PNG's reference goes back.
+                    frame.Sent();
+                }
+
                 frames++;
             }
 

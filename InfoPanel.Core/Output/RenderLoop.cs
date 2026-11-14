@@ -64,6 +64,9 @@ public sealed class RenderLoop
     private Generation? _loaded;
     private long? _firstTick;
 
+    /// <summary>A test hook: the surfaces drawn on this thread (one per due scale per tick that draws).</summary>
+    [ThreadStatic] internal static int DrawsMade;
+
     internal RenderLoop(RenderService service, ProfileDocument document, SceneRuntime runtime, TimeProvider time)
     {
         _service = service;
@@ -391,15 +394,28 @@ public sealed class RenderLoop
         {
             var scale = group.Key;
             var surface = GetSurface(scale, profileWidth, profileHeight);
+            // A snapshot that draws as the one last drawn into the surface leaves its pixels and their hash as they are
+            // (never with the stats overlay, whose figures change every tick).
+            if (!overlay && surface.Drawn is { } drawn && snapshot.DrawsAs(drawn))
+            {
+                groups.Add((scale, surface, group.Select(d => d.Entry).ToList()));
+                continue;
+            }
+            // Forgotten before drawing, so a draw that fails part way is never taken for the snapshot's pixels.
+            surface.Drawn?.Dispose();
+            surface.Drawn = null;
             // On the GPU when rendering.gpu is on (read back into the bitmap), else on a canvas over it. The overlay names
             // the backend running this draw: a size the GPU refuses, or the CPU's redraw after a loss, says CPU.
             _service.Gpu.Draw(surface.Bitmap, (canvas, backend) =>
             {
+                DrawsMade++;
                 canvas.Clear(SKColors.Transparent);
-                snapshot.Draw(canvas, scale);
+                snapshot.Draw(canvas, scale, withoutText: false, SKColorType.Rgba8888, surface.Panel(scale, snapshot.Width, snapshot.Height));
                 if (overlay)
                     StatsOverlay.Draw(canvas, scale, profileWidth, _stats.Text(profile.Name, GpuRendering.Label(backend)));
             });
+            surface.PixelsHash = XxHash3.HashToUInt64(surface.Bitmap.GetPixelSpan());
+            surface.Drawn = overlay ? null : snapshot.Retain();
             groups.Add((scale, surface, group.Select(d => d.Entry).ToList()));
         }
 
@@ -418,7 +434,9 @@ public sealed class RenderLoop
         foreach (var (scale, surface, groupSinks) in groups)
         {
             var hasher = new XxHash3();
-            hasher.Append(surface.Bitmap.GetPixelSpan());
+            Span<byte> pixels = stackalloc byte[sizeof(ulong)];
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(pixels, surface.PixelsHash);
+            hasher.Append(pixels);
             hasher.Append(boundsBytes);
             var hash = hasher.GetCurrentHashAsUInt64();
 
@@ -426,7 +444,9 @@ public sealed class RenderLoop
             if (recipients.Count == 0)
                 continue;
 
-            var frame = new RenderedFrame(SKImage.FromPixels(surface.Bitmap.PeekPixels()))
+            // The pixmap wrapper is disposed here (after the frame is closed), not left to the finalizer.
+            using var pixmap = surface.Bitmap.PeekPixels();
+            var frame = new RenderedFrame(SKImage.FromPixels(pixmap))
             {
                 ProfileId = ProfileId,
                 Rev = revision,
@@ -525,12 +545,36 @@ public sealed class RenderLoop
     private static byte[] BoundsBytes(IReadOnlyList<ItemBounds> bounds) =>
         bounds.Count == 0 ? [] : JsonSerializer.SerializeToUtf8Bytes(bounds, SpecJson.Options);
 
-    /// <summary>A reused Rgba8888 premultiplied bitmap, one per scale, drawn through <see cref="RenderService.Gpu"/>.</summary>
+    /// <summary>
+    /// A reused Rgba8888 premultiplied bitmap, one per scale, drawn through <see cref="RenderService.Gpu"/>; above scale 1,
+    /// with the panel side its frames' raster media is drawn through, kept from frame to frame (only the tick lock's
+    /// holder draws a surface).
+    /// </summary>
     private sealed class Surface(int width, int height) : IDisposable
     {
+        private PanelFrame? _panel;
+
+        /// <summary>The snapshot last drawn into <see cref="Bitmap"/> (retained), and the hash of the pixels it drew; null before, or with the stats overlay.</summary>
+        public TickSnapshot? Drawn;
+        public ulong PixelsHash;
+
         public SKBitmap Bitmap { get; } = new(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
 
-        public void Dispose() => Bitmap.Dispose();
+        public PanelFrame? Panel(float scale, int canvasWidth, int canvasHeight)
+        {
+            if (scale <= 1) return null;
+            if (_panel is { } panel && panel.Width == canvasWidth && panel.Height == canvasHeight) return panel;
+            _panel?.Dispose();
+            return _panel = new PanelFrame(canvasWidth, canvasHeight, SKColorType.Rgba8888);
+        }
+
+        public void Dispose()
+        {
+            Bitmap.Dispose();
+            _panel?.Dispose();
+            Drawn?.Dispose();
+            Drawn = null;
+        }
     }
 }
 

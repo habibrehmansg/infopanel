@@ -6,7 +6,11 @@ using System.Threading.Channels;
 namespace InfoPanel.Preview;
 
 /// <summary>A frame ready to send: the codec prefix (magic, length, header) and the payload, which go out as one binary message.</summary>
-internal sealed record OutgoingFrame(byte[] Prefix, ReadOnlyMemory<byte> Payload, long Rev);
+internal sealed record OutgoingFrame(byte[] Prefix, ReadOnlyMemory<byte> Payload, long Rev, PngLease? Lease = null)
+{
+    /// <summary>The send loop is done with the frame (its send ended, whatever the outcome, or it never began): its payload is no longer read, and its PNG's reference goes back. Once.</summary>
+    public void Sent() => Lease?.Release();
+}
 
 /// <summary>
 /// One subscription of a preview socket to one profile; a new <c>subscribe</c> makes a new sink. <see cref="OnFrame"/>
@@ -32,13 +36,25 @@ internal sealed class WebPreviewSink : IFrameSink
     /// <summary>The <c>sensors</c> a subscription takes.</summary>
     public const string Live = "live", Simulated = "simulated";
 
-    private readonly Channel<(FrameHeader Header, ReadOnlyMemory<byte> Png)> _frames;
+    private readonly Channel<(FrameHeader Header, ReadOnlyMemory<byte> Png, PngLease? Lease)> _frames;
     private readonly Action _wake;
     private readonly Action<WebPreviewSink, FrameSinkClosedReason> _closed;
     private readonly SkipCounter _skipped = new();
     private readonly VideoStream? _video;
-    private FrameRequest _request;
     private volatile bool _retired;
+
+    // The asked request, the PNG pace's frame rate (0: the asked rate) and the request the render loop reads: one state,
+    // replaced whole under the lock by its two writers (the setter and the pacing), read whole without it.
+    private sealed record RequestState(FrameRequest Asked, int Cap, FrameRequest Effective);
+
+    private readonly Lock _requestLock = new();
+    private volatile RequestState _state;
+
+    // PNG pacing (render thread, under the lock): the encode time's running mean.
+    private double _pngCostMs = double.NaN;
+
+    /// <summary>The share of the render thread a subscription's PNG encodes may take: past it, it is sent fewer frames a second.</summary>
+    public const double PngBudget = 0.3;
 
     /// <param name="video">For an <c>h264</c> subscription: makes its video stream from the send loop's wake, a refresh (a fresh frame
     /// from the render loop) and the skip counter. Without it an <c>h264</c> subscription's frames are PNG with <c>encoder.unavailable</c>.</param>
@@ -46,12 +62,16 @@ internal sealed class WebPreviewSink : IFrameSink
         string encoding = Png, Func<Action, Action, SkipCounter, VideoStream>? video = null)
     {
         ProfileId = profileId;
-        _request = request;
+        _state = new RequestState(request, 0, request);
         _wake = wake;
         _closed = closed;
         Encoding = encoding;
-        _frames = Channel.CreateBounded<(FrameHeader, ReadOnlyMemory<byte>)>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropOldest },
-            _ => _skipped.Add());
+        _frames = Channel.CreateBounded<(FrameHeader, ReadOnlyMemory<byte>, PngLease?)>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropOldest },
+            dropped =>
+            {
+                _skipped.Add();
+                dropped.Item3?.Release();
+            });
         if (encoding == H264 && video != null)
             _video = video(wake, () => Refresh(), _skipped);
     }
@@ -70,18 +90,66 @@ internal sealed class WebPreviewSink : IFrameSink
     /// <summary>Asks the render service for a fresh frame (set by the session once attached; a no-op before).</summary>
     public Action Refresh { get; set; } = () => { };
 
+    /// <summary>
+    /// What the render loop renders for this subscription: the asked request, with fewer frames a second while its PNG
+    /// encodes would take more than <see cref="PngBudget"/> of the render thread at the asked rate (<c>maxFps</c> is the
+    /// most frames a second).
+    /// </summary>
     public FrameRequest Request
     {
-        get => Volatile.Read(ref _request);
+        get => _state.Effective;
         set
         {
-            Volatile.Write(ref _request, value);
+            lock (_requestLock)
+                _state = State(value, _state.Cap);
             _video?.SetFrameRate(value.MaxFps);
+        }
+    }
+
+    /// <summary>The request the client asked for, before PNG pacing.</summary>
+    public FrameRequest Requested => _state.Asked;
+
+    private static RequestState State(FrameRequest asked, int cap) =>
+        new(asked, cap, cap > 0 && cap < RenderLoop.EffectiveFps(asked) ? asked with { MaxFps = cap } : asked);
+
+    /// <summary>
+    /// After a PNG frame (render thread): the frame rate its encodes allow, from their running mean. Lowered at once; raised
+    /// by a clear step (a quarter, at least 2) or back to the asked rate, so a cost near the edge doesn't keep changing the
+    /// request (each change is a fresh frame). A frame that goes to video (<paramref name="encodeMs"/> null) lifts it.
+    /// </summary>
+    private void PacePng(double? encodeMs)
+    {
+        // Read, computed and published under the lock: a request the setter publishes meanwhile is never overwritten.
+        lock (_requestLock)
+        {
+            var state = _state;
+            var asked = RenderLoop.EffectiveFps(state.Asked);
+            int cap;
+            if (encodeMs is not { } ms)
+            {
+                _pngCostMs = double.NaN;
+                cap = 0;
+            }
+            else
+            {
+                _pngCostMs = double.IsNaN(_pngCostMs) ? ms : _pngCostMs + 0.25 * (ms - _pngCostMs);
+                var fits = _pngCostMs > 0 ? (int)Math.Clamp(Math.Floor(PngBudget * 1000 / _pngCostMs), 1, asked) : asked;
+                var current = state.Cap > 0 ? state.Cap : asked;
+                cap = fits >= asked || fits < current || fits >= current + Math.Max(2, current / 4) ? fits : current;
+                if (cap >= asked)
+                    cap = 0;
+            }
+
+            if (cap != state.Cap)
+                _state = State(state.Asked, cap);
         }
     }
 
     /// <summary>The client lost its decoder's state: the next video frame is a keyframe. Nothing for a <c>png</c> subscription.</summary>
     public void RequestKeyframe() => _video?.RequestKeyframe();
+
+    /// <summary>A frame's PNG encode time in milliseconds: its <see cref="RenderedFrame.PngMs"/> (tests set it, since the real one is wall-clock).</summary>
+    internal Func<RenderedFrame, double> EncodeMs { get; set; } = frame => frame.PngMs;
 
     /// <summary>Tests: called by <see cref="TryTakeFrame"/> between its reads of the two queues.</summary>
     internal Action? BetweenReads;
@@ -89,7 +157,7 @@ internal sealed class WebPreviewSink : IFrameSink
     // Send loop only: the candidates taken from each queue and not sent yet, the tick of the last frame sent and whether it
     // was video, and whether a keyframe is owed since a PNG frame (asked for once).
     private EncodedFrame? _heldVideo;
-    private (FrameHeader Header, ReadOnlyMemory<byte> Png)? _heldPng;
+    private (FrameHeader Header, ReadOnlyMemory<byte> Png, PngLease? Lease)? _heldPng;
     private long _lastTick = long.MinValue;
     private bool _lastVideo;
     private bool _keyframeOwed;
@@ -114,8 +182,11 @@ internal sealed class WebPreviewSink : IFrameSink
             while (_frames.Reader.TryRead(out var png))
             {
                 // The newest PNG frame wins, as in the slot.
-                if (_heldPng != null)
+                if (_heldPng is { } replaced)
+                {
                     _skipped.Add();
+                    replaced.Lease?.Release();
+                }
                 _heldPng = png;
             }
 
@@ -125,13 +196,14 @@ internal sealed class WebPreviewSink : IFrameSink
                 if (heldPng.Header.Tick < _lastTick || (_lastVideo && heldPng.Header.Tick == _lastTick))
                 {
                     _skipped.Add();
+                    heldPng.Lease?.Release();
                     continue;
                 }
 
                 _lastTick = heldPng.Header.Tick;
                 _lastVideo = false;
                 _keyframeOwed = true;
-                frame = Outgoing(heldPng.Header, heldPng.Png);
+                frame = Outgoing(heldPng.Header, heldPng.Png, heldPng.Lease);
                 return true;
             }
 
@@ -174,14 +246,17 @@ internal sealed class WebPreviewSink : IFrameSink
         }
     }
 
-    private OutgoingFrame Outgoing(FrameHeader header, ReadOnlyMemory<byte> payload) =>
-        new(FrameCodec.EncodePrefix(header with { Skipped = _skipped.Take() }), payload, header.Rev);
+    private OutgoingFrame Outgoing(FrameHeader header, ReadOnlyMemory<byte> payload, PngLease? lease = null) =>
+        new(FrameCodec.EncodePrefix(header with { Skipped = _skipped.Take() }), payload, header.Rev, lease);
 
     /// <summary>The subscription ended: frames that still arrive are dropped, and its video stream stops (at once; its session within the bound).</summary>
     public void Retire()
     {
         _retired = true;
         _frames.Writer.TryComplete();
+        // What is still queued goes back; a frame the send loop already holds is left to the collector.
+        while (_frames.Reader.TryRead(out var queued))
+            queued.Lease?.Release();
         _video?.Dispose();
     }
 
@@ -198,13 +273,16 @@ internal sealed class WebPreviewSink : IFrameSink
             fallback = _video == null ? VideoStream.Unavailable : _video.Route(frame.PixelWidth, frame.PixelHeight, out offer);
             if (fallback == null)
             {
+                PacePng(null);
                 _video!.Offer(frame, request.IncludeBounds);
                 return;
             }
         }
 
-        var png = frame.GetPng();
-        QueuePng(FrameHeaders.From(frame, request.IncludeBounds) with { EncodeMs = frame.PngMs, Fallback = fallback }, png);
+        var png = frame.LeasePng();
+        var encodeMs = EncodeMs(frame);
+        QueuePng(FrameHeaders.From(frame, request.IncludeBounds) with { EncodeMs = encodeMs, Fallback = fallback }, png);
+        PacePng(encodeMs);
         // While a video encoder is chosen, started or retired: the PNG frame goes out, and its pixels to the encoder, so
         // video starts from the newest picture the client has seen.
         if (offer)
@@ -214,8 +292,17 @@ internal sealed class WebPreviewSink : IFrameSink
     /// <summary>Puts a PNG frame in the one-frame PNG slot (the newest wins). Render thread; tests.</summary>
     internal void QueuePng(FrameHeader header, ReadOnlyMemory<byte> png)
     {
-        if (_frames.Writer.TryWrite((header, png)))
+        if (_frames.Writer.TryWrite((header, png, null)))
             _wake();
+    }
+
+    /// <summary>Puts a PNG frame held by reference in the PNG slot. Render thread; tests.</summary>
+    internal void QueuePng(FrameHeader header, PngLease png)
+    {
+        if (_frames.Writer.TryWrite((header, png.Memory, png)))
+            _wake();
+        else
+            png.Release(); // retired
     }
 
     public void OnClosed(FrameSinkClosedReason reason)
