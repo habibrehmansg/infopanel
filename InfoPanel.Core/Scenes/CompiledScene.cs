@@ -134,6 +134,8 @@ internal enum SeriesMode : byte { Line, Area, Bars }
 internal sealed class CSeries : CNode
 {
     public int Input;
+    /// <summary>The table column it draws (spec/docs/bindings.md, "Samples"); null: the number input's history.</summary>
+    public SampleColumn? Column;
     public required CExpr X, Y, W, H, Min, Max;
     public SeriesMode Mode;
     public CExpr? Pitch, BarWidth;
@@ -502,6 +504,7 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
                 return new CSeries
                 {
                     Input = _scope.Inputs.TryGetValue(s.Input, out var si) ? si : int.MaxValue,
+                    Column = SampleColumn.Of(s.Column),
                     X = N(s.X), Y = N(s.Y), W = N(s.W), H = N(s.H), Min = N(s.Min), Max = N(s.Max),
                     Mode = s.Mode switch { "area" => SeriesMode.Area, "bars" => SeriesMode.Bars, _ => SeriesMode.Line },
                     Pitch = s.Pitch is null ? null : _x.Compile(s.Pitch),
@@ -719,6 +722,11 @@ internal static class ExprWalk
                     stack.Push(p.Else);
                     break;
                 case CellExpr c: stack.Push(c.Row); break;
+                case HistoryExpr h:
+                    if (h.P is not null) stack.Push(h.P);
+                    if (h.Lo is not null) stack.Push(h.Lo);
+                    if (h.Hi is not null) stack.Push(h.Hi);
+                    break;
                 case StepsExpr s:
                     stack.Push(s.Value);
                     foreach (var a in s.At) stack.Push(a);

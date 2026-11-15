@@ -28,9 +28,9 @@ Text is laid out once per tick: the layout is part of the tick snapshot, so ever
 
 ## `series`
 
-Examples: `graph.json`, `histogram.json`.
+Examples: `graph.json`, `histogram.json`, `frame-times.json` (a table's column).
 
-A number input's history (newest last) drawn in the box (`x`, `y`, `w`, `h`), clipped to it. The newest sample is at the right edge, each older one `pitch` pixels to the left (at least 0.25, default 1); at most `count` samples (default: as many as fit, floor(w ÷ pitch) + 1). A sample v is at y = bottom − clamp((v − min) ÷ (max − min), 0, 1) × h; when `max` ≤ `min`, at the bottom.
+A number input's history, or with `column` a table input's column ([samples](bindings.md#samples): one per row, the last row newest), drawn in the box (`x`, `y`, `w`, `h`), clipped to it. The newest sample is at the right edge, each older one `pitch` pixels to the left (at least 0.25, default 1); at most `count` samples (default: as many as fit, floor(w ÷ pitch) + 1). A sample v is at y = bottom − clamp((v − min) ÷ (max − min), 0, 1) × h; when `max` ≤ `min`, at the bottom.
 
 | `mode` | Draws |
 |---|---|
@@ -39,6 +39,8 @@ A number input's history (newest last) drawn in the box (`x`, `y`, `w`, `h`), cl
 | `bars` | One bar per sample from the bottom to the sample, `barWidth` wide (default `pitch`), its right edge on the sample's x, with `fill` and `stroke`. |
 
 `min` and `max` are expressions: a fixed range, or an automatic one from `history` and state cells (`graph.json` expands at once and contracts smoothly).
+
+`column` goes with a table input, which then needs one, and a number input takes none (`type.input` at `input`); it names the column by index or by name as `cell` does. Its samples are drawn exactly as a history holding the same numbers would be, and a `history` over the same column in the same tick reads the same samples: a percentile line drawn over the bars it was taken from (`frame-times.json`) matches them.
 
 ## `table`
 

@@ -1,0 +1,5 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"t": {"type": "table"}},
+  "nodes": [{"kind": "rect", "h": 4, "fill": "#ffffff", "w": {"op": "history", "input": "t", "fn": "avg", "count": 10}}]
+}

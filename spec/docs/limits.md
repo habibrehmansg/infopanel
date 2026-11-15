@@ -44,7 +44,7 @@ A document's bytes as received or stored are held only to a read cap, which boun
 | `values` | 256 | Shared expressions; a typical widget has under 20. |
 | `stateCells` | 64 | Smoothing, rate limits and holds take one or two cells each. |
 | `exprDepth` | 32 | Formatting a 1.x sensor value nests under 10 deep. Bounds recursion. |
-| `exprWork` | 20,000 | Operations per tick (values once; string-producing operations 16 each; `history` 1 more per 64 samples). At an estimated tens of nanoseconds per operation, under 1 ms per scene. |
+| `exprWork` | 20,000 | Operations per tick (values once; string-producing operations 16 each; `history` 1 more per 64 samples, a percentile 1 more per 8; a `series` over a table's column 1 per 64 samples, [expressions](expressions.md#cost)). At an estimated tens of nanoseconds per operation, under 1 ms per scene. |
 | `pathCommands` | 8,192 | Per path or polyline; an icon is a few hundred. |
 | `geometry` | 32,768 | Path segments and polyline points per scene. |
 | `textNodes` | 256 | Text layout is the dominant per-tick cost (estimated at tens of microseconds per changed string; unchanged text keeps its layout). |

@@ -1,0 +1,5 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number"}},
+  "nodes": [{"kind": "rect", "h": 4, "fill": "#ffffff", "w": {"op": "history", "input": "v", "fn": "percentile", "p": 101, "count": 60}}]
+}

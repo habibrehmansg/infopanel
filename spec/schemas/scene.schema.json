@@ -345,7 +345,7 @@
     },
 
     "seriesNode": {
-      "description": "A number input's history drawn in a box, newest sample at the right edge, one sample every `pitch` pixels to the left, clipped to the box. y = bottom − clamp((v − min) ÷ (max − min), 0, 1) × h. line: a polyline through the samples (stroke). area: the polyline closed down to the bottom (fill, then the line's stroke). bars: one bar per sample from the bottom, `barWidth` wide, right edge on the sample.",
+      "description": "A number input's history, or with `column` a table input's column of numbers (see docs/bindings.md, \"Samples\"), drawn in a box, newest sample at the right edge, one sample every `pitch` pixels to the left, clipped to the box. y = bottom − clamp((v − min) ÷ (max − min), 0, 1) × h. line: a polyline through the samples (stroke). area: the polyline closed down to the bottom (fill, then the line's stroke). bars: one bar per sample from the bottom, `barWidth` wide, right edge on the sample.",
       "type": "object",
       "required": ["kind", "input", "w", "h", "min", "max"],
       "additionalProperties": false,
@@ -355,6 +355,7 @@
         "visible": { "$ref": "#/$defs/visible" },
         "opacity": { "$ref": "#/$defs/opacity" },
         "input": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+        "column": { "$ref": "urn:infopanel:expression:1#/$defs/cellColumn", "description": "With a table input (which then needs it): the column drawn, its cells' numbers one sample per row, the last row newest. A number input takes none." },
         "x": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
         "y": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr", "default": 0 },
         "w": { "$ref": "urn:infopanel:expression:1#/$defs/numberExpr" },

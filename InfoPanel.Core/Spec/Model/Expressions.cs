@@ -26,8 +26,12 @@ public sealed record CallExpr(string Op, IReadOnlyList<Expr> Args) : Expr;
 /// <summary><c>{"op":"input"}</c>: a reading of a scene input; <see cref="Field"/> null means <c>value</c>.</summary>
 public sealed record InputExpr(string Name, string? Field) : Expr;
 
-/// <summary><c>{"op":"history"}</c>: an aggregate over a number input's last <see cref="Count"/> samples.</summary>
-public sealed record HistoryExpr(string Input, string Fn, int Count) : Expr;
+/// <summary>
+/// <c>{"op":"history"}</c>: an aggregate over the last <see cref="Count"/> samples of a number input's history, or with
+/// <see cref="Column"/> of a table input's column; <see cref="P"/> only with <c>percentile</c>, <see cref="Lo"/> and
+/// <see cref="Hi"/> only with <c>share</c>.
+/// </summary>
+public sealed record HistoryExpr(string Input, string Fn, int Count, ColumnRef? Column = null, Expr? P = null, Expr? Lo = null, Expr? Hi = null) : Expr;
 
 /// <summary><c>{"op":"time"}</c>: a number from the tick's clock, or from the instant <see cref="At"/> when given.</summary>
 public sealed record TimeExpr(string Field, string? Zone, Expr? At = null) : Expr;

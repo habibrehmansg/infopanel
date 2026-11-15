@@ -1,0 +1,45 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {
+    "frames": {"type": "table", "label": "Frame times"}
+  },
+  "values": {
+    "p99": {"op": "history", "input": "frames", "column": "ms", "fn": "percentile", "count": 600, "p": 99},
+    "p99y": {
+      "op": "sub",
+      "args": [80, {"op": "mul", "args": [80, {"op": "clamp", "args": [{"op": "div", "args": [{"op": "value", "name": "p99"}, 33.4]}, 0, 1]}]}]
+    }
+  },
+  "nodes": [
+    {
+      "kind": "series",
+      "input": "frames",
+      "column": "ms",
+      "w": 300,
+      "h": 80,
+      "min": 0,
+      "max": 33.4,
+      "mode": "bars",
+      "pitch": 0.5,
+      "count": 600,
+      "fill": "#38bdf8"
+    },
+    {
+      "kind": "line",
+      "x1": 0,
+      "x2": 300,
+      "y1": {"op": "value", "name": "p99y"},
+      "y2": {"op": "value", "name": "p99y"},
+      "stroke": {"paint": "#ef4444", "width": 1}
+    },
+    {
+      "kind": "text",
+      "x": 304,
+      "y": {"op": "value", "name": "p99y"},
+      "valign": "middle",
+      "font": {"family": "Inter", "size": 11},
+      "fill": "#ef4444",
+      "text": {"op": "concat", "args": ["p99 ", {"op": "format", "value": {"op": "value", "name": "p99"}, "decimals": 1}, " ms"]}
+    }
+  ]
+}

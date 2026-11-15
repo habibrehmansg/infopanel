@@ -824,6 +824,8 @@ internal sealed class SceneEvaluator
     private RGroup? ResolveSeries(CSeries s)
     {
         var e = _e;
+        // Reading a column counts 1 per 64 of the samples it may read, as the validator counts it (spec/docs/expressions.md, "Cost").
+        if (s.Column is not null) e.Work += (Math.Clamp(s.Count ?? 4096, 1, 4096) + 63) / 64;
         var x = SceneMath.F(s.X.Num(e));
         var y = SceneMath.F(s.Y.Num(e));
         var w = SceneMath.F(s.W.Num(e));
@@ -836,7 +838,8 @@ internal sealed class SceneEvaluator
         if (w <= 0 || h <= 0) return null;
         var box = new SKRect(x, y, x + w, y + h);
 
-        var samples = s.Input < e.Inputs.Length ? e.Inputs[s.Input].History : [];
+        // A number input's history, or a table input's column (InputSnap.Samples).
+        var samples = s.Input < e.Inputs.Length ? e.Inputs[s.Input].Samples(s.Column) : [];
         var fitting = (int)Math.Min(4096, Math.Floor(w / pitch) + 1);
         var count = Math.Min(Math.Min(s.Count ?? fitting, 4096), samples.Count);
         var bottom = y + h;

@@ -207,6 +207,7 @@ public sealed record TextFit
 public sealed record SeriesNode : SceneNode
 {
     public required string Input { get; init; }
+    public ColumnRef? Column { get; init; }
     public Expr? X { get; init; }
     public Expr? Y { get; init; }
     public required Expr W { get; init; }

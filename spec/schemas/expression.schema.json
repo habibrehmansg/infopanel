@@ -332,16 +332,56 @@
       "properties": { "op": { "const": "dt" } }
     },
     "historyOp": {
-      "description": "An aggregate over the last `count` history samples of a number input (newest last). No samples: 0.",
+      "description": "An aggregate over the last `count` samples (newest last): a number input's history, or with `column` the numbers of a table input's column, one per row, the last row newest (see docs/bindings.md, \"Samples\"). One shape per `fn`: `p` goes only with `percentile`, `lo` and `hi` only with `share`. No samples: 0.",
       "type": "object",
-      "required": ["op", "input", "fn", "count"],
-      "additionalProperties": false,
+      "required": ["op"],
       "properties": {
-        "op": { "const": "history" },
-        "input": { "$ref": "urn:infopanel:common:1#/$defs/name" },
-        "fn": { "enum": ["min", "max", "avg", "first", "last", "count"] },
-        "count": { "type": "integer", "minimum": 1, "maximum": 4096 }
-      }
+        "op": { "const": "history" }
+      },
+      "oneOf": [
+        {
+          "description": "min, max, avg (the mean), first (the oldest), last (the newest), count (how many samples there are, at most `count`).",
+          "type": "object",
+          "required": ["fn", "input", "count"],
+          "additionalProperties": false,
+          "properties": {
+            "fn": { "enum": ["min", "max", "avg", "first", "last", "count"] },
+            "op": { "const": "history" },
+            "input": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+            "column": { "$ref": "#/$defs/cellColumn", "description": "With a table input (which then needs it): the column read as samples." },
+            "count": { "type": "integer", "minimum": 1, "maximum": 4096 }
+          }
+        },
+        {
+          "description": "The nearest-rank percentile `p` of the samples: sorted upwards, the sample at rank ceil(p × n ÷ 100), at least 1 (see docs/expressions.md, \"Percentiles and shares\").",
+          "type": "object",
+          "required": ["fn", "input", "count", "p"],
+          "additionalProperties": false,
+          "properties": {
+            "fn": { "const": "percentile" },
+            "op": { "const": "history" },
+            "input": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+            "column": { "$ref": "#/$defs/cellColumn", "description": "With a table input (which then needs it): the column read as samples." },
+            "count": { "type": "integer", "minimum": 1, "maximum": 4096 },
+            "p": { "$ref": "#/$defs/numberExpr", "minimum": 0, "maximum": 100, "description": "The percentile, 0 to 100; an expression's value is clamped to 0–100." }
+          }
+        },
+        {
+          "description": "The share of the samples v with `lo` ≤ v < `hi`, 0 to 1; an absent bound is open (see docs/expressions.md, \"Percentiles and shares\").",
+          "type": "object",
+          "required": ["fn", "input", "count"],
+          "additionalProperties": false,
+          "properties": {
+            "fn": { "const": "share" },
+            "op": { "const": "history" },
+            "input": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+            "column": { "$ref": "#/$defs/cellColumn", "description": "With a table input (which then needs it): the column read as samples." },
+            "count": { "type": "integer", "minimum": 1, "maximum": 4096 },
+            "lo": { "$ref": "#/$defs/numberExpr", "description": "The lower bound, inclusive. Absent: none." },
+            "hi": { "$ref": "#/$defs/numberExpr", "description": "The upper bound, exclusive. Absent: none." }
+          }
+        }
+      ]
     },
     "numberInputOp": {
       "description": "A number input's reading. value: the statistic the binding selects (now by default); now, min, max, avg: that statistic. rows: a table input's row count, the rows of its reading for the tick (at most `tableRows`, see docs/bindings.md, \"Tables\"). An unbound or unavailable input reads 0.",

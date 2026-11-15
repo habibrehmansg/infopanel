@@ -146,12 +146,18 @@ public static class SceneValidator
     /// </summary>
     public const int StringOpWork = 16;
 
+    /// <summary>The most samples a <c>series</c> draws and a <c>history</c> reads (the schema's <c>count</c> bound).</summary>
+    public const int MaxSamples = 4096;
+
     private static readonly HashSet<string> StringOps = ["concat", "upper", "lower"];
 
-    private sealed class Rules(Scene scene, SpecLimits limits)
+    internal sealed class Rules(Scene scene, SpecLimits limits)
     {
         public List<SpecError> Errors { get; } = [];
         public SceneCost Cost => new(_nodes, _work, _textNodes, _effectCost);
+
+        /// <summary>The expressions visited in all, quiet passes included: what the work limit's guard bounds (the tests read it).</summary>
+        public long Visits { get; private set; }
 
         private readonly Dictionary<string, SceneNode> _ids = new(StringComparer.Ordinal);
         private readonly Dictionary<string, Info> _values = new(StringComparer.Ordinal);
@@ -320,12 +326,19 @@ public static class SceneValidator
                     return state;
                 }
                 case CellExpr c: return References(c.Row, path + "/row", refs);
+                case HistoryExpr h:
+                {
+                    var state = h.P is not null && References(h.P, path + "/p", refs);
+                    if (h.Lo is not null) state |= References(h.Lo, path + "/lo", refs);
+                    if (h.Hi is not null) state |= References(h.Hi, path + "/hi", refs);
+                    return state;
+                }
                 default: return false;
             }
         }
 
         /// <summary>Counts the operation objects in an expression.</summary>
-        private static int Ops(Expr expr) => expr switch
+        internal static int Ops(Expr expr) => expr switch
         {
             CallExpr c => 1 + c.Args.Sum(Ops),
             StepsExpr st => 1 + Ops(st.Value) + st.At.Sum(Ops) + st.Out.Sum(Ops),
@@ -334,6 +347,7 @@ public static class SceneValidator
             FormatTimeExpr { At: { } at } => 1 + Ops(at),
             ParseExpr p => 1 + Ops(p.Value) + Ops(p.Else),
             CellExpr c => 1 + Ops(c.Row),
+            HistoryExpr h => 1 + (h.P is null ? 0 : Ops(h.P)) + (h.Lo is null ? 0 : Ops(h.Lo)) + (h.Hi is null ? 0 : Ops(h.Hi)),
             NumberLit or StringLit or BoolLit => 0,
             _ => 1,
         };
@@ -399,6 +413,7 @@ public static class SceneValidator
 
         private Info Infer(Expr expr, string path, Ctx ctx, int depth)
         {
+            Visits++;
             switch (expr)
             {
                 case NumberLit: return Info.Of(Ty.Number);
@@ -536,9 +551,17 @@ public static class SceneValidator
                 case InputExpr input:
                     return Info.Of(InputField(input, path));
                 case HistoryExpr history:
-                    if (!_quiet) _work += (history.Count + 63) / 64;
-                    RequireInput(history.Input, "number", path + "/input");
-                    return Info.Of(Ty.Number);
+                {
+                    // 1 more per 64 samples, or for a percentile, which sorts them, 1 more per 8 (spec/docs/expressions.md, "Cost").
+                    if (!_quiet) _work += history.Fn == "percentile" ? (history.Count + 7) / 8 : (history.Count + 63) / 64;
+                    // A column goes with a table input, which then needs one; a number input takes none.
+                    RequireInput(history.Input, history.Column is null ? "number" : "table", path + "/input");
+                    var flags = Info.Of(Ty.Number);
+                    if (history.P is not null) flags = flags.With(Arg(history.P, path + "/p", Ty.Number));
+                    if (history.Lo is not null) flags = flags.With(Arg(history.Lo, path + "/lo", Ty.Number));
+                    if (history.Hi is not null) flags = flags.With(Arg(history.Hi, path + "/hi", Ty.Number));
+                    return flags;
+                }
                 case MeasureExpr measure:
                     if (!_ids.TryGetValue(measure.Node, out var target) || target is not TextNode)
                         Error(path + "/node", "ref.node", $"The scene has no text node '{measure.Node}'.");
@@ -696,7 +719,10 @@ public static class SceneValidator
                     break;
                 case SeriesNode s:
                     _series++;
-                    RequireInput(s.Input, "number", p + "/input");
+                    // A column goes with a table input, which then needs one; a number input takes none. Reading a column
+                    // counts 1 per 64 of the samples it may read (spec/docs/expressions.md, "Cost").
+                    RequireInput(s.Input, s.Column is null ? "number" : "table", p + "/input");
+                    if (s.Column is not null && !_quiet) _work += (Math.Clamp(s.Count ?? MaxSamples, 1, MaxSamples) + 63) / 64;
                     Num(s.X, p + "/x"); Num(s.Y, p + "/y"); Num(s.W, p + "/w"); Num(s.H, p + "/h");
                     Num(s.Min, p + "/min"); Num(s.Max, p + "/max"); Num(s.Pitch, p + "/pitch"); Num(s.BarWidth, p + "/barWidth");
                     WalkPaint(s.Fill, p + "/fill");

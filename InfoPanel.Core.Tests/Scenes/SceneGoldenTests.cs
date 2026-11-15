@@ -106,6 +106,10 @@ public sealed class SceneGoldenTests
         // A five-day forecast read from a plugin's table (the third day's symbol picks the rain frame, its high a 4-pixel
         // bar per degree), an accent colour and a level read from text.
         ["data-read"] = new("scene/valid/data-read.json", 200, 72, 6, 4, null, null, DataRead),
+        // 600 frame times read from a plugin's table: the trace (a bar a frame, half a pixel apart) with its 99th
+        // percentile line over the same samples, and their distribution in four bins.
+        ["frame-times"] = new("scene/valid/frame-times.json", 384, 92, 6, 6, null, null, SceneColumnSamplesTests.Table(SceneColumnSamplesTests.FrameTimes(), "test:frames")),
+        ["frame-histogram"] = new("scene/valid/frame-histogram.json", 132, 92, 6, 6, null, null, SceneColumnSamplesTests.Table(SceneColumnSamplesTests.FrameTimes(), "test:frames")),
         ["shapes-scale2"] = new("scene/valid/shapes.json", 220, 180, 5, 5, null, null, Scale: 2),
         ["sensor-text-rotated"] = new("scene/valid/sensor-text.json", 200, 120, 40, 40, null, null, i => i.Number("test:v", 90, "°C"), Rotation: 20),
         // A video on the tick clock: its first frame, frame 3 at 0.35 s, and frame 2 of its second loop at 1.25 s.

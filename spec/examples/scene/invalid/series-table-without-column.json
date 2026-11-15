@@ -1,0 +1,5 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"t": {"type": "table"}},
+  "nodes": [{"kind": "series", "input": "t", "w": 100, "h": 20, "min": 0, "max": 1, "stroke": {"paint": "#ffffff", "width": 1}}]
+}

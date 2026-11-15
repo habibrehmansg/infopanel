@@ -1,0 +1,18 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {
+    "frames": {"type": "table", "label": "Frame times"}
+  },
+  "values": {
+    "h0": {"op": "mul", "args": [80, {"op": "history", "input": "frames", "column": "ms", "fn": "share", "count": 600, "hi": 8.4}]},
+    "h1": {"op": "mul", "args": [80, {"op": "history", "input": "frames", "column": "ms", "fn": "share", "count": 600, "lo": 8.4, "hi": 16.7}]},
+    "h2": {"op": "mul", "args": [80, {"op": "history", "input": "frames", "column": "ms", "fn": "share", "count": 600, "lo": 16.7, "hi": 33.4}]},
+    "h3": {"op": "mul", "args": [80, {"op": "history", "input": "frames", "column": "ms", "fn": "share", "count": 600, "lo": 33.4}]}
+  },
+  "nodes": [
+    {"kind": "rect", "x": 0, "w": 28, "y": {"op": "sub", "args": [80, {"op": "value", "name": "h0"}]}, "h": {"op": "value", "name": "h0"}, "fill": "#38bdf8"},
+    {"kind": "rect", "x": 30, "w": 28, "y": {"op": "sub", "args": [80, {"op": "value", "name": "h1"}]}, "h": {"op": "value", "name": "h1"}, "fill": "#38bdf8"},
+    {"kind": "rect", "x": 60, "w": 28, "y": {"op": "sub", "args": [80, {"op": "value", "name": "h2"}]}, "h": {"op": "value", "name": "h2"}, "fill": "#38bdf8"},
+    {"kind": "rect", "x": 90, "w": 28, "y": {"op": "sub", "args": [80, {"op": "value", "name": "h3"}]}, "h": {"op": "value", "name": "h3"}, "fill": "#38bdf8"}
+  ]
+}

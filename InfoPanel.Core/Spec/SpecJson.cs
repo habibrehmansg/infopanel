@@ -195,7 +195,8 @@ public static class SpecJson
         Expr result = op switch
         {
             "input" => new InputExpr(Req(e, "name"), Str(e, "field")),
-            "history" => new HistoryExpr(Req(e, "input"), Req(e, "fn"), ReadInt32(Member(e, "count"))),
+            "history" => new HistoryExpr(Req(e, "input"), Req(e, "fn"), ReadInt32(Member(e, "count")),
+                e.TryGetProperty("column", out var hc) ? ReadColumn(hc) : null, Opt(e, "p"), Opt(e, "lo"), Opt(e, "hi")),
             "time" => new TimeExpr(Req(e, "field"), Str(e, "zone"), Opt(e, "at")),
             "formatTime" => new FormatTimeExpr(Req(e, "pattern"), Str(e, "locale"), Str(e, "zone"), Opt(e, "at")),
             "format" => new FormatExpr(ReadExpr(Member(e, "value")), Opt(e, "decimals"), Opt(e, "group"),
@@ -213,7 +214,7 @@ public static class SpecJson
         var expected = result switch
         {
             InputExpr x => 2 + (x.Field is null ? 0 : 1),
-            HistoryExpr => 4,
+            HistoryExpr x => 4 + (x.Column is null ? 0 : 1) + (x.P is null ? 0 : 1) + (x.Lo is null ? 0 : 1) + (x.Hi is null ? 0 : 1),
             TimeExpr x => 2 + (x.Zone is null ? 0 : 1) + (x.At is null ? 0 : 1),
             FormatTimeExpr x => 2 + (x.Locale is null ? 0 : 1) + (x.Zone is null ? 0 : 1) + (x.At is null ? 0 : 1),
             FormatExpr x => 2 + (x.Decimals is null ? 0 : 1) + (x.Group is null ? 0 : 1)
@@ -235,13 +236,16 @@ public static class SpecJson
     /// <summary>A <c>cell</c>: its column an index (a whole number) or a name (a string).</summary>
     private static CellExpr ReadCell(JsonElement e)
     {
-        var column = Member(e, "column");
-        int? index = null;
-        string? name = null;
-        if (column.ValueKind == JsonValueKind.String) name = column.GetString();
-        else if (column.ValueKind == JsonValueKind.Number && JsonNumber.TryRead(column, out var d) && Integral32(d) is { } i) index = i;
-        else throw new JsonException("\"column\" must be an index or a name.");
-        return new CellExpr(Req(e, "input"), ReadExpr(Member(e, "row")), index, name, Str(e, "field"));
+        var column = ReadColumn(Member(e, "column"));
+        return new CellExpr(Req(e, "input"), ReadExpr(Member(e, "row")), column.Index, column.Name, Str(e, "field"));
+    }
+
+    /// <summary>A column by index (a whole number) or by name (a string), as <c>cell</c> and <c>history</c> name one.</summary>
+    private static ColumnRef ReadColumn(JsonElement column)
+    {
+        if (column.ValueKind == JsonValueKind.String) return new ColumnRef(null, column.GetString());
+        if (column.ValueKind == JsonValueKind.Number && JsonNumber.TryRead(column, out var d) && Integral32(d) is { } i) return new ColumnRef(i, null);
+        throw new JsonException("\"column\" must be an index or a name.");
     }
 
     private static string? Str(JsonElement e, string name) =>
@@ -287,8 +291,16 @@ public static class SpecJson
             case HistoryExpr x:
                 w.WriteString("op", "history");
                 w.WriteString("input", x.Input);
+                if (x.Column is { } column)
+                {
+                    if (column.Name is not null) w.WriteString("column", column.Name);
+                    else w.WriteNumber("column", column.Index ?? 0);
+                }
                 w.WriteString("fn", x.Fn);
                 w.WriteNumber("count", x.Count);
+                if (x.P is not null) { w.WritePropertyName("p"); WriteExpr(w, x.P); }
+                if (x.Lo is not null) { w.WritePropertyName("lo"); WriteExpr(w, x.Lo); }
+                if (x.Hi is not null) { w.WritePropertyName("hi"); WriteExpr(w, x.Hi); }
                 break;
             case TimeExpr x:
                 w.WriteString("op", "time");

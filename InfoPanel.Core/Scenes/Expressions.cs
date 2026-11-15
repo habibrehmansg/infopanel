@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -46,6 +47,45 @@ internal sealed class InputSnap
     public string Unit => Available ? Reading.Unit : "";
     public string Text => Available ? Reading.Text : "";
     public SceneTable Table => _table;
+
+    /// <summary>
+    /// The samples a <c>series</c> or a <c>history</c> reads, oldest first (spec/docs/bindings.md, "Samples"): without a
+    /// column, the input's history; with one, the numbers of that column of <see cref="Table"/> (the tick's one reading,
+    /// to the runtime's <c>tableRows</c>), one a row in row order, the last row newest, nothing filtered; none when the
+    /// reading lacks the column. A view, not a copy: sample i is row i's number, the row made when first read and kept
+    /// with the reading, so every reader of the column in the tick reads the same rows.
+    /// </summary>
+    public IReadOnlyList<double> Samples(SampleColumn? column)
+    {
+        if (column is null) return History;
+        var table = _table;
+        var c = column.Name is null ? column.Index : table.ColumnOf(column.Name);
+        return c < 0 || c >= table.Columns.Count || table.Rows.Count == 0 ? [] : new ColumnSamples(table, c);
+    }
+
+    /// <summary>A column of a table reading as samples (<see cref="Samples"/>).</summary>
+    private sealed class ColumnSamples(SceneTable table, int column) : IReadOnlyList<double>
+    {
+        public int Count => table.Rows.Count;
+
+        public double this[int index] => (uint)index < (uint)Count ? table.Number(index, column) : throw new ArgumentOutOfRangeException(nameof(index));
+
+        public IEnumerator<double> GetEnumerator()
+        {
+            for (var i = 0; i < Count; i++) yield return table.Number(i, column);
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+}
+
+/// <summary>
+/// A table input's column read as samples (spec/docs/bindings.md, "Samples"): by <see cref="Name"/> when it is set, the
+/// first column with it, else by <see cref="Index"/>.
+/// </summary>
+internal sealed record SampleColumn(int Index, string? Name)
+{
+    public static SampleColumn? Of(ColumnRef? column) => column is null ? null : new(column.Index ?? -1, column.Name);
 }
 
 /// <summary>The evaluation context of one item for one tick.</summary>
@@ -380,15 +420,24 @@ internal sealed class ParseExprC(bool color, CExpr value, CExpr otherwise) : CEx
     }
 }
 
-internal enum HistoryFn : byte { Min, Max, Avg, First, Last, Count }
+internal enum HistoryFn : byte { Min, Max, Avg, First, Last, Count, Percentile, Share }
 
-internal sealed class HistoryExprC(int input, HistoryFn fn, int count) : CExpr
+/// <summary>
+/// <c>history</c> over the last <paramref name="count"/> samples (<see cref="InputSnap.Samples"/>): a number input's
+/// history, or a table input's <paramref name="column"/>. It counts 1, and 1 more per 64 samples, or per 8 for a
+/// percentile, which sorts them (spec/docs/expressions.md, "Cost"); its operands are evaluated whatever the samples, so
+/// the work doesn't depend on them. A sample that isn't finite reads 0, as every number does.
+/// </summary>
+internal sealed class HistoryExprC(int input, HistoryFn fn, int count, SampleColumn? column = null, CExpr? p = null, CExpr? lo = null, CExpr? hi = null) : CExpr
 {
     public override Val Eval(Ev e)
     {
         var n = Math.Clamp(count, 1, 4096);
-        e.Work += 1 + (n + 63) / 64;
-        var samples = input < e.Inputs.Length ? e.Inputs[input].History : [];
+        e.Work += 1 + (fn == HistoryFn.Percentile ? (n + 7) / 8 : (n + 63) / 64);
+        var percent = p is null ? 0 : Math.Clamp(p.Num(e), 0, 100);
+        var low = lo?.Num(e);
+        var high = hi?.Num(e);
+        var samples = input < e.Inputs.Length ? e.Inputs[input].Samples(column) : [];
         var take = Math.Min(n, samples.Count);
         if (take == 0) return Val.Num(0);
         var start = samples.Count - take;
@@ -397,6 +446,8 @@ internal sealed class HistoryExprC(int input, HistoryFn fn, int count) : CExpr
             case HistoryFn.First: return Val.Num(samples[start]);
             case HistoryFn.Last: return Val.Num(samples[^1]);
             case HistoryFn.Count: return Val.Num(take);
+            case HistoryFn.Percentile: return Val.Num(Percentile(samples, start, take, percent));
+            case HistoryFn.Share: return Val.Num(Share(samples, start, take, low, high));
         }
         double min = double.PositiveInfinity, max = double.NegativeInfinity, sum = 0;
         for (var i = start; i < samples.Count; i++)
@@ -407,6 +458,39 @@ internal sealed class HistoryExprC(int input, HistoryFn fn, int count) : CExpr
             sum += v;
         }
         return Val.Num(fn switch { HistoryFn.Min => min, HistoryFn.Max => max, _ => sum / take });
+    }
+
+    /// <summary>
+    /// The nearest-rank percentile <paramref name="percent"/> (0–100) of <paramref name="take"/> samples from
+    /// <paramref name="start"/>: sorted upwards, the sample at rank ceil(p × n ÷ 100), at least 1, with p × n computed
+    /// first, so a whole p gives the exact rank.
+    /// </summary>
+    internal static double Percentile(IReadOnlyList<double> samples, int start, int take, double percent)
+    {
+        var sorted = ArrayPool<double>.Shared.Rent(take);
+        try
+        {
+            for (var i = 0; i < take; i++) sorted[i] = SceneMath.Finite(samples[start + i]);
+            Array.Sort(sorted, 0, take);
+            var rank = (int)Math.Clamp(Math.Ceiling(percent * take / 100), 1, take);
+            return sorted[rank - 1];
+        }
+        finally
+        {
+            ArrayPool<double>.Shared.Return(sorted);
+        }
+    }
+
+    /// <summary>The share of <paramref name="take"/> samples from <paramref name="start"/> with lo ≤ v &lt; hi; an absent bound is open.</summary>
+    internal static double Share(IReadOnlyList<double> samples, int start, int take, double? lo, double? hi)
+    {
+        var inside = 0;
+        for (var i = start; i < start + take; i++)
+        {
+            var v = SceneMath.Finite(samples[i]);
+            if ((lo is not { } l || v >= l) && (hi is not { } h || v < h)) inside++;
+        }
+        return (double)inside / take;
     }
 }
 
@@ -659,8 +743,16 @@ internal sealed class ExprCompiler(ExprScope scope)
             case InputExpr input: return CompileInput(input);
             case HistoryExpr h:
             {
-                var fn = h.Fn switch { "min" => HistoryFn.Min, "max" => HistoryFn.Max, "avg" => HistoryFn.Avg, "first" => HistoryFn.First, "last" => HistoryFn.Last, _ => HistoryFn.Count };
-                return Typed(new HistoryExprC(scope.Inputs.TryGetValue(h.Input, out var i) ? i : int.MaxValue, fn, h.Count), Ty.Number);
+                var fn = h.Fn switch
+                {
+                    "min" => HistoryFn.Min, "max" => HistoryFn.Max, "avg" => HistoryFn.Avg, "first" => HistoryFn.First, "last" => HistoryFn.Last,
+                    "percentile" => HistoryFn.Percentile, "share" => HistoryFn.Share, _ => HistoryFn.Count,
+                };
+                // p only with a percentile, lo and hi only with a share (the schema refuses them elsewhere): any other is ignored.
+                var p = fn == HistoryFn.Percentile && h.P is not null ? Compile(h.P, depth + 1) : null;
+                var lo = fn == HistoryFn.Share && h.Lo is not null ? Compile(h.Lo, depth + 1) : null;
+                var hi = fn == HistoryFn.Share && h.Hi is not null ? Compile(h.Hi, depth + 1) : null;
+                return Typed(new HistoryExprC(scope.Inputs.TryGetValue(h.Input, out var i) ? i : int.MaxValue, fn, h.Count, SampleColumn.Of(h.Column), p, lo, hi), Ty.Number);
             }
             case TimeExpr t:
             {

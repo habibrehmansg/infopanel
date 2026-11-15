@@ -3328,14 +3328,43 @@ export interface DtOp {
   op: "dt";
 }
 
-/** An aggregate over the last `count` history samples of a number input (newest last). No samples: 0. */
-export interface HistoryOp {
+/** An aggregate over the last `count` samples (newest last): a number input's history, or with `column` the numbers of a table input's column, one per row, the last row newest (see docs/bindings.md, "Samples"). One shape per `fn`: `p` goes only with `percentile`, `lo` and `hi` only with `share`. No samples: 0. */
+export type HistoryOp = {
   op: "history";
-  input: Name;
+} & ({
   fn: "min" | "max" | "avg" | "first" | "last" | "count";
+  op?: "history";
+  input: Name;
+  /** With a table input (which then needs it): the column read as samples. */
+  column?: CellColumn;
   /** Range: 1–4096. */
   count: number;
-}
+} | {
+  fn: "percentile";
+  op?: "history";
+  input: Name;
+  /** With a table input (which then needs it): the column read as samples. */
+  column?: CellColumn;
+  /** Range: 1–4096. */
+  count: number;
+  /**
+   * The percentile, 0 to 100; an expression's value is clamped to 0–100.
+   * Range: 0–100.
+   */
+  p: NumberExpr;
+} | {
+  fn: "share";
+  op?: "history";
+  input: Name;
+  /** With a table input (which then needs it): the column read as samples. */
+  column?: CellColumn;
+  /** Range: 1–4096. */
+  count: number;
+  /** The lower bound, inclusive. Absent: none. */
+  lo?: NumberExpr;
+  /** The upper bound, exclusive. Absent: none. */
+  hi?: NumberExpr;
+});
 
 /** A number input's reading. value: the statistic the binding selects (now by default); now, min, max, avg: that statistic. rows: a table input's row count, the rows of its reading for the tick (at most `tableRows`, see docs/bindings.md, "Tables"). An unbound or unavailable input reads 0. */
 export interface NumberInputOp {
@@ -3783,13 +3812,15 @@ export interface FontOverride {
   italic?: boolean;
 }
 
-/** A number input's history drawn in a box, newest sample at the right edge, one sample every `pitch` pixels to the left, clipped to the box. y = bottom − clamp((v − min) ÷ (max − min), 0, 1) × h. line: a polyline through the samples (stroke). area: the polyline closed down to the bottom (fill, then the line's stroke). bars: one bar per sample from the bottom, `barWidth` wide, right edge on the sample. */
+/** A number input's history, or with `column` a table input's column of numbers (see docs/bindings.md, "Samples"), drawn in a box, newest sample at the right edge, one sample every `pitch` pixels to the left, clipped to the box. y = bottom − clamp((v − min) ÷ (max − min), 0, 1) × h. line: a polyline through the samples (stroke). area: the polyline closed down to the bottom (fill, then the line's stroke). bars: one bar per sample from the bottom, `barWidth` wide, right edge on the sample. */
 export interface SeriesNode {
   kind: "series";
   id?: NodeId;
   visible?: Visible;
   opacity?: Opacity;
   input: Name;
+  /** With a table input (which then needs it): the column drawn, its cells' numbers one sample per row, the last row newest. A number input takes none. */
+  column?: CellColumn;
   /** @default 0 */
   x?: NumberExpr;
   /** @default 0 */

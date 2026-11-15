@@ -17,28 +17,73 @@ public sealed class ExpressionVectorTests
     private static readonly string VectorsFile = Path.Combine(SpecExampleTests.SpecDir, "examples", "expressions", "vectors.json");
     private static readonly string DocFile = Path.Combine(SpecExampleTests.SpecDir, "docs", "expressions.md");
 
-    public static TheoryData<int, string, string, string> Vectors()
+    /// <summary>Each vector: its index, expression, type, result, and its samples (a JSON array) or null.</summary>
+    private static List<(int Index, string Expr, string Type, string Result, string? Samples)> ReadVectors()
     {
-        var data = new TheoryData<int, string, string, string>();
+        var list = new List<(int, string, string, string, string?)>();
         using var doc = JsonDocument.Parse(File.ReadAllText(VectorsFile), SpecJson.DocumentOptions);
         var i = 0;
         foreach (var v in doc.RootElement.GetProperty("vectors").EnumerateArray())
         {
-            Assert.Equal(["expr", "result", "type"], v.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
-            data.Add(i++, v.GetProperty("expr").GetRawText(), v.GetProperty("type").GetString()!, v.GetProperty("result").GetRawText());
+            var samples = v.TryGetProperty("samples", out var s) ? s.GetRawText() : null;
+            Assert.Equal(samples is null ? ["expr", "result", "type"] : ["expr", "result", "samples", "type"], v.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+            list.Add((i++, v.GetProperty("expr").GetRawText(), v.GetProperty("type").GetString()!, v.GetProperty("result").GetRawText(), samples));
         }
+        return list;
+    }
+
+    public static TheoryData<int, string, string, string, string?> Vectors()
+    {
+        var data = new TheoryData<int, string, string, string, string?>();
+        foreach (var v in ReadVectors()) data.Add(v.Index, v.Expr, v.Type, v.Result, v.Samples);
         return data;
     }
 
+    /// <summary>The vectors over samples: the same, read as a table input's column (spec/docs/bindings.md, "Samples").</summary>
+    public static TheoryData<int, string, string, string, string?> SampleVectors()
+    {
+        var data = new TheoryData<int, string, string, string, string?>();
+        foreach (var v in ReadVectors().Where(v => v.Samples is not null)) data.Add(v.Index, v.Expr, v.Type, v.Result, v.Samples);
+        return data;
+    }
+
+    private static double[] SamplesOf(string json) =>
+        JsonDocument.Parse(json).RootElement.EnumerateArray().Select(e => e.GetDouble()).ToArray();
+
     [Theory]
     [MemberData(nameof(Vectors))]
-    public void Vector_evaluates_exactly(int index, string expr, string type, string result)
+    public void Vector_evaluates_exactly(int index, string expr, string type, string result, string? samples)
     {
-        var (value, ty, _) = SceneExpressionTests.EvalJson(expr);
+        var (value, ty, _) = samples is null
+            ? SceneExpressionTests.EvalJson(expr)
+            : SceneExpressionTests.EvalJson(expr, i => i.Histories["test:v"] = SamplesOf(samples));
         var what = $"vector {index}: {expr}";
         var expected = Ty(type);
         Assert.True((ty & expected) != 0, $"{what}: the engine infers {ty}, the vector says {type}");
         AssertResult(value, type, result, what);
+    }
+
+    /// <summary>
+    /// A vector over samples gives the same result over a table input's column holding them, one a row (the input
+    /// <c>t</c> with the column <c>n</c>, beside a text column so the samples aren't its only one).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(SampleVectors))]
+    public void Vector_over_a_column_evaluates_as_over_the_history(int index, string expr, string type, string result, string? samples)
+    {
+        const string over = "\"input\": \"v\"";
+        Assert.Contains(over, expr, StringComparison.Ordinal);
+        var column = expr.Replace(over, "\"input\": \"t\", \"column\": \"n\"", StringComparison.Ordinal);
+        var numbers = SamplesOf(samples!);
+        var (value, _, _) = SceneExpressionTests.EvalJson(column, i => i.Readings["test:t"] = new SceneReading
+        {
+            Status = SceneInputStatus.Live,
+            Table = new SceneTable(["label", "n"], numbers.Select(n => (IReadOnlyList<string>)["row", n.ToString(System.Globalization.CultureInfo.InvariantCulture)]).ToList())
+            {
+                Numbers = numbers.Select(n => (IReadOnlyList<double>)[0, n]).ToList(),
+            },
+        });
+        AssertResult(value, type, result, $"vector {index} over a column: {column}");
     }
 
     /// <summary>The rows of the table under "## Exact results": an expression and its result, each in backticks.</summary>
