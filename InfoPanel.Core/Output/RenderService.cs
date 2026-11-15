@@ -108,9 +108,24 @@ public sealed class RenderService : IAsyncDisposable
     /// every value over <paramref name="live"/>'s (<see cref="SimulatedSceneInputs"/>), and video decode sessions of its
     /// own, so its clock never moves another loop's videos (closed when the loop ends).
     /// </summary>
-    internal static SceneRuntimeOptions SimulatedOptions(SceneRuntimeOptions live, TimeProvider time) => new()
+    internal static SceneRuntimeOptions SimulatedOptions(SceneRuntimeOptions live, TimeProvider time) =>
+        OwnVideos(live, new SimulatedSceneInputs(live.Inputs, time, live.Limits));
+
+    /// <summary>
+    /// A one-off draw's runtime options (<see cref="InspectOnce"/>): <paramref name="live"/>'s, with video decode sessions
+    /// of its own, so its draw at time 0 never asks a loop's session for another frame (closed with the runtime); made-up
+    /// values as a simulated loop's when <paramref name="simulated"/>, and with <paramref name="everyInput"/> for every
+    /// input, one without a binding or a reading too (<see cref="EveryInputMadeUp"/>).
+    /// </summary>
+    internal static SceneRuntimeOptions OnceOptions(SceneRuntimeOptions live, TimeProvider time, bool simulated, bool everyInput) =>
+        !simulated ? OwnVideos(live, live.Inputs)
+        : everyInput ? OwnVideos(live, new EveryInputMadeUp(live.Inputs, time, live.Limits))
+        : SimulatedOptions(live, time);
+
+    /// <summary><paramref name="live"/>'s options with <paramref name="inputs"/> and video decode sessions of their own.</summary>
+    private static SceneRuntimeOptions OwnVideos(SceneRuntimeOptions live, ISceneInputSource inputs) => new()
     {
-        Inputs = new SimulatedSceneInputs(live.Inputs, time, live.Limits),
+        Inputs = inputs,
         Media = live.Media,
         VideoOwner = new object(),
         Providers = live.Providers,
@@ -279,7 +294,7 @@ public sealed class RenderService : IAsyncDisposable
     /// else a one-off of it (a change the loop hasn't ticked yet is drawn and measured as it is now, Codex p2 #6). The
     /// one-off goes through the process budget as a live tick does, holding its reservation until the inspection is
     /// done, and draws what doesn't fit as budget placeholders (Codex p2-2 #2): the loop's runtime admits it when the
-    /// profile has a loop (<see cref="RenderLoop.Inspection"/>), a runtime of its own otherwise.
+    /// profile has a loop (<see cref="RenderLoop.Inspection"/>), a runtime of its own otherwise (<see cref="InspectOnce"/>).
     /// </summary>
     public T Inspect<T>(ProfileDocument document, Func<TickSnapshot, Generation, T> inspect)
     {
@@ -293,8 +308,26 @@ public sealed class RenderService : IAsyncDisposable
                 return inspect(shown.Snapshot, shown.Generation);
         }
 
-        var generation = document.Current;
-        using var runtime = new SceneRuntime(SceneOptions);
+        return InspectOnce(document.Current, simulated: false, inspect);
+    }
+
+    /// <summary>
+    /// <see cref="Inspect"/>'s one-off, for any checked generation (a profile's current one, or a document a caller gives
+    /// that is kept nowhere): a runtime of its own, made with <see cref="SceneOptions"/>, or with made-up values over them
+    /// when <paramref name="simulated"/> (as a simulated subscription's), its videos on decode sessions of its own
+    /// (<see cref="OnceOptions"/>), loads <paramref name="generation"/> and takes one snapshot (state at init, elapsed 0)
+    /// through the process budget as a live tick does, holding its reservation until <paramref name="inspect"/> is done;
+    /// what doesn't fit is drawn as budget placeholders. No loop is made or ticked, no sink gets a frame and no loop's
+    /// video session is asked for a frame. The generation must have been checked with the workspace's limits and support,
+    /// as the loops' are.
+    /// </summary>
+    /// <param name="everyInput">
+    /// With <paramref name="simulated"/>: made-up values for every input, one without a binding, or a text or table without a
+    /// reading, made up of its type (<see cref="EveryInputMadeUp"/>); without it, as a simulated subscription's.
+    /// </param>
+    public T InspectOnce<T>(Generation generation, bool simulated, Func<TickSnapshot, Generation, T> inspect, bool everyInput = false)
+    {
+        using var runtime = new SceneRuntime(OnceOptions(SceneOptions, _time, simulated, everyInput));
         runtime.Load(generation);
         using var snapshot = runtime.Snapshot(_time.GetUtcNow(), admit: true);
         return inspect(snapshot, generation);

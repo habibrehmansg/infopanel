@@ -94,10 +94,10 @@ public sealed class RelayFramesTests
     }
 
     [Fact]
-    public void TheHello_ListsTheFeatures_Design()
+    public void TheHello_ListsTheFeatures_DesignAndPreview()
     {
         var hello = RelayFrames.Hello("2.0.1");
-        Assert.Equal("""{"type":"hello","protocol":1,"engineVersion":"2.0.1","features":["design"]}""", hello.ToJsonString());
+        Assert.Equal("""{"type":"hello","protocol":1,"engineVersion":"2.0.1","features":["design","preview"]}""", hello.ToJsonString());
     }
 
     [Fact]

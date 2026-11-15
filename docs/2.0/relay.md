@@ -44,7 +44,7 @@ with 1009) and 272 levels deep (the formats' 256 and an envelope, as on the loca
 
 | Frame | When |
 |---|---|
-| `{"type":"hello","protocol":1,"engineVersion":"2.0.1","features":["design"]}` | First, once open. `features` lists what the engine takes beyond the protocol: `design`, a call's design ([below](#designs)). A relay sends a design only to an engine that lists it, and reads the list tolerantly (an entry it doesn't know is ignored) |
+| `{"type":"hello","protocol":1,"engineVersion":"2.0.1","features":["design","preview"]}` | First, once open. `features` lists what the engine takes beyond the protocol: `design`, a call's design ([below](#designs)), and `preview`, `render_preview`'s `document`: a profile document drawn as it is given and kept nowhere. A relay sends a design only to an engine that lists `design`, a document only to one that lists `preview`, and reads the list tolerantly (an entry it doesn't know is ignored) |
 | `{"type":"time","nonce":"‹128 random bits, base64url›"}` | A reading of the relay's clock ([below](#never-late)) |
 | `{"type":"result","id":…,"result":{"content":[…],"isError":false}}` | A call's answer, as MCP's `tools/call` result. One that would be over 9 MiB is an error result saying so |
 | `{"type":"item","id":…,"instance":…,"rev":12,"profile":"‹id›","item":{…},"detail":"‹text›"}` | A `read`'s answer ([below](#designs)) |
@@ -78,7 +78,8 @@ add types without a new protocol. A protocol the relay can't serve, it closes wi
 - **Web images: refused for now.** A change from elsewhere may not insert or set a scene holding a media source with a
   `provider` (a web image or a camera), nor change the bindings of an item whose scene holds one, since a binding can
   re-address it: the answer is an error, `webImage`, "An AI app can't add or change a picture from a web address …
-  add_asset stores a picture to show instead". Moving, hiding, renaming or removing such an item works.
+  add_asset stores a picture to show instead". Moving, hiding, renaming or removing such an item works. Nor may a
+  document drawn from elsewhere (`render_preview`'s `document`) hold one in any scene: `webImage`, nothing drawn.
   (`media.localNetwork` is on by default, so without the rule a call could make the engine fetch from the local network.)
   The `now-playing` provider's cover of what plays and the `plugin` provider's pictures are exempt: neither reaches an
   address a scene names (a reference only picks one of the covers the now-playing source read, or of the pictures the

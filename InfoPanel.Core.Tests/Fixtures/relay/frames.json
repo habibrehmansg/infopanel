@@ -1,7 +1,7 @@
 {
   "about": "Frames of the connection AI apps elsewhere use (docs/2.0/relay.md), one of each the engine sends and the relay sends, as the engine writes and reads them. RelayFrameFixtureTests holds the engine to them; a relay can parse them with its own schemas.",
   "engine": {
-    "hello": { "type": "hello", "protocol": 1, "engineVersion": "2.0.1", "features": ["design"] },
+    "hello": { "type": "hello", "protocol": 1, "engineVersion": "2.0.1", "features": ["design", "preview"] },
     "time": { "type": "time", "nonce": "AAAAAAAAAAAAAAAAAAAAAA" },
     "result": { "type": "result", "id": "c1", "result": { "content": [{ "type": "text", "text": "Added \"Gauge\" (ai-0123456789) to Overview at 10, 20. Saved." }], "isError": false } },
     "late": { "type": "late", "id": "c1" },

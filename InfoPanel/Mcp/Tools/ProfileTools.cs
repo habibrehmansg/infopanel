@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using InfoPanel.Documents;
 using InfoPanel.Mcp.Text;
 using InfoPanel.Output;
+using InfoPanel.Scenes;
 using InfoPanel.Security;
 using InfoPanel.Spec;
 
@@ -389,72 +390,67 @@ public sealed class GetProfileTool(Workspace workspace) : McpTool
 /// <summary>
 /// <c>render_preview</c>: a profile drawn as a PNG, as it shows now (the live frame's tick when it is on show), and the
 /// preview checks (<see cref="PreviewChecks"/>) on the same tick, with the text layers' thresholds read on every call.
+/// Or, with <c>document</c>, a profile document the caller gives, checked as a create checks one
+/// (<see cref="Workspace.CheckImportDocument"/>) and drawn once by a runtime of its own (<see cref="RenderService.InspectOnce"/>),
+/// kept nowhere: nothing is stored, listed or announced. <c>simulated</c> draws made-up values in place of the readings
+/// (a profile's current generation, then, in a one-off apart from its live loop; a given document's for every input, one
+/// without a binding or a reading too: <c>EveryInputMadeUp</c>). Exactly one of <c>profile</c> and
+/// <c>document</c>. Either way the same checks, the same fit to the caller's <c>maxChars</c> and the same process budget.
 /// </summary>
 public sealed class RenderPreviewTool(Workspace workspace, RenderService render, McpText text) : McpTool
 {
     public const int MaxWidth = 1200;
 
+    /// <summary>The id a given document is drawn under: its own is optional, as a create's.</summary>
+    private const string AnyId = "00000000-0000-4000-8000-000000000000";
+
     public override string Name => "render_preview";
     public override ApiScope Scope => ApiScope.Read;
     public override string Title => "Preview a profile";
     public override JsonObject InputSchema => Schema(
-        ("profile", String("The profile's id or exact name."), true),
+        ("profile", String("The profile's id or exact name."), false),
+        ("document", Object("Instead of profile: a profile document as the engine stores one (format infopanel.document/1; its id may be left out), drawn once and kept nowhere."), false),
+        ("simulated", Boolean("Made-up values in place of the sensors' readings (false when absent); with document, for an input without a binding or a reading too."), false),
         ("width", Integer($"The picture's width in pixels (the profile's own, at most {MaxWidth}, when absent).", Thumbnail.MinWidth, MaxWidth), false));
 
     /// <summary>How many times a picture over the AI app's <c>maxChars</c> is drawn again, narrower, before the answer is left to the limit.</summary>
     internal const int FitTries = 3;
 
+    public const string DocumentWebImage = "A document from elsewhere can't show a picture from a web address (webImage): nothing was drawn. " +
+        "A stored picture (add_asset) can be shown instead.";
+
     public override Task<ToolResult> CallAsync(ToolArguments arguments, CancellationToken ct)
     {
-        var document = ProfileNames.Find(workspace, arguments.String("profile")!);
+        var simulated = arguments.Boolean("simulated") == true;
+        var given = arguments.Has("document");
+        if (given == arguments.Has("profile"))
+        {
+            throw new ToolFailure("arguments", given
+                ? $"{Name} can't take these arguments (arguments): give profile or document, not both."
+                : $"{Name} can't take these arguments (arguments): give profile (a profile's id or exact name) or document (a profile document to draw).");
+        }
+
         var thresholds = text.Checks();
+        if (given)
+        {
+            var generation = Checked(arguments.Object("document")!);
+            // A call from elsewhere may not make the engine fetch: the rule for a change's scenes, asked of each scene drawn.
+            if (arguments.Call.FromElsewhere && ItemNames.Flatten(generation.Document.Items).OfType<SceneItem>().Any(s => WebImageRule.HoldsProvider(s.Scene)))
+                throw new ToolFailure(WebImageRule.Code, DocumentWebImage);
+            var note = simulated ? ", drawn once and kept nowhere, with made-up values" : ", drawn once and kept nowhere";
+            // Made-up values for every input: a document drawn before it is bound shows a value of each input's type.
+            return Task.FromResult(render.InspectOnce(generation, simulated, (snapshot, shown) => Picture(arguments, snapshot, shown, thresholds, "document", note), everyInput: simulated));
+        }
+
+        var document = ProfileNames.Find(workspace, arguments.String("profile")!);
         ToolResult result;
         try
         {
             // One generation and one tick for the picture, its size and the checks (Codex p2 #6), a narrower picture too.
-            result = render.Inspect(document, (snapshot, generation) =>
-            {
-                var shown = generation.Document.Profile;
-                var asked = arguments.Integer("width");
-                var width = asked ?? Math.Clamp(shown.Width, Thumbnail.MinWidth, MaxWidth);
-                var checks = PreviewChecks.Run(snapshot, generation.Document, thresholds).Text;
-                var answer = Answer(Thumbnail.RenderPng(snapshot, width), width);
-
-                // Over what the AI app takes: the same tick drawn narrower, its base64 scaled to the room the text leaves,
-                // a few times at most, never below the least width. A picture still over it is refused by the limit. Each
-                // try is narrower than the width the last was drawn, not asked: a tall profile's is less, its height capped,
-                // and after the first try the width is scaled by the room itself, not its square root (a tall picture's data
-                // does not go with its area).
-                if (arguments.Call.MaxChars is { } maxChars)
-                {
-                    var drawn = Thumbnail.Size(snapshot.Width, snapshot.Height, width).Width;
-                    for (var tries = 0; tries < FitTries && drawn > Thumbnail.MinWidth && Characters(answer) > maxChars; tries++)
-                    {
-                        var room = maxChars - Math.Max(McpToolHost.TextRoom, Text(answer).Length);
-                        var size = Image(answer).Length;
-                        var fit = Math.Max(0, room) / (double)size;
-                        // The first try assumes the picture's data goes with its area; once one has been drawn that is
-                        // known, not assumed: a tall picture's height is capped, so its data goes about with its width.
-                        var narrower = Math.Clamp((int)(drawn * (tries == 0 ? Math.Sqrt(fit) : fit) * 0.9), Thumbnail.MinWidth, drawn - 1);
-                        answer = Answer(Thumbnail.RenderPng(snapshot, narrower), narrower);
-                        drawn = Thumbnail.Size(snapshot.Width, snapshot.Height, narrower).Width;
-                    }
-                }
-                return answer;
-
-                ToolResult Answer(byte[] png, int drawn)
-                {
-                    var (pw, ph, _) = Thumbnail.Size(shown.Width, shown.Height, drawn);
-                    var smaller = drawn < width
-                        ? $" (drawn smaller than {(asked is null ? $"{width} wide" : $"the {width} asked")}, to fit what this AI app takes)"
-                        : "";
-                    return new ToolResult(
-                    [
-                        new JsonObject { ["type"] = "image", ["data"] = Convert.ToBase64String(png), ["mimeType"] = "image/png" },
-                        new JsonObject { ["type"] = "text", ["text"] = $"{shown.Name}: a {pw}×{ph} picture{smaller} of the {shown.Width}×{shown.Height} profile.\n\n{checks}" },
-                    ], false, "ok");
-                }
-            });
+            // Made-up values: a one-off of the current generation, apart from the live loop, whose tick is the readings'.
+            result = simulated
+                ? render.InspectOnce(document.Current, simulated: true, (snapshot, shown) => Picture(arguments, snapshot, shown, thresholds, "profile", ", with made-up values"))
+                : render.Inspect(document, (snapshot, shown) => Picture(arguments, snapshot, shown, thresholds, "profile", ""));
         }
         catch (ObjectDisposedException)
         {
@@ -462,6 +458,75 @@ public sealed class RenderPreviewTool(Workspace workspace, RenderService render,
         }
 
         return Task.FromResult(result);
+    }
+
+    /// <summary>
+    /// A given document checked as a create checks one (the format, its rules and limits, the stored size), then loaded
+    /// once under <see cref="AnyId"/> with the workspace's limits and support, as the render loops' generations are.
+    /// </summary>
+    /// <exception cref="ToolFailure"><c>invalid</c>, naming each error by its path under <c>/document</c> and its code.</exception>
+    private Generation Checked(JsonObject given)
+    {
+        using var json = JsonDocument.Parse(given.ToJsonString(), SpecJson.DocumentOptions);
+        if (workspace.CheckImportDocument(json.RootElement) is { Count: > 0 } errors)
+        {
+            throw new ToolFailure("invalid", $"The document can't be drawn (invalid): {string.Join("; ", errors.Select(e => $"{e.Path} ({e.Code}): {e.Message}"))}. " +
+                "Nothing was drawn or kept.");
+        }
+
+        given["id"] = AnyId;
+        using var drawn = JsonDocument.Parse(given.ToJsonString(), SpecJson.DocumentOptions);
+        var load = Generation.Load(drawn.RootElement, 1, workspace.Limits, workspace.Support);
+        return load.Generation ?? throw new ToolFailure("invalid", $"The document can't be drawn (invalid): {string.Join("; ", load.Check.Errors.Select(e => $"/document{e.Path} ({e.Code}): {e.Message}"))}. " +
+            "Nothing was drawn or kept.");
+    }
+
+    /// <summary>
+    /// The picture and the checks of one tick of <paramref name="generation"/>, the picture held to the AI app's
+    /// <c>maxChars</c> by drawing the same tick narrower; <paramref name="what"/> and <paramref name="note"/> say what was drawn.
+    /// </summary>
+    private static ToolResult Picture(ToolArguments arguments, TickSnapshot snapshot, Generation generation, CheckThresholds thresholds, string what, string note)
+    {
+        var shown = generation.Document.Profile;
+        var asked = arguments.Integer("width");
+        var width = asked ?? Math.Clamp(shown.Width, Thumbnail.MinWidth, MaxWidth);
+        var checks = PreviewChecks.Run(snapshot, generation.Document, thresholds).Text;
+        var answer = Answer(Thumbnail.RenderPng(snapshot, width), width);
+
+        // Over what the AI app takes: the same tick drawn narrower, its base64 scaled to the room the text leaves,
+        // a few times at most, never below the least width. A picture still over it is refused by the limit. Each
+        // try is narrower than the width the last was drawn, not asked: a tall profile's is less, its height capped,
+        // and after the first try the width is scaled by the room itself, not its square root (a tall picture's data
+        // does not go with its area).
+        if (arguments.Call.MaxChars is { } maxChars)
+        {
+            var drawn = Thumbnail.Size(snapshot.Width, snapshot.Height, width).Width;
+            for (var tries = 0; tries < FitTries && drawn > Thumbnail.MinWidth && Characters(answer) > maxChars; tries++)
+            {
+                var room = maxChars - Math.Max(McpToolHost.TextRoom, Text(answer).Length);
+                var size = Image(answer).Length;
+                var fit = Math.Max(0, room) / (double)size;
+                // The first try assumes the picture's data goes with its area; once one has been drawn that is
+                // known, not assumed: a tall picture's height is capped, so its data goes about with its width.
+                var narrower = Math.Clamp((int)(drawn * (tries == 0 ? Math.Sqrt(fit) : fit) * 0.9), Thumbnail.MinWidth, drawn - 1);
+                answer = Answer(Thumbnail.RenderPng(snapshot, narrower), narrower);
+                drawn = Thumbnail.Size(snapshot.Width, snapshot.Height, narrower).Width;
+            }
+        }
+        return answer;
+
+        ToolResult Answer(byte[] png, int drawn)
+        {
+            var (pw, ph, _) = Thumbnail.Size(shown.Width, shown.Height, drawn);
+            var smaller = drawn < width
+                ? $" (drawn smaller than {(asked is null ? $"{width} wide" : $"the {width} asked")}, to fit what this AI app takes)"
+                : "";
+            return new ToolResult(
+            [
+                new JsonObject { ["type"] = "image", ["data"] = Convert.ToBase64String(png), ["mimeType"] = "image/png" },
+                new JsonObject { ["type"] = "text", ["text"] = $"{shown.Name}: a {pw}×{ph} picture{smaller} of the {shown.Width}×{shown.Height} {what}{note}.\n\n{checks}" },
+            ], false, "ok");
+        }
     }
 
     private static string Image(ToolResult answer) => answer.Content[0]!["data"]!.GetValue<string>();

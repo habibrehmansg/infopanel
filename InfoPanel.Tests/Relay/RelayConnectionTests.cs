@@ -25,8 +25,9 @@ public sealed class RelayConnectionTests
         var hello = await peer.ExpectAsync("hello", Ct);
         Assert.Equal(1, hello["protocol"]!.GetValue<int>());
         Assert.Equal("2.0.0-test", hello["engineVersion"]!.GetValue<string>());
-        // What the engine takes beyond the protocol: designs the service produced (docs/2.0/relay.md, "Designs").
-        Assert.Equal("""["design"]""", hello["features"]!.ToJsonString());
+        // What the engine takes beyond the protocol: designs the service produced (docs/2.0/relay.md, "Designs"), and a
+        // document drawn as it is given (render_preview's document).
+        Assert.Equal("""["design","preview"]""", hello["features"]!.ToJsonString());
         Assert.Equal(RelayState.Connecting, rig.Client.State);
         Assert.Equal(["Bearer " + Credential], rig.Relay.Authorizations);
         Assert.Equal([RelayOptions.DefaultPath], rig.Relay.Paths);

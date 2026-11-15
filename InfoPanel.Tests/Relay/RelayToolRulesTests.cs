@@ -511,6 +511,44 @@ public sealed class RelayToolRulesTests
         Assert.False(bound.IsError, bound.Text);
     }
 
+    /// <summary>
+    /// A document drawn from elsewhere (<c>render_preview</c> with <c>document</c>) may not hold a provider's media source
+    /// in any scene, a group's items too: refused in words, <c>webImage</c>, nothing drawn, so a call can't make the engine
+    /// fetch from the local network; one without such a source is drawn. From this computer the same document is drawn.
+    /// </summary>
+    [Fact]
+    public async Task ADocumentDrawnFromElsewhere_MayNotHoldAWebImage_ButOneDrawnOnThisComputerMay()
+    {
+        using var factory = new EngineFactory();
+        var engine = new Engine(factory);
+        await using var rig = await StartAsync(engine.Recording);
+        var peer = await rig.ConnectAsync();
+
+        static JsonObject Document(params JsonObject[] items)
+        {
+            var document = TestDocs.Doc("Drawn", 200, 100, items);
+            document.Remove("id");
+            return document;
+        }
+
+        var shown = Document(TestDocs.Scene("box", 0, 0), TestDocs.Group("g", TestDocs.Scene("cam", 50, 0, WebImageScene("http://192.168.1.10/cam.jpg"))));
+        await peer.SendAsync(rig.Call("w", "render_preview", new JsonObject { ["document"] = shown.DeepClone() }));
+        var refused = (await peer.ExpectAsync("result", Ct))["result"]!;
+        Assert.True(refused["isError"]!.GetValue<bool>());
+        Assert.Single(refused["content"]!.AsArray());
+        Assert.Equal("A document from elsewhere can't show a picture from a web address (webImage): nothing was drawn. " +
+            "A stored picture (add_asset) can be shown instead.", refused["content"]![0]!["text"]!.GetValue<string>());
+
+        await peer.SendAsync(rig.Call("d", "render_preview", new JsonObject { ["document"] = Document(TestDocs.Scene("box", 0, 0)) }));
+        var drawn = (await peer.ExpectAsync("result", Ct))["result"]!;
+        Assert.False(drawn["isError"]!.GetValue<bool>(), drawn.ToJsonString());
+
+        using var json = JsonDocument.Parse(new JsonObject { ["document"] = shown.DeepClone() }.ToJsonString());
+        var local = await engine.Host.CallAsync("render_preview", json.RootElement.Clone(), Ct);
+        Assert.False(local["isError"]!.GetValue<bool>(), local.ToJsonString());
+        Assert.Contains(local["content"]!.AsArray(), c => c!["type"]!.GetValue<string>() == "image");
+    }
+
     /// <summary>A scene showing the picture of an image sensor: <paramref name="provider"/> (the cover of what plays by default) with the input <c>art</c> as its reference.</summary>
     private static JsonObject NowPlayingScene(string provider = "now-playing") => new()
     {

@@ -107,6 +107,14 @@
             "minLength": 1,
             "maxLength": 256
           },
+          "document": {
+            "type": "object",
+            "description": "Instead of profile: a profile document as the engine stores one (format infopanel.document/1; its id may be left out), drawn once and kept nowhere."
+          },
+          "simulated": {
+            "type": "boolean",
+            "description": "Made-up values in place of the sensors' readings (false when absent); with document, for an input without a binding or a reading too."
+          },
           "width": {
             "type": "integer",
             "description": "The picture's width in pixels (the profile's own, at most 1200, when absent).",
@@ -114,9 +122,7 @@
             "maximum": 1200
           }
         },
-        "required": [
-          "profile"
-        ],
+        "required": [],
         "additionalProperties": false
       },
       "annotations": {

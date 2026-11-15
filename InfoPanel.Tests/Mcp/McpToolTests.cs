@@ -1,7 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using InfoPanel.Documents;
 using InfoPanel.Mcp.Tools;
 using InfoPanel.Security;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using SkiaSharp;
 using Xunit;
@@ -364,5 +367,353 @@ public sealed class McpToolTests
         var (missing, missingError, _) = await Call(host, "get_profile", $$"""{"profile":"{{SeededEngineFactory.RefSource}}","item":"nothing"}""");
         Assert.True(missingError);
         Assert.Contains("There's no item nothing", missing);
+    }
+
+    // ---- render_preview with a document ------------------------------------------------------------------------------
+
+    /// <summary>A document as a client sends one to draw: no id (the engine draws it under one of its own), a black canvas.</summary>
+    private static JsonObject Given(string name, int width, int height, params JsonObject[] items)
+    {
+        var document = TestDocs.Doc(name, width, height, items);
+        document.Remove("id");
+        return document;
+    }
+
+    /// <summary>render_preview's arguments with <paramref name="document"/> and the other members given.</summary>
+    private static string DocumentCall(JsonObject document, string more = "") =>
+        $$"""{"document":{{document.ToJsonString()}}{{more}}}""";
+
+    private static SKBitmap PictureOf(JsonNode result) =>
+        SKBitmap.Decode(Convert.FromBase64String(result["content"]!.AsArray().Single(c => c!["type"]!.GetValue<string>() == "image")!["data"]!.GetValue<string>()));
+
+    /// <summary>Every file in the data folder but the log's, with its size and time written.</summary>
+    private static List<string> DataFolder(EngineFactory factory) =>
+        [.. Directory.EnumerateFiles(factory.DataDir, "*", SearchOption.AllDirectories)
+            .Where(f => !Path.GetRelativePath(factory.DataDir, f).StartsWith("logs", StringComparison.Ordinal))
+            .Select(f => new FileInfo(f))
+            .Select(f => $"{Path.GetRelativePath(factory.DataDir, f.FullName)} {f.Length} {f.LastWriteTimeUtc:O}")
+            .Order(StringComparer.Ordinal)];
+
+    /// <summary>
+    /// <c>render_preview</c> lists <c>document</c> (an object) and <c>simulated</c> (true or false) beside <c>profile</c>,
+    /// which it no longer requires (exactly one of the two, checked when called); it stays a read tool.
+    /// </summary>
+    [Fact]
+    public void RenderPreview_TakesADocumentOrAProfile_AndMadeUpValues_AndStaysARead()
+    {
+        var tool = McpToolHost.BuiltInList()["tools"]!.AsArray().Single(t => t!["name"]!.GetValue<string>() == "render_preview")!;
+        var properties = tool["inputSchema"]!["properties"]!.AsObject();
+        Assert.Equal(["profile", "document", "simulated", "width"], properties.Select(p => p.Key));
+        Assert.Equal("object", properties["document"]!["type"]!.GetValue<string>());
+        Assert.Equal("boolean", properties["simulated"]!["type"]!.GetValue<string>());
+        Assert.Equal("[]", tool["inputSchema"]!["required"]!.ToJsonString());
+        Assert.True(tool["annotations"]!["readOnlyHint"]!.GetValue<bool>());
+        Assert.Equal(ApiScope.Read, Scopes["render_preview"]);
+    }
+
+    /// <summary>
+    /// A given document is drawn once (its own size, its items), and nothing is stored, listed or announced: the profile
+    /// list, every file of the data folder and the workspace's change event are as before, and no render loop is made.
+    /// </summary>
+    [Fact]
+    public async Task RenderPreview_DrawsAGivenDocument_AndStoresListsAndAnnouncesNothing()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = factory.Services.GetRequiredService<Workspace>();
+        var render = factory.Services.GetRequiredService<InfoPanel.Output.RenderService>();
+        var listed = (await Call(host, "list_profiles")).Text;
+        var entries = workspace.List().Select(e => $"{e.Id} {e.Name} {e.Instance}").ToList();
+        var files = DataFolder(factory);
+        var changes = 0;
+        void Changed(object? sender, ProfilesChangedEventArgs e) => Interlocked.Increment(ref changes);
+        workspace.ProfilesChanged += Changed;
+        JsonNode result;
+        string text;
+        bool error;
+        try
+        {
+            (text, error, result) = await Call(host, "render_preview", DocumentCall(Given("Drawn", 200, 100,
+                TestDocs.Scene("left", 0, 0, TestDocs.Rect("#ff0000", 100, 100)), TestDocs.Scene("right", 100, 0, TestDocs.Rect("#0000ff", 100, 100)))));
+        }
+        finally
+        {
+            workspace.ProfilesChanged -= Changed;
+        }
+
+        Assert.False(error, text);
+        Assert.StartsWith("Drawn: a 200×100 picture of the 200×100 document, drawn once and kept nowhere.\n", text);
+        using (var picture = PictureOf(result))
+        {
+            Assert.Equal((200, 100), (picture.Width, picture.Height));
+            Assert.Equal(new SKColor(0xff, 0, 0), picture.GetPixel(50, 50));
+            Assert.Equal(new SKColor(0, 0, 0xff), picture.GetPixel(150, 50));
+        }
+        Assert.Equal(0, changes);
+        Assert.Equal(listed, (await Call(host, "list_profiles")).Text);
+        Assert.Equal(entries, workspace.List().Select(e => $"{e.Id} {e.Name} {e.Instance}").ToList());
+        Assert.Equal(files, DataFolder(factory));
+        Assert.Equal(0, render.LoopCount);
+    }
+
+    /// <summary>
+    /// A document the engine wouldn't store is refused as a create would refuse it, each error by its path under
+    /// <c>/document</c> and its code, nothing drawn: one that breaks the schema, one over the format's limits (more
+    /// items than a document holds), a canvas over the largest; one within them all, the largest canvas, is drawn within
+    /// the picture's own bounds.
+    /// </summary>
+    [Fact]
+    public async Task RenderPreview_RefusesADocumentACreateWouldRefuse_ByEachErrorsPathAndCode()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var workspace = factory.Services.GetRequiredService<Workspace>();
+
+        var unplaced = Given("Broken", 100, 100, TestDocs.Scene("a"));
+        unplaced["items"]![0]!.AsObject().Remove("placement");
+        var tooMany = Given("Many", 100, 100, [.. Enumerable.Range(0, workspace.Limits.Items + 1).Select(i => TestDocs.Scene($"i{i}"))]);
+        var huge = Given("Huge", 16385, 100, TestDocs.Scene("a"));
+        foreach (var document in new[] { unplaced, tooMany, huge })
+        {
+            using var json = JsonDocument.Parse(document.ToJsonString());
+            var expected = workspace.CheckImportDocument(json.RootElement);
+            Assert.NotEmpty(expected);
+            var (text, error, result) = await Call(host, "render_preview", DocumentCall(document));
+            Assert.True(error, text);
+            Assert.DoesNotContain(result["content"]!.AsArray(), c => c!["type"]!.GetValue<string>() == "image");
+            Assert.Contains("(invalid)", text);
+            foreach (var e in expected)
+                Assert.Contains($"{e.Path} ({e.Code})", text);
+
+            // A create of the same document is refused with the same codes.
+            var created = workspace.Create(System.Text.Encoding.UTF8.GetBytes(new JsonObject { ["id"] = TestDocs.NewId(), ["document"] = document.DeepClone() }.ToJsonString()));
+            Assert.Null(created.Entry);
+            Assert.Equal(expected.Select(e => e.Code).Order(), created.Invalid!.Errors.Select(e => e.Code).Order());
+        }
+        Assert.Contains("/document/items (limit.items)", (await Call(host, "render_preview", DocumentCall(tooMany))).Text);
+
+        // The largest canvas the format takes: drawn, the picture no wider than the tool's most and no taller than a thumbnail's.
+        var (largest, largestError, drawn) = await Call(host, "render_preview", DocumentCall(Given("Largest", 16384, 16384, TestDocs.Scene("a"))));
+        Assert.False(largestError, largest);
+        using var picture = PictureOf(drawn);
+        Assert.Equal((RenderPreviewTool.MaxWidth, RenderPreviewTool.MaxWidth), (picture.Width, picture.Height));
+    }
+
+    /// <summary>Exactly one of <c>profile</c> and <c>document</c>: both, or neither, refused in words naming them, with the code <c>arguments</c>.</summary>
+    [Fact]
+    public async Task RenderPreview_TakesExactlyOneOfProfileAndDocument()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var (both, bothError, _) = await Call(host, "render_preview", DocumentCall(Given("Both", 100, 100), ""","profile":"Wide bar" """));
+        Assert.True(bothError);
+        Assert.Equal("render_preview can't take these arguments (arguments): give profile or document, not both.", both);
+        var (neither, neitherError, _) = await Call(host, "render_preview", """{"width":100}""");
+        Assert.True(neitherError);
+        Assert.Equal("render_preview can't take these arguments (arguments): give profile (a profile's id or exact name) or document (a profile document to draw).", neither);
+        var (notAnObject, notAnObjectError, _) = await Call(host, "render_preview", """{"document":5}""");
+        Assert.True(notAnObjectError);
+        Assert.Contains("'document' must be a JSON object", notAnObject);
+    }
+
+    /// <summary>A scene that shows a text input, its text dark on the black canvas so the contrast check quotes it.</summary>
+    private static JsonObject SongScene() => JsonNode.Parse("""
+        {"format": "infopanel.scene/1", "inputs": {"song": {"type": "text"}},
+         "nodes": [{"kind": "text", "x": 0, "y": 0, "font": {"family": "Inter", "size": 20}, "fill": "#101010",
+                    "text": {"op": "input", "name": "song", "field": "text"}}]}
+        """)!.AsObject();
+
+    private static WebApplicationFactory<Program> SongEngine(EngineFactory fresh) => FixedSensorSource.Engine(fresh,
+        new FixedSensorSource("fixed", (InfoPanel.Sensors.SensorKey.Plugin("/fixed/song"), "Song", new(InfoPanel.Sensors.SensorStatus.Live,
+            InfoPanel.Sensors.SensorKind.Text, new InfoPanel.Models.SensorReading("Artist - Title")))));
+
+    private static JsonObject SongItem() => TestDocs.Scene("song", 0, 0, SongScene(), new JsonObject
+    {
+        ["name"] = "Song",
+        ["bindings"] = new JsonObject { ["song"] = new JsonObject { ["key"] = "plugin:/fixed/song" } },
+    });
+
+    /// <summary>
+    /// <c>simulated</c> draws made-up values in place of the readings, as a simulated subscription's: the text a sensor
+    /// reads isn't drawn (the contrast check quotes the text drawn), and the answer says the values are made up.
+    /// </summary>
+    [Fact]
+    public async Task RenderPreview_Simulated_DrawsMadeUpValues()
+    {
+        using var fresh = new EngineFactory();
+        using var engine = SongEngine(fresh);
+        var host = engine.Services.GetRequiredService<McpToolHost>();
+        var document = Given("Song", 300, 40, SongItem());
+
+        var (live, liveError, _) = await Call(host, "render_preview", DocumentCall(document));
+        Assert.False(liveError, live);
+        Assert.Contains("\"Artist - Title\"", live);
+        Assert.DoesNotContain("made-up values", live);
+
+        var (made, madeError, _) = await Call(host, "render_preview", DocumentCall(document, ""","simulated":true"""));
+        Assert.False(madeError, made);
+        Assert.StartsWith("Song: a 300×40 picture of the 300×40 document, drawn once and kept nowhere, with made-up values.\n", made);
+        Assert.DoesNotContain("Artist - Title", made);
+        Assert.Contains("\"Song\" (song): text \"", made); // a made-up text, quoted by the same check
+    }
+
+    /// <summary>
+    /// A given document drawn with made-up values makes up a value of its type for every input without a reading: an
+    /// unbound text shows a made-up text (the contrast check quotes the text drawn, dark on black) and an unbound table
+    /// made-up rows (white, under it). Drawn with the readings, they draw nothing; and a stored profile's made-up draw
+    /// reads them as a simulated subscription does, unbound.
+    /// </summary>
+    [Fact]
+    public async Task RenderPreview_ADocumentWithMadeUpValues_MakesUpAValueForEveryInputWithoutAReading()
+    {
+        using var fresh = new EngineFactory();
+        using var engine = SongEngine(fresh);
+        var host = engine.Services.GetRequiredService<McpToolHost>();
+        var workspace = engine.Services.GetRequiredService<Workspace>();
+        JsonObject[] Items() =>
+        [
+            TestDocs.Scene("song", 0, 0, SongScene(), new JsonObject { ["name"] = "Song" }),
+            TestDocs.Scene("procs", 0, 40, JsonNode.Parse("""
+                {"format": "infopanel.scene/1", "inputs": {"p": {"type": "table"}},
+                 "nodes": [{"kind": "table", "input": "p", "rows": 3, "rowHeight": 20, "header": false,
+                            "columns": [{"column": 0, "w": 120}, {"column": 1, "w": 60}],
+                            "font": {"family": "Inter", "size": 14}, "fill": "#ffffff"}]}
+                """)!.AsObject(), new JsonObject { ["name"] = "Processes" }),
+        ];
+        var document = Given("Unbound", 300, 120, Items());
+        // The white pixels the table draws, below the text: none when it has no rows.
+        static int TableInk(JsonNode result)
+        {
+            using var picture = PictureOf(result);
+            var ink = 0;
+            for (var y = 40; y < picture.Height; y++)
+                for (var x = 0; x < picture.Width; x++)
+                    if (picture.GetPixel(x, y).Red > 200) ink++;
+            return ink;
+        }
+
+        var (made, madeError, madeResult) = await Call(host, "render_preview", DocumentCall(document, ""","simulated":true"""));
+        Assert.False(madeError, made);
+        Assert.Contains("\"Song\" (song): text \"Text\"", made);
+        Assert.True(TableInk(madeResult) > 100, "The table has made-up rows.");
+
+        var (live, liveError, liveResult) = await Call(host, "render_preview", DocumentCall(document));
+        Assert.False(liveError, live);
+        Assert.DoesNotContain("(song): text", live);
+        Assert.Equal(0, TableInk(liveResult));
+
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Unbound", 300, 120, Items()));
+        var (profile, profileError, profileResult) = await Call(host, "render_preview", $$"""{"profile":"{{id}}","simulated":true}""");
+        Assert.False(profileError, profile);
+        Assert.Contains("with made-up values", profile);
+        Assert.DoesNotContain("(song): text", profile);
+        Assert.Equal(0, TableInk(profileResult));
+    }
+
+    /// <summary>A document with a member twice is refused in words, as an invalid one is, nothing drawn.</summary>
+    [Fact]
+    public async Task RenderPreview_RefusesADocumentWithAMemberTwice_InWords()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var document = Given("Twice", 100, 100, TestDocs.Scene("a")).ToJsonString();
+        var twice = document.Insert(1, "\"profile\":{\"name\":\"Other\",\"width\":50,\"height\":50},");
+
+        var (text, error, result) = await Call(host, "render_preview", $$"""{"document":{{twice}}}""");
+        Assert.True(error, text);
+        Assert.DoesNotContain(result["content"]!.AsArray(), c => c!["type"]!.GetValue<string>() == "image");
+        Assert.StartsWith("The document can't be drawn (invalid): /document (schema): Duplicate property \"profile\". (duplicateKey).", text);
+        Assert.EndsWith("Nothing was drawn or kept.", text);
+    }
+
+    /// <summary>A sink that counts the frames a profile's live loop sends it.</summary>
+    private sealed class Counter(string profileId) : InfoPanel.Output.IFrameSink
+    {
+        public int Frames;
+
+        public string ProfileId { get; } = profileId;
+
+        public InfoPanel.Output.FrameRequest Request { get; } = new(1, 30, IncludeBounds: false);
+
+        public void OnFrame(InfoPanel.Output.RenderedFrame frame) => Interlocked.Increment(ref Frames);
+    }
+
+    /// <summary>
+    /// <c>simulated</c> with <c>profile</c>: one draw of the profile's current generation with made-up values, apart from
+    /// its live loop: no simulated loop is made, the live output gets no frame and keeps its tick, the document its
+    /// revision, and the next live draw reads the sensor again.
+    /// </summary>
+    [Fact]
+    public async Task RenderPreview_SimulatedProfile_ChangesNothingAboutTheLiveProfile()
+    {
+        using var fresh = new EngineFactory();
+        using var songs = SongEngine(fresh);
+        using var engine = songs.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.AddSingleton(new InfoPanel.Output.RenderServiceOptions(AutoTick: false))));
+        var host = engine.Services.GetRequiredService<McpToolHost>();
+        var workspace = engine.Services.GetRequiredService<Workspace>();
+        var render = engine.Services.GetRequiredService<InfoPanel.Output.RenderService>();
+        var id = TestDocs.Create(workspace, TestDocs.Doc("Live song", 300, 40, SongItem()));
+        var document = workspace.Find(id).Document!;
+        var sink = new Counter(id);
+        Assert.True(render.Attach(sink, document));
+        try
+        {
+            render.Tick(id);
+            long tick;
+            using (var before = render.LatestSnapshot(id))
+                tick = before!.Tick;
+            var frames = Volatile.Read(ref sink.Frames);
+            var rev = document.Rev;
+
+            var (made, madeError, _) = await Call(host, "render_preview", $$"""{"profile":"{{id}}","simulated":true}""");
+            Assert.False(madeError, made);
+            Assert.StartsWith("Live song: a 300×40 picture of the 300×40 profile, with made-up values.\n", made);
+            Assert.DoesNotContain("Artist - Title", made);
+
+            Assert.False(render.IsSimulating(id));
+            Assert.Equal(1, render.LoopCount);
+            Assert.Equal(frames, Volatile.Read(ref sink.Frames));
+            using (var after = render.LatestSnapshot(id))
+                Assert.Equal(tick, after!.Tick);
+            Assert.Equal(rev, document.Rev);
+            var (live, _, _) = await Call(host, "render_preview", $$"""{"profile":"{{id}}"}""");
+            Assert.Contains("\"Artist - Title\"", live);
+        }
+        finally
+        {
+            render.Detach(sink);
+        }
+    }
+
+    /// <summary>A document's picture is held to the caller's <c>maxChars</c> as a profile's: drawn narrower, saying so.</summary>
+    [Fact]
+    public async Task RenderPreview_ADocumentsPicture_IsFittedToMaxChars()
+    {
+        using var factory = new EngineFactory();
+        var host = Host(factory);
+        var busy = Given("Busy", 400, 200, [.. Enumerable.Range(0, 60).Select(i =>
+            TestDocs.Scene($"r{i}", i * 37 % 380, i * 53 % 180, TestDocs.Rect($"#{i * 40503 & 0xffffff:x6}", 15 + i % 7, 9 + i % 5)))]);
+
+        async Task<InfoPanel.Mcp.Tools.ToolResult> Run(int? maxChars)
+        {
+            using var json = JsonDocument.Parse(DocumentCall(busy, ""","width":400"""));
+            using var cutoff = new InfoPanel.Service.RelayCutoff(TimeProvider.System);
+            return await host.RunAsync("render_preview", json.RootElement.Clone(), McpCall.Elsewhere(new InfoPanel.Service.RelayCallContext("e1", maxChars, cutoff)), Ct);
+        }
+
+        static string Words(InfoPanel.Mcp.Tools.ToolResult result) =>
+            string.Join("\n", result.Content.Where(c => c!["type"]!.GetValue<string>() == "text").Select(c => c!["text"]!.GetValue<string>()));
+        static string Data(InfoPanel.Mcp.Tools.ToolResult result) => result.Content.Single(c => c!["type"]!.GetValue<string>() == "image")!["data"]!.GetValue<string>();
+
+        var whole = await Run(null);
+        Assert.False(whole.IsError, Words(whole));
+        var maxChars = Words(whole).Length + Data(whole).Length / 2;
+        var held = await Run(maxChars);
+        Assert.False(held.IsError, Words(held));
+        Assert.True(Words(held).Length + Data(held).Length <= maxChars);
+        using var smaller = SKBitmap.Decode(Convert.FromBase64String(Data(held)));
+        Assert.InRange(smaller.Width, InfoPanel.Output.Thumbnail.MinWidth, 399);
+        Assert.StartsWith($"Busy: a {smaller.Width}×{smaller.Height} picture (drawn smaller than the 400 asked, to fit what this AI app takes) of the 400×200 document, drawn once and kept nowhere.\n",
+            Words(held));
     }
 }

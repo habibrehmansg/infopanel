@@ -403,7 +403,8 @@ public sealed class SceneRuntime : IDisposable
         var inputs = new InputSnap[scene.InputNames.Length];
         for (var i = 0; i < inputs.Length; i++)
         {
-            if (i >= item.Bindings.Length || item.Bindings[i] is not { } binding)
+            // An input without a binding reads as unbound, unless the inputs make up a value for it (a one-off draw's, EveryInputMadeUp).
+            if (((i < item.Bindings.Length ? item.Bindings[i] : null) ?? (_options.Inputs as IUnboundInputs)?.Bind(item.Id, scene.InputNames[i])) is not { } binding)
             {
                 inputs[i] = InputSnap.Unbound;
                 continue;

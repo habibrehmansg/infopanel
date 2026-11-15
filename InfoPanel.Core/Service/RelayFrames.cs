@@ -439,9 +439,10 @@ public static class RelayFrames
 
     /// <summary>
     /// What the engine takes beyond the protocol, in its <c>hello</c>: <c>design</c>, a call's design the service produced
-    /// (docs/2.0/relay.md, "Designs"). A relay sends a design only to an engine that lists it.
+    /// (docs/2.0/relay.md, "Designs"), which a relay sends only to an engine that lists it; <c>preview</c>, a document
+    /// drawn as it is given (<c>render_preview</c>'s <c>document</c>), kept nowhere.
     /// </summary>
-    public static IReadOnlyList<string> Features { get; } = ["design"];
+    public static IReadOnlyList<string> Features { get; } = ["design", "preview"];
 
     /// <summary><c>{"type":"hello","protocol":1,"engineVersion":…,"features":[…]}</c>, the engine's first frame.</summary>
     public static JsonObject Hello(string engineVersion) => new()
