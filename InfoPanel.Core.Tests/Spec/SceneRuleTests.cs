@@ -126,6 +126,77 @@ public class SceneRuleTests
         Assert.Equal("context.measure", Assert.Single(check.Errors).Code);
     }
 
+    // ---- at: an instant other than the tick's -----------------------------------------------------------------------
+
+    [Theory]
+    // A number operand like any other: its type, the names it reads and where it may read them are checked.
+    [InlineData("""{"kind": "rect", "h": 1, "fill": "#ffffff", "w": {"op": "time", "field": "hour", "at": {"op": "value", "name": "label"}}}""", "type.mismatch", "/nodes/0/w/at")]
+    [InlineData("""{"kind": "rect", "h": 1, "fill": "#ffffff", "w": {"op": "time", "field": "hour", "at": {"op": "value", "name": "nope"}}}""", "ref.value", "/nodes/0/w/at")]
+    [InlineData("""{"kind": "rect", "h": 1, "fill": "#ffffff", "w": {"op": "time", "field": "hour", "at": {"op": "dt"}}}""", "context.dt", "/nodes/0/w/at")]
+    [InlineData("""{"kind": "text", "font": {"family": "Inter", "size": 12}, "text": {"op": "formatTime", "pattern": "HH", "at": {"op": "value", "name": "label"}}}""", "type.mismatch", "/nodes/0/text/at")]
+    [InlineData("""{"kind": "text", "font": {"family": "Inter", "size": 12}, "text": {"op": "formatTime", "pattern": "HH", "at": {"op": "input", "name": "nope"}}}""", "ref.input", "/nodes/0/text/at")]
+    public void At_IsCheckedAsANumberOperand(string node, string code, string path)
+    {
+        var check = Scene($$$"""
+            "values": {"label": "text"},
+            "nodes": [{{{node}}}]
+            """);
+        Assert.Equal((code, path), (Assert.Single(check.Errors).Code, check.Errors[0].Path));
+    }
+
+    [Theory]
+    // time is one shape with an optional at, so a mistake inside it keeps its own path, as it did before at; only
+    // elapsed with at is refused at the expression itself.
+    [InlineData("""{"op": "time", "field": "hour", "zone": "UTC\n"}""", "schema", "/nodes/0/w/zone")]
+    [InlineData("""{"op": "time", "field": "fortnight"}""", "schema", "/nodes/0/w/field")]
+    [InlineData("""{"op": "time", "field": "hour", "tz": "UTC"}""", "schema", "/nodes/0/w/tz")]
+    [InlineData("""{"op": "time", "field": "hour", "zone": "UTC\n", "at": 0}""", "schema", "/nodes/0/w/zone")]
+    [InlineData("""{"op": "time", "field": "elapsed", "at": 0}""", "schema", "/nodes/0/w")]
+    [InlineData("""{"op": "time", "field": "hour", "at": "noon"}""", "schema", "/nodes/0/w/at")]
+    [InlineData("""{"op": "time", "field": "hour", "at": {"op": "value", "name": "label"}}""", "type.mismatch", "/nodes/0/w/at")]
+    public void A_MistakeInATime_IsReportedAtItsMember(string time, string code, string path)
+    {
+        var check = Scene($$$"""
+            "values": {"label": "text"},
+            "nodes": [{"kind": "rect", "h": 1, "fill": "#ffffff", "w": {{{time}}}}]
+            """);
+        Assert.Equal((code, path), (Assert.Single(check.Errors).Code, check.Errors[0].Path));
+    }
+
+    [Fact]
+    public void At_InAStateCellsInit_CantReadState()
+    {
+        var check = Scene("""
+            "state": {"c": {"init": {"op": "time", "field": "hour", "at": {"op": "state", "name": "c"}}, "next": 0}},
+            "nodes": [{"kind": "rect", "w": {"op": "state", "name": "c"}, "h": 1, "fill": "#ffffff"}]
+            """);
+        Assert.Equal(("context.state", "/state/c/init/at"), (Assert.Single(check.Errors).Code, check.Errors[0].Path));
+    }
+
+    [Fact]
+    public void A_MeasuredTextsLayout_CantReadAMeasurementThroughAt()
+    {
+        var check = Scene("""
+            "nodes": [
+              {"kind": "text", "id": "a", "font": {"family": "Inter", "size": 12}, "text": {"op": "formatTime", "pattern": "ss", "at": {"op": "measure", "node": "b", "field": "w"}}},
+              {"kind": "text", "id": "b", "font": {"family": "Inter", "size": 12}, "text": "y"},
+              {"kind": "rect", "w": {"op": "measure", "node": "a", "field": "w"}, "h": 1, "fill": "#ffffff"}
+            ]
+            """);
+        Assert.Equal(("cycle.measure", "/nodes/0/text"), (Assert.Single(check.Errors).Code, check.Errors[0].Path));
+    }
+
+    [Fact]
+    public void At_CountsTowardsTheExpressionWork()
+    {
+        // The operand under at counts its own: here an add and a time, 1 each.
+        static int Work(string text) => Scene($$$"""
+            "nodes": [{"kind": "text", "font": {"family": "Inter", "size": 12}, "text": {{{text}}}}]
+            """).Cost.Work;
+        Assert.Equal(2, Work("""{"op": "formatTime", "pattern": "HH", "at": {"op": "add", "args": [{"op": "time", "field": "epoch"}, 60]}}""")
+            - Work("""{"op": "formatTime", "pattern": "HH"}"""));
+    }
+
     // ---- counts before the schema --------------------------------------------------------------------------------
 
     [Fact]

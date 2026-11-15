@@ -1,0 +1,42 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"sunrise": {"type": "number", "label": "Sunrise (seconds since 1970)"}},
+  "values": {
+    "tomorrow": {"op": "add", "args": [{"op": "time", "field": "epoch"}, 86400]},
+    "dayAfter": {"op": "add", "args": [{"op": "time", "field": "epoch"}, 172800]}
+  },
+  "nodes": [
+    {
+      "kind": "text",
+      "x": 0,
+      "y": 0,
+      "font": {"family": "Inter", "size": 14},
+      "fill": "#e5e7eb",
+      "text": {"op": "formatTime", "pattern": "EEE d MMM", "locale": "en-GB", "at": {"op": "value", "name": "tomorrow"}}
+    },
+    {
+      "kind": "text",
+      "x": 0,
+      "y": 20,
+      "font": {"family": "Inter", "size": 14},
+      "fill": "#e5e7eb",
+      "text": {"op": "formatTime", "pattern": "EEEE", "zone": "Europe/Berlin", "at": {"op": "value", "name": "dayAfter"}}
+    },
+    {
+      "kind": "text",
+      "x": 0,
+      "y": 40,
+      "font": {"family": "Inter", "size": 14},
+      "fill": "#fbbf24",
+      "text": {"op": "formatTime", "pattern": "HH:mm", "at": {"op": "input", "name": "sunrise"}}
+    },
+    {
+      "kind": "rect",
+      "x": 0,
+      "y": 64,
+      "h": 4,
+      "fill": "#f59e0b",
+      "w": {"op": "mul", "args": [10, {"op": "time", "field": "hour", "at": {"op": "input", "name": "sunrise"}}]}
+    }
+  ]
+}

@@ -3282,7 +3282,7 @@ export interface FormatOp {
   groupSeparator?: string;
 }
 
-/** The tick's date and time as text, by a pattern (see docs/expressions.md, "Time patterns"). The result is cut to its first 4,096 Unicode scalar values. */
+/** The tick's date and time, or those of the instant `at`, as text, by a pattern (see docs/expressions.md, "Time patterns"). The result is cut to its first 4,096 Unicode scalar values. */
 export interface FormatTimeOp {
   op: "formatTime";
   /** Length: 1–128. */
@@ -3290,6 +3290,8 @@ export interface FormatTimeOp {
   /** A BCP 47 language tag for month and day names and the AM/PM marker. Absent: the regional format's (see docs/expressions.md, Regional format). */
   locale?: LocaleTag;
   zone?: TimeZone;
+  /** An instant in seconds since 1970-01-01T00:00:00Z, shown in place of the tick's time: its fraction kept to the microsecond, a value that isn't finite read as 0, clamped to the years 0001 to 9999 (see docs/expressions.md, "Another instant"). Absent: the tick's time. */
+  at?: NumberExpr;
 }
 
 /**
@@ -3299,11 +3301,13 @@ export interface FormatTimeOp {
  */
 export type TimeZone = string;
 
-/** A number from the tick's clock. elapsed: seconds since the engine started rendering the document (monotonic). epoch: seconds since 1970-01-01T00:00:00Z. dayTime: seconds since local midnight, with fraction. year, month (1–12), day (1–31), weekday (1 = Monday … 7 = Sunday), hour (0–23), minute, second (0–59), millisecond (0–999): local calendar fields. */
+/** A number from the tick's clock, or from the instant `at` in its place. elapsed: seconds since the engine started rendering the document (monotonic); it belongs to rendering, not to an instant, so it takes no `at`. epoch: seconds since 1970-01-01T00:00:00Z. dayTime: seconds since local midnight, with fraction. year, month (1–12), day (1–31), weekday (1 = Monday … 7 = Sunday), hour (0–23), minute, second (0–59), millisecond (0–999): local calendar fields. */
 export interface TimeOp {
   op: "time";
   field: "elapsed" | "epoch" | "dayTime" | "year" | "month" | "day" | "weekday" | "hour" | "minute" | "second" | "millisecond";
   zone?: TimeZone;
+  /** An instant in seconds since 1970-01-01T00:00:00Z, read in place of the tick's time, for every field but elapsed: its fraction kept to the microsecond, a value that isn't finite read as 0, clamped to the years 0001 to 9999 (see docs/expressions.md, "Another instant"). Absent: the tick's time. */
+  at?: NumberExpr;
 }
 
 /** The item's layout box size in pixels (`w`, `h`; an automatic dimension reads as 0), or the item's rotation on the canvas in degrees (`rotation`: its placement rotation plus those of the groups it is in, not normalised; the rotation its bounds report). See docs/geometry.md. */

@@ -1,0 +1,4 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [{"kind": "rect", "h": 4, "fill": "#ffffff", "w": {"op": "time", "field": "elapsed", "at": 0}}]
+}

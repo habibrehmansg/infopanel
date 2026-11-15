@@ -39,13 +39,50 @@ internal static class SceneTime
         }
     });
 
-    public static DateTime Local(SceneClock clock, TimeZoneInfo zone) => TimeZoneInfo.ConvertTime(clock.Now, zone).DateTime;
+    public static DateTime Local(SceneClock clock, TimeZoneInfo zone) => Local(clock.Now, zone);
 
-    public static double Field(TimeField field, SceneClock clock, TimeZoneInfo zone)
+    /// <summary>
+    /// The date and time of <paramref name="instant"/> in <paramref name="zone"/>; one that would fall outside the years
+    /// 0001 to 9999 there is the nearest bound, 0001-01-01 00:00:00 or 9999-12-31 23:59:59.999999
+    /// (<see cref="TimeZoneInfo.ConvertTime(DateTimeOffset, TimeZoneInfo)"/> saturates to the last tick, here cut to the
+    /// microsecond, as the instant's bound is).
+    /// </summary>
+    public static DateTime Local(DateTimeOffset instant, TimeZoneInfo zone)
     {
-        if (field == TimeField.Elapsed) return clock.Elapsed;
-        if (field == TimeField.Epoch) return (clock.Now.UtcTicks - DateTimeOffset.UnixEpoch.UtcTicks) / (double)TimeSpan.TicksPerSecond;
-        var t = Local(clock, zone);
+        var t = TimeZoneInfo.ConvertTime(instant, zone).DateTime;
+        return t > MaxLocal ? MaxLocal : t;
+    }
+
+    private static readonly DateTime MaxLocal = new(DateTime.MaxValue.Ticks - DateTime.MaxValue.Ticks % 10); // 9999-12-31 23:59:59.999999
+
+    private const long MinMicroseconds = -62_135_596_800_000_000; // 0001-01-01T00:00:00Z
+    private const long MaxMicroseconds = 253_402_300_799_999_999; // 9999-12-31T23:59:59.999999Z
+
+    /// <summary>
+    /// The instant an <c>at</c> gives (spec/docs/expressions.md, "Another instant"): <paramref name="seconds"/> since
+    /// 1970-01-01T00:00:00Z, 0 when not finite, rounded to the nearest microsecond (half away from zero) and clamped to the
+    /// years 0001 to 9999. The whole seconds and the fraction are split first (both exact) and the fraction is rounded on
+    /// its own: scaling the whole value by a million would round it to a double's step there, about 30 microseconds near
+    /// the year 9999.
+    /// </summary>
+    public static DateTimeOffset Instant(double seconds)
+    {
+        if (!double.IsFinite(seconds)) seconds = 0;
+        var whole = Math.Truncate(seconds);
+        var fraction = (long)Math.Round((seconds - whole) * 1e6, MidpointRounding.AwayFromZero); // -1,000,000 … 1,000,000
+        var wholeSeconds = (long)Math.Clamp(whole, MinMicroseconds / 1_000_000 - 1, MaxMicroseconds / 1_000_000 + 1);
+        var clamped = Math.Clamp(wholeSeconds * 1_000_000 + fraction, MinMicroseconds, MaxMicroseconds);
+        return new DateTimeOffset(DateTimeOffset.UnixEpoch.UtcTicks + clamped * 10, TimeSpan.Zero);
+    }
+
+    public static double Field(TimeField field, SceneClock clock, TimeZoneInfo zone) =>
+        field == TimeField.Elapsed ? clock.Elapsed : Field(field, clock.Now, zone);
+
+    /// <summary>A field of <paramref name="now"/>, the tick's time or an instant; never <see cref="TimeField.Elapsed"/>.</summary>
+    public static double Field(TimeField field, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        if (field == TimeField.Epoch) return (now.UtcTicks - DateTimeOffset.UnixEpoch.UtcTicks) / (double)TimeSpan.TicksPerSecond;
+        var t = Local(now, zone);
         return field switch
         {
             TimeField.DayTime => t.TimeOfDay.Ticks / (double)TimeSpan.TicksPerSecond,

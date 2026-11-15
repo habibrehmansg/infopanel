@@ -712,6 +712,8 @@ internal static class ExprWalk
                     if (f.Decimals is not null) stack.Push(f.Decimals);
                     if (f.Group is not null) stack.Push(f.Group);
                     break;
+                case TimeExpr { At: { } at }: stack.Push(at); break;
+                case FormatTimeExpr { At: { } at }: stack.Push(at); break;
                 case StepsExpr s:
                     stack.Push(s.Value);
                     foreach (var a in s.At) stack.Push(a);

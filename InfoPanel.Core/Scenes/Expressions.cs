@@ -326,17 +326,20 @@ internal sealed class HistoryExprC(int input, HistoryFn fn, int count) : CExpr
     }
 }
 
-internal sealed class TimeExprC(TimeField field, string? zone) : CExpr
+/// <summary><c>time</c>: a field of the tick's clock, or of the instant <paramref name="at"/> gives when it is set.</summary>
+internal sealed class TimeExprC(TimeField field, string? zone, CExpr? at = null) : CExpr
 {
     public override Val Eval(Ev e)
     {
         e.Work++;
+        if (at is not null) return Val.Num(SceneTime.Field(field, SceneTime.Instant(at.Num(e)), e.ZoneOf(zone)));
         if (field == TimeField.Elapsed) return Val.Num(e.Clock.Elapsed);
         return Val.Num(SceneTime.Field(field, e.Clock, e.ZoneOf(zone)));
     }
 }
 
-internal sealed class FormatTimeExprC(PatternToken[] tokens, string? locale, string? zone) : CExpr
+/// <summary><c>formatTime</c>: the tick's date and time, or those of the instant <paramref name="at"/> gives when it is set.</summary>
+internal sealed class FormatTimeExprC(PatternToken[] tokens, string? locale, string? zone, CExpr? at = null) : CExpr
 {
     public override Val Eval(Ev e)
     {
@@ -347,7 +350,8 @@ internal sealed class FormatTimeExprC(PatternToken[] tokens, string? locale, str
             if (SceneTime.Culture(locale) is { } c) culture = c;
             else e.Diagnostics?.Add("time.locale", $"Unknown locale '{locale}'; the regional format's names are used.");
         }
-        return Val.Str(e.Cut(SceneTime.Format(tokens, SceneTime.Local(e.Clock, e.ZoneOf(zone)), culture)));
+        var now = at is null ? e.Clock.Now : SceneTime.Instant(at.Num(e));
+        return Val.Str(e.Cut(SceneTime.Format(tokens, SceneTime.Local(now, e.ZoneOf(zone)), culture)));
     }
 }
 
@@ -574,8 +578,15 @@ internal sealed class ExprCompiler(ExprScope scope)
                 var fn = h.Fn switch { "min" => HistoryFn.Min, "max" => HistoryFn.Max, "avg" => HistoryFn.Avg, "first" => HistoryFn.First, "last" => HistoryFn.Last, _ => HistoryFn.Count };
                 return Typed(new HistoryExprC(scope.Inputs.TryGetValue(h.Input, out var i) ? i : int.MaxValue, fn, h.Count), Ty.Number);
             }
-            case TimeExpr t: return Typed(new TimeExprC(SceneTime.ParseField(t.Field), t.Zone), Ty.Number);
-            case FormatTimeExpr f: return Typed(new FormatTimeExprC(SceneTime.ParsePattern(f.Pattern), f.Locale, f.Zone), Ty.String);
+            case TimeExpr t:
+            {
+                // elapsed takes no at (the schema refuses it): one given anyway is ignored.
+                var field = SceneTime.ParseField(t.Field);
+                var at = t.At is null || field == TimeField.Elapsed ? null : Compile(t.At, depth + 1);
+                return Typed(new TimeExprC(field, t.Zone, at), Ty.Number);
+            }
+            case FormatTimeExpr f:
+                return Typed(new FormatTimeExprC(SceneTime.ParsePattern(f.Pattern), f.Locale, f.Zone, f.At is null ? null : Compile(f.At, depth + 1)), Ty.String);
             case FormatExpr f:
                 return Typed(new FormatExprC(Compile(f.Value, depth + 1),
                     f.Decimals is null ? null : Compile(f.Decimals, depth + 1),

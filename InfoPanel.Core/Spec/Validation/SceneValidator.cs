@@ -311,6 +311,8 @@ public static class SceneValidator
                     if (f.Group is not null) state |= References(f.Group, path + "/group", refs);
                     return state;
                 }
+                case TimeExpr { At: { } at }: return References(at, path + "/at", refs);
+                case FormatTimeExpr { At: { } at }: return References(at, path + "/at", refs);
                 default: return false;
             }
         }
@@ -321,6 +323,8 @@ public static class SceneValidator
             CallExpr c => 1 + c.Args.Sum(Ops),
             StepsExpr st => 1 + Ops(st.Value) + st.At.Sum(Ops) + st.Out.Sum(Ops),
             FormatExpr f => 1 + Ops(f.Value) + (f.Decimals is null ? 0 : Ops(f.Decimals)) + (f.Group is null ? 0 : Ops(f.Group)),
+            TimeExpr { At: { } at } => 1 + Ops(at),
+            FormatTimeExpr { At: { } at } => 1 + Ops(at),
             NumberLit or StringLit or BoolLit => 0,
             _ => 1,
         };
@@ -502,8 +506,8 @@ public static class SceneValidator
                 case FormatTimeExpr ft:
                     if (!TimePattern.IsValid(ft.Pattern))
                         Error(path + "/pattern", "time.pattern", $"'{ft.Pattern}' is not a valid time pattern.");
-                    return Info.Of(Ty.String);
-                case TimeExpr: return Info.Of(Ty.Number);
+                    return ft.At is null ? Info.Of(Ty.String) : Info.Of(Ty.String).With(Arg(ft.At, path + "/at", Ty.Number));
+                case TimeExpr t: return t.At is null ? Info.Of(Ty.Number) : Info.Of(Ty.Number).With(Arg(t.At, path + "/at", Ty.Number));
                 case BoxExpr: return Info.Of(Ty.Number);
                 case DtExpr:
                     if (ctx != Ctx.StateNext)

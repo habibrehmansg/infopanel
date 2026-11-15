@@ -11,15 +11,19 @@ public sealed class SceneExpressionTests
     private const string Inputs = "{'v':{'type':'number'},'s':{'type':'text'},'t':{'type':'table'},'u':{'type':'number'}}";
 
     internal static (Val Value, Ty Type, ItemDiagnostics Diagnostics) Eval(string expr, Action<FakeSceneInputs>? setup = null, double elapsed = 12.5,
-        RegionalFormat? format = null) =>
-        EvalJson(expr.Replace('\'', '"'), setup, elapsed, format);
+        RegionalFormat? format = null, string? values = null) =>
+        EvalJson(expr.Replace('\'', '"'), setup, elapsed, format, values?.Replace('\'', '"'));
 
     /// <summary>An expression written as JSON (no quote replacement), evaluated as the named value <c>x</c> of a scene.</summary>
-    /// <summary>The same, with the tick's regional format <paramref name="format"/> (the invariant one when null).</summary>
+    /// <summary>
+    /// The same, with the tick's regional format <paramref name="format"/> (the invariant one when null) and
+    /// <paramref name="values"/>, more named values written after <c>x</c> (<c>"y": …</c>), when given.
+    /// </summary>
     internal static (Val Value, Ty Type, ItemDiagnostics Diagnostics) EvalJson(string expr, Action<FakeSceneInputs>? setup = null, double elapsed = 12.5,
-        RegionalFormat? format = null)
+        RegionalFormat? format = null, string? values = null)
     {
-        var json = SceneKit.Json("{'format':'infopanel.scene/1','inputs':" + Inputs + ",'values':{'x':" + expr.Replace("'", "\\u0027") + "},'nodes':[]}");
+        var more = values is null ? "" : "," + values.Replace("'", "\\u0027");
+        var json = SceneKit.Json("{'format':'infopanel.scene/1','inputs':" + Inputs + ",'values':{'x':" + expr.Replace("'", "\\u0027") + more + "},'nodes':[]}");
         var check = SceneValidator.Check(json);
         Assert.True(check.Status == CheckStatus.Valid, string.Join("; ", check.Errors.Select(e => $"{e.Code} {e.Path} {e.Message}")));
         var scene = CompiledScene.Compile(check.Scene!, check.Cost, SpecLimits.Default);
@@ -199,6 +203,81 @@ public sealed class SceneExpressionTests
     [InlineData("{'op':'steps','value':80,'at':[25,75],'out':['low','mid','high']}", "high")]
     [InlineData("{'op':'if','args':[{'op':'input','name':'u','field':'available'},'yes','-']}", "-")]
     public void Strings(string expr, string expected) => Assert.Equal(expected, Str(expr));
+
+    // ---- another instant: `at` on time and formatTime (spec/docs/expressions.md) ----------------------------------
+
+    [Fact]
+    public void FormatTime_at_86400_in_UTC_is_the_second_day_of_1970() =>
+        Assert.Equal("1970-01-02 00:00:00", Str("{'op':'formatTime','pattern':'yyyy-MM-dd HH:mm:ss','zone':'UTC','at':86400}"));
+
+    [Fact]
+    public void FormatTime_at_minus_1_in_UTC_is_the_last_second_of_1969() =>
+        Assert.Equal("1969-12-31 23:59:59", Str("{'op':'formatTime','pattern':'yyyy-MM-dd HH:mm:ss','zone':'UTC','at':-1}"));
+
+    [Fact]
+    public void Time_weekday_at_0_in_UTC_is_4() => AssertExact(4, Num("{'op':'time','field':'weekday','zone':'UTC','at':0}"), "weekday at 0");
+
+    [Fact]
+    public void Time_millisecond_at_1_25_is_250() => AssertExact(250, Num("{'op':'time','field':'millisecond','at':1.25}"), "millisecond at 1.25");
+
+    [Theory]
+    // The fraction is kept, to the microsecond.
+    [InlineData("{'op':'time','field':'epoch','at':1.25}", 1.25)]
+    [InlineData("{'op':'time','field':'dayTime','at':1.25}", 1.25)]
+    [InlineData("{'op':'time','field':'millisecond','at':1.001}", 1)]
+    [InlineData("{'op':'time','field':'second','at':-0.25}", 59)]
+    // A negative value counts back from 1970, its fraction too: -1.25 is 1969-12-31T23:59:58.750Z.
+    [InlineData("{'op':'time','field':'second','zone':'UTC','at':-1.25}", 58)]
+    [InlineData("{'op':'time','field':'millisecond','zone':'UTC','at':-1.25}", 750)]
+    // The fraction is rounded on its own, so it holds far from 1970: near the year 9999 a double's step is about 30
+    // microseconds, near the year 0001 about 8, and the millisecond is still the one the value names.
+    [InlineData("{'op':'time','field':'millisecond','zone':'UTC','at':253402300799.998993}", 998)]
+    [InlineData("{'op':'time','field':'millisecond','zone':'UTC','at':-62135596799.999001}", 0)]
+    // A value that isn't finite reads 0, the start of 1970.
+    [InlineData("{'op':'time','field':'epoch','at':{'op':'exp','args':[1000]}}", 0)]
+    [InlineData("{'op':'time','field':'year','at':{'op':'log','args':[0]}}", 1970)]
+    // Clamped to the years 0001 to 9999, and so is the date in the zone.
+    [InlineData("{'op':'time','field':'year','at':-1e300}", 1)]
+    [InlineData("{'op':'time','field':'epoch','at':-1e300}", -62135596800)]
+    [InlineData("{'op':'time','field':'year','at':1e300}", 9999)]
+    [InlineData("{'op':'time','field':'millisecond','at':1e300}", 999)]
+    [InlineData("{'op':'time','field':'year','zone':'America/New_York','at':-1e300}", 1)]
+    [InlineData("{'op':'time','field':'year','zone':'Asia/Tokyo','at':1e300}", 9999)]
+    // The local bound ends at the microsecond, as the instant's does: 23:59:59.999999.
+    [InlineData("{'op':'time','field':'dayTime','zone':'Asia/Tokyo','at':1e300}", 86399.999999)]
+    [InlineData("{'op':'time','field':'dayTime','zone':'UTC','at':1e300}", 86399.999999)]
+    // zone applies to the instant as to the tick's time: 1970-01-02T00:00:00Z is 19:00 on 1 January in New York.
+    [InlineData("{'op':'time','field':'hour','zone':'America/New_York','at':86400}", 19)]
+    [InlineData("{'op':'time','field':'day','zone':'America/New_York','at':86400}", 1)]
+    // Any number expression: tomorrow by the tick's clock (Friday 2 January 2026), and an input's reading.
+    [InlineData("{'op':'time','field':'day','at':{'op':'add','args':[{'op':'time','field':'epoch'},86400]}}", 3)]
+    [InlineData("{'op':'time','field':'second','at':{'op':'input','name':'v','field':'now'}}", 42)]
+    public void Time_at_an_instant(string expr, double expected) => AssertExact(expected, Num(expr), expr);
+
+    [Theory]
+    [InlineData("{'op':'formatTime','pattern':'yyyy-MM-dd HH:mm:ss.SSS','zone':'UTC','at':-1e300}", "0001-01-01 00:00:00.000")]
+    [InlineData("{'op':'formatTime','pattern':'yyyy-MM-dd HH:mm:ss.SSS','zone':'UTC','at':1e300}", "9999-12-31 23:59:59.999")]
+    [InlineData("{'op':'formatTime','pattern':'yyyy-MM-dd HH:mm','zone':'America/New_York','at':-1e300}", "0001-01-01 00:00")]
+    [InlineData("{'op':'formatTime','pattern':'yyyy-MM-dd HH:mm','zone':'Asia/Tokyo','at':1e300}", "9999-12-31 23:59")]
+    [InlineData("{'op':'formatTime','pattern':'yyyy-MM-dd HH:mm:ss','zone':'UTC','at':{'op':'exp','args':[1000]}}", "1970-01-01 00:00:00")]
+    // The fraction far from 1970 and before it (as in time's rows).
+    [InlineData("{'op':'formatTime','pattern':'yyyy-MM-dd HH:mm:ss.SSS','zone':'UTC','at':253402300799.998993}", "9999-12-31 23:59:59.998")]
+    [InlineData("{'op':'formatTime','pattern':'yyyy-MM-dd HH:mm:ss.SSS','zone':'UTC','at':-62135596799.999001}", "0001-01-01 00:00:00.000")]
+    [InlineData("{'op':'formatTime','pattern':'yyyy-MM-dd HH:mm:ss.SSS','zone':'UTC','at':-1.25}", "1969-12-31 23:59:58.750")]
+    // zone and locale apply to the instant as to the tick's time.
+    [InlineData("{'op':'formatTime','pattern':'EEEE d. MMMM HH:mm','locale':'de-DE','zone':'Europe/Berlin','at':86400}", "Freitag 2. Januar 01:00")]
+    [InlineData("{'op':'formatTime','pattern':'EEE d MMM','locale':'en-GB','at':{'op':'add','args':[{'op':'time','field':'epoch'},86400]}}", "Sat 3 Jan")]
+    public void FormatTime_at_an_instant(string expr, string expected) => Assert.Equal(expected, Str(expr));
+
+    [Theory]
+    // x reads y only through `at`, and y is written after it: y is evaluated first.
+    [InlineData("{'op':'time','field':'day','zone':'UTC','at':{'op':'value','name':'y'}}", "2")]
+    [InlineData("{'op':'formatTime','pattern':'d','zone':'UTC','at':{'op':'value','name':'y'}}", "2")]
+    public void A_value_read_through_at_is_evaluated_before_it(string expr, string expected)
+    {
+        var v = Eval(expr, values: "'y':86400").Value;
+        Assert.Equal(expected, v.S ?? v.N.ToString(CultureInfo.InvariantCulture));
+    }
 
     [Theory]
     [InlineData("'#ff8000'", "#ff8000ff")]

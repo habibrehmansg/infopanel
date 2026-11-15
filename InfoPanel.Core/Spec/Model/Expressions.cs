@@ -29,11 +29,11 @@ public sealed record InputExpr(string Name, string? Field) : Expr;
 /// <summary><c>{"op":"history"}</c>: an aggregate over a number input's last <see cref="Count"/> samples.</summary>
 public sealed record HistoryExpr(string Input, string Fn, int Count) : Expr;
 
-/// <summary><c>{"op":"time"}</c>: a number from the tick's clock.</summary>
-public sealed record TimeExpr(string Field, string? Zone) : Expr;
+/// <summary><c>{"op":"time"}</c>: a number from the tick's clock, or from the instant <see cref="At"/> when given.</summary>
+public sealed record TimeExpr(string Field, string? Zone, Expr? At = null) : Expr;
 
-/// <summary><c>{"op":"formatTime"}</c>: the tick's date and time as text.</summary>
-public sealed record FormatTimeExpr(string Pattern, string? Locale, string? Zone) : Expr;
+/// <summary><c>{"op":"formatTime"}</c>: the tick's date and time, or the instant <see cref="At"/>'s, as text.</summary>
+public sealed record FormatTimeExpr(string Pattern, string? Locale, string? Zone, Expr? At = null) : Expr;
 
 /// <summary><c>{"op":"format"}</c>: a number as text.</summary>
 public sealed record FormatExpr(Expr Value, Expr? Decimals, Expr? Group, string? DecimalSeparator, string? GroupSeparator) : Expr;

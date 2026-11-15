@@ -73,6 +73,13 @@
     {"expr": {"op": "upper", "args": ["\u017f \ufb01 \u01c5 \u00ff \u00b5"]}, "type": "string", "result": "S \ufb01 \u01c4 \u0178 \u039c"},
     {"expr": {"op": "lower", "args": ["\u0130I \u03a3\u0391\u03a3 \u01c5 \u212a"]}, "type": "string", "result": "\u0130i \u03c3\u03b1\u03c3 \u01c6 k"},
     {"expr": {"op": "upper", "args": ["\ud801\udc28"]}, "type": "string", "result": "\ud801\udc00"},
-    {"expr": {"op": "lower", "args": ["ÀB"]}, "type": "string", "result": "àb"}
+    {"expr": {"op": "lower", "args": ["ÀB"]}, "type": "string", "result": "àb"},
+    {"expr": {"op": "formatTime", "pattern": "yyyy-MM-dd HH:mm:ss", "zone": "UTC", "at": 86400}, "type": "string", "result": "1970-01-02 00:00:00"},
+    {"expr": {"op": "formatTime", "pattern": "yyyy-MM-dd HH:mm:ss", "zone": "UTC", "at": -1}, "type": "string", "result": "1969-12-31 23:59:59"},
+    {"expr": {"op": "time", "field": "weekday", "zone": "UTC", "at": 0}, "type": "number", "result": 4},
+    {"expr": {"op": "time", "field": "millisecond", "zone": "UTC", "at": 1.25}, "type": "number", "result": 250},
+    {"expr": {"op": "time", "field": "millisecond", "zone": "UTC", "at": 1.001}, "type": "number", "result": 1},
+    {"expr": {"op": "time", "field": "year", "zone": "UTC", "at": -1e300}, "type": "number", "result": 1},
+    {"expr": {"op": "time", "field": "year", "zone": "UTC", "at": 1e300}, "type": "number", "result": 9999}
   ]
 }

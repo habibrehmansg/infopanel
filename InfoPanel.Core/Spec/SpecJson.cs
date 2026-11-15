@@ -196,8 +196,8 @@ public static class SpecJson
         {
             "input" => new InputExpr(Req(e, "name"), Str(e, "field")),
             "history" => new HistoryExpr(Req(e, "input"), Req(e, "fn"), ReadInt32(Member(e, "count"))),
-            "time" => new TimeExpr(Req(e, "field"), Str(e, "zone")),
-            "formatTime" => new FormatTimeExpr(Req(e, "pattern"), Str(e, "locale"), Str(e, "zone")),
+            "time" => new TimeExpr(Req(e, "field"), Str(e, "zone"), Opt(e, "at")),
+            "formatTime" => new FormatTimeExpr(Req(e, "pattern"), Str(e, "locale"), Str(e, "zone"), Opt(e, "at")),
             "format" => new FormatExpr(ReadExpr(Member(e, "value")), Opt(e, "decimals"), Opt(e, "group"),
                 Str(e, "decimalSeparator"), Str(e, "groupSeparator")),
             "box" => new BoxExpr(Req(e, "field")),
@@ -212,8 +212,8 @@ public static class SpecJson
         {
             InputExpr x => 2 + (x.Field is null ? 0 : 1),
             HistoryExpr => 4,
-            TimeExpr x => 2 + (x.Zone is null ? 0 : 1),
-            FormatTimeExpr x => 2 + (x.Locale is null ? 0 : 1) + (x.Zone is null ? 0 : 1),
+            TimeExpr x => 2 + (x.Zone is null ? 0 : 1) + (x.At is null ? 0 : 1),
+            FormatTimeExpr x => 2 + (x.Locale is null ? 0 : 1) + (x.Zone is null ? 0 : 1) + (x.At is null ? 0 : 1),
             FormatExpr x => 2 + (x.Decimals is null ? 0 : 1) + (x.Group is null ? 0 : 1)
                 + (x.DecimalSeparator is null ? 0 : 1) + (x.GroupSeparator is null ? 0 : 1),
             BoxExpr or ValueRefExpr or StateRefExpr => 2,
@@ -278,12 +278,14 @@ public static class SpecJson
                 w.WriteString("op", "time");
                 w.WriteString("field", x.Field);
                 if (x.Zone is not null) w.WriteString("zone", x.Zone);
+                if (x.At is not null) { w.WritePropertyName("at"); WriteExpr(w, x.At); }
                 break;
             case FormatTimeExpr x:
                 w.WriteString("op", "formatTime");
                 w.WriteString("pattern", x.Pattern);
                 if (x.Locale is not null) w.WriteString("locale", x.Locale);
                 if (x.Zone is not null) w.WriteString("zone", x.Zone);
+                if (x.At is not null) { w.WritePropertyName("at"); WriteExpr(w, x.At); }
                 break;
             case FormatExpr x:
                 w.WriteString("op", "format");

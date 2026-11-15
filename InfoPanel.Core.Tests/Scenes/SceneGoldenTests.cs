@@ -83,6 +83,8 @@ public sealed class SceneGoldenTests
         ["table-decorations"] = new("scene/valid/table-decorations.json", 300, 120, 0, 0, null, null, Load),
         ["text-layout"] = new("scene/valid/text-layout.json", 220, 180, 10, 10, null, null, Load),
         ["text-layout-t2"] = new("scene/valid/text-layout.json", 220, 180, 10, 10, null, null, Load, Elapsed: 2),
+        // Tomorrow and the day after the kit's clock (Friday 2 January 2026, 03:04:05 UTC), and a sunrise at 07:42 UTC.
+        ["time-at"] = new("scene/valid/time-at.json", 140, 84, 10, 6, null, null, i => i.Number("test:sunrise", 1767339720)),
         ["shapes-scale2"] = new("scene/valid/shapes.json", 220, 180, 5, 5, null, null, Scale: 2),
         ["sensor-text-rotated"] = new("scene/valid/sensor-text.json", 200, 120, 40, 40, null, null, i => i.Number("test:v", 90, "°C"), Rotation: 20),
         // A video on the tick clock: its first frame, frame 3 at 0.35 s, and frame 2 of its second loop at 1.25 s.

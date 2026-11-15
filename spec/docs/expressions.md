@@ -42,8 +42,8 @@ Named operands:
 |---|---|---|
 | `input` | `name`, `field` → number, string or bool | An input's reading ([bindings](bindings.md)): `value` (default; the binding's statistic), `now`, `min`, `max`, `avg`, `unit` (number inputs), `text` (text and table inputs), `status`, `available` (any input) |
 | `history` | `input`, `fn`, `count` → number | Over the last `count` (1–4096) samples: `min`, `max`, `avg`, `first`, `last`, `count`; 0 without samples |
-| `time` | `field`, `zone` → number | From the tick's clock: `elapsed` (seconds since the engine started rendering the document, monotonic), `epoch` (seconds since 1970-01-01T00:00:00Z), `dayTime` (seconds since local midnight, with fraction), `year`, `month` (1–12), `day` (1–31), `weekday` (1 Monday … 7 Sunday), `hour` (0–23), `minute`, `second`, `millisecond` |
-| `formatTime` | `pattern`, `locale`, `zone` → string | The tick's date and time as text (below) |
+| `time` | `field`, `zone`, `at` → number | From the tick's clock, or from the instant `at` when given ([another instant](#another-instant); not with `elapsed`): `elapsed` (seconds since the engine started rendering the document, monotonic), `epoch` (seconds since 1970-01-01T00:00:00Z), `dayTime` (seconds since local midnight, with fraction), `year`, `month` (1–12), `day` (1–31), `weekday` (1 Monday … 7 Sunday), `hour` (0–23), `minute`, `second`, `millisecond` |
+| `formatTime` | `pattern`, `locale`, `zone`, `at` → string | The tick's date and time, or the instant `at`'s, as text ([time patterns](#time-patterns)) |
 | `format` | `value` (a number or a string), `decimals`, `group`, `decimalSeparator`, `groupSeparator` → string | A number rounded half away from zero to `decimals` (0–6, default 0) places; with `group`, `groupSeparator` between groups of three integer digits; each separator, when absent, the [regional format](#regional-format)'s. A string that is a plain decimal is a number given as text: it keeps its own digits; any other string is returned unchanged ([number formatting](#number-formatting)) |
 | `box` | `field` (`w`, `h`, `rotation`) → number | The item's layout box; an automatic dimension reads 0. `rotation`: the item's rotation on the canvas in degrees, its own and its groups' summed ([geometry](geometry.md#layout-box-an-input-to-the-scene)) |
 | `measure` | `node`, `field` (`w`, `h`) → number | The measured size of a text node of this scene this tick: its laid-out text (the widest line's width, the lines' height), not its box |
@@ -107,6 +107,15 @@ A `value` that is a string is a number given as text, such as a text reading, an
 - Two exceptions: dotless ı (U+0131) doesn't uppercase and dotted İ (U+0130) doesn't lowercase. So `upper("ıi")` is "ıI" and `lower("İI")` is "İi".
 
 The mappings are those of the Unicode version the engine's platform provides; a code point that version doesn't map is kept.
+
+## Another instant
+
+`time` and `formatTime` read the tick's time, unless they have `at`: a number expression giving an instant as seconds since 1970-01-01T00:00:00Z, read in its place. So `{"op": "formatTime", "pattern": "EEE", "at": {"op": "add", "args": [{"op": "time", "field": "epoch"}, 86400]}}` is the weekday 24 hours from now, and `{"op": "time", "field": "hour", "at": {"op": "input", "name": "sunrise"}}` is the hour of an instant a number input gives. `elapsed` belongs to rendering, not to an instant: a `time` with `elapsed` and `at` is refused (`schema`).
+
+- The fraction is kept: the instant is `at`'s exact value rounded to the nearest microsecond (half away from zero), so `millisecond` at 1.25 is 250, and at 1.001 is 1. The fraction is rounded apart from the whole seconds, not as `at` × 1,000,000 in floating point, so it holds far from 1970: `millisecond` at 253402300799.998993 is 998. A negative value counts back from 1970, its fraction too: −1.25 is 1969-12-31T23:59:58.750Z (`second` 58, `millisecond` 750).
+- A value that isn't finite reads 0, 1970-01-01T00:00:00Z, as every operation's result does ([numbers](#numbers-and-strings)).
+- It is clamped to the years 0001 to 9999: an instant before 0001-01-01T00:00:00Z or after 9999-12-31T23:59:59.999999Z is that bound, and a date and time in the zone that would fall outside those years is the nearest of 0001-01-01 00:00:00 and 9999-12-31 23:59:59.999999.
+- `zone` and `locale` work as they do on the tick's time: the calendar fields and the text are the instant's in `zone` (absent, the engine's local zone), its names in `locale`'s language (absent, the [regional format](#regional-format)'s); `epoch` is the instant itself, in no zone.
 
 ## Time patterns
 
@@ -202,6 +211,10 @@ Each expression here gives exactly the result shown (numbers as doubles, colours
 | `{"op": "format", "value": 999.5, "group": true}` | `"1,000"` |
 | `{"op": "upper", "args": ["straße ıi"]}` | `"STRAßE ıI"` |
 | `{"op": "steps", "value": 1, "at": [1], "out": [false, true]}` | `true` |
+| `{"op": "formatTime", "pattern": "yyyy-MM-dd HH:mm:ss", "zone": "UTC", "at": 86400}` | `"1970-01-02 00:00:00"` |
+| `{"op": "formatTime", "pattern": "yyyy-MM-dd HH:mm:ss", "zone": "UTC", "at": -1}` | `"1969-12-31 23:59:59"` |
+| `{"op": "time", "field": "weekday", "zone": "UTC", "at": 0}` | `4` |
+| `{"op": "time", "field": "millisecond", "zone": "UTC", "at": 1.25}` | `250` |
 
 ## Cost
 

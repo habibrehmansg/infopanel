@@ -526,6 +526,7 @@
   "scene/invalid/table-underline-not-bool.json": {"code": "schema", "path": "/nodes/0/underline"},
   "scene/invalid/table-wrap-unknown.json": {"code": "schema", "path": "/nodes/0/wrap"},
   "scene/invalid/text-nodes.json": {"code": "limit.textNodes", "path": "/nodes", "limits": {"textNodes": 1}},
+  "scene/invalid/time-at-elapsed.json": {"code": "schema", "path": "/nodes/0/w"},
   "scene/invalid/time-pattern.json": {"code": "time.pattern", "path": "/nodes/0/text/pattern"},
   "scene/invalid/time-zone-newline.json": {"code": "schema", "path": "/nodes/0/w/zone"},
   "scene/invalid/undeclared-input.json": {"code": "ref.input", "path": "/nodes/0/w"},
