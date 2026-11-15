@@ -1,6 +1,6 @@
 # Weather
 
-The weather source, `infopanel.weather` ("Weather"), reads the current weather from the configured service ([the configured service](../../spec/docs/api.md#the-configured-service)), on every operating system, outside mock mode and a replay. It never calls a weather provider itself: it asks the configured service, with the credential a client provides, and shows what the service answers. Code: `InfoPanel.Core/Sensors/Weather/` (`WeatherSource`, `WeatherFetcher`, `WeatherSchedule`, `WeatherAnswer`), registered by `AddBuiltInSources`.
+The weather source, `infopanel.weather` ("Weather"), reads the current weather, and the next five days' when the service gives them, from the configured service ([the configured service](../../spec/docs/api.md#the-configured-service)), on every operating system, outside mock mode and a replay. It never calls a weather provider itself: it asks the configured service, with the credential a client provides, and shows what the service answers. Code: `InfoPanel.Core/Sensors/Weather/` (`WeatherSource`, `WeatherFetcher`, `WeatherSchedule`, `WeatherAnswer`), registered by `AddBuiltInSources`.
 
 ## Readings
 
@@ -27,8 +27,11 @@ Every reading is listed from the start, under `infopanel:/weather/{id}`, group "
 | `sunrise` | Sunrise | text | | | `sun.sunrise`, as this PC shows a time of day: in its time zone, in its regional format's short time ("06:58") |
 | `sunset` | Sunset | text | | | `sun.sunset`, the same |
 | `attribution` | Credit | text | | | `attribution.text`: the credit the service asks to show with its data |
+| `day1_high` … `day5_high` | Day 1 high … Day 5 high | number | °C | °F | `days[0].high` … `days[4].high`: the day's highest temperature |
+| `day1_low` … `day5_low` | Day 1 low … Day 5 low | number | °C | °F | `days[0].low` … `days[4].low`: the day's lowest |
+| `day1_symbol` … `day5_symbol` | Day 1 symbol … Day 5 symbol | text | | | `days[0].symbol` … `days[4].symbol` (`rain`), as `symbol` |
 
-A value the answer gives as `null` (or not as a number or a string) reads `unavailable`; the rest of the answer still reads. Units follow the setting `sources.weather.units` ([settings](../../spec/docs/api.md#settings)): `auto` (the default) is metric unless the PC's regional format is a region's that uses imperial units. Conversions: °F = °C × 9/5 + 32; mph = m/s × 2.236936; inHg = hPa × 0.0295300; in = mm ÷ 25.4. A change of units reads the answer held in the new units at once (no request), stale values too, still stale; the readings whose unit changes start afresh, so their minimum, maximum and average are never mixed across units.
+The 34 readings are listed in this order, each day's high, low and symbol after the credit, day 1 first. Day 1 is tomorrow at the place, as the service counts its days; the source reads each day by its place in `days`, not by its `date`, which it doesn't read. A value the answer gives as `null` (or not as a number or a string) reads `unavailable`; the rest of the answer still reads. So does a day the answer doesn't give: an answer without `days` (a service that doesn't give them), with `days` not a list, or with fewer than five leaves those days' readings `unavailable`; an element that isn't an object leaves its day's; elements after the fifth are ignored. Units follow the setting `sources.weather.units` ([settings](../../spec/docs/api.md#settings)): `auto` (the default) is metric unless the PC's regional format is a region's that uses imperial units. Conversions: °F = °C × 9/5 + 32; mph = m/s × 2.236936; inHg = hPa × 0.0295300; in = mm ÷ 25.4. A change of units reads the answer held in the new units at once (no request), stale values too, still stale; the readings whose unit changes start afresh, so their minimum, maximum and average are never mixed across units.
 
 **Freshness.** The readings are polled every second from the answer the source holds (a poll never waits on the network): `live` while the answer is at most 90 minutes old and the service didn't call it `stale`; then `stale`, the last values kept, until the answer is 6 hours old; then `unavailable`. The age is the values': an answer the service calls `stale` (it couldn't refresh it) never renews it. With values shown, a stale answer keeps them, and they read `stale` at once, still aged from the answer they came in; with none yet (for the place set, since the source was turned on), its values are shown, `stale`, aged from their arrival.
 
@@ -59,11 +62,17 @@ A `200` with a JSON body (`application/json`), metric always:
   },
   "next24h": { "high": 8.2, "low": 2.9 },
   "sun": { "sunrise": "2026-11-01T06:58:00Z", "sunset": "2026-11-01T15:31:00Z" },
+  "days": [
+    { "date": "2026-11-02", "high": 8.2, "low": 2.9, "symbol": "rain" },
+    { "date": "2026-11-03", "high": 7.0, "low": 1.5, "symbol": "cloudy" }
+  ],
   "attribution": { "text": "Weather data from …", "url": "https://…", "licence": "…", "licenceUrl": "https://…", "changes": "…" }
 }
 ```
 
-The engine needs `format` exactly `infopanel.weather/1`, `expires` (an ISO 8601 time with its offset), `stale` (a boolean), and `place` and `current` (objects); an answer without one of them, or that isn't JSON, is a failure (`serviceUnavailable`). It reads the members the table above names and ignores the rest (`time`, `updated`, `place.country`, `place.from` but for the place as set, and `attribution` but for `text`). Any measure may be `null`, and so may `sun.sunrise` and `sun.sunset` (polar day or night). Units: °C, %, hPa at sea level, m/s at 10 m, degrees the wind comes from, mm in the next hour.
+The engine needs `format` exactly `infopanel.weather/1`, `expires` (an ISO 8601 time with its offset), `stale` (a boolean), and `place` and `current` (objects); an answer without one of them, or that isn't JSON, is a failure (`serviceUnavailable`). It reads the members the table above names and ignores the rest (`time`, `updated`, `place.country`, `place.from` but for the place as set, `attribution` but for `text`, and each day's `date`). Any measure may be `null`, and so may `sun.sunrise` and `sun.sunset` (polar day or night). Units: °C, %, hPa at sea level, m/s at 10 m, degrees the wind comes from, mm in the next hour.
+
+`days` is optional: up to five objects in order, day 1 (tomorrow in the place's own calendar) first, each with `date` (the day, `YYYY-MM-DD`), `high` and `low` (°C) and `symbol` (a code as `current.symbol`'s), any of them `null`. A day the service has no values for, before a day it has, is given with its values `null`, not left out: a day is its place in the list.
 
 Other answers (`application/problem+json`, with `code`): `401` (the credential refused: the engine marks it rejected and sends nothing until a client provides another), `429` (`Retry-After`), `400` (the place can't be read: `placeNotFound`), `422` with `placeNotFound` or `locationUnknown`, `503` (`Retry-After`) and any other status: `serviceUnavailable`.
 

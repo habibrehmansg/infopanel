@@ -257,7 +257,7 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         await source.Fetcher.FetchOnceAsync(Ct);
 
         var entry = Assert.Single(hub.SourceStates());
-        Assert.Equal(("infopanel.weather", SourceStateKind.Off, "noCredential", 19), (entry.Id, entry.State.Kind, entry.State.Reason!.Code, entry.Sensors));
+        Assert.Equal(("infopanel.weather", SourceStateKind.Off, "noCredential", 34), (entry.Id, entry.State.Kind, entry.State.Reason!.Code, entry.Sensors));
         _credentials.Put(Credential);
         await source.Fetcher.FetchOnceAsync(Ct);
         Assert.Equal(SourceState.Running, hub.SourceStates()[0].State);
@@ -272,15 +272,18 @@ public sealed class WeatherSourceTests : IAsyncDisposable
         source.Polled.Open();
 
         string[] ids = ["place", "condition", "symbol", "temperature", "feels_like", "high", "low", "dew_point", "humidity", "cloud_cover",
-            "pressure", "wind_speed", "wind_gust", "wind_direction", "precipitation", "uv_index", "sunrise", "sunset", "attribution"];
-        string[] units = ["", "", "", "°C", "°C", "°C", "°C", "°C", "%", "%", "hPa", "m/s", "m/s", "°", "mm", "", "", "", ""];
+            "pressure", "wind_speed", "wind_gust", "wind_direction", "precipitation", "uv_index", "sunrise", "sunset", "attribution",
+            .. DayIds];
+        string[] units = ["", "", "", "°C", "°C", "°C", "°C", "°C", "%", "%", "hPa", "m/s", "m/s", "°", "mm", "", "", "", "",
+            .. Enumerable.Range(1, 5).SelectMany(_ => new[] { "°C", "°C", "" })];
         Assert.Equal(ids.Select(id => $"infopanel:/weather/{id}"), source.GetSensors().Select(s => s.Key.ToString()));
         Assert.Equal(units, source.GetSensors().Select(s => s.Unit));
         Assert.All(source.GetSensors(), s => Assert.Equal(("infopanel.weather", "Weather"), (s.SourceId, s.Group)));
         Assert.Equal(["Place", "Condition", "Symbol", "Temperature", "Feels like", "High (next 24 h)", "Low (next 24 h)", "Dew point", "Humidity",
             "Cloud cover", "Pressure (sea level)", "Wind speed", "Wind gust", "Wind direction (from)", "Precipitation (next hour)",
-            "UV index (clear sky)", "Sunrise", "Sunset", "Credit"], source.GetSensors().Select(s => s.Name));
-        string[] texts = ["place", "condition", "symbol", "sunrise", "sunset", "attribution"];
+            "UV index (clear sky)", "Sunrise", "Sunset", "Credit",
+            .. Enumerable.Range(1, 5).SelectMany(d => new[] { $"Day {d} high", $"Day {d} low", $"Day {d} symbol" })], source.GetSensors().Select(s => s.Name));
+        string[] texts = ["place", "condition", "symbol", "sunrise", "sunset", "attribution", "day1_symbol", "day2_symbol", "day3_symbol", "day4_symbol", "day5_symbol"];
         Assert.All(ids, id => Assert.Equal(texts.Contains(id) ? SensorKind.Text : SensorKind.Number, Read(source, id).Type));
     }
 
@@ -445,6 +448,455 @@ public sealed class WeatherSourceTests : IAsyncDisposable
 
         AssertText(source, "place", "59.91, 10.75");
         Assert.Equal("/svc/v1/weather?place=59.91%2C%2010.75", Assert.Single(_service.Requests).Path);
+    }
+
+    // ---- The next five days ----
+
+    /// <summary>The fifteen day readings' ids, in the order the source lists them: each day's high, low and symbol.</summary>
+    private static readonly string[] DayIds = [.. Enumerable.Range(1, 5).SelectMany(d => new[] { $"day{d}_high", $"day{d}_low", $"day{d}_symbol" })];
+
+    /// <summary>Five days as the service gives them (metric): high, low and symbol, with day 1 tomorrow.</summary>
+    private static readonly (string Date, double High, double Low, string Symbol)[] FiveDays =
+    [
+        ("2026-11-02", 8.2, 2.9, "rain"),
+        ("2026-11-03", 10, 5, "cloudy"),
+        ("2026-11-04", -3.5, -10, "snow"),
+        ("2026-11-05", 0, -1, "fair_day"),
+        ("2026-11-06", 30, 20, "clearsky_day"),
+    ];
+
+    /// <summary>The first <paramref name="count"/> of <see cref="FiveDays"/> as the answer's <c>days</c>.</summary>
+    private static JsonArray Days(int count = 5) =>
+        [.. FiveDays.Take(count).Select(d => (JsonNode)new JsonObject { ["date"] = d.Date, ["high"] = d.High, ["low"] = d.Low, ["symbol"] = d.Symbol })];
+
+    /// <summary>The service answers the default answer with <paramref name="days"/> as its <c>days</c> (a copy each time).</summary>
+    private void AnswerWithDays(JsonNode? days) => _answer = _ => (200, Body(Answer(a => a["days"] = days?.DeepClone())), []);
+
+    /// <summary>The reading <paramref name="id"/> is listed, and reads unavailable.</summary>
+    private static void AssertUnavailable(WeatherSource source, string id)
+    {
+        Assert.Contains(source.GetSensors(), s => s.Key == WeatherSource.KeyOf(id));
+        Assert.Equal(SensorStatus.Unavailable, Read(source, id).Status);
+    }
+
+    /// <summary>Day <paramref name="day"/> (from 1) reads <see cref="FiveDays"/>' values, in °F when <paramref name="imperial"/>.</summary>
+    private static void AssertDay(WeatherSource source, int day, bool imperial = false)
+    {
+        var (_, high, low, symbol) = FiveDays[day - 1];
+        AssertNumber(source, $"day{day}_high", imperial ? high * 9 / 5 + 32 : high, imperial ? "°F" : "°C");
+        AssertNumber(source, $"day{day}_low", imperial ? low * 9 / 5 + 32 : low, imperial ? "°F" : "°C");
+        AssertText(source, $"day{day}_symbol", symbol);
+    }
+
+    private static void AssertDayUnavailable(WeatherSource source, int day)
+    {
+        foreach (var part in new[] { "high", "low", "symbol" })
+            AssertUnavailable(source, $"day{day}_{part}");
+    }
+
+    /// <summary>The readings an answer had before the days read as ever, whatever its <c>days</c>.</summary>
+    private static void AssertTheRestReads(WeatherSource source)
+    {
+        Assert.Equal(SourceState.Running, source.State);
+        AssertText(source, "place", "Testville");
+        AssertText(source, "symbol", "lightrain");
+        AssertNumber(source, "temperature", 21.5, "°C");
+        AssertNumber(source, "high", 25, "°C");
+        AssertNumber(source, "low", 18, "°C");
+        AssertNumber(source, "wind_speed", 10, "m/s");
+        AssertText(source, "sunset", "17:31");
+        AssertText(source, "attribution", Credit);
+    }
+
+    [Fact]
+    public void TheDays_AreListedFromTheStart_AfterTheRest_EachUnavailableBeforeAnAnswer()
+    {
+        var source = Source(Manual());
+
+        source.Polled.Open();
+
+        var sensors = source.GetSensors();
+        Assert.Equal(34, sensors.Count);
+        Assert.Equal(DayIds.Select(id => $"infopanel:/weather/{id}"), sensors.Skip(19).Select(s => s.Key.ToString()));
+        Assert.All(DayIds, id => Assert.Equal(id.EndsWith("_symbol", StringComparison.Ordinal) ? SensorKind.Text : SensorKind.Number, Read(source, id).Type));
+        Assert.All(sensors, s => Assert.Equal(SensorStatus.Unavailable, source.GetStatus(s.Key)));
+        Assert.All(DayIds, id => AssertUnavailable(source, id));
+    }
+
+    [Fact]
+    public async Task FiveDays_ReadEveryDay_Metric_AndTheRestAsEver()
+    {
+        _credentials.Put(Credential);
+        AnswerWithDays(Days());
+        var source = Source(Manual());
+
+        await FetchAndPoll(source);
+
+        for (var day = 1; day <= 5; day++)
+            AssertDay(source, day);
+        AssertTheRestReads(source);
+        Assert.Single(_service.Requests);
+    }
+
+    [Fact]
+    public async Task FiveDays_Imperial_HighsAndLowsInFahrenheit_AsTheNext24Hours()
+    {
+        _credentials.Put(Credential);
+        AnswerWithDays(Days());
+        var source = Source(Manual(), WeatherSettings.Default with { Units = WeatherUnits.Imperial });
+
+        await FetchAndPoll(source);
+
+        for (var day = 1; day <= 5; day++)
+            AssertDay(source, day, imperial: true);
+        AssertNumber(source, "day1_high", 46.76, "°F");
+        AssertNumber(source, "day3_low", 14, "°F");
+        AssertNumber(source, "high", 77, "°F");
+        AssertNumber(source, "low", 64.4, "°F");
+        Assert.Equal("°F", source.GetSensors().Single(s => s.Key == WeatherSource.KeyOf("day5_low")).Unit);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task FewerThanFiveDays_ReadThoseGiven_AndLeaveTheRestUnavailable(int count)
+    {
+        _credentials.Put(Credential);
+        AnswerWithDays(Days(count));
+        var source = Source(Manual());
+
+        await FetchAndPoll(source);
+
+        for (var day = 1; day <= 5; day++)
+        {
+            if (day <= count)
+                AssertDay(source, day);
+            else
+                AssertDayUnavailable(source, day);
+        }
+
+        AssertTheRestReads(source);
+    }
+
+    [Fact]
+    public async Task ASixthDayAndMore_AreIgnored()
+    {
+        _credentials.Put(Credential);
+        var days = Days();
+        for (var extra = 0; extra < 3; extra++)
+            days.Add(new JsonObject { ["date"] = "2026-11-07", ["high"] = 99, ["low"] = 98, ["symbol"] = "heavysnow" });
+        AnswerWithDays(days);
+        var source = Source(Manual());
+
+        await FetchAndPoll(source);
+
+        for (var day = 1; day <= 5; day++)
+            AssertDay(source, day);
+        Assert.DoesNotContain(source.GetSensors(), s => s.Key.ToString().Contains("day6", StringComparison.Ordinal));
+        Assert.Equal(34, source.GetSensors().Count);
+        AssertTheRestReads(source);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("""{"1":{"high":1,"low":0,"symbol":"rain"}}""")]
+    [InlineData("\"rain\"")]
+    [InlineData("5")]
+    [InlineData("true")]
+    public async Task DaysMissing_OrNotAnArray_LeaveEveryDayUnavailable_AndTheRestReads(string? days)
+    {
+        _credentials.Put(Credential);
+        _answer = _ => (200, Body(Answer(a =>
+        {
+            if (days is null)
+                a.Remove("days");
+            else
+                a["days"] = JsonNode.Parse(days);
+        })), []);
+        var source = Source(Manual());
+
+        await FetchAndPoll(source);
+
+        Assert.NotNull(source.Fetcher.Latest);
+        for (var day = 1; day <= 5; day++)
+            AssertDayUnavailable(source, day);
+        AssertTheRestReads(source);
+    }
+
+    [Fact]
+    public async Task ADayThatIsntAnObject_LeavesThatDayUnavailable_InItsPlace_AndTheOthersRead()
+    {
+        _credentials.Put(Credential);
+        var days = Days();
+        days[1] = null;
+        days[2] = "snow";
+        days[3] = new JsonArray(0, -1, "fair_day");
+        AnswerWithDays(days);
+        var source = Source(Manual());
+
+        await FetchAndPoll(source);
+
+        AssertDay(source, 1);
+        AssertDayUnavailable(source, 2);
+        AssertDayUnavailable(source, 3);
+        AssertDayUnavailable(source, 4);
+        AssertDay(source, 5);
+        AssertTheRestReads(source);
+    }
+
+    [Fact]
+    public async Task ADayValue_GivenAsNull_OrOfAnotherType_OrLeftOut_ReadsUnavailable_AndTheRestOfItsDayReads()
+    {
+        _credentials.Put(Credential);
+        var days = Days();
+        days[0]!["high"] = null;
+        days[1]!["low"] = "cold";
+        days[2]!["symbol"] = 5;
+        days[3]!.AsObject().Remove("symbol");
+        days[4]!["high"] = true;
+        days[4]!["low"] = new JsonObject { ["value"] = 20 };
+        AnswerWithDays(days);
+        var source = Source(Manual());
+
+        await FetchAndPoll(source);
+
+        AssertUnavailable(source, "day1_high");
+        AssertNumber(source, "day1_low", 2.9, "°C");
+        AssertText(source, "day1_symbol", "rain");
+        AssertNumber(source, "day2_high", 10, "°C");
+        AssertUnavailable(source, "day2_low");
+        AssertText(source, "day2_symbol", "cloudy");
+        AssertNumber(source, "day3_high", -3.5, "°C");
+        AssertNumber(source, "day3_low", -10, "°C");
+        AssertUnavailable(source, "day3_symbol");
+        AssertNumber(source, "day4_high", 0, "°C");
+        AssertUnavailable(source, "day4_symbol");
+        AssertUnavailable(source, "day5_high");
+        AssertUnavailable(source, "day5_low");
+        AssertText(source, "day5_symbol", "clearsky_day");
+        AssertTheRestReads(source);
+    }
+
+    [Fact]
+    public async Task ADaysSymbolThatIsntUnicodeText_LeavesOnlyThatReadingUnavailable_AndTheRestOfTheAnswerReads()
+    {
+        _credentials.Put(Credential);
+        var days = Days();
+        days[0]!["symbol"] = "SYMBOL_HERE";
+        // A raw response: the lone surrogate escape written as JSON text, which the parser accepts and GetString refuses.
+        _answer = _ => (200, Encoding.UTF8.GetBytes(Answer(a => a["days"] = days.DeepClone()).ToJsonString().Replace("SYMBOL_HERE", "\\uD800", StringComparison.Ordinal)), []);
+        var source = Source(Manual());
+
+        await FetchAndPoll(source);
+
+        Assert.NotNull(source.Fetcher.Latest);
+        AssertUnavailable(source, "day1_symbol");
+        AssertNumber(source, "day1_high", 8.2, "°C");
+        AssertNumber(source, "day1_low", 2.9, "°C");
+        for (var day = 2; day <= 5; day++)
+            AssertDay(source, day);
+        AssertTheRestReads(source);
+    }
+
+    [Fact]
+    public async Task AnOverLongDaySymbol_IsHandedOnAsGiven_AndTheSourceCutsItAsItCutsAnyText()
+    {
+        _credentials.Put(Credential);
+        var days = Days();
+        var overLong = new string('s', 40_000);
+        days[0]!["symbol"] = overLong;
+        AnswerWithDays(days);
+        var source = Source(Manual());
+
+        await FetchAndPoll(source);
+
+        // No limit of the answer's own: the whole text is kept in the answer; the polled source cuts every text at its limit.
+        Assert.Equal(overLong, source.Fetcher.Latest!.Answer.Days[0].Symbol);
+        AssertText(source, "day1_symbol", overLong[..PolledSensorSource.MaxTextChars]);
+        AssertNumber(source, "day1_high", 8.2, "°C");
+        AssertNumber(source, "day1_low", 2.9, "°C");
+        AssertDay(source, 2);
+        AssertTheRestReads(source);
+    }
+
+    [Theory]
+    [InlineData("1e300", false)]
+    [InlineData("-1e300", false)]
+    [InlineData("1.7e308", true)]
+    [InlineData("1e400", false)]
+    [InlineData("1e400", true)]
+    [InlineData("-0", false)]
+    [InlineData("-273.15", true)]
+    [InlineData("12345678901234567890", false)]
+    public async Task AnAbsurdOrNonFiniteNumber_ReadsAsTheNext24HoursHighAndLowRead(string number, bool imperial)
+    {
+        _credentials.Put(Credential);
+        var days = Days();
+        days[0]!["high"] = JsonNode.Parse(number);
+        days[0]!["low"] = JsonNode.Parse(number);
+        _answer = _ => (200, Body(Answer(a =>
+        {
+            a["next24h"] = new JsonObject { ["high"] = JsonNode.Parse(number), ["low"] = JsonNode.Parse(number) };
+            a["days"] = days.DeepClone();
+        })), []);
+        var source = Source(Manual(), imperial ? WeatherSettings.Default with { Units = WeatherUnits.Imperial } : null);
+
+        await FetchAndPoll(source);
+
+        foreach (var (day, next) in new[] { ("day1_high", "high"), ("day1_low", "low") })
+        {
+            var (a, b) = (Read(source, day), Read(source, next));
+            Assert.Equal((b.Status, b.Type, b.Reading.Unit), (a.Status, a.Type, a.Reading.Unit));
+            Assert.Equal(b.Reading.ValueNow, a.Reading.ValueNow);
+        }
+
+        AssertText(source, "day1_symbol", "rain");
+        AssertDay(source, 2, imperial);
+        AssertNumber(source, "temperature", imperial ? 70.7 : 21.5, imperial ? "°F" : "°C");
+    }
+
+    [Fact]
+    public async Task ASymbolTheEngineDoesntKnow_ReadsAsGiven_AsTheCurrentSymbolDoes()
+    {
+        _credentials.Put(Credential);
+        var days = Days();
+        days[0]!["symbol"] = "not-a-known-code";
+        days[1]!["symbol"] = "";
+        _answer = _ => (200, Body(Answer(a =>
+        {
+            a["current"]!["symbol"] = "not-a-known-code";
+            a["days"] = days.DeepClone();
+        })), []);
+        var source = Source(Manual());
+
+        await FetchAndPoll(source);
+
+        AssertText(source, "day1_symbol", "not-a-known-code");
+        AssertText(source, "symbol", "not-a-known-code");
+        AssertText(source, "day2_symbol", "");
+        AssertDay(source, 3);
+    }
+
+    [Theory]
+    [InlineData("\"tomorrow\"")]
+    [InlineData("\"2026-13-45\"")]
+    [InlineData("\"2026-11-02T00:00:00Z\"")]
+    [InlineData("\"1999-01-01\"")]
+    [InlineData("20261102")]
+    [InlineData("null")]
+    [InlineData(null)]
+    public async Task TheDate_IsNotRead_EachDayIsItsPlaceInTheList(string? date)
+    {
+        _credentials.Put(Credential);
+        var days = Days();
+        foreach (var day in days.Take(3))
+        {
+            if (date is null)
+                day!.AsObject().Remove("date");
+            else
+                day!["date"] = JsonNode.Parse(date);
+        }
+
+        // Dates out of order too: the place in the list is the day.
+        days[3]!["date"] = "2026-11-02";
+        days[4]!["date"] = "2026-11-01";
+        AnswerWithDays(days);
+        var source = Source(Manual());
+
+        await FetchAndPoll(source);
+
+        for (var day = 1; day <= 5; day++)
+            AssertDay(source, day);
+        AssertTheRestReads(source);
+    }
+
+    [Fact]
+    public async Task ASwitchOfUnits_RestartsTheDaysStatistics_AsItDoesTheNext24Hours()
+    {
+        _credentials.Put(Credential);
+        AnswerWithDays(Days());
+        var source = Source(Manual());
+        await FetchAndPoll(source);
+        AssertDay(source, 1);
+
+        source.Apply(WeatherSettings.Default with { Units = WeatherUnits.Imperial });
+        Poll(source);
+        Poll(source);
+
+        AssertDay(source, 1, imperial: true);
+        foreach (var (id, value) in new[] { ("high", 77.0), ("day1_high", 46.76), ("day1_low", 37.22), ("day5_high", 86.0) })
+        {
+            var reading = Read(source, id).Reading;
+            Assert.Equal(value, reading.ValueMin, 0.01);
+            Assert.Equal(value, reading.ValueMax, 0.01);
+        }
+
+        // A text keeps its reading.
+        AssertText(source, "day1_symbol", "rain");
+
+        source.Apply(WeatherSettings.Default with { Units = WeatherUnits.Metric });
+        Poll(source);
+        Poll(source);
+
+        for (var day = 1; day <= 5; day++)
+            AssertDay(source, day);
+        var low = Read(source, "day3_low").Reading;
+        Assert.Equal((-10.0, -10.0), (low.ValueMin, low.ValueMax));
+        Assert.Single(_service.Requests);
+    }
+
+    [Fact]
+    public async Task AnAnswerWithoutDays_AfterOneWithThem_LeavesTheDaysUnavailable_AsAHighTheAnswerNoLongerGives()
+    {
+        _credentials.Put(Credential);
+        AnswerWithDays(Days());
+        var source = Source(Manual());
+        await FetchAndPoll(source);
+        AssertDay(source, 5);
+
+        _answer = _ => (200, Body(Answer(a =>
+        {
+            a["current"]!["temperature"] = 3;
+            a["next24h"]!.AsObject().Remove("high");
+        })), []);
+        await FetchAndPoll(source);
+
+        for (var day = 1; day <= 5; day++)
+            AssertDayUnavailable(source, day);
+        AssertUnavailable(source, "high");
+        AssertNumber(source, "temperature", 3, "°C");
+        AssertNumber(source, "low", 18, "°C");
+
+        // Fewer days in the next answer: only those given read.
+        AnswerWithDays(Days(2));
+        await FetchAndPoll(source);
+        AssertDay(source, 1);
+        AssertDay(source, 2);
+        AssertDayUnavailable(source, 3);
+        Assert.Equal(3, _service.Requests.Count);
+    }
+
+    [Fact]
+    public async Task TheDays_AgeAsTheRest_LiveThenStaleKeepingTheirValues_ThenUnavailable()
+    {
+        _credentials.Put(Credential);
+        AnswerWithDays(Days());
+        var clock = Manual();
+        var source = Source(clock);
+        await FetchAndPoll(source);
+
+        clock.Advance(TimeSpan.FromMinutes(91));
+        Poll(source);
+        Assert.Equal((SensorStatus.Stale, 8.2), (Read(source, "day1_high").Status, Read(source, "day1_high").Reading.ValueNow));
+        Assert.Equal((SensorStatus.Stale, "rain"), (Read(source, "day1_symbol").Status, Read(source, "day1_symbol").Reading.ValueText));
+
+        clock.Advance(TimeSpan.FromHours(5));
+        Poll(source);
+        Assert.All(DayIds, id => AssertUnavailable(source, id));
     }
 
     // ---- Freshness ----

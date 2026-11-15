@@ -36,7 +36,8 @@ public sealed class WeatherSourceOptions
 /// <c>infopanel:/weather/{id}</c>) are all listed from the start, unavailable until the first answer; live while
 /// the answer is at most <see cref="LiveFor"/> old and the service didn't call it stale, then stale (the last values
 /// kept) until it is <see cref="KeepFor"/> old, then unavailable. An answer the service calls stale keeps the values
-/// shown and their age, and reads them stale; a first one is shown stale. A value the service doesn't give reads unavailable.
+/// shown and their age, and reads them stale; a first one is shown stale. A value the service doesn't give reads unavailable,
+/// the next days' too (<c>day{1..5}_high</c>, <c>_low</c>, <c>_symbol</c>, from the answer's optional <c>days</c>).
 /// <para>
 /// Numbers are metric or imperial as <c>sources.weather.units</c> says (<c>auto</c>: the PC's region's); a change of
 /// units applies to the answer held at once (no request): the readings whose unit changes start afresh, their old
@@ -98,7 +99,22 @@ public sealed class WeatherSource : ISensorSource, ISensorStatusSource, ISensorS
         new("sunrise", "Sunrise", SensorKind.Text),
         new("sunset", "Sunset", SensorKind.Text),
         new("attribution", "Credit", SensorKind.Text),
+        .. Enumerable.Range(1, WeatherAnswer.MaxDays).SelectMany(DayEntries),
     ];
+
+    /// <summary>Day <paramref name="day"/>'s readings (day 1 is tomorrow at the place): <c>day{n}_high</c>, <c>day{n}_low</c> and <c>day{n}_symbol</c>.</summary>
+    private static Entry[] DayEntries(int day) =>
+    [
+        new($"day{day}_high", $"Day {day} high", SensorKind.Number, "°C", "°F"),
+        new($"day{day}_low", $"Day {day} low", SensorKind.Number, "°C", "°F"),
+        new($"day{day}_symbol", $"Day {day} symbol", SensorKind.Text),
+    ];
+
+    /// <summary>The day (from 1) and part (<c>high</c>, <c>low</c>, <c>symbol</c>) a day reading's id names, or null for any other id.</summary>
+    internal static (int Day, string Part)? DayOf(string id) =>
+        id.Length > 5 && id.StartsWith("day", StringComparison.Ordinal) && id[3] is >= '1' and <= '9' && id[4] == '_'
+            ? (id[3] - '0', id[5..])
+            : null;
 
     private static readonly SensorKeySpace Space = SensorKeySpace.Plugin(SourceId);
 
@@ -417,6 +433,20 @@ internal sealed class WeatherSampler(WeatherSource source, TimeProvider time) : 
                 case "sunrise": texts[i] = TimeOfDay(a.Sunrise); break;
                 case "sunset": texts[i] = TimeOfDay(a.Sunset); break;
                 case "attribution": texts[i] = a.Credit; break;
+                default:
+                    // A day the answer doesn't give (fewer days, or none) reads unavailable.
+                    if (WeatherSource.DayOf(e.Id) is var (day, part) && day <= a.Days.Count)
+                    {
+                        var d = a.Days[day - 1];
+                        switch (part)
+                        {
+                            case "high": numbers[i] = Temperature(d.High); break;
+                            case "low": numbers[i] = Temperature(d.Low); break;
+                            case "symbol": texts[i] = d.Symbol; break;
+                        }
+                    }
+
+                    break;
             }
         }
 
