@@ -509,12 +509,14 @@ public sealed class McpEditToolTests
         var families = all.Split('\n').Skip(1).ToList();
         Assert.StartsWith("DSEG7 Classic (bundled", families[0]);
         Assert.StartsWith("Inter (bundled", families[1]);
-        Assert.Equal(2, families.Count(f => f.Contains("(bundled")));
+        Assert.StartsWith("Inter Tabular (bundled", families[2]);
+        Assert.Equal(3, families.Count(f => f.Contains("(bundled")));
 
         var (inter, interError) = await Call(host, "list_fonts", new JsonObject { ["query"] = "iNTe" });
         Assert.False(interError, inter);
         var found = inter.Split('\n').Skip(1).ToList();
         Assert.Contains(found, f => f.StartsWith("Inter (bundled", StringComparison.Ordinal));
+        Assert.Contains(found, f => f.StartsWith("Inter Tabular (bundled", StringComparison.Ordinal));
         Assert.All(found, f => Assert.Contains("inte", f, StringComparison.OrdinalIgnoreCase));
         Assert.True(found.Count < families.Count || families.Count == found.Count && families.All(f => f.Contains("inte", StringComparison.OrdinalIgnoreCase)));
 

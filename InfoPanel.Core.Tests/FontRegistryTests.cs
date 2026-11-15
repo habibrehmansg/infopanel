@@ -1,7 +1,10 @@
 using InfoPanel.Core.Tests.Golden;
 using InfoPanel.Drawing;
 using InfoPanel.Import;
+using InfoPanel.Scenes;
 using SkiaSharp;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using Topten.RichTextKit;
 using Xunit;
 
@@ -70,6 +73,107 @@ public class FontRegistryTests
         Assert.Equal("Inter", SkiaGraphics.CreateTypeface("Inter", "", bold: false, italic: false).FamilyName);
         Assert.Equal("Inter", FontDefaults.Family);
         Assert.True(V1ReadContext.InstalledFonts()("DSEG7 Classic"));
+    }
+
+    private static readonly (int Weight, SKFontStyleSlant Slant, string File)[] InterFaces =
+    [
+        (400, SKFontStyleSlant.Upright, "Regular"),
+        (700, SKFontStyleSlant.Upright, "Bold"),
+        (400, SKFontStyleSlant.Italic, "Italic"),
+        (700, SKFontStyleSlant.Italic, "BoldItalic"),
+    ];
+
+    public static TheoryData<int, SKFontStyleSlant> InterStyles() => new(InterFaces.Select(f => (f.Weight, f.Slant)));
+
+    private static SKTypeface Bundled(string family, int weight, SKFontStyleSlant slant)
+    {
+        Assert.True(FontRegistry.TryGet(family, weight, slant, out var typeface));
+        Assert.Equal(family, typeface.FamilyName);
+        Assert.Equal(weight, typeface.FontWeight);
+        Assert.Equal(slant != SKFontStyleSlant.Upright, typeface.FontSlant != SKFontStyleSlant.Upright);
+        return typeface;
+    }
+
+    /// <summary>Inter Tabular (Inter with its tabular figures as the digits) is bundled in Inter's four styles, as a family of its own.</summary>
+    [Theory]
+    [MemberData(nameof(InterStyles))]
+    public void BundledInterTabular_HasIntersFourStyles(int weight, SKFontStyleSlant slant)
+    {
+        Assert.Contains("Inter Tabular", FontRegistry.GetFamilies());
+        Assert.Contains("Inter Tabular", FontRegistry.GetBundledFamilies());
+        Assert.True(FontRegistry.TryGet("inter tabular", weight, slant, out _));
+        var tabular = Bundled("Inter Tabular", weight, slant);
+        Assert.NotSame(Bundled("Inter", weight, slant), tabular);
+        Assert.True(V1ReadContext.InstalledFonts()("Inter Tabular"));
+    }
+
+    /// <summary>In each Inter Tabular face the ten digits share one advance; in Inter they don't. Measured as the scene sets glyphs.</summary>
+    [Theory]
+    [MemberData(nameof(InterStyles))]
+    public void InterTabular_TheTenDigitsShareOneAdvance_AndIntersDont(int weight, SKFontStyleSlant slant)
+    {
+        float[] Advances(string family)
+        {
+            using var font = TextLayoutEngine.MakeFont(Bundled(family, weight, slant), 2048);
+            return "0123456789".Select(c => font.MeasureText(c.ToString())).ToArray();
+        }
+
+        var tabular = Advances("Inter Tabular");
+        Assert.Single(tabular.Distinct());
+        Assert.InRange(tabular[0], 1300, 1350); // 1328 units in Regular and Italic, 1324 in Bold and Bold Italic
+        Assert.True(Advances("Inter").Distinct().Count() > 5);
+    }
+
+    /// <summary>
+    /// Inter Tabular is Inter but for the digits' mapping and the names: every table but the character map, the name table
+    /// and the head table's file checksum is byte for byte Inter's (the outlines, advances, kerning and features), and every
+    /// code point but U+0030 to U+0039 maps to the glyph Inter maps it to. The ten digits map to other glyphs (the tabular ones).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(InterStyles))]
+    public void InterTabular_IsInterByteForByte_ButTheDigitsMappingAndTheNames(int weight, SKFontStyleSlant slant)
+    {
+        var inter = Bundled("Inter", weight, slant);
+        var tabular = Bundled("Inter Tabular", weight, slant);
+        var tags = inter.GetTableTags().Order().ToArray();
+        Assert.Equal(tags, tabular.GetTableTags().Order().ToArray());
+        uint Tag(string s) => (uint)(s[0] << 24 | s[1] << 16 | s[2] << 8 | s[3]);
+        Assert.Contains(Tag("glyf"), tags);
+        Assert.Contains(Tag("hmtx"), tags);
+        Assert.Contains(Tag("GPOS"), tags);
+        Assert.Contains(Tag("GSUB"), tags);
+        foreach (var tag in tags.Where(t => t != Tag("cmap") && t != Tag("name")))
+        {
+            var a = inter.GetTableData(tag);
+            var b = tabular.GetTableData(tag);
+            if (tag == Tag("head"))
+            {
+                Array.Clear(a, 8, 4); // checksumAdjustment: the whole file's checksum
+                Array.Clear(b, 8, 4);
+            }
+            Assert.True(a.AsSpan().SequenceEqual(b), $"table {(char)(tag >> 24)}{(char)(tag >> 16 & 0xff)}{(char)(tag >> 8 & 0xff)}{(char)(tag & 0xff)} differs");
+        }
+
+        var codePoints = Enumerable.Range(0, 0x110000).Where(c => c is < 0xD800 or > 0xDFFF).ToArray();
+        var interGlyphs = inter.GetGlyphs(codePoints);
+        var tabularGlyphs = tabular.GetGlyphs(codePoints);
+        var differ = codePoints.Where((_, i) => interGlyphs[i] != tabularGlyphs[i]).ToArray();
+        Assert.Equal(Enumerable.Range(0x30, 10), differ);
+        Assert.True(interGlyphs.Count(g => g != 0) > 2500);
+        Assert.All(differ, c => Assert.NotEqual(0, tabularGlyphs[Array.IndexOf(codePoints, c)]));
+    }
+
+    /// <summary>The README beside the script that makes Inter Tabular records the SHA-256 of its inputs and outputs: they are the embedded files'.</summary>
+    [Fact]
+    public void TheInterTabularReadme_RecordsTheEmbeddedFilesHashes()
+    {
+        var readme = File.ReadAllText(Path.Combine(TestPaths.ProjectDirectory, "..", "native", "fonts", "inter-tabular", "README.md"));
+        var recorded = Regex.Matches(readme, @"^([0-9a-f]{64})  (Inter(?:Tabular)?-[A-Za-z]+\.ttf)$", RegexOptions.Multiline)
+            .ToDictionary(m => m.Groups[2].Value, m => m.Groups[1].Value);
+        var expected = InterFaces.SelectMany(f => new[] { $"Inter-{f.File}.ttf", $"InterTabular-{f.File}.ttf" }).Order().ToArray();
+        Assert.Equal(expected, recorded.Keys.Order().ToArray());
+        foreach (var (file, hash) in recorded)
+            Assert.Equal(hash, Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(InterDirectory, file)))));
     }
 
     [Theory]

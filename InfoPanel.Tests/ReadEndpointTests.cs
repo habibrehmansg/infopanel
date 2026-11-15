@@ -390,7 +390,7 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
     {
         var fonts = (await GetJson("/api/fonts")).EnumerateArray().Select(f => f.GetString()!).ToList();
 
-        Assert.Equal(["DSEG7 Classic", "Inter"], fonts.Take(2));
+        Assert.Equal(["DSEG7 Classic", "Inter", "Inter Tabular"], fonts.Take(3));
         Assert.Equal(fonts.Count, fonts.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 

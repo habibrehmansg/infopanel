@@ -33,8 +33,16 @@ public class LicensesListTests
 
     private const string OtherSection = "## Not from the restore graphs";
 
-    /// <summary>The entries the last section holds: the .NET runtime, the video libraries, the USB library, the media helper, the driver's installer, the fonts.</summary>
-    private static readonly string[] NotFromTheGraphs = [".NET", "FFmpeg", "dav1d", "libusb", "mediaremote-adapter", "PawnIO", "Inter", "DSEG7"];
+    /// <summary>
+    /// The entries the last section holds, by name (see <see cref="Names"/>): the .NET runtime, the video libraries, the USB
+    /// library, the media helper, the driver's installer, the fonts (Inter, Inter Tabular, DSEG7 Classic: each its own entry).
+    /// </summary>
+    private static readonly string[] NotFromTheGraphs = [".NET runtime and ASP.NET Core", "FFmpeg", "dav1d", "libusb", "mediaremote-adapter", "PawnIO installer", "Inter", "Inter Tabular", "DSEG7 Classic"];
+
+    /// <summary>The section that holds the licence text the bundled fonts share, and the fonts whose entries name it.</summary>
+    private const string FontLicenceSection = "## SIL Open Font License, version 1.1 (the bundled fonts)";
+
+    private static readonly string[] BundledFonts = ["Inter", "Inter Tabular", "DSEG7 Classic"];
 
     [Theory]
     [MemberData(nameof(Builds))]
@@ -56,8 +64,65 @@ public class LicensesListTests
     [Fact]
     public void Last_section_lists_what_the_graphs_do_not_hold()
     {
-        var listed = Entries(OtherSection).Select(e => e.Id).ToList();
+        var listed = Names(OtherSection);
         Assert.Equal(NotFromTheGraphs.Order(StringComparer.Ordinal), listed.Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// The fonts' licence is the full text, once, in a section of its own: the licence body of <c>InfoPanel.Core/Fonts/OFL.txt</c>
+    /// byte for byte (line endings aside), which the other bundled licence file, <c>DSEG-OFL.txt</c>, has too; the packages
+    /// carry this list and not those files, so each font's entry says the text is here.
+    /// </summary>
+    [Fact]
+    public void Fonts_licence_text_is_in_the_list_whole_and_each_font_entry_names_its_section()
+    {
+        var fonts = Path.Combine(LiveEngine.RepoRoot(), "InfoPanel.Core", "Fonts");
+        var body = LicenceBody(Path.Combine(fonts, "OFL.txt"));
+        Assert.Equal(body, LicenceBody(Path.Combine(fonts, "DSEG-OFL.txt")));
+
+        var lines = Lines();
+        var start = Array.IndexOf(lines, FontLicenceSection);
+        Assert.True(start >= 0, $"{ListPath} has no section \"{FontLicenceSection}\"");
+        var end = Array.FindIndex(lines, start + 1, l => l.StartsWith("## ", StringComparison.Ordinal));
+        var section = string.Join('\n', lines[start..(end < 0 ? lines.Length : end)]);
+        Assert.True(section.Contains("\n" + body + "\n", StringComparison.Ordinal), $"the section doesn't hold the licence text of OFL.txt as it is");
+
+        var problems = new List<string>();
+        foreach (var font in BundledFonts)
+        {
+            var entry = EntryLines(OtherSection, font);
+            if (!entry.Any(l => l.StartsWith("- **Licence**", StringComparison.Ordinal) && l.Contains(FontLicenceSection[3..], StringComparison.Ordinal)))
+                problems.Add($"{font}'s entry doesn't name the section \"{FontLicenceSection[3..]}\" in its Licence line");
+        }
+        Assert.True(problems.Count == 0, string.Join("\n", problems));
+    }
+
+    /// <summary>A licence file's text from its licence's first line on, line endings as <c>\n</c>, without trailing ones.</summary>
+    private static string LicenceBody(string path)
+    {
+        var text = File.ReadAllText(path).ReplaceLineEndings("\n");
+        var start = text.IndexOf("SIL OPEN FONT LICENSE Version 1.1", StringComparison.Ordinal);
+        Assert.True(start >= 0, $"{path} has no licence text");
+        return text[start..].TrimEnd('\n');
+    }
+
+    /// <summary>The lines of the entry named <paramref name="name"/> under the section whose heading starts with <paramref name="heading"/>.</summary>
+    private static List<string> EntryLines(string heading, string name)
+    {
+        var lines = new List<string>();
+        var inside = false;
+        var mine = false;
+        foreach (var line in Lines())
+        {
+            if (line.StartsWith("## ", StringComparison.Ordinal))
+                inside = line.StartsWith(heading, StringComparison.Ordinal);
+            else if (inside && line.StartsWith("### ", StringComparison.Ordinal))
+                mine = NameOf(line[4..]) == name;
+            else if (inside && mine)
+                lines.Add(line);
+        }
+        Assert.True(lines.Count > 0, $"{ListPath} has no entry \"{name}\" under \"{heading}\"");
+        return lines;
     }
 
     [Fact]
@@ -97,6 +162,28 @@ public class LicensesListTests
         }
         Assert.True(found, $"{ListPath} has no section \"{heading}\"");
         return entries;
+    }
+
+    /// <summary>The entries' full names under the section: a heading's words before its version (its first word that starts with a digit), the whole heading when it has none.</summary>
+    private static List<string> Names(string heading)
+    {
+        var names = new List<string>();
+        var inside = false;
+        foreach (var line in Lines())
+        {
+            if (line.StartsWith("## ", StringComparison.Ordinal))
+                inside = line.StartsWith(heading, StringComparison.Ordinal);
+            else if (inside && line.StartsWith("### ", StringComparison.Ordinal))
+                names.Add(NameOf(line[4..]));
+        }
+        return names;
+    }
+
+    private static string NameOf(string entryHeading)
+    {
+        var words = entryHeading.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var version = Array.FindIndex(words, w => char.IsAsciiDigit(w[0]));
+        return string.Join(' ', version > 0 ? words[..version] : words);
     }
 
     private static string[] Lines() =>

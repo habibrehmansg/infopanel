@@ -240,6 +240,21 @@ public sealed class V1ReaderTests : IDisposable
         Assert.Equal(["text", "text"], envelope.Items.Select(i => i.Kind));
     }
 
+    /// <summary>With the engine's own font list, a Text in Inter Tabular is no missing font either: the engine bundles it too.</summary>
+    [Fact]
+    public void Font_InterTabular_IsBundled_SoItIsNotReported()
+    {
+        var profile = new Profile("Digits", 100, 100) { Font = "Inter Tabular" };
+        var archive = V1Archive(ProfileXml(profile), Items(Text("A", "Inter Tabular"), Text("B", "No Such Family Zq")));
+
+        var envelope = V1Reader.ReadArchive(new MemoryStream(archive), new V1ReadContext(_kit.Workspace, _kit.Sensors));
+
+        var fonts = With(envelope, "import.font");
+        var reported = Assert.Single(fonts);
+        Assert.Equal("/items/1/props/font", reported.Path);
+        Assert.Equal(["text", "text"], envelope.Items.Select(i => i.Kind));
+    }
+
     [Fact]
     public void Sensor_BindingsTheEngineHasNoSensorFor_AreReported_AndStayBound()
     {
