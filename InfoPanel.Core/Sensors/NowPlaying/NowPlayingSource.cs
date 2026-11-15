@@ -12,7 +12,9 @@ namespace InfoPanel.Sensors.NowPlaying;
 /// The Now Playing source, <c>infopanel.now-playing</c> ("Now Playing"): what the system's current media session plays,
 /// under <c>infopanel:/now-playing/{entry}</c> (<see cref="Entries"/>; <c>art</c>, an image sensor whose reference is a
 /// token naming its cover in <see cref="Art"/>, the <c>now-playing</c> media provider's reference, its bytes answered by
-/// <see cref="TryGetImage"/>), a <see cref="PolledSensorSource"/> over
+/// <see cref="TryGetImage"/>; <c>art-color</c>, a text, <c>#RRGGBB</c>, the main colour of a cover given as a picture
+/// (<see cref="NowPlayingArtColor"/>), computed off the poll thread and published only with the <c>art</c> token of the
+/// picture it was computed from, unavailable until then), a <see cref="PolledSensorSource"/> over
 /// <see cref="NowPlayingSampler"/> polled every second, the platform's reads behind <see cref="INowPlayingReader"/>
 /// (macOS: <see cref="MacNowPlayingReader"/>; Windows: <see cref="WinNowPlayingReader"/>; Linux: <see cref="LinuxNowPlayingReader"/>).
 /// <para>
@@ -71,6 +73,7 @@ public sealed class NowPlayingSource : ISensorSource, ISensorStatusSource, ISens
         ("shuffle", "Shuffle", SensorKind.Text, ""),
         ("repeat", "Repeat", SensorKind.Text, ""),
         ("art", "Cover Art", SensorKind.Image, ""),
+        ("art-color", "Cover Colour", SensorKind.Text, ""),
     ];
 
     private static readonly SensorKey ArtKey = Space.KeyOf("art");
@@ -183,6 +186,7 @@ public sealed class NowPlayingSource : ISensorSource, ISensorStatusSource, ISens
     public void Dispose()
     {
         _polled.Dispose();
+        Art.Close();
         _reader.Dispose();
     }
 

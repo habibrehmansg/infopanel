@@ -13,7 +13,9 @@ namespace InfoPanel.Sensors.NowPlaying;
 /// playback rate while playing (none is 1), clamped to 0…duration; progress is position ÷ duration × 100, unavailable
 /// without a duration. What the player doesn't say (an empty text, a duration or track number of 0) is unavailable,
 /// never 0 or empty. Texts are cut at <see cref="NowPlayingSource.MaxTextChars"/> characters. The cover is kept in the
-/// source's <see cref="NowPlayingArt"/> and read as its token (<c>art</c>); stopping forgets the covers kept.
+/// source's <see cref="NowPlayingArt"/> and read as its token (<c>art</c>), with the main colour computed from that very
+/// picture (<c>art-color</c>) from the same publish, unavailable until it is computed (never waited for); stopping
+/// forgets the covers kept.
 /// <para>
 /// Its state: the reader's when it has one (<see cref="INowPlayingReader.State"/>), else <c>starting</c> until a round
 /// in use has read, then <c>running</c>. It logs starts, stops and states, never what plays.
@@ -36,6 +38,7 @@ public sealed class NowPlayingSampler : ISensorSampler
         Shuffle,
         Repeat,
         Art,
+        ArtColor,
     }
 
     private static readonly SensorDefinition[] Definitions = NowPlayingSource.Entries
@@ -50,6 +53,10 @@ public sealed class NowPlayingSampler : ISensorSampler
     private bool _started;
     private bool _read;
     private SourceState? _loggedState;
+
+    // This round's cover: its token and its picture's main colour, from one publish.
+    private string? _artToken;
+    private string? _artColor;
 
     // The last texts handed out, cut, so an unchanged text is handed back as the same string.
     private readonly string?[] _texts = new string?[Definitions.Length];
@@ -103,6 +110,10 @@ public sealed class NowPlayingSampler : ISensorSampler
         }
 
         _read = true;
+        // The cover's token and the colour of that very picture from one publish, so a round never pairs one cover's
+        // token with another's colour; the colour is none until computed, off this thread.
+        _artColor = null;
+        _artToken = snapshot is null ? null : _art.Publish(snapshot, out _artColor);
         for (var i = 0; i < samples.Length && i < Definitions.Length; i++)
             Fill(ref samples[i], (Entry)i, snapshot);
     }
@@ -168,7 +179,10 @@ public sealed class NowPlayingSampler : ISensorSampler
                 SetNumber(ref sample, s.TrackNumber is > 0 and var n ? n : null);
                 break;
             case Entry.Art:
-                SetText(ref sample, entry, _art.Publish(s));
+                SetText(ref sample, entry, _artToken);
+                break;
+            case Entry.ArtColor:
+                SetText(ref sample, entry, _artColor);
                 break;
         }
     }

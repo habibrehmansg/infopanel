@@ -7,10 +7,10 @@ using Xunit;
 namespace InfoPanel.Core.Tests.Sensors.NowPlaying;
 
 /// <summary>
-/// The Now Playing source (<c>infopanel.now-playing</c>) over a fake reader: its 13 entries, the position extrapolated
+/// The Now Playing source (<c>infopanel.now-playing</c>) over a fake reader: its 14 entries, the position extrapolated
 /// while playing and frozen while paused, what is unavailable (never 0 or empty), nothing playing, the demand (the
 /// reader started by a read and stopped 2 minutes after the last; a listing, a status and a peek start nothing), the
-/// reader's states, texts cut, the cover read as a token of what it keeps, and no title, artist, album, app or cover
+/// reader's states, texts cut, the cover read as a token of what it keeps, its main colour published with it, and no title, artist, album, app or cover
 /// in the log.
 /// </summary>
 public sealed class NowPlayingSourceTests : IDisposable
@@ -149,20 +149,20 @@ public sealed class NowPlayingSourceTests : IDisposable
     // ---- Entries ----
 
     [Fact]
-    public void It_lists_its_13_entries_with_their_names_kinds_and_units_under_infopanel_now_playing()
+    public void It_lists_its_14_entries_with_their_names_kinds_and_units_under_infopanel_now_playing()
     {
         var source = Open();
 
-        string[] ids = ["title", "artist", "album", "app", "state", "position", "duration", "progress", "track-number", "genre", "shuffle", "repeat", "art"];
+        string[] ids = ["title", "artist", "album", "app", "state", "position", "duration", "progress", "track-number", "genre", "shuffle", "repeat", "art", "art-color"];
         var sensors = source.GetSensors();
         Assert.Equal(ids.Select(id => $"infopanel:/now-playing/{id}"), sensors.Select(s => s.Key.ToString()));
-        Assert.Equal(["Title", "Artist", "Album", "App", "State", "Position", "Duration", "Progress", "Track Number", "Genre", "Shuffle", "Repeat", "Cover Art"], sensors.Select(s => s.Name));
-        Assert.Equal(["", "", "", "", "", "s", "s", "%", "", "", "", "", ""], sensors.Select(s => s.Unit));
+        Assert.Equal(["Title", "Artist", "Album", "App", "State", "Position", "Duration", "Progress", "Track Number", "Genre", "Shuffle", "Repeat", "Cover Art", "Cover Colour"], sensors.Select(s => s.Name));
+        Assert.Equal(["", "", "", "", "", "s", "s", "%", "", "", "", "", "", ""], sensors.Select(s => s.Unit));
         Assert.All(sensors, s => Assert.Equal("infopanel.now-playing", s.SourceId));
         Assert.All(sensors, s => Assert.Equal(NowPlayingSource.Name, s.Group));
         Assert.Equal("infopanel.now-playing", source.Id);
         Assert.Equal(
-            [SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Number, SensorKind.Number, SensorKind.Number, SensorKind.Number, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Image],
+            [SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Number, SensorKind.Number, SensorKind.Number, SensorKind.Number, SensorKind.Text, SensorKind.Text, SensorKind.Text, SensorKind.Image, SensorKind.Text],
             ids.Select(id => source.PeekState(Key(id)).Type));
     }
 
@@ -515,6 +515,323 @@ public sealed class NowPlayingSourceTests : IDisposable
 
         Assert.Null(Art());
         Assert.Equal(0, source.Art.Count);
+    }
+
+    // ---- The cover's main colour ----
+
+    private static readonly byte[] RedCover = NowPlayingArtColorTests.Png(new SkiaSharp.SKColor(0xFF, 0, 0));
+    private static readonly byte[] BlueCover = NowPlayingArtColorTests.Png(new SkiaSharp.SKColor(0, 0, 0xFF), 64, 48);
+
+    /// <summary>A bound on what a test waits for (a round, the colour's worker): never a timing guess, only a stop for a hang.</summary>
+    private static readonly TimeSpan Bound = TimeSpan.FromSeconds(30);
+
+    /// <summary>Waits until the cover's colour worker has nothing to compute, then takes a round: the one a computed colour is published in.</summary>
+    private void Settle()
+    {
+        Assert.True(_source!.Art.WaitColored(Bound));
+        Round();
+    }
+
+    /// <summary>A one-colour cover and its colour.</summary>
+    private static (byte[] Cover, string Color) Cover(byte r, byte g, byte b) =>
+        (NowPlayingArtColorTests.Png(new SkiaSharp.SKColor(r, g, b)), $"#{r:X2}{g:X2}{b:X2}");
+
+    [Fact]
+    public void The_covers_colour_follows_its_token_once_computed_and_a_new_cover_never_shows_the_old_colour()
+    {
+        _reader.Snapshot = Song() with { Art = RedCover };
+        var source = OpenInUse();
+        Settle();
+        Assert.Equal((TokenOf(RedCover), "#FF0000"), (Art(), Text("art-color")));
+
+        // The round of the change: the new token, its colour unavailable until computed (never the old one); then its own.
+        _reader.Snapshot = Song() with { Art = BlueCover };
+        Round();
+        Assert.Equal((TokenOf(BlueCover), (string?)null), (Art(), Text("art-color")));
+        Settle();
+        Assert.Equal((TokenOf(BlueCover), "#0000FF"), (Art(), Text("art-color")));
+        Assert.Equal(SensorStatus.Live, Status("art-color"));
+
+        // Back to a cover still kept: its token and its colour again.
+        _reader.Snapshot = Song() with { Art = RedCover };
+        Round();
+        Assert.Equal((TokenOf(RedCover), "#FF0000"), (Art(), Text("art-color")));
+        Assert.Equal(2, source.Art.Count);
+    }
+
+    [Fact]
+    public void The_colour_is_computed_once_per_new_cover_not_per_round_or_read()
+    {
+        _reader.Snapshot = Song() with { Art = RedCover };
+        var source = OpenInUse();
+        Settle();
+        var computed = 0;
+        source.Art.Coloring = () => computed++;
+
+        _reader.Snapshot = Song() with { Art = BlueCover };
+        Round();
+        Settle();
+        for (var i = 0; i < 5; i++)
+        {
+            Round();
+            for (var j = 0; j < 3; j++)
+                Assert.Equal("#0000FF", Text("art-color"));
+        }
+        Assert.Equal(1, computed);
+
+        // A copy of the same cover is the same cover; one kept before is never computed again.
+        _reader.Snapshot = Song() with { Art = BlueCover.ToArray() };
+        Round();
+        _reader.Snapshot = Song() with { Art = RedCover };
+        Round();
+        Assert.Equal("#FF0000", Text("art-color"));
+        Assert.Equal(1, computed);
+    }
+
+    [Fact]
+    public void A_cover_given_only_as_an_address_and_no_cover_have_no_colour()
+    {
+        _reader.Snapshot = Song() with { Art = RedCover };
+        OpenInUse();
+        Settle();
+        Assert.Equal("#FF0000", Text("art-color"));
+
+        _reader.Snapshot = Song() with { ArtAddress = "https://covers.example/a.jpg" };
+        Round();
+        Assert.NotNull(Art());
+        Assert.Null(Text("art-color"));
+        Assert.Equal(SensorStatus.Unavailable, Status("art-color"));
+
+        _reader.Snapshot = Song();
+        Round();
+        Assert.Null(Art());
+        Assert.Equal(SensorStatus.Unavailable, Status("art-color"));
+
+        _reader.Snapshot = null;
+        Round();
+        Assert.Equal("Stopped", Text("state"));
+        Assert.Equal(SensorStatus.Unavailable, Status("art-color"));
+    }
+
+    [Fact]
+    public void A_cover_that_does_not_decode_has_no_colour_and_the_round_reads_everything_else()
+    {
+        byte[] broken = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
+        _reader.Snapshot = Song() with { Art = RedCover };
+        OpenInUse();
+        Settle();
+        Assert.Equal("#FF0000", Text("art-color"));
+
+        _reader.Snapshot = Song() with { Title = "Another Song", Art = broken };
+        Round();
+        Settle();
+        Assert.Equal(TokenOf(broken), Art());
+        Assert.Null(Text("art-color"));
+        Assert.Equal(SensorStatus.Unavailable, Status("art-color"));
+        Assert.Equal("Another Song", Text("title"));
+        Assert.Equal(SensorStatus.Live, Status("title"));
+    }
+
+    [Fact]
+    public async Task A_round_never_waits_for_a_covers_colour_which_reads_unavailable_until_computed_then_goes_with_its_token()
+    {
+        var source = OpenInUse();
+        using var hold = new ManualResetEventSlim();
+        using var entered = new ManualResetEventSlim();
+        source.Art.Coloring = () =>
+        {
+            entered.Set();
+            hold.Wait();
+        };
+        try
+        {
+            // The decode held: the round completes all the same, every other entry read, the colour unavailable.
+            _reader.Snapshot = Song() with { Title = "Another Song", Art = RedCover };
+            await Task.Run(() => Round(), TestContext.Current.CancellationToken).WaitAsync(Bound, TestContext.Current.CancellationToken);
+            Assert.True(entered.Wait(Bound, TestContext.Current.CancellationToken));
+            Assert.Equal("Another Song", Text("title"));
+            Assert.Equal(SensorStatus.Live, Status("title"));
+            Assert.NotNull(Number("position"));
+            Assert.NotNull(Number("progress"));
+            Assert.Equal(TokenOf(RedCover), Art());
+            Assert.Null(Text("art-color"));
+            Assert.Equal(SensorStatus.Unavailable, Status("art-color"));
+
+            await Task.Run(() => Round(), TestContext.Current.CancellationToken).WaitAsync(Bound, TestContext.Current.CancellationToken);
+            Assert.Equal((TokenOf(RedCover), (string?)null), (Art(), Text("art-color")));
+        }
+        finally
+        {
+            hold.Set();
+        }
+
+        // Released: the round after it is computed carries it, with the same token.
+        Settle();
+        Assert.Equal((TokenOf(RedCover), "#FF0000"), (Art(), Text("art-color")));
+    }
+
+    [Fact]
+    public async Task A_cover_changed_while_its_colour_is_computed_never_shows_that_colour_and_the_new_covers_follows()
+    {
+        var source = OpenInUse();
+        using var holdRed = new ManualResetEventSlim();
+        using var enteredRed = new ManualResetEventSlim();
+        using var holdBlue = new ManualResetEventSlim();
+        using var enteredBlue = new ManualResetEventSlim();
+        var calls = 0;
+        source.Art.Coloring = () =>
+        {
+            // The worker computes one at a time, and each test step below waits for the one before it to be entered,
+            // so the first computation is red's and the second blue's.
+            switch (Interlocked.Increment(ref calls))
+            {
+                case 1:
+                    enteredRed.Set();
+                    holdRed.Wait();
+                    break;
+                case 2:
+                    enteredBlue.Set();
+                    holdBlue.Wait();
+                    break;
+            }
+        };
+        try
+        {
+            _reader.Snapshot = Song() with { Art = RedCover };
+            await Task.Run(() => Round(), TestContext.Current.CancellationToken).WaitAsync(Bound, TestContext.Current.CancellationToken);
+            Assert.True(enteredRed.Wait(Bound, TestContext.Current.CancellationToken));
+            _reader.Snapshot = Song() with { Art = BlueCover };
+            await Task.Run(() => Round(), TestContext.Current.CancellationToken).WaitAsync(Bound, TestContext.Current.CancellationToken);
+            Assert.Equal((TokenOf(BlueCover), (string?)null), (Art(), Text("art-color")));
+
+            // Red released and completed (the worker takes blue only once red's result is kept), blue still held: the
+            // round reads blue's token, and red's late result never goes out with it.
+            holdRed.Set();
+            Assert.True(enteredBlue.Wait(Bound, TestContext.Current.CancellationToken));
+            await Task.Run(() => Round(), TestContext.Current.CancellationToken).WaitAsync(Bound, TestContext.Current.CancellationToken);
+            Assert.Equal((TokenOf(BlueCover), (string?)null), (Art(), Text("art-color")));
+            Assert.Equal(SensorStatus.Unavailable, Status("art-color"));
+        }
+        finally
+        {
+            holdRed.Set();
+            holdBlue.Set();
+        }
+
+        // Blue released: its own colour follows.
+        Settle();
+        Assert.Equal((TokenOf(BlueCover), "#0000FF"), (Art(), Text("art-color")));
+        Assert.Equal(2, calls);
+
+        // Red, still kept, kept its own colour: at once, and not computed again.
+        _reader.Snapshot = Song() with { Art = RedCover };
+        Round();
+        Assert.Equal((TokenOf(RedCover), "#FF0000"), (Art(), Text("art-color")));
+        Assert.True(source.Art.WaitColored(Bound));
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task Covers_changed_fast_compute_one_at_a_time_with_at_most_one_waiting_and_the_last_ones_colour_is_published()
+    {
+        var source = OpenInUse();
+        using var hold = new ManualResetEventSlim();
+        using var entered = new ManualResetEventSlim();
+        var calls = 0;
+        var running = 0;
+        var most = 0;
+        source.Art.Coloring = () =>
+        {
+            var now = Interlocked.Increment(ref running);
+            InterlockedMax(ref most, now);
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                entered.Set();
+                hold.Wait();
+            }
+            Interlocked.Decrement(ref running);
+        };
+        var covers = new[] { Cover(0x10, 0x20, 0x30), Cover(0x40, 0x50, 0x60), Cover(0x70, 0x80, 0x90), Cover(0xA0, 0xB0, 0xC0), Cover(0xD0, 0xE0, 0xF0) };
+        try
+        {
+            // The first held (its computation entered before the next round); four more, one a round: each waits in
+            // place of the one before it.
+            foreach (var (cover, _) in covers)
+            {
+                _reader.Snapshot = Song() with { Art = cover };
+                await Task.Run(() => Round(), TestContext.Current.CancellationToken).WaitAsync(Bound, TestContext.Current.CancellationToken);
+                Assert.True(entered.Wait(Bound, TestContext.Current.CancellationToken));
+                Assert.Equal((TokenOf(cover), (string?)null), (Art(), Text("art-color")));
+            }
+        }
+        finally
+        {
+            hold.Set();
+        }
+
+        Settle();
+        Assert.Equal((TokenOf(covers[^1].Cover), covers[^1].Color), (Art(), Text("art-color")));
+        Assert.Equal(2, calls); // the first and the last: those between were replaced while waiting
+        Assert.Equal(1, most);
+
+        // The first was pushed out of the covers kept while it was computed: its result went with it, so it is computed again.
+        _reader.Snapshot = Song() with { Art = covers[0].Cover };
+        Round();
+        Assert.Equal((TokenOf(covers[0].Cover), (string?)null), (Art(), Text("art-color")));
+        Settle();
+        Assert.Equal((TokenOf(covers[0].Cover), covers[0].Color), (Art(), Text("art-color")));
+        Assert.Equal(3, calls);
+    }
+
+    private static void InterlockedMax(ref int target, int value)
+    {
+        var seen = Volatile.Read(ref target);
+        while (value > seen)
+        {
+            var was = Interlocked.CompareExchange(ref target, value, seen);
+            if (was == seen)
+                return;
+            seen = was;
+        }
+    }
+
+    [Fact]
+    public async Task Disposed_while_a_colour_is_computed_it_returns_at_once_and_the_worker_ends_keeping_nothing()
+    {
+        var source = OpenInUse();
+        using var hold = new ManualResetEventSlim();
+        using var entered = new ManualResetEventSlim();
+        source.Art.Coloring = () =>
+        {
+            entered.Set();
+            hold.Wait();
+        };
+        Thread? worker;
+        try
+        {
+            _reader.Snapshot = Song() with { Art = RedCover };
+            await Task.Run(() => Round(), TestContext.Current.CancellationToken).WaitAsync(Bound, TestContext.Current.CancellationToken);
+            Assert.True(entered.Wait(Bound, TestContext.Current.CancellationToken));
+            worker = source.Art.Worker;
+            Assert.NotNull(worker);
+            Assert.True(worker.IsAlive);
+
+            // Disposed with the decode still held: it doesn't wait for it.
+            await Task.Run(source.Dispose, TestContext.Current.CancellationToken).WaitAsync(Bound, TestContext.Current.CancellationToken);
+            Assert.Equal(0, source.Art.Count);
+        }
+        finally
+        {
+            hold.Set();
+        }
+
+        // Released: the computation's result is dropped, and the worker ends.
+        Assert.NotNull(worker);
+        Assert.True(worker.Join(Bound));
+        Assert.True(source.Art.WaitColored(Bound));
+        Assert.Equal(0, source.Art.Count);
+        Assert.False(worker.IsAlive);
+        Assert.Same(worker, source.Art.Worker);
     }
 
     [Fact]
