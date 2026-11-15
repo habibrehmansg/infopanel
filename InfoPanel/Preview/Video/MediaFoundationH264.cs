@@ -799,6 +799,27 @@ internal sealed class MediaFoundationH264 : IH264Backend
         return task.IsCompleted;
     }
 
+    /// <summary>
+    /// A teardown's wait of at most <paramref name="bound"/>, true when it ended in time: on the system clock the plain
+    /// timed wait (<paramref name="timed"/>), otherwise <paramref name="clocked"/> until the backend's clock cancels it.
+    /// </summary>
+    internal bool TeardownWait(TimeSpan bound, Func<TimeSpan, bool> timed, Action<CancellationToken> clocked)
+    {
+        // A system timer fires on the thread pool, and a teardown must not depend on the pool.
+        if (ReferenceEquals(_time, TimeProvider.System))
+            return timed(bound);
+        using var wait = new CancellationTokenSource(bound, _time);
+        try
+        {
+            clocked(wait.Token);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Runs <paramref name="work"/> on a background thread of its own, so a blocking native call never holds a pool thread.</summary>
     internal static Task<T> RunOnThread<T>(string name, Func<T> work)
     {
@@ -878,6 +899,9 @@ internal sealed class MfSession : IH264Session
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _setupLeft = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _teardown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    // The session's thread has ended (its last step done): what a park waits for on a clock other than the system's.
+    private readonly ManualResetEventSlim _threadEnded = new();
     private readonly ConcurrentQueue<byte[]> _pool = new();
     private readonly AnnexB _annexB = new();
     private readonly HashSet<uint> _unknownEvents = [];
@@ -1040,8 +1064,15 @@ internal sealed class MfSession : IH264Session
         }
         finally
         {
-            if (entered)
-                _catalog.LeaveThread();
+            try
+            {
+                if (entered)
+                    _catalog.LeaveThread();
+            }
+            finally
+            {
+                _threadEnded.Set();
+            }
         }
     }
 
@@ -1931,8 +1962,8 @@ internal sealed class MfSession : IH264Session
     /// <summary>
     /// After a successful flush: a healthy session's activation (set up, never failed, no error reported, not a probe's)
     /// let go of and parked with the backend, once the session's thread has ended and no event of the activation's is
-    /// still with this session, each within <see cref="MediaFoundationH264.FlushLockWait"/>. False: shut down as without
-    /// re-use.
+    /// still with this session, each within <see cref="MediaFoundationH264.FlushLockWait"/> on the backend's clock. False:
+    /// shut down as without re-use.
     /// </summary>
     private bool Park(MfActivation activation, Thread? thread)
     {
@@ -1946,7 +1977,7 @@ internal sealed class MfSession : IH264Session
 
         if (activation.Failed != null)
             return false;
-        if (thread != null && thread != Thread.CurrentThread && !thread.Join(MediaFoundationH264.FlushLockWait))
+        if (thread != null && thread != Thread.CurrentThread && !_backend.TeardownWait(MediaFoundationH264.FlushLockWait, thread.Join, _threadEnded.Wait))
             return false;
         if (!activation.Detach(this, MediaFoundationH264.FlushLockWait))
             return false;
@@ -2044,7 +2075,7 @@ internal sealed class MfActivation
 
     /// <summary>
     /// <paramref name="session"/> lets go: no event reaches it once this returns true, which waits at most
-    /// <paramref name="bound"/> for one being handed to it (false: still with it).
+    /// <paramref name="bound"/> on the backend's clock for one being handed to it (false: still with it).
     /// </summary>
     public bool Detach(MfSession session, TimeSpan bound)
     {
@@ -2056,7 +2087,7 @@ internal sealed class MfActivation
 
         if (Thread.CurrentThread == _events)
             return true;
-        if (!_dispatch.Wait(bound))
+        if (!_backend.TeardownWait(bound, _dispatch.Wait, _dispatch.Wait))
             return false;
         _dispatch.Release();
         return true;

@@ -2028,6 +2028,80 @@ public class MediaFoundationSessionTests
         }
     }
 
+    /// <summary>
+    /// The event thread still inside an event's handover (here its log line for an event of another type) when the
+    /// teardown asks it to let go, as a loaded machine leaves it unscheduled: the teardown waits for it on the backend's
+    /// clock, however long it takes in real time, and the healthy session's activation is kept and taken by the next start.
+    /// </summary>
+    [Fact]
+    public async Task AHealthySessionsActivation_IsKept_HoweverLongTheEventThreadsHandoverTakes()
+    {
+        var catalog = new FakeMfCatalog();
+        var entry = catalog.Add("Encoder", "VEN_1002", C, "Encoder", K);
+        var mark = long.MaxValue;
+        var handing = new ManualResetEventSlim();
+        var log = new HookedLogger(new RecordingLogger(), line =>
+        {
+            if (!line.Contains("sent event 999", StringComparison.Ordinal))
+                return;
+            handing.Set();
+            // Until the teardown gave up the wait (its shutdown) or waits on the clock after the session's thread ended;
+            // capped in real time, so a teardown that reaches neither fails the test instead of hanging it.
+            SpinWait.SpinUntil(() => MarkedTime.GaveUpOrWaits(catalog, Volatile.Read(ref mark), after: "Leave"), TimeSpan.FromSeconds(10));
+        });
+        // The session's thread leaves only once its teardown gave it up or waits for it on the clock: the timer armed after
+        // its leave is then the handover wait's, never the wait for the thread (capped in real time like the handover).
+        catalog.OnLeave = role =>
+        {
+            if (role == "session" && Volatile.Read(ref mark) != long.MaxValue)
+                SpinWait.SpinUntil(() => MarkedTime.GaveUpOrWaits(catalog, Volatile.Read(ref mark)), TimeSpan.FromSeconds(10));
+        };
+        var backend = new MediaFoundationH264(catalog, log, new MarkedTime(new ManualTime(DateTimeOffset.UnixEpoch), catalog));
+        MfSession? session = null;
+        try
+        {
+            Assert.Equal(H264Probe.Available, await Task.Run(backend.Probe).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            entry.Encoder.ExtraEvents.Add(999u);
+            session = (MfSession)RealTimeCap.Run(() => backend.Start(new H264Config(W, H, 30, VideoStream.HardwareBitrate), _ => { }), "the start",
+                TimeSpan.FromSeconds(10));
+            var port = catalog.Ports[^1];
+            await Eventually(() => handing.IsSet, "the event thread is inside the handover");
+            Volatile.Write(ref mark, catalog.Mark("abort"));
+            await session.Abort().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.False(port.ShutDown, "the activation isn't shut down");
+            Assert.NotNull(backend.Parked);
+
+            entry.Encoder.ExtraEvents.Clear();
+            var activations = backend.Activations;
+            session = (MfSession)RealTimeCap.Run(() => backend.Start(new H264Config(W, H, 30, VideoStream.HardwareBitrate), _ => { }), "the restart",
+                TimeSpan.FromSeconds(10));
+            Assert.Same(port, catalog.Ports[^1]);
+            Assert.Equal(activations, backend.Activations);
+        }
+        finally
+        {
+            Volatile.Write(ref mark, long.MinValue);
+            if (session != null)
+                await session.Abort().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await backend.ReapAsync(TimeSpan.FromSeconds(5), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>A log that runs <paramref name="before"/> on each line, on the logging thread, before recording it.</summary>
+    internal sealed class HookedLogger(RecordingLogger log, Action<string> before) : Microsoft.Extensions.Logging.ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            before(formatter(state, exception));
+            log.Log(logLevel, eventId, state, exception, formatter);
+        }
+    }
+
     [Theory]
     [InlineData(Mf.EventHaveOutput)]
     [InlineData(Mf.EventNeedInput)]
@@ -2319,5 +2393,131 @@ public class MediaFoundationSessionTests
         var delta = await run.Encode(1);
         Assert.Equal(H264OutcomeKind.Encoded, delta.Kind);
         Assert.DoesNotContain(headerSps, Convert.ToHexString(delta.Data!), StringComparison.Ordinal);
+    }
+}
+
+/// <summary>
+/// A session's teardown on the system clock while every thread-pool thread is held (blocked, no CPU): its waits for the
+/// session's thread and for an event's handover need no pool thread, so a healthy session's activation is still kept,
+/// and a thread or a handover that doesn't end is still given up at its bound. Alone in its collection: it holds the
+/// process's pool.
+/// </summary>
+[Collection(MediaFoundationCollection.Name)]
+public sealed class MediaFoundationTeardownPoolTests
+{
+    private static readonly TimeSpan Cap = TimeSpan.FromSeconds(10);
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("thread")]
+    [InlineData("handover")]
+    public async Task OnTheSystemClock_ATeardownNeedsNoPoolThread(string wedged)
+    {
+        var catalog = new FakeMfCatalog();
+        var entry = catalog.Add("Encoder", "VEN_1002", new Guid("ADC9BC80-0F41-46C6-AB75-D693D793597D"), "Encoder",
+            @"PCI\VEN_1002&DEV_1900&SUBSYS_00311F66&REV_C5\4&1234&0&0041");
+        using var release = new ManualResetEventSlim();
+        using var handing = new ManualResetEventSlim();
+        var log = new MediaFoundationSessionTests.HookedLogger(new RecordingLogger(), line =>
+        {
+            if (wedged != "handover" || !line.Contains("sent event 999", StringComparison.Ordinal))
+                return;
+            handing.Set();
+            release.Wait(Cap);
+        });
+        var backend = new MediaFoundationH264(catalog, log);
+        try
+        {
+            Assert.Equal(H264Probe.Available, RealTimeCap.Run(backend.Probe, "the probe", Cap));
+            if (wedged == "handover")
+                entry.Encoder.ExtraEvents.Add(999u);
+            var session = (MfSession)RealTimeCap.Run(() => backend.Start(new H264Config(64, 48, 30, VideoStream.HardwareBitrate), _ => { }), "the start",
+                Cap);
+            var port = catalog.Ports[^1];
+            if (wedged == "handover")
+                Assert.True(handing.Wait(Cap, TestContext.Current.CancellationToken), "the event thread is inside the handover");
+            if (wedged == "thread")
+                catalog.OnLeave = role =>
+                {
+                    if (role == "session")
+                        release.Wait(Cap);
+                };
+
+            bool ended, shutDown;
+            ThreadPool.GetMinThreads(out var minWorkers, out _);
+            ThreadPool.GetMaxThreads(out var maxWorkers, out var maxIo);
+            Assert.True(ThreadPool.SetMaxThreads(minWorkers, maxIo), "the pool is capped");
+            // Not `using`: the gate and the count are disposed only once every queued callback has exited, so no
+            // callback (one still queued when the holders are released, or any after a failed assertion) can touch a
+            // disposed object on a pool thread, where an exception would end the test host.
+            var held = new ManualResetEventSlim();
+            var exited = new CountdownEvent(1);
+            try
+            {
+                var holding = 0;
+                for (var i = 0; i < minWorkers; i++)
+                {
+                    exited.AddCount();
+                    ThreadPool.UnsafeQueueUserWorkItem(_ =>
+                    {
+                        try
+                        {
+                            Interlocked.Increment(ref holding);
+                            held.Wait();
+                        }
+                        finally
+                        {
+                            exited.Signal();
+                        }
+                    }, null);
+                }
+                var holders = minWorkers - (Thread.CurrentThread.IsThreadPoolThread ? 1 : 0);
+                Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref holding) >= holders, Cap), "every pool thread is held");
+
+                var teardown = session.Abort();
+                if (wedged == "none")
+                {
+                    // Healthy: the teardown ends, its activation kept, with no pool thread to run on.
+                    ended = SpinWait.SpinUntil(() => teardown.IsCompleted, Cap);
+                    shutDown = port.ShutDown;
+                }
+                else
+                {
+                    // Wedged: the teardown gives the wait up at its bound and shuts the transform down, which a wait
+                    // ended by a pool timer never would.
+                    shutDown = SpinWait.SpinUntil(() => port.ShutDown, Cap);
+                    ended = false;
+                }
+            }
+            finally
+            {
+                held.Set();
+                release.Set();
+                ThreadPool.SetMaxThreads(maxWorkers, maxIo);
+                exited.Signal();
+                // Bounded: if a callback hasn't exited by then (or the test is cancelled), the test fails here and the
+                // gate is left undisposed.
+                Assert.True(exited.Wait(Cap, TestContext.Current.CancellationToken), "every held pool callback exited before its gate is disposed");
+                held.Dispose();
+                exited.Dispose();
+            }
+
+            if (wedged == "none")
+            {
+                Assert.True(ended, "the healthy teardown ended while the pool was held");
+                Assert.False(shutDown, "the healthy session's activation isn't shut down");
+                Assert.NotNull(backend.Parked);
+            }
+            else
+            {
+                Assert.True(shutDown, $"the wedged {wedged} was given up while the pool was held");
+                await session.Abort().WaitAsync(Cap, TestContext.Current.CancellationToken);
+            }
+        }
+        finally
+        {
+            release.Set();
+            await backend.ReapAsync(TimeSpan.FromSeconds(5), CancellationToken.None).WaitAsync(Cap, TestContext.Current.CancellationToken);
+        }
     }
 }

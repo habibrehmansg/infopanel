@@ -1,4 +1,5 @@
 using InfoPanel.Preview.Video;
+using InfoPanel.Tests.Desktop;
 using Microsoft.Extensions.Logging;
 using Xunit;
 
@@ -14,6 +15,8 @@ namespace InfoPanel.Tests.Preview.Video;
 public sealed class MediaFoundationRestartCheckTests
 {
     private const string Key = @"PCI\VEN_1002&DEV_1900&SUBSYS_00000000&REV_C1\4&1";
+    private const string OneActivation = "the check on one activation";
+    private const string Fallback = "the fallback's check";
 
     private sealed class Fakes : IDisposable
     {
@@ -21,16 +24,36 @@ public sealed class MediaFoundationRestartCheckTests
         private readonly Action<FakeEncoder>? _beforeProbe;
         private readonly Action<FakeEncoder>? _afterProbe;
 
+        private readonly TimeSpan _probeCap;
+
         /// <param name="beforeProbe">The encoder's behaviour before each backend's probe.</param>
         /// <param name="afterProbe">The encoder's behaviour after each backend's probe passed.</param>
-        public Fakes(string? deviceKey = Key, Action<FakeEncoder>? beforeProbe = null, Action<FakeEncoder>? afterProbe = null)
+        /// <param name="probeCap">Each backend's probe's real-time cap.</param>
+        public Fakes(string? deviceKey = Key, Action<FakeEncoder>? beforeProbe = null, Action<FakeEncoder>? afterProbe = null, TimeSpan? probeCap = null)
         {
             Entry = Catalog.Add("Encoder", deviceKey: deviceKey);
+            Time = new MarkedTime(new ManualTime(DateTimeOffset.UnixEpoch), Catalog);
             _beforeProbe = beforeProbe;
             _afterProbe = afterProbe;
+            _probeCap = probeCap ?? TimeSpan.FromSeconds(10);
         }
 
+        /// <summary>
+        /// <paramref name="check"/> over <see cref="Bed"/>, capped in real time (its sessions' starts and the probes
+        /// inside them aren't bounded by the clock), rethrowing what it throws.
+        /// </summary>
+        public void Check(Action<RestartBed> check, string name) => RealTimeCap.Run(() => check(Bed), name, TimeSpan.FromMinutes(2));
+
         public FakeMfCatalog Catalog { get; } = new();
+
+        /// <summary>
+        /// The backends' clock, which never moves: their bounds (a teardown's waits for the flush, the session's thread
+        /// and the last event's handover, a kept activation's time) end only with what they wait for, never with the
+        /// machine's load. On the real clock a thread unscheduled past such a 250 ms wait let the teardown shut down an
+        /// activation it would have kept, and the next start activated again. A wait that never ends still fails the
+        /// check, by its real-time caps (each restart's teardown, the reap).
+        /// </summary>
+        public MarkedTime Time { get; }
 
         public FakeMfEntry Entry { get; }
 
@@ -54,10 +77,10 @@ public sealed class MediaFoundationRestartCheckTests
             if (refuseReuse)
                 Entry.Encoder.TypesAfterEndStreamingHr = Mf.InvalidMediaType;
             _beforeProbe?.Invoke(Entry.Encoder);
-            var backend = new MediaFoundationH264(Catalog, log);
+            var backend = new MediaFoundationH264(Catalog, log, Time);
             lock (_made)
                 _made.Add(backend);
-            Assert.Equal(H264Probe.Available, backend.Probe());
+            Assert.Equal(H264Probe.Available, RealTimeCap.Run(backend.Probe, "the backend's probe", _probeCap));
             _afterProbe?.Invoke(Entry.Encoder);
             return backend;
         }
@@ -82,8 +105,31 @@ public sealed class MediaFoundationRestartCheckTests
     public void AnEncoderThatReuses_PassesBothChecks()
     {
         using var fakes = new Fakes();
-        MediaFoundationRestartChecks.OnOneActivation(fakes.Bed);
-        MediaFoundationRestartChecks.Fallback(fakes.Bed);
+        fakes.Check(MediaFoundationRestartChecks.OnOneActivation, OneActivation);
+        fakes.Check(MediaFoundationRestartChecks.Fallback, Fallback);
+    }
+
+    /// <summary>
+    /// Every session's thread slow to end, as a loaded machine leaves it: its last step waits until its teardown has
+    /// either given it up (a shutdown) or waits for it on the backend's clock. Both checks still pass: a healthy session's
+    /// activation is kept however long its thread takes in real time.
+    /// </summary>
+    [Fact]
+    public void AnEncoderThatReuses_PassesBothChecks_WithEverySessionsThreadSlowToEnd()
+    {
+        using var fakes = new Fakes();
+        fakes.Catalog.OnLeave = role =>
+        {
+            if (role != "session")
+                return;
+            // Since this thread's start: the teardown may have begun before the thread reached its last step.
+            var thread = Environment.CurrentManagedThreadId;
+            var start = fakes.Catalog.Calls.Last(c => c.Name == "Enter" && c.Detail == "session" && c.Thread == thread).Seq;
+            // Capped in real time, so a teardown that never reaches either does not hang the run (the check then fails).
+            SpinWait.SpinUntil(() => MarkedTime.GaveUpOrWaits(fakes.Catalog, start, notOn: thread), TimeSpan.FromSeconds(10));
+        };
+        fakes.Check(MediaFoundationRestartChecks.OnOneActivation, OneActivation);
+        fakes.Check(MediaFoundationRestartChecks.Fallback, Fallback);
     }
 
     /// <summary>The whole identity unknown: re-use is never eligible, and every start takes three activations (the candidate, its probe, the final one).</summary>
@@ -91,16 +137,16 @@ public sealed class MediaFoundationRestartCheckTests
     public void WithoutTheWholeIdentity_BothChecksCountThreeActivationsAStart_AndPass()
     {
         using var fakes = new Fakes(deviceKey: null);
-        MediaFoundationRestartChecks.OnOneActivation(fakes.Bed);
-        MediaFoundationRestartChecks.Fallback(fakes.Bed);
+        fakes.Check(MediaFoundationRestartChecks.OnOneActivation, OneActivation);
+        fakes.Check(MediaFoundationRestartChecks.Fallback, Fallback);
     }
 
     [Fact]
     public void WithoutForcedKeyframes_BothChecksTakeTheFallback_AndPass()
     {
         using var fakes = new Fakes(beforeProbe: e => e.IgnoreForce = true);
-        MediaFoundationRestartChecks.OnOneActivation(fakes.Bed);
-        MediaFoundationRestartChecks.Fallback(fakes.Bed);
+        fakes.Check(MediaFoundationRestartChecks.OnOneActivation, OneActivation);
+        fakes.Check(MediaFoundationRestartChecks.Fallback, Fallback);
     }
 
     /// <summary>
@@ -119,7 +165,7 @@ public sealed class MediaFoundationRestartCheckTests
             else
                 e.CallHr["DRAIN"] = Mf.EFail;
         });
-        MediaFoundationRestartChecks.OnOneActivation(fakes.Bed);
+        fakes.Check(MediaFoundationRestartChecks.OnOneActivation, OneActivation);
     }
 
     /// <summary>
@@ -130,9 +176,29 @@ public sealed class MediaFoundationRestartCheckTests
     public void WhenEveryFrameFails_BothChecksFail()
     {
         using var fakes = new Fakes(beforeProbe: e => (e.IgnoreForce, e.SpsSize) = (true, null), afterProbe: e => e.SpsSize = (336, 208));
-        var one = Assert.ThrowsAny<Exception>(() => MediaFoundationRestartChecks.OnOneActivation(fakes.Bed));
+        var one = Assert.ThrowsAny<Exception>(() => fakes.Check(MediaFoundationRestartChecks.OnOneActivation, OneActivation));
         Assert.Contains("a restart at 128x128: Failed", one.Message, StringComparison.Ordinal);
-        var fallback = Assert.ThrowsAny<Exception>(() => MediaFoundationRestartChecks.Fallback(fakes.Bed));
+        var fallback = Assert.ThrowsAny<Exception>(() => fakes.Check(MediaFoundationRestartChecks.Fallback, Fallback));
         Assert.Contains("a restart at 128x128: Failed", fallback.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A probe's shutdown that never returns, on the clock that never moves: no bound of the backend's ends the probe,
+    /// and its real-time cap fails the check, naming the call, instead of hanging the run.
+    /// </summary>
+    [Fact]
+    public void AProbeWedgedOnTheFrozenClock_FailsTheCheckByItsCap()
+    {
+        using var shutdown = new ManualResetEventSlim();
+        using var fakes = new Fakes(beforeProbe: e => e.HoldShutdown = shutdown, probeCap: TimeSpan.FromSeconds(1));
+        try
+        {
+            var failure = Assert.ThrowsAny<Exception>(() => fakes.Check(MediaFoundationRestartChecks.OnOneActivation, OneActivation));
+            Assert.Contains("the backend's probe didn't end within 1 s", failure.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            shutdown.Set();
+        }
     }
 }

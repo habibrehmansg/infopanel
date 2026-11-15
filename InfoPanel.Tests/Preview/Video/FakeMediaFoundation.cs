@@ -43,6 +43,15 @@ internal sealed class FakeMfCatalog : IMfCatalog
 
     public List<uint> EnumerateFlags { get; } = [];
 
+    // The role each thread entered as, for its leave.
+    private readonly ConcurrentDictionary<int, string> _roles = new();
+
+    /// <summary>
+    /// Runs on a thread's leave, on that thread, with the role it entered as, before the leave is recorded: a thread
+    /// slow to end (the last step of a session's thread, which a loaded machine can leave unscheduled).
+    /// </summary>
+    public Action<string>? OnLeave { get; set; }
+
     public int Startups;
 
     /// <summary>Activated transforms, input buffers and our output samples not yet released.</summary>
@@ -109,12 +118,18 @@ internal sealed class FakeMfCatalog : IMfCatalog
     public int EnterThread(string role)
     {
         Record(-1, "Enter", role);
+        _roles[Environment.CurrentManagedThreadId] = role;
         if (HoldEnter.TryGetValue(role, out var hold))
             hold.Wait();
         return EnterHr.GetValueOrDefault(role);
     }
 
-    public void LeaveThread() => Record(-1, "Leave");
+    public void LeaveThread()
+    {
+        if (OnLeave is { } leaving && _roles.TryGetValue(Environment.CurrentManagedThreadId, out var role))
+            leaving(role);
+        Record(-1, "Leave");
+    }
 
     public int Startup()
     {
@@ -1009,5 +1024,66 @@ internal sealed class FakeMfInputBuffer(FakeMfCatalog catalog, int size) : IMfIn
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
             catalog.AddLive(-1);
+    }
+}
+
+/// <summary>
+/// A real-time cap on a call into a backend whose clock never moves, whose own bounds then never end it: a call that
+/// doesn't end within <paramref name="cap"/> fails the test, naming it, instead of hanging it. A cap, never a timing.
+/// </summary>
+internal static class RealTimeCap
+{
+    public static T Run<T>(Func<T> call, string what, TimeSpan cap)
+    {
+        var task = Task.Run(call);
+        if (Task.WhenAny(task, Task.Delay(cap)).GetAwaiter().GetResult() != task)
+            Xunit.Assert.Fail($"{what} didn't end within {cap.TotalSeconds:0.#} s");
+        return task.GetAwaiter().GetResult();
+    }
+
+    public static void Run(Action call, string what, TimeSpan cap) => Run(() =>
+    {
+        call();
+        return true;
+    }, what, cap);
+}
+
+/// <summary>
+/// The backend's clock over <paramref name="inner"/>, each timer it arms (a bounded wait's, a kept activation's) marked
+/// in the catalog's call order as <see cref="Armed"/>: a test sees a wait begin on the clock, after which call.
+/// </summary>
+internal sealed class MarkedTime(TimeProvider inner, FakeMfCatalog catalog) : TimeProvider
+{
+    public const string Armed = "timer armed";
+
+    public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
+
+    public override TimeZoneInfo LocalTimeZone => inner.LocalTimeZone;
+
+    public override long TimestampFrequency => inner.TimestampFrequency;
+
+    public override long GetTimestamp() => inner.GetTimestamp();
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        catalog.Mark(Armed);
+        return inner.CreateTimer(callback, state, dueTime, period);
+    }
+
+    /// <summary>
+    /// Whether, since <paramref name="mark"/>, a session's teardown gave up a wait (its shutdown) or waits on this clock (a
+    /// timer armed after its flush and after <paramref name="after"/>, a call name such as the session thread's leave),
+    /// counting no call on thread <paramref name="notOn"/> (the session's own, whose re-use flushes and shuts down too).
+    /// </summary>
+    public static bool GaveUpOrWaits(FakeMfCatalog catalog, long mark, string? after = null, int? notOn = null)
+    {
+        var calls = catalog.After(mark).Where(c => c.Thread != notOn).ToList();
+        if (calls.Any(c => c.Name == "Shutdown"))
+            return true;
+        var flush = calls.LastOrDefault(c => c.Name == "ProcessMessage" && c.Detail == "FLUSH");
+        if (flush == null)
+            return false;
+        var from = after == null ? flush.Seq : Math.Max(flush.Seq, calls.LastOrDefault(c => c.Name == after)?.Seq ?? long.MaxValue);
+        return calls.Any(c => c.Seq > from && c.Name == "Mark" && c.Detail == Armed);
     }
 }
