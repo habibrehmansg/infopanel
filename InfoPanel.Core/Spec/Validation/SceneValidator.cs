@@ -725,6 +725,8 @@ public static class SceneValidator
                     if (s.Column is not null && !_quiet) _work += (Math.Clamp(s.Count ?? MaxSamples, 1, MaxSamples) + 63) / 64;
                     Num(s.X, p + "/x"); Num(s.Y, p + "/y"); Num(s.W, p + "/w"); Num(s.H, p + "/h");
                     Num(s.Min, p + "/min"); Num(s.Max, p + "/max"); Num(s.Pitch, p + "/pitch"); Num(s.BarWidth, p + "/barWidth");
+                    // A ramp's stops are a gradient's: walked, typed and counted as theirs are.
+                    if (s.Ramp is not null) WalkStops(s.Ramp, p + "/ramp");
                     WalkPaint(s.Fill, p + "/fill");
                     WalkStroke(s.Stroke, p + "/stroke");
                     break;

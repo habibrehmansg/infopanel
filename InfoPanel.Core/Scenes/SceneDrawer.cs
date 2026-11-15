@@ -237,7 +237,8 @@ internal static class SceneDrawer
     /// <summary>
     /// The paints of the shapes drawn one after another in one list of nodes, within one draw call: a shape whose fill (or
     /// stroke) is the same resolved paint (or stroke) at the same opacity, under the same matrix, as the shape drawn
-    /// before it draws with that shape's paint (every bar of a series). Disposed by the list's caller.
+    /// before it draws with that shape's paint (every bar of a series), and a solid fill after a solid fill at the same
+    /// opacity with that paint in its own colour (every bar of a series coloured by its ramp). Disposed by the list's caller.
     /// </summary>
     private struct ShapePaints
     {
@@ -251,6 +252,13 @@ internal static class SceneDrawer
         public SKPaint Fill(RPaint p, float opacity)
         {
             if (_fill is not null && ReferenceEquals(p, _fillOf) && opacity == _fillOpacity) return _fill;
+            // A solid paint is its colour alone (MakePaint): the same paint takes the next solid colour.
+            if (_fill is not null && opacity == _fillOpacity && _fillOf?.SolidColor is not null && p.SolidColor is { } c)
+            {
+                _fill.Color = SceneColor.ToSk(c, opacity);
+                _fillOf = p;
+                return _fill;
+            }
             if (_fill is not null) SceneDrawer.Dispose(_fill);
             _fill = null;
             _fill = MakePaint(p, opacity, SKPaintStyle.Fill);

@@ -218,6 +218,8 @@ public sealed record SeriesNode : SceneNode
     public Expr? Pitch { get; init; }
     public int? Count { get; init; }
     public Expr? BarWidth { get; init; }
+    /// <summary>A colour per bar or cell: 2–16 stops, as a gradient's (spec/docs/smart-nodes.md, "A colour per sample").</summary>
+    public IReadOnlyList<GradientStop>? Ramp { get; init; }
     public Paint? Fill { get; init; }
     public Stroke? Stroke { get; init; }
 }

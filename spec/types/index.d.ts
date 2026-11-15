@@ -3812,7 +3812,7 @@ export interface FontOverride {
   italic?: boolean;
 }
 
-/** A number input's history, or with `column` a table input's column of numbers (see docs/bindings.md, "Samples"), drawn in a box, newest sample at the right edge, one sample every `pitch` pixels to the left, clipped to the box. y = bottom − clamp((v − min) ÷ (max − min), 0, 1) × h. line: a polyline through the samples (stroke). area: the polyline closed down to the bottom (fill, then the line's stroke). bars: one bar per sample from the bottom, `barWidth` wide, right edge on the sample. */
+/** A number input's history, or with `column` a table input's column of numbers (see docs/bindings.md, "Samples"), drawn in a box, newest sample at the right edge, one sample every `pitch` pixels to the left, clipped to the box. y = bottom − clamp((v − min) ÷ (max − min), 0, 1) × h. line: a polyline through the samples (stroke). area: the polyline closed down to the bottom (fill, then the line's stroke). bars: one bar per sample from the bottom, `barWidth` wide, right edge on the sample. cells: one cell per sample the box's full height, `barWidth` wide, right edge on the sample. `ramp` colours each bar or cell by its sample (see docs/smart-nodes.md, "A colour per sample"). */
 export interface SeriesNode {
   kind: "series";
   id?: NodeId;
@@ -3830,7 +3830,7 @@ export interface SeriesNode {
   min: NumberExpr;
   max: NumberExpr;
   /** @default "line" */
-  mode?: "line" | "area" | "bars";
+  mode?: "line" | "area" | "bars" | "cells";
   /**
    * Pixels between samples, at least 0.25.
    * @default 1
@@ -3841,8 +3841,10 @@ export interface SeriesNode {
    * Range: 1–4096.
    */
   count?: number;
-  /** bars only. Absent: pitch. */
+  /** bars and cells only. Absent: pitch. */
   barWidth?: NumberExpr;
+  /** bars and cells only: a colour per bar or cell, the colour these stops give its sample, in place of `fill` (see docs/smart-nodes.md, "A colour per sample"). */
+  ramp?: Stops;
   fill?: Paint;
   stroke?: Stroke;
 }

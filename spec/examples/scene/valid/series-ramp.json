@@ -1,0 +1,38 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"temp": {"type": "number", "label": "Temperature"}},
+  "nodes": [
+    {
+      "kind": "series",
+      "input": "temp",
+      "w": 240,
+      "h": 10,
+      "min": 0,
+      "max": 100,
+      "mode": "cells",
+      "pitch": 4,
+      "barWidth": 3,
+      "ramp": [
+        {"at": 0, "color": "#22c55e"},
+        {"at": 0.7, "color": "#22c55e"},
+        {"at": 0.7, "color": "#f59e0b"},
+        {"at": 0.85, "color": "#f59e0b"},
+        {"at": 0.85, "color": "#ef4444"},
+        {"at": 1, "color": "#ef4444"}
+      ]
+    },
+    {
+      "kind": "series",
+      "input": "temp",
+      "y": 16,
+      "w": 240,
+      "h": 60,
+      "min": 0,
+      "max": 100,
+      "mode": "bars",
+      "pitch": 4,
+      "barWidth": 3,
+      "ramp": [{"at": 0, "color": "#38bdf8"}, {"at": 1, "color": "#ef4444"}]
+    }
+  ]
+}

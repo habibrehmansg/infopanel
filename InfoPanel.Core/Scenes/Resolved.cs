@@ -1199,6 +1199,28 @@ internal sealed class RGradient(GradientKind kind, float[] geometry, uint[] colo
         return (colors.ToArray(), positions.ToArray());
     }
 
+    /// <summary>
+    /// The colour a gradient of these stops (positions as <see cref="Positions"/>) has at <paramref name="t"/> in 0–1: a
+    /// series' ramp's colour for a sample (spec/docs/smart-nodes.md, "A colour per sample"). Before the first stop's
+    /// position the first colour, from the last stop's the last; between two stops interpolated premultiplied, the
+    /// format's rule (which <see cref="CreateShader"/> approximates where alpha changes). A t at a position several stops
+    /// share is past them all, as a gradient's interval search puts it, so a hard edge's own position takes the colour
+    /// after the edge. Each channel and the alpha are rounded to the nearest level; t and the positions are single
+    /// precision, so a value exactly half way between two levels may round to either.
+    /// </summary>
+    public static uint ColorAt(uint[] colors, float[] positions, double t)
+    {
+        var x = (float)t;
+        var last = colors.Length - 1;
+        if (last < 0) return SceneColor.Transparent;
+        if (x < positions[0]) return colors[0];
+        var k = 0;
+        while (k < last && x >= positions[k + 1]) k++;
+        if (k == last) return colors[last];
+        var c = PremulLerp(colors[k], colors[k + 1], (x - positions[k]) / (positions[k + 1] - positions[k]));
+        return SceneColor.Make(c.Red, c.Green, c.Blue, c.Alpha);
+    }
+
     private static SKColor PremulLerp(uint a, uint b, float t)
     {
         double aa = SceneColor.A(a) / 255.0, ba = SceneColor.A(b) / 255.0;

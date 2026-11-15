@@ -540,16 +540,7 @@ internal sealed class SceneEvaluator
                 var geometry = new float[g.Kind == GradientKind.Sweep ? 4 : g.Geometry.Length];
                 for (var i = 0; i < g.Geometry.Length; i++) geometry[i] = SceneMath.F(g.Geometry[i].Num(_e));
                 if (g.Kind == GradientKind.Sweep && g.DefaultEnd) geometry[3] = geometry[2] + 360;
-                var colors = new uint[g.Stops.Length];
-                var positions = new float[g.Stops.Length];
-                var previous = 0f;
-                for (var i = 0; i < g.Stops.Length; i++)
-                {
-                    var at = (float)Math.Clamp(g.Stops[i].At.Num(_e), 0, 1);
-                    positions[i] = Math.Max(at, previous);
-                    previous = positions[i];
-                    colors[i] = g.Stops[i].Color.Col(_e);
-                }
+                var (colors, positions) = Stops(g.Stops);
                 if (colors.Length == 0) return new RSolid(0);
                 if (colors.Length == 1) return new RSolid(colors[0]);
                 return new RGradient(g.Kind, geometry, colors, positions, g.Tile);
@@ -558,6 +549,25 @@ internal sealed class SceneEvaluator
                 return new RCompose(c.Blend, Paint(c.Dst, depth + 1) ?? new RSolid(0), Paint(c.Src, depth + 1) ?? new RSolid(0));
             default: return null;
         }
+    }
+
+    /// <summary>
+    /// A gradient's stops this tick, or a series' ramp's: in the order given, each position clamped to 0–1 and raised to
+    /// the previous one's (spec/docs/scene.md, "Stop positions").
+    /// </summary>
+    private (uint[] Colors, float[] Positions) Stops(CStop[] stops)
+    {
+        var colors = new uint[stops.Length];
+        var positions = new float[stops.Length];
+        var previous = 0f;
+        for (var i = 0; i < stops.Length; i++)
+        {
+            var at = (float)Math.Clamp(stops[i].At.Num(_e), 0, 1);
+            positions[i] = Math.Max(at, previous);
+            previous = positions[i];
+            colors[i] = stops[i].Color.Col(_e);
+        }
+        return (colors, positions);
     }
 
     private RStroke? Stroke(CStroke? s, RGeom? geom)
@@ -835,6 +845,8 @@ internal sealed class SceneEvaluator
         var pitch = Math.Max(0.25, s.Pitch?.Num(e) ?? 1);
         var barWidth = SceneMath.F(s.BarWidth?.Num(e) ?? pitch);
         var fill = Paint(s.Fill);
+        // A ramp's stops are read each tick as a gradient's are, in every mode; only bars and cells draw with them.
+        var ramp = s.Ramp is { Length: > 0 } stops ? Stops(stops) : default;
         if (w <= 0 || h <= 0) return null;
         var box = new SKRect(x, y, x + w, y + h);
 
@@ -844,6 +856,8 @@ internal sealed class SceneEvaluator
         var count = Math.Min(Math.Min(s.Count ?? fitting, 4096), samples.Count);
         var bottom = y + h;
         var points = new SKPoint[count];
+        // Each sample's position in its range, which picks its colour from the ramp.
+        var at = ramp.Colors is null ? null : new double[count];
         for (var j = 0; j < count; j++)
         {
             // j = 0 is the oldest drawn sample; the newest is at the right edge.
@@ -852,14 +866,15 @@ internal sealed class SceneEvaluator
             var px = x + w - age * pitch;
             var f = max <= min ? 0 : Math.Clamp((v - min) / (max - min), 0, 1);
             points[j] = new SKPoint((float)px, (float)(bottom - f * h));
+            if (at is not null) at[j] = SceneMath.Finite(f);
         }
 
         var children = new List<RNode>();
         var line = new PolyGeom(points, false, SKPathFillType.Winding);
         // One stroke per series, evaluated once per tick however many bars it outlines; its dashes are counted along
-        // everything it strokes (the line, or every bar's outline).
+        // everything it strokes (the line, or every bar's or cell's outline).
         var stroke = Stroke(s.Stroke, null);
-        if (s.Mode != SeriesMode.Bars) CheckDash(stroke, line);
+        if (s.Mode is not (SeriesMode.Bars or SeriesMode.Cells)) CheckDash(stroke, line);
         switch (s.Mode)
         {
             case SeriesMode.Line:
@@ -876,15 +891,20 @@ internal sealed class SceneEvaluator
                     children.Add(new RShape { Geom = line, Stroke = stroke });
                 }
                 break;
-            case SeriesMode.Bars:
+            case SeriesMode.Bars or SeriesMode.Cells:
             {
-                // A bar is a rectangle: with a negative width it draws nothing, so no bar is drawn or counted.
+                // A bar or cell is a rectangle: with a negative width it draws nothing, so none is drawn or counted.
                 if (barWidth < 0) break;
                 double length = 0, contours = 0;
                 var curved = false;
-                foreach (var p in points)
+                RSolid? run = null;
+                for (var j = 0; j < count; j++)
                 {
-                    var bar = new RectGeom(p.X - barWidth, p.Y, barWidth, bottom - p.Y, null);
+                    var p = points[j];
+                    // A bar runs from the bottom to its sample; a cell is the box's height whatever its sample.
+                    var bar = s.Mode == SeriesMode.Cells
+                        ? new RectGeom(p.X - barWidth, y, barWidth, h, null)
+                        : new RectGeom(p.X - barWidth, p.Y, barWidth, bottom - p.Y, null);
                     if (stroke?.Dash is not null)
                     {
                         var outline = bar.Measure(_services.Owned);
@@ -892,7 +912,16 @@ internal sealed class SceneEvaluator
                         contours += outline.Contours;
                         curved |= outline.Curved;
                     }
-                    children.Add(new RShape { Geom = bar, Fill = fill, Stroke = stroke });
+                    var paint = fill;
+                    if (at is not null)
+                    {
+                        // The ramp's colour at the sample's position, in place of fill: one paint for each run of one
+                        // colour, so a run is drawn with one paint as a series with one fill is.
+                        var colour = RGradient.ColorAt(ramp.Colors!, ramp.Positions!, at[j]);
+                        if (run is null || run.Color != colour) run = new RSolid(colour);
+                        paint = run;
+                    }
+                    children.Add(new RShape { Geom = bar, Fill = paint, Stroke = stroke });
                 }
                 CheckDash(stroke, length, contours, curved);
                 break;

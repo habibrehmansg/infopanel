@@ -23,7 +23,8 @@ namespace InfoPanel.Core.Tests.Preview;
 /// The bound: alpha differs by at most <see cref="AlphaDelta"/>, and at most each input's share of the pixels differs
 /// by more than 4 in any channel. The GPU and CPU rasterisers differ at anti-aliased edges, in gradients and in blur.
 /// Set from the runs on an Apple M4 Max (Metal), every input live: all-kinds 0.92 % at scale 1 and 0.30 % at scale 2,
-/// wide-bar 0.27 %, clips-effects (clips with round corners, blur and shadow on a small canvas) 2.98 %; alpha never
+/// wide-bar 0.27 %, clips-effects (clips with round corners, blur and shadow on a small canvas) 2.98 %, series-ramp (a
+/// series' bars and cells each in its own colour) 0.00 % (none over 2); alpha never
 /// differed. The same GPU draws the same pixels each run, so the bound is exact here; another GPU re-measures it.
 /// </remarks>
 [Collection(GoldenCollection.Name)]
@@ -38,6 +39,7 @@ public sealed class GpuFrameMatchTests(ITestOutputHelper output)
         { "wide-bar", 1, 0.01 },
         { "clips-effects", 1, 0.04 },
         { "all-kinds", 2, 0.01 },
+        { "series-ramp", 1, 0.01 },
     };
 
     /// <summary>
@@ -54,6 +56,7 @@ public sealed class GpuFrameMatchTests(ITestOutputHelper output)
         ],
         ["wide-bar"] = [],
         ["clips-effects"] = [],
+        ["series-ramp"] = [],
     };
 
     [Theory]
@@ -149,6 +152,7 @@ public sealed class GpuFrameMatchTests(ITestOutputHelper output)
             "all-kinds" => SceneKit.Load(Path.Combine(core, "Scenes", "Reference", "v1", "all-kinds.document.json")),
             "wide-bar" => SceneKit.Load(Path.Combine(examples, "wide-bar.document.json")),
             "clips-effects" => SceneKit.Doc(SceneKit.Fixture("clips-effects.json"), 360, 140),
+            "series-ramp" => SceneKit.Doc(SceneKit.Example("scene/valid/series-ramp.json"), 260, 96, 10, 10),
             _ => throw new ArgumentOutOfRangeException(nameof(name)),
         };
     }

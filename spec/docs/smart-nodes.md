@@ -28,7 +28,7 @@ Text is laid out once per tick: the layout is part of the tick snapshot, so ever
 
 ## `series`
 
-Examples: `graph.json`, `histogram.json`, `frame-times.json` (a table's column).
+Examples: `graph.json`, `histogram.json`, `frame-times.json` (a table's column), `series-ramp.json` (a status strip of cells and bars coloured by their level).
 
 A number input's history, or with `column` a table input's column ([samples](bindings.md#samples): one per row, the last row newest), drawn in the box (`x`, `y`, `w`, `h`), clipped to it. The newest sample is at the right edge, each older one `pitch` pixels to the left (at least 0.25, default 1); at most `count` samples (default: as many as fit, floor(w ÷ pitch) + 1). A sample v is at y = bottom − clamp((v − min) ÷ (max − min), 0, 1) × h; when `max` ≤ `min`, at the bottom.
 
@@ -37,8 +37,19 @@ A number input's history, or with `column` a table input's column ([samples](bin
 | `line` (default) | A polyline through the samples, with `stroke`. |
 | `area` | The polyline closed down to the bottom of the box, with `fill`, then the polyline's `stroke` (not the closing edges). |
 | `bars` | One bar per sample from the bottom to the sample, `barWidth` wide (default `pitch`), its right edge on the sample's x, with `fill` and `stroke`. |
+| `cells` | One cell per sample, the box's full height, `barWidth` wide (default `pitch`), its right edge on the sample's x, with `fill` and `stroke`. A sample's value never changes its cell's size, only its colour (with `ramp`, below). Without a `ramp`, cells whose width is `pitch` at whole-pixel positions read as one band of `fill` wherever there are samples; narrower cells leave gaps between them, and at fractional positions neighbours meet with antialiased edges, as bars do. |
+
+Bars and cells are drawn oldest first, so where `barWidth` is wider than `pitch` each covers the right part of the one before it; one whose left edge is outside the box is clipped to it, as everything the series draws is.
 
 `min` and `max` are expressions: a fixed range, or an automatic one from `history` and state cells (`graph.json` expands at once and contracts smoothly).
+
+### A colour per sample
+
+`ramp` is 2–16 stops `{ "at", "color" }`, a gradient's ([paints](scene.md#paints)): both may be expressions, read each tick and placed as a gradient's stops are (each `at` clamped to 0–1, then raised to the previous stop's position, never reordered; [stop positions](scene.md#paints)). With `bars` and `cells` each bar or cell is filled with the ramp's colour at its sample's position t = clamp((v − min) ÷ (max − min), 0, 1), with the `min` and `max` the series places its samples with this tick (whatever expressions give them), and 0 when `max` ≤ `min`: a sample at or below `min` takes the colour at 0, one at or above `max` the colour at 1. A sample is always a finite number (one that isn't reads 0, [samples](bindings.md#samples)); a t that would still not be one (a range wider than a number holds) is 0, as every result that isn't finite is ([expressions](expressions.md#numbers-and-strings)).
+
+The colour at t is the stops' colours interpolated by the format's rule for gradients, in sRGB, premultiplied ([drawing model](scene.md#drawing-model)), computed exactly for each sample: before the first stop's position the first colour, from the last stop's the last, and between two stops that rule, so a transparent stop fades the next colour in without its own showing. A gradient as drawn may differ from it by a few channel levels between stops of very different opacity (a renderer may approximate the rule when it draws a gradient; a ramp's colour is exact). Stops at one position make a hard edge, as they do in a gradient, and t at that position itself takes the colour after the edge: the stops green at 0 and 0.7, amber at 0.7 and 0.85, red at 0.85 and 1 colour 69.9 green, 70 amber and 85 red over 0–100 (`series-ramp.json`).
+
+The ramp's colour takes the place of `fill` for bars and cells; `stroke` outlines each of them as it does without a ramp. `line` and `area` evaluate a ramp but don't draw with it: they draw exactly as without one (`area` with its `fill`), as `barWidth` is unused outside `bars` and `cells`. What a ramp and `cells` cost is under [cost](expressions.md#cost).
 
 `column` goes with a table input, which then needs one, and a number input takes none (`type.input` at `input`); it names the column by index or by name as `cell` does. Its samples are drawn exactly as a history holding the same numbers would be, and a `history` over the same column in the same tick reads the same samples: a percentile line drawn over the bars it was taken from (`frame-times.json`) matches them.
 

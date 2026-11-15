@@ -110,6 +110,13 @@ public sealed class SceneGoldenTests
         // percentile line over the same samples, and their distribution in four bins.
         ["frame-times"] = new("scene/valid/frame-times.json", 384, 92, 6, 6, null, null, SceneColumnSamplesTests.Table(SceneColumnSamplesTests.FrameTimes(), "test:frames")),
         ["frame-histogram"] = new("scene/valid/frame-histogram.json", 132, 92, 6, 6, null, null, SceneColumnSamplesTests.Table(SceneColumnSamplesTests.FrameTimes(), "test:frames")),
+        // A temperature from about 15 to 97: the status strip's cells green, amber from 70 and red from 85 with hard
+        // edges, and below it bars from blue to red by their level.
+        ["series-ramp"] = new("scene/valid/series-ramp.json", 260, 96, 10, 10, null, null, i =>
+        {
+            i.Number("test:temp", 60);
+            i.Histories["test:temp"] = [.. Enumerable.Range(0, 80).Select(k => Math.Round(56 + 36 * Math.Sin(k / 6.0) + 6 * Math.Sin(k / 1.7), 1))];
+        }),
         ["shapes-scale2"] = new("scene/valid/shapes.json", 220, 180, 5, 5, null, null, Scale: 2),
         ["sensor-text-rotated"] = new("scene/valid/sensor-text.json", 200, 120, 40, 40, null, null, i => i.Number("test:v", 90, "°C"), Rotation: 20),
         // A video on the tick clock: its first frame, frame 3 at 0.35 s, and frame 2 of its second loop at 1.25 s.

@@ -129,7 +129,7 @@ internal sealed class CText : CNode
     public bool Underline, Strike;
 }
 
-internal enum SeriesMode : byte { Line, Area, Bars }
+internal enum SeriesMode : byte { Line, Area, Bars, Cells }
 
 internal sealed class CSeries : CNode
 {
@@ -140,6 +140,8 @@ internal sealed class CSeries : CNode
     public SeriesMode Mode;
     public CExpr? Pitch, BarWidth;
     public int? Count;
+    /// <summary>A colour per bar or cell: stops compiled as a gradient's; null: <see cref="Fill"/>.</summary>
+    public CStop[]? Ramp;
     public CPaint? Fill;
     public CStroke? Stroke;
 }
@@ -506,10 +508,11 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
                     Input = _scope.Inputs.TryGetValue(s.Input, out var si) ? si : int.MaxValue,
                     Column = SampleColumn.Of(s.Column),
                     X = N(s.X), Y = N(s.Y), W = N(s.W), H = N(s.H), Min = N(s.Min), Max = N(s.Max),
-                    Mode = s.Mode switch { "area" => SeriesMode.Area, "bars" => SeriesMode.Bars, _ => SeriesMode.Line },
+                    Mode = s.Mode switch { "area" => SeriesMode.Area, "bars" => SeriesMode.Bars, "cells" => SeriesMode.Cells, _ => SeriesMode.Line },
                     Pitch = s.Pitch is null ? null : _x.Compile(s.Pitch),
                     BarWidth = s.BarWidth is null ? null : _x.Compile(s.BarWidth),
                     Count = s.Count,
+                    Ramp = s.Ramp is null ? null : Stops(s.Ramp),
                     Fill = Paint(s.Fill),
                     Stroke = Stroke(s.Stroke),
                 };
