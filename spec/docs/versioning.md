@@ -16,7 +16,7 @@ The format string names the **major** version. Within a major version there are 
 
 Until the first engine release, every format here is a draft and may change in any way. That release freezes them all at once: every format an engine stores, or that passes between versions of the engine and of the clients that talk to it, which is every format in the table above and every one this specification adds before that release. After it, each changes only as this page allows.
 
-A major version's limits ([limits](limits.md)) are frozen with it, and so are its error codes and the paths they are reported at ([below](#error-codes-and-paths)). The engine's budgets are not part of the formats ([limits](limits.md)), so they are not frozen.
+A major version's limits ([limits](limits.md)) are frozen with it, except that a minor version may raise a scene limit under a capability ([below](#minor-versions)); so are its error codes and the paths they are reported at ([below](#error-codes-and-paths)). The engine's budgets are not part of the formats ([limits](limits.md)), so they are not frozen.
 
 ## Minor versions
 
@@ -24,9 +24,10 @@ A minor version may only **add**, and every addition belongs to a named capabili
 
 - node kinds, expression operations, paint, effect and transform types;
 - optional members, whose absence means exactly what it meant before;
-- values of any enumeration, required discriminators included (a new `kind`, `type` or `op`, a new `fit` or `blend` mode); content that uses a new value lists its capability in `requires`, so an engine without it treats the content as unsupported before it reads the value. Existing values never change meaning.
+- values of any enumeration, required discriminators included (a new `kind`, `type` or `op`, a new `fit` or `blend` mode); content that uses a new value lists its capability in `requires`, so an engine without it treats the content as unsupported before it reads the value. Existing values never change meaning;
+- a higher value of a scene limit, as the next paragraph allows.
 
-A minor version never removes or renames anything, never changes a default or what existing content means or how it is drawn (beyond fixing a bug against this specification), never makes an optional member required and never changes a limit. Limits are fixed for a major version: every engine that reads version 1 accepts everything within version 1's limits.
+A minor version never removes or renames anything, never changes a default or what existing content means or how it is drawn (beyond fixing a bug against this specification), never makes an optional member required and never lowers a limit. It may raise a limit of the scene format that a reader checks after the scene's `requires` (the scene limits and the schema's bounds on a scene: [validation](validation.md#order), steps 4 to 7) under a capability: a scene beyond the earlier value lists it, and an engine without it shows the item as unsupported and keeps it. Every other limit (`jsonDepth`, the read caps, the run-time limits, and the document, commit, request, settings, socket, media, archive and import limits) is fixed for the major version: every engine that reads version 1 accepts everything within version 1.0's limits.
 
 ### Shipping a minor version
 
@@ -58,7 +59,7 @@ An engine reports what it supports in `GET /api/session` (`urn:infopanel:api:1#/
 
 ## Major versions
 
-Anything else (removing or renaming, changing meaning, changing limits) needs a new major version, with a new format string (`infopanel.scene/2`). A new major version never strands what a user has saved:
+Anything else (removing or renaming, changing meaning, lowering a limit, or raising one a minor version may not raise) needs a new major version, with a new format string (`infopanel.scene/2`). A new major version never strands what a user has saved:
 
 - an engine keeps content in a major version it can't read exactly as stored ([unsupported content](unsupported.md)), and never converts content from one major version to another on its own, because that would rewrite it silently;
 - the engine that brings a new major version offers the user an upgrade that converts the content losslessly and keeps the original;
@@ -105,4 +106,4 @@ Four markers say what a reader may do, each answering its own question; folding 
 - **A document's tag.** Every document has a lifetime tag, `instance`, new every time the engine creates or opens it ([API](api.md#a-documents-tag)). A commit, undo, redo, revert or delete names the tag of the document it read; one that names another is refused (409, reason `instance`) instead of acting on a document it never saw. A profile deleted and imported again under the same id has a new tag, so a delayed commit or delete carrying the old one is refused instead of acting on the new profile. The session's `instance` answers another question: did the engine restart?
 - **API features.** `protocol` goes up only for a change a client can't ignore. An operation added after version 1 comes under a feature name, listed in `GET /api/session` (`features`, [API](api.md#session)), and a client offers it only when the engine lists it: an operation that restored a profile's earlier save, say, would come as `profiles.restore`, and an engine that predates it neither lists the name nor serves the request. Version 1 defines no features, so the list is empty.
 
-Choosing one: a new saved member, node kind or value is a content capability; a new file or folder holding blob references outside a profile's folder, a data-folder capability; a new operation, an API feature; a new guard on an existing request, the document's tag or `baseRev`, never a new marker.
+Choosing one: a new saved member, node kind or value is a content capability; a new file or folder holding blob references outside a profile's folder, a data-folder capability; a new operation, an API feature; a new guard on an existing request, the document's tag or `baseRev`, never a new marker. A new media provider needs no new marker either: a scene that uses one lists `media.provider`, and the session's `media.providers` says whether the engine has it ([providers](providers.md)).

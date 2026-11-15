@@ -1075,12 +1075,13 @@ public sealed class WorkspaceTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void AThousandAccentsInAnOrigin_PassOriginBytes_AndTheDocumentReopensAfterARestart(bool sentEscaped)
+    public void FourThousandAccentsInAnOrigin_PassOriginBytes_AndTheDocumentReopensAfterARestart(bool sentEscaped)
     {
-        // 1,000 é are 2,000 bytes measured (originBytes is 4 KiB) whether sent as UTF-8 or as six-byte escapes. The store
-        // wrote them escaped, so an origin accepted at 2,000 bytes came back at 6,000 and the document didn't open again.
+        // 4,000 é are 8,000 bytes measured (originBytes is 16 KiB) whether sent as UTF-8 or as six-byte escapes. A store
+        // that wrote them escaped would bring an origin accepted at 8,000 bytes back at 24,000, and the document wouldn't
+        // open again.
         var workspace = With();
-        var origin = new JsonObject { ["note"] = new string('é', 1_000) };
+        var origin = new JsonObject { ["note"] = new string('é', 4_000) };
         byte[] Send(JsonNode body) => Encoding.UTF8.GetBytes(sentEscaped ? body.ToJsonString() : body.ToJsonString(Unescaped));
 
         var document = JsonNode.Parse(DocJson(A, Scene("a", extra: new JsonObject { ["origin"] = origin.DeepClone() })));
@@ -1100,7 +1101,7 @@ public sealed class WorkspaceTests : IDisposable
         Assert.True(entry.Status == "ok", $"{entry.Status}: {entry.Problem?.Code} {entry.Problem?.Path} {entry.Problem?.Message}");
         var reopened = restarted.Open(A)!.Current;
         foreach (var id in new[] { "a", "b" })
-            Assert.Equal(new string('é', 1_000), reopened.Item(id).Origin!.Value.GetProperty("note").GetString());
+            Assert.Equal(new string('é', 4_000), reopened.Item(id).Origin!.Value.GetProperty("note").GetString());
         var stored = File.ReadAllBytes(Paths.DocumentFile(A));
         Assert.Equal(CanonicalOf(stored), Encoding.UTF8.GetString(stored));
         Assert.Equal(stored.LongLength, reopened.Content.Bytes);
@@ -1110,11 +1111,11 @@ public sealed class WorkspaceTests : IDisposable
     public void ADocumentStoredBeforeTheCanonicalForm_Opens_AndItsNextSaveStoresItCanonical()
     {
         // What earlier engines stored: compact JSON with every non-ASCII character a six-byte escape and opaque numbers as
-        // sent. This one's origin is 6,000 bytes as stored but 2,000 measured: it opens, and its next save writes the
-        // canonical form, the size it was measured at.
+        // sent. This one's origin is 24,000 bytes as stored, over originBytes, but 8,000 measured: it opens, and its next
+        // save writes the canonical form, the size it was measured at.
         var item = Scene("a", 1.5, 2, extra: new JsonObject
         {
-            ["origin"] = new JsonObject { ["z"] = JsonNode.Parse("1.50"), ["note"] = new string('é', 1_000) },
+            ["origin"] = new JsonObject { ["z"] = JsonNode.Parse("1.50"), ["note"] = new string('é', 4_000) },
             ["name"] = "Café",
         });
         var earlier = JsonNode.Parse(DocJson(A, item))!.ToJsonString();
@@ -1131,7 +1132,7 @@ public sealed class WorkspaceTests : IDisposable
         var stored = File.ReadAllBytes(Paths.DocumentFile(A));
         Assert.Equal(CanonicalOf(stored), Encoding.UTF8.GetString(stored));
         Assert.Equal(stored.LongLength, doc.Current.Content.Bytes);
-        Assert.True(stored.Length < earlier.Length - 3_900, $"{earlier.Length} bytes before, {stored.Length} after");
+        Assert.True(stored.Length < earlier.Length - 15_900, $"{earlier.Length} bytes before, {stored.Length} after");
         Assert.Contains("\"z\":1.5}", Encoding.UTF8.GetString(stored), StringComparison.Ordinal);
     }
 
@@ -1139,17 +1140,17 @@ public sealed class WorkspaceTests : IDisposable
     public void ADocumentStoredBeforeTheCanonicalForm_CanMeasureLarger_AndNoLongerOpen()
     {
         // The compatibility narrowing spec/docs/document.md states (allowed while the formats are a draft): an origin of
-        // 200 numbers spelled 1e20 is 1,007 bytes as an earlier engine stored it, 4,407 in the canonical form, over the
-        // 4,096 of originBytes, so its document is unreadable now.
-        var origin = "{\"n\":[" + string.Join(",", Enumerable.Repeat("1e20", 200)) + "]}";
-        Assert.Equal(1_007, Encoding.UTF8.GetByteCount(origin));
-        Assert.Equal(4_407, Encoding.UTF8.GetByteCount(global::InfoPanel.Spec.CanonicalJson.Write(Raw(origin))));
+        // 800 numbers spelled 1e20 is 4,007 bytes as an earlier engine stored it, 17,607 in the canonical form, over the
+        // 16,384 of originBytes, so its document is unreadable now.
+        var origin = "{\"n\":[" + string.Join(",", Enumerable.Repeat("1e20", 800)) + "]}";
+        Assert.Equal(4_007, Encoding.UTF8.GetByteCount(origin));
+        Assert.Equal(17_607, Encoding.UTF8.GetByteCount(global::InfoPanel.Spec.CanonicalJson.Write(Raw(origin))));
         var stored = DocJson(A, Scene("a")).Replace("\"kind\":\"scene\"", "\"kind\":\"scene\",\"origin\":" + origin, StringComparison.Ordinal);
         Assert.Contains(origin, stored, StringComparison.Ordinal);
 
         var entry = Assert.Single(With((A, stored)).List());
         Assert.Equal(("unreadable", "limit.originBytes", "/items/0/origin"), (entry.Status, entry.Problem!.Code, entry.Problem.Path));
-        Assert.Contains("4407", entry.Problem.Message, StringComparison.Ordinal);
+        Assert.Contains("17607", entry.Problem.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -17,7 +17,7 @@ A scene says which **inputs** it reads; an item says which sensor feeds each one
 | `text` | A text sensor's text, or an image sensor's reference (the picture it names, [API](api.md#sensor-pictures)) | `input` field `text` |
 | `table` | A table sensor: rows and named columns of text cells, and a summary text | `table`; `input` field `text` |
 
-Every input also has a `status` and `available` ([expressions](expressions.md)). A scene declares at most 32 inputs, each named like other scene names (`^[a-z][A-Za-z0-9_]{0,31}$`), with an optional `label` (up to 64 characters) for a client to show next to its binding control.
+Every input also has a `status` and `available` ([expressions](expressions.md)). A scene declares at most 64 inputs, each named like other scene names (`^[a-z][A-Za-z0-9_]{0,31}$`), with an optional `label` (up to 64 characters) for a client to show next to its binding control.
 
 ## Bindings
 
@@ -26,7 +26,9 @@ Every input also has a `status` and `available` ([expressions](expressions.md)).
 - `key` is a sensor key as the engine lists them (`GET /api/sensors`, [API](api.md#fonts-and-sensors)), up to 512 characters. Keys are opaque to the scene format; an engine documents its own (this engine's look like `infopanel:/mock/cpu/cpu-temp`; its four forms are in [API](api.md#fonts-and-sensors)). This engine refuses a key that names one of its own sources in the plugin form, `plugin:/infopanel.{source}/…` with `infopanel.` in any case (its own sources' keys are `infopanel:/{source}/…`, and no plugin may take an id starting `infopanel.`): a document's (created, imported in an archive, or stored) or a commit's binding with one is invalid, `key.pluginForm` at the binding's `key` ([validation](validation.md#codes)).
 - `stat` (`now`, `min`, `max`, `avg`; default `now`) is the statistic an input's `value` reads. `now`, `min`, `max` and `avg` can always be read explicitly too.
 
-A binding whose name the scene doesn't declare is kept and ignored, so an item can switch between scenes that share some inputs without losing the others. A declared input with no binding is **unbound**.
+`min`, `max` and `avg` are the sensor's statistics as its source keeps them. A source that keeps its own gives its own, over its own period. Otherwise they are the engine's: the least, greatest and mean of the finite readings it has taken since the statistics last started. They start with the sensor's first reading in a run, and start again only when the source says the sensor has no reading. A read that fails, a read the operating system refuses, and a reading that has only grown old do not start them again: when readings resume, the statistics go on. A scene that needs a stated period uses `history` (a number of samples) or a state cell (from the cell's first tick, [expressions](expressions.md#state-cells)).
+
+A binding whose name the scene doesn't declare is kept and ignored, so an item can switch between scenes that share some inputs without losing the others; an item keeps at most 1,024 bindings ([limits](limits.md#document-limits)), and its scene reads only those its inputs name. A declared input with no binding is **unbound**.
 
 ## Status
 
@@ -44,7 +46,7 @@ An input without a reading reads 0 (numbers), "" (text) and an empty table; a sc
 
 ## History
 
-A `number` input's history is the sensor's samples, oldest first, taken every `graphRate` milliseconds, an engine setting (one a second by default, [API](api.md#settings)), at most 4,096 of them. A change of `graphRate` keeps the samples taken before it. The engine keeps history for the keys that are read; the first read of a key may start with fewer samples. `history` aggregates the last `count` samples and `series` draws them. History is part of the tick snapshot, like every other input ([identity](identity.md)).
+A `number` input's history is the sensor's samples, oldest first, taken every `graphRate` milliseconds, an engine setting (one a second by default, [API](api.md#settings)), at most 4,096 of them. A change of `graphRate` keeps the samples taken before it. The engine keeps history for the keys that are read; the first read of a key may start with fewer samples. `history` aggregates the last `count` samples and `series` draws them. A `count` is a number of samples, not a length of time: the time it spans follows `graphRate`. History is part of the tick snapshot, like every other input ([identity](identity.md)).
 
 ## Time is not a binding
 

@@ -2941,7 +2941,7 @@ export interface Profile {
    * Items: ≤ 256.
    */
   guides?: Guide[];
-  /** Client data kept with the document (for example defaults for new items); opaque to the engine. At most 64 KiB. */
+  /** Client data kept with the document (for example defaults for new items); opaque to the engine. At most 1 MiB. */
   editor?: Opaque;
 }
 
@@ -3163,7 +3163,7 @@ export interface RefSource {
  */
 export type SourceDeps = BlobId[];
 
-/** Where the item came from, recorded by the client; opaque to the engine, kept on copy. At most 4 KiB. */
+/** Where the item came from, recorded by the client; opaque to the engine, kept on copy. At most 16 KiB. */
 export type Origin = Opaque;
 
 // expression.schema.json (urn:infopanel:expression:1)

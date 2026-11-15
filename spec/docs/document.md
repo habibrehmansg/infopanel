@@ -28,7 +28,7 @@ A document is one profile: a canvas size, settings, and a tree of items. The eng
 | `window` | The profile's desktop window ([below](#the-desktop-window)). |
 | `triggerApps` | Process names whose being in front should bring the profile up. Stored and kept; acted on by engines that support it. |
 | `guides` | Editor-only guide lines (below). |
-| `editor` | An opaque object for client data kept with the document, such as defaults for new items. The engine stores and returns it as the same JSON value and never interprets it (at most 64 KiB). |
+| `editor` | An opaque object for client data kept with the document, such as defaults for new items. The engine stores and returns it as the same JSON value and never interprets it (at most 1 MiB). |
 
 ### The desktop window
 
@@ -94,7 +94,7 @@ The engine never interprets an item's scene source: a client keeps there whateve
 
 An item without a `source` has a scene that stands alone: a client that edits it edits the scene itself.
 
-`origin` is an opaque object (at most 4 KiB) in which a client records where the item came from: created locally, imported from another format, copied from somewhere. The engine stores it, keeps it when the item is copied and never interprets it.
+`origin` is an opaque object (at most 16 KiB) in which a client records where the item came from: created locally, imported from another format, copied from somewhere. The engine stores it, keeps it when the item is copied and never interprets it.
 
 ## Revisions
 
@@ -110,8 +110,8 @@ Every stored blob (media assets and other files) is named by the SHA-256 of its 
 
 ## Size and nesting
 
-A document is at most 16 MiB with at most 2,000 items nested at most 8 levels (a top-level item at level 1) and at most 32 bindings per item; see [limits](limits.md#document-limits) for these and the aggregate limits across its scenes. Its size, and that of its scenes, sources, origins and editor data, is measured on its canonical form ([sizes](limits.md#sizes)), however it was sent; its own size leaves out its `rev` members.
+A document is at most 16 MiB with at most 2,000 items nested at most 8 levels (a top-level item at level 1) and at most 1,024 bindings per item; see [limits](limits.md#document-limits) for these and the aggregate limits across its scenes. Its size, and that of its scenes, sources, origins and editor data, is measured on its canonical form ([sizes](limits.md#sizes)), however it was sent; its own size leaves out its `rev` members.
 
 The engine stores a document in that form, without its `rev` members, so its stored size is its measured size, and exports a document it can open in the same form. A stored document in another form (written by hand, say) is read the same way, and its next save writes the canonical form.
 
-A document stored before sizes were measured this way is measured the same way, so it can measure larger than it was stored and no longer open: an origin holding 200 numbers written `1e20` is 1,007 bytes as stored and 4,407 in the canonical form, over `originBytes`, and its document is `unreadable`. The formats are a draft until version 1 first ships ([versioning](versioning.md)), so this narrowing is allowed; after that, no limit is measured differently within a major version.
+A document stored before sizes were measured this way is measured the same way, so it can measure larger than it was stored and no longer open: an origin holding 800 numbers written `1e20` is 4,007 bytes as stored and 17,607 in the canonical form, over `originBytes`, and its document is `unreadable`. The formats are a draft until version 1 first ships ([versioning](versioning.md)), so this narrowing is allowed; after that, no limit is measured differently within a major version.

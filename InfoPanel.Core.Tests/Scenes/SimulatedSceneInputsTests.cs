@@ -209,18 +209,36 @@ public class SimulatedSceneInputsTests
     }
 
     [Fact]
-    public void Every_binding_of_a_document_at_its_limits_is_simulated_and_after_a_rebinding_every_new_one()
+    public void Every_input_a_document_at_its_limits_reads_is_simulated_and_after_a_rebinding_every_new_one()
     {
         var (_, simulated) = Inputs();
-        // A key of its own for each binding a document may hold: each item's bindings, for every item it may have.
-        var bindings = SpecLimits.Default.Items * SpecLimits.Default.Bindings;
-        int Simulated(string prefix) => Enumerable.Range(0, bindings)
+        // A key of its own for each input a document may read: each item's scene's inputs, for every item it may have.
+        var inputs = SpecLimits.Default.Items * SpecLimits.Default.Inputs;
+        int Simulated(string prefix) => Enumerable.Range(0, inputs)
             .Count(i => simulated.Read(SensorKey.Plugin($"/{prefix}/{i}").ToString(), "number").Status == SceneInputStatus.Live);
 
-        Assert.Equal(bindings, Simulated("before"));
+        Assert.Equal(inputs, Simulated("before"));
         // Every item bound again: the keys no longer read are forgotten, so every new one is simulated too.
         _clock.Advance(61_000);
-        Assert.Equal(bindings, Simulated("after"));
+        Assert.Equal(inputs, Simulated("after"));
+    }
+
+    [Fact]
+    public void A_document_at_its_limits_walks_a_key_for_each_input_it_reads_and_one_key_more_forgets_the_one_read_longest_ago()
+    {
+        var (_, simulated) = Inputs();
+        // 2,000 items whose scenes each read 64 inputs, each bound to a key of its own; the bindings an item keeps
+        // beyond its scene's inputs are never read, so they take no key.
+        var keys = EveryInput("read");
+        Assert.All(keys, k => Assert.Equal(SceneInputStatus.Live, simulated.Read(k, "number").Status));
+
+        // A second later every one of them walks on: the first read, read again, has taken its step.
+        _clock.Advance(1000);
+        Assert.Equal(SimulatedSceneInputs.Backfill + 1, simulated.History(keys[0]).Count);
+        // One key more than such a document reads forgets the key read longest ago, now the second: read again, it
+        // starts afresh.
+        simulated.Read(SensorKey.Plugin("/read/one-more").ToString(), "number");
+        Assert.Equal(SimulatedSceneInputs.Backfill, simulated.History(keys[1]).Count);
     }
 
     [Fact]
@@ -264,15 +282,15 @@ public class SimulatedSceneInputsTests
         Assert.InRange(rare.Copied, 0, 2L * SensorHistory.MaxSamples);
     }
 
-    /// <summary>A key of its own for each binding a document at its limits holds.</summary>
-    private static List<string> EveryBinding(string prefix) => Enumerable.Range(0, SpecLimits.Default.Items * SpecLimits.Default.Bindings)
+    /// <summary>A key of its own for each input a document at its limits reads.</summary>
+    private static List<string> EveryInput(string prefix) => Enumerable.Range(0, SpecLimits.Default.Items * SpecLimits.Default.Inputs)
         .Select(i => SensorKey.Plugin($"/{prefix}/{i}").ToString()).ToList();
 
     [Fact]
     public void At_a_documents_limits_only_1024_keys_keep_a_history_and_the_values_held_stay_within_their_full_histories()
     {
         var simulated = new SimulatedSceneInputs(new SensorSceneInputs(_sensors, new FakeSensorHistory()), _clock);
-        var keys = EveryBinding("held");
+        var keys = EveryInput("held");
         var histories = 0;
         // As the runtime reads a tick: each number binding's reading, then its history.
         void Tick()
@@ -308,7 +326,7 @@ public class SimulatedSceneInputsTests
     public void With_every_key_of_a_document_at_its_limits_walking_a_rebinding_is_simulated_at_its_first_read()
     {
         var (_, simulated) = Inputs();
-        var keys = EveryBinding("bound");
+        var keys = EveryInput("bound");
         Assert.All(keys, k => Assert.Equal(SceneInputStatus.Live, simulated.Read(k, "number").Status));
 
         // A second later one item, halfway through the document, is bound to another key.

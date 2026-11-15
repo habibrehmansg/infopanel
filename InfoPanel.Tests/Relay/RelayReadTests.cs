@@ -210,7 +210,7 @@ public sealed class RelayReadTests
     /// A detail longer than <c>maxChars</c> is shortened by its structure, never cut as text: it still parses, within
     /// <c>maxChars</c>, its ids and revision whole, and says inside itself (<c>cut</c>) that it was shortened. At the
     /// limits: a profile and an item named with 256 characters and a <c>source.ref</c> of 512, beside 50 other items;
-    /// 32 bindings (the most an item has) of 32-character names and 512-character keys; both.
+    /// 32 bindings (fewer than the 1,024 an item may keep) of 32-character names and 512-character keys; both.
     /// </summary>
     [Theory]
     [MemberData(nameof(LongDetails))]

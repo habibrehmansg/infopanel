@@ -403,7 +403,7 @@ public class SimulatedTextTests
     [Fact]
     public void Text_keys_the_list_doesnt_name_stay_within_the_keys_limit()
     {
-        var limits = SpecLimits.Default with { Items = 1, Bindings = 4 };
+        var limits = SpecLimits.Default with { Items = 1, Inputs = 4 };
         var live = new SensorSceneInputs(_sensors, new FakeSensorHistory());
         var simulated = new SimulatedSceneInputs(live, _clock, limits, () => _catalogue);
 
@@ -422,7 +422,7 @@ public class SimulatedTextTests
     [Fact]
     public void At_the_keys_limit_the_text_key_read_longest_ago_goes_and_the_others_keep_their_values()
     {
-        var limits = SpecLimits.Default with { Items = 1, Bindings = 2 };
+        var limits = SpecLimits.Default with { Items = 1, Inputs = 2 };
         var a = Text("lan/a", "Local IP", "10.0.0.1");
         var b = Text("lan/b", "Local IP", "10.0.0.2");
         var c = Text("lan/c", "Local IP", "10.0.0.3");

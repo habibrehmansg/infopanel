@@ -9,7 +9,8 @@ namespace InfoPanel.Spec;
 /// reason for its number): scenes, documents, commits, request bodies, the profile list and the tokens, the engine settings,
 /// media, archives, the 1.x import and its record, and the preview socket's messages.
 /// Every engine that reads infopanel.scene/1, infopanel.document/1 and infopanel.archive/1 accepts everything within them; the numbers never
-/// change within major version 1. Each member's camelCase name is the limit's name in docs, error codes
+/// change within major version 1, except that a minor version may raise a scene limit under a capability
+/// (spec/docs/versioning.md, "Minor versions"). Each member's camelCase name is the limit's name in docs, error codes
 /// (<c>limit.{name}</c>, where its refusal has a code of that form) and the session's <c>limits</c> of the format it
 /// belongs to (<see cref="FormatOf"/>). Other options take their values from here (<c>ImportLimits</c>). Tests may tighten
 /// a limit to keep an example small (<see cref="With"/>).
@@ -22,7 +23,7 @@ public sealed record SpecLimits
     public int SceneBytes { get; init; } = 1_048_576;
     public int Nodes { get; init; } = 2_000;
     public int Depth { get; init; } = 24;
-    public int Inputs { get; init; } = 32;
+    public int Inputs { get; init; } = 64;
     public int Values { get; init; } = 256;
     public int StateCells { get; init; } = 64;
     public int ExprDepth { get; init; } = 32;
@@ -47,10 +48,10 @@ public sealed record SpecLimits
     public int Items { get; init; } = 2_000;
     /// <summary>Item levels: a top-level item is at level 1, a group's children one level below it.</summary>
     public int ItemDepth { get; init; } = 8;
-    public int Bindings { get; init; } = 32;
+    public int Bindings { get; init; } = 1_024;
     public int SourceBytes { get; init; } = 262_144;
-    public int OriginBytes { get; init; } = 4_096;
-    public int EditorBytes { get; init; } = 65_536;
+    public int OriginBytes { get; init; } = 16_384;
+    public int EditorBytes { get; init; } = 1_048_576;
     public int DocumentNodes { get; init; } = 20_000;
     public int DocumentWork { get; init; } = 200_000;
     public int DocumentTextNodes { get; init; } = 1_000;

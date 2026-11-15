@@ -18,8 +18,8 @@ namespace InfoPanel.Scenes;
 /// <list type="bullet">
 /// <item>Text: each key keeps what it first showed while it is read; an address, name or sample is the next of its
 /// kind, a source's texts of one adapter, drive or audio device the same one. System Info's uptime starts from
-/// <see cref="SimulatedText.UptimeStart"/> at the first read and moves as time does. At most a text key for each binding
-/// a document within <paramref name="limits"/> holds is kept: a new one past that forgets the key read longest ago, and
+/// <see cref="SimulatedText.UptimeStart"/> at the first read and moves as time does. At most a text key for each input
+/// a document within <paramref name="limits"/> reads is kept: a new one past that forgets the key read longest ago, and
 /// only its sample, which the next new key of its kind may take.</item>
 /// <item>Tables: the columns and rows of <paramref name="live"/>'s (<see cref="SimulatedText.Table"/>), their numbers
 /// made up again each step.</item>
@@ -33,9 +33,10 @@ namespace InfoPanel.Scenes;
 /// keys walking at once keep one, the first started; the others keep only their now, min, max and average, and their
 /// history reads empty.</item>
 /// <item>A key no read has asked for in <see cref="ForgetAfter"/> is forgotten (an item bound to another key, say); read
-/// again, it starts afresh. At most a key for each binding a document within <paramref name="limits"/> holds walk at
-/// once (its items times their bindings): a new key past that forgets the key read longest ago, which a document within
-/// them no longer binds once a tick has read its keys, so every binding of a document is simulated.</item>
+/// again, it starts afresh. At most a key for each input a document within <paramref name="limits"/> reads walk at
+/// once (its items times a scene's inputs; the bindings an item keeps beyond its scene's inputs are never read): a new
+/// key past that forgets the key read longest ago, which a document within them no longer reads once a tick has read
+/// its keys, so every input a document reads is simulated.</item>
 /// </list>
 /// One per simulated render loop; thread-safe.
 /// </summary>
@@ -52,10 +53,10 @@ internal sealed class SimulatedSceneInputs(ISceneInputSource live, TimeProvider 
 
     private static readonly TimeSpan StepInterval = SensorHub.TickInterval;
 
-    /// <summary>Keys that walk at once: a document's every binding, each a key of its own.</summary>
+    /// <summary>Keys that walk at once: every input a document's scenes read, each bound to a key of its own.</summary>
     private readonly int _maxKeys = MaxKeys(limits ?? SpecLimits.Default);
 
-    internal static int MaxKeys(SpecLimits limits) => (int)Math.Clamp((long)limits.Items * limits.Bindings, 1, int.MaxValue);
+    internal static int MaxKeys(SpecLimits limits) => (int)Math.Clamp((long)limits.Items * limits.Inputs, 1, int.MaxValue);
 
     /// <summary>A key's walk, its values held within <c>low</c> to <c>high</c>, with the min, max and average of them.</summary>
     private sealed class Walked(string key, SensorWalk walk, string unit, double low, double high, bool keepsHistory)

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using InfoPanel.Import;
@@ -286,6 +287,98 @@ public class LimitsTests
         // Two composes side by side, each one deep, are within it.
         var side = SceneValidator.Check(Parse($$$"""{"format": "infopanel.scene/1", "nodes": [{"kind": "rect", "w": 1, "h": 1, "fill": {{{Once}}}, "stroke": {"paint": {{{Once}}}, "width": 1}}]}"""), limits);
         Assert.True(side.Status == CheckStatus.Valid, Show(side.Errors));
+    }
+
+    // ---- the edges of inputs, bindings, originBytes and editorBytes -------------------------------------------------
+
+    /// <summary>A document of one scene item, with more members on the item and on its profile (JSON text, each after a comma).</summary>
+    private static JsonElement OneItem(string item = "", string profile = "") => Parse($$$"""
+        {"format": "infopanel.document/1", "id": "3dd19c0e-675a-4591-b096-83417853861f",
+         "profile": {"name": "Edges", "width": 100, "height": 100{{{profile}}}},
+         "items": [{"kind": "scene", "id": "a", "placement": {"x": 0, "y": 0}{{{item}}},
+                    "scene": {"format": "infopanel.scene/1", "nodes": []}}]}
+        """);
+
+    private static JsonElement Commit(string op) => Parse($$"""
+        {"opId": "0b8a6c1e-2f43-4a7e-9d3f-5f1c2a7b9e10", "instance": "7c2f9a41d0e34b8f9e6a5b3c1d2e4f60", "baseRev": 1, "ops": [{{op}}]}
+        """);
+
+    /// <summary>An object whose canonical form is <paramref name="bytes"/> bytes long: <c>{"n":"xx…x"}</c>.</summary>
+    private static string OfBytes(int bytes)
+    {
+        var json = $$"""{"n": "{{new string('x', bytes - 8)}}"}""";
+        Assert.Equal(bytes, Encoding.UTF8.GetByteCount(CanonicalJson.Write(Parse(json))));
+        return json;
+    }
+
+    private static string Bindings(int count) =>
+        "{" + string.Join(", ", Enumerable.Range(0, count).Select(i => $$"""
+            "b{{i}}": {"key": "infopanel:/mock/cpu/core-{{i}}"}
+            """)) + "}";
+
+    private static string Inputs(int count) =>
+        "{" + string.Join(", ", Enumerable.Range(0, count).Select(i => $$"""
+            "i{{i}}": {"type": "number"}
+            """)) + "}";
+
+    private static void Over(string code, string path, IReadOnlyList<SpecError> errors)
+    {
+        var error = Assert.Single(errors);
+        Assert.Equal((code, path), (error.Code, error.Path));
+    }
+
+    [Fact]
+    public void A_scene_declares_up_to_64_inputs_and_65_are_over_inputs()
+    {
+        var at = SceneValidator.Check(Parse($$"""{"format": "infopanel.scene/1", "inputs": {{Inputs(64)}}, "nodes": []}"""));
+        Assert.True(at.Status == CheckStatus.Valid, Show(at.Errors));
+
+        var over = SceneValidator.Check(Parse($$"""{"format": "infopanel.scene/1", "inputs": {{Inputs(65)}}, "nodes": []}"""));
+        Assert.Equal(CheckStatus.Invalid, over.Status);
+        Over("limit.inputs", "/inputs", over.Errors);
+    }
+
+    [Fact]
+    public void An_item_keeps_up_to_1024_bindings_and_1025_are_over_bindings()
+    {
+        var at = DocumentValidator.Check(OneItem(item: $", \"bindings\": {Bindings(1_024)}"));
+        Assert.True(at.Status == CheckStatus.Valid, Show(at.Errors));
+        var set = CommitValidator.Check(Commit($$"""{"op": "setBindings", "id": "a", "bindings": {{Bindings(1_024)}}}"""));
+        Assert.True(set.Errors.Count == 0, Show(set.Errors));
+
+        var over = DocumentValidator.Check(OneItem(item: $", \"bindings\": {Bindings(1_025)}"));
+        Assert.Equal(CheckStatus.Invalid, over.Status);
+        Over("limit.bindings", "/items/0/bindings", over.Errors);
+        Over("limit.bindings", "/ops/0/bindings", CommitValidator.Check(Commit($$"""{"op": "setBindings", "id": "a", "bindings": {{Bindings(1_025)}}}""")).Errors);
+    }
+
+    [Fact]
+    public void An_origin_of_16_KiB_is_within_originBytes_and_one_byte_more_is_over()
+    {
+        const string Scene = """{"format": "infopanel.scene/1", "nodes": []}""";
+        var at = DocumentValidator.Check(OneItem(item: $", \"origin\": {OfBytes(16_384)}"));
+        Assert.True(at.Status == CheckStatus.Valid, Show(at.Errors));
+        var set = CommitValidator.Check(Commit($$"""{"op": "setDesign", "id": "a", "scene": {{Scene}}, "origin": {{OfBytes(16_384)}}}"""));
+        Assert.True(set.Errors.Count == 0, Show(set.Errors));
+
+        var over = DocumentValidator.Check(OneItem(item: $", \"origin\": {OfBytes(16_385)}"));
+        Assert.Equal(CheckStatus.Invalid, over.Status);
+        Over("limit.originBytes", "/items/0/origin", over.Errors);
+        Over("limit.originBytes", "/ops/0/origin", CommitValidator.Check(Commit($$"""{"op": "setDesign", "id": "a", "scene": {{Scene}}, "origin": {{OfBytes(16_385)}}}""")).Errors);
+    }
+
+    [Fact]
+    public void Editor_data_of_1_MiB_is_within_editorBytes_and_one_byte_more_is_over()
+    {
+        var at = DocumentValidator.Check(OneItem(profile: $", \"editor\": {OfBytes(1_048_576)}"));
+        Assert.True(at.Status == CheckStatus.Valid, Show(at.Errors));
+        var set = CommitValidator.Check(Commit($$$"""{"op": "profile", "set": {"editor": {{{OfBytes(1_048_576)}}}}}"""));
+        Assert.True(set.Errors.Count == 0, Show(set.Errors));
+
+        var over = DocumentValidator.Check(OneItem(profile: $", \"editor\": {OfBytes(1_048_577)}"));
+        Assert.Equal(CheckStatus.Invalid, over.Status);
+        Over("limit.editorBytes", "/profile/editor", over.Errors);
+        Over("limit.editorBytes", "/ops/0/set/editor", CommitValidator.Check(Commit($$$"""{"op": "profile", "set": {"editor": {{{OfBytes(1_048_577)}}}}}""")).Errors);
     }
 
     // ---- deps: no count of their own ------------------------------------------------------------------------------

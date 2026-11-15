@@ -67,7 +67,7 @@
         },
         "editor": {
           "$ref": "urn:infopanel:common:1#/$defs/opaque",
-          "description": "Client data kept with the document (for example defaults for new items); opaque to the engine. At most 64 KiB."
+          "description": "Client data kept with the document (for example defaults for new items); opaque to the engine. At most 1 MiB."
         }
       }
     },
@@ -267,7 +267,7 @@
     },
     "origin": {
       "$ref": "urn:infopanel:common:1#/$defs/opaque",
-      "description": "Where the item came from, recorded by the client; opaque to the engine, kept on copy. At most 4 KiB."
+      "description": "Where the item came from, recorded by the client; opaque to the engine, kept on copy. At most 16 KiB."
     }
   }
 }
