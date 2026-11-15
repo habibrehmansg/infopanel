@@ -24,7 +24,9 @@ namespace InfoPanel.Core.Tests.Preview;
 /// by more than 4 in any channel. The GPU and CPU rasterisers differ at anti-aliased edges, in gradients and in blur.
 /// Set from the runs on an Apple M4 Max (Metal), every input live: all-kinds 0.92 % at scale 1 and 0.30 % at scale 2,
 /// wide-bar 0.27 %, clips-effects (clips with round corners, blur and shadow on a small canvas) 2.98 %, series-ramp (a
-/// series' bars and cells each in its own colour) 0.00 % (none over 2); alpha never
+/// series' bars and cells each in its own colour) 0.00 % (none over 2), blend-porter-duff (a marquee faded at both ends by a
+/// destination-in gradient, a picture tinted by a source-atop colour: groups drawn as layers for their operators) 0.00 %
+/// (none over 2); alpha never
 /// differed. The same GPU draws the same pixels each run, so the bound is exact here; another GPU re-measures it.
 /// </remarks>
 [Collection(GoldenCollection.Name)]
@@ -40,6 +42,7 @@ public sealed class GpuFrameMatchTests(ITestOutputHelper output)
         { "clips-effects", 1, 0.04 },
         { "all-kinds", 2, 0.01 },
         { "series-ramp", 1, 0.01 },
+        { "blend-porter-duff", 1, 0.01 },
     };
 
     /// <summary>
@@ -57,6 +60,16 @@ public sealed class GpuFrameMatchTests(ITestOutputHelper output)
         ["wide-bar"] = [],
         ["clips-effects"] = [],
         ["series-ramp"] = [],
+        ["blend-porter-duff"] = [],
+    };
+
+    /// <summary>
+    /// The most an input's colour channels may differ anywhere, where it is set (the share over 4 alone would let a few
+    /// pixels be arbitrarily wrong): blend-porter-duff measured 2 on Metal and on Direct3D 12.
+    /// </summary>
+    private static readonly Dictionary<string, int> MaxChannelDelta = new()
+    {
+        ["blend-porter-duff"] = 8,
     };
 
     [Theory]
@@ -96,6 +109,8 @@ public sealed class GpuFrameMatchTests(ITestOutputHelper output)
             $"max delta R{max[0]} G{max[1]} B{max[2]} A{max[3]}; pixels over 1: {over1:P3}; over 4: {over4:P3}");
         Assert.True(max[3] <= AlphaDelta, $"{name}: alpha differs by {max[3]}, over {AlphaDelta}");
         Assert.True(over4 <= bound, $"{name}: {over4:P3} of the pixels differ by more than 4, over {bound:P0}");
+        if (MaxChannelDelta.TryGetValue(name, out var cap))
+            Assert.True(max[..3].Max() <= cap, $"{name}: a colour channel differs by {max[..3].Max()}, over {cap}");
     }
 
     [Fact]
@@ -153,8 +168,17 @@ public sealed class GpuFrameMatchTests(ITestOutputHelper output)
             "wide-bar" => SceneKit.Load(Path.Combine(examples, "wide-bar.document.json")),
             "clips-effects" => SceneKit.Doc(SceneKit.Fixture("clips-effects.json"), 360, 140),
             "series-ramp" => SceneKit.Doc(SceneKit.Example("scene/valid/series-ramp.json"), 260, 96, 10, 10),
+            "blend-porter-duff" => SceneKit.Doc(Titled(SceneKit.Example("scene/valid/blend-porter-duff.json")), 220, 70, 10, 10),
             _ => throw new ArgumentOutOfRangeException(nameof(name)),
         };
+    }
+
+    /// <summary>The Porter-Duff example with its title as a literal text: these inputs read every text as unavailable.</summary>
+    private static JsonElement Titled(JsonElement scene)
+    {
+        var node = JsonNode.Parse(scene.GetRawText())!;
+        node["nodes"]![0]!["children"]![0]!["text"] = "Now playing: a song title that is much too long for its box";
+        return JsonSerializer.SerializeToElement(node);
     }
 
     /// <summary>

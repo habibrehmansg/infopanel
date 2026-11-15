@@ -117,6 +117,10 @@ public sealed class SceneGoldenTests
             i.Number("test:temp", 60);
             i.Histories["test:temp"] = [.. Enumerable.Range(0, 80).Select(k => Math.Round(56 + 36 * Math.Sin(k / 6.0) + 6 * Math.Sin(k / 1.7), 1))];
         }),
+        // A title scrolled 60 pixels into its marquee, faded out at both ends by a destination-in gradient over the
+        // background, and below it the picture tinted sky blue by a source-atop rectangle.
+        ["blend-porter-duff"] = new("scene/valid/blend-porter-duff.json", 220, 70, 10, 10, null, null,
+            i => i.Text("test:title", "Now playing: a song title that is much too long for its box"), Elapsed: 2),
         ["shapes-scale2"] = new("scene/valid/shapes.json", 220, 180, 5, 5, null, null, Scale: 2),
         ["sensor-text-rotated"] = new("scene/valid/sensor-text.json", 200, 120, 40, 40, null, null, i => i.Number("test:v", 90, "°C"), Rotation: 20),
         // A video on the tick clock: its first frame, frame 3 at 0.35 s, and frame 2 of its second loop at 1.25 s.

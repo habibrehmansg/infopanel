@@ -1,0 +1,10 @@
+{
+  "format": "infopanel.scene/1",
+  "nodes": [
+    {
+      "kind": "group",
+      "blend": "clear",
+      "children": []
+    }
+  ]
+}

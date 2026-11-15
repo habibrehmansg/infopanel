@@ -307,6 +307,7 @@ public sealed class SceneRuntime : IDisposable
                         var evaluator = new SceneEvaluator(scene, rt, services, inputs, clock, d.LayoutW ?? 0, d.LayoutH ?? 0, diag,
                             Math.Max(1, _options.Limits.ExprWork) * 2, largestScale, world, rotation);
                         snap.Nodes = evaluator.Run(advance);
+                        snap.Isolates = scene.Isolates;
                         snap.Runtime = advance ? rt : null;
                     }
                     catch (BudgetExceeded e)

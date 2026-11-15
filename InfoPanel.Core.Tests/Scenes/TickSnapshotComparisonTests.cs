@@ -79,7 +79,27 @@ public sealed class TickSnapshotComparisonTests : IDisposable
             "{'kind':'media','w':40,'h':40,'source':{'sequence':[{'asset':'RED'},{'asset':'BLUE'}],'index':0.5,'crossfade':true}}",
             "{'kind':'media','w':40,'h':40,'source':{'sequence':[{'asset':'RED'},{'asset':'RED'}],'index':0.5,'crossfade':true}}"
         },
+        {
+            // The same nodes drawn, but a hidden Porter-Duff child makes its parent a layer: the multiply no longer reaches the red.
+            "a group made a layer by a hidden operator child",
+            RedUnderMultiply("", ""),
+            RedUnderMultiply(",{'kind':'group','visible':false,'blend':'destination-in','children':[]}", "")
+        },
+        {
+            // The same, at the scene's top level: the scene's nodes become one layer.
+            "a scene made a layer by a hidden top-level operator",
+            RedUnderMultiply("", ""),
+            RedUnderMultiply("", ",{'kind':'group','visible':false,'blend':'destination-in','children':[]}")
+        },
     };
+
+    /// <summary>
+    /// A red rectangle, then a normal group holding a green rectangle in a multiply group and <paramref name="inGroup"/>;
+    /// then <paramref name="atTop"/>.
+    /// </summary>
+    private static string RedUnderMultiply(string inGroup, string atTop) =>
+        "{'kind':'rect','w':80,'h':40,'fill':'#ff0000'},{'kind':'group','children':[{'kind':'group','blend':'multiply','children':["
+        + "{'kind':'rect','w':40,'h':40,'fill':'#00ff00'}]}" + inGroup + "]}" + atTop;
 
     [Theory]
     [MemberData(nameof(Documents))]

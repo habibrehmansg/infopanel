@@ -1331,7 +1331,10 @@ internal sealed class RGroup : RNode
     /// <summary>Set for a series or table: its box stands for its content in bounds.</summary>
     public SKRect? BoundsOverride;
 
-    public bool NeedsLayer => Effects.Length > 0 || Opacity < 1 || Blend != SKBlendMode.SrcOver;
+    /// <summary>Whether a child has a Porter-Duff blend: the children then combine in the group's layer, never below it.</summary>
+    public bool Isolates;
+
+    public bool NeedsLayer => Effects.Length > 0 || Opacity < 1 || Blend != SKBlendMode.SrcOver || Isolates;
 }
 
 internal sealed class RShape : RNode

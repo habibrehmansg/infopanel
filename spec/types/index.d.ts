@@ -4068,10 +4068,10 @@ export interface Stroke {
 }
 
 /**
- * How a group or paint combines with what is below (W3C Compositing and Blending; plus adds the colours).
+ * How a group or paint combines with what is below (W3C Compositing and Blending; plus adds the colours). The Porter-Duff operators (source-in to xor) combine by coverage, a group's with what its parent has drawn before it, in the parent's layer (docs/scene.md, Groups).
  * @default "normal"
  */
-export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "color-dodge" | "color-burn" | "hard-light" | "soft-light" | "difference" | "exclusion" | "hue" | "saturation" | "color" | "luminosity" | "plus";
+export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "color-dodge" | "color-burn" | "hard-light" | "soft-light" | "difference" | "exclusion" | "hue" | "saturation" | "color" | "luminosity" | "plus" | "source-in" | "source-out" | "source-atop" | "destination-over" | "destination-in" | "destination-out" | "destination-atop" | "xor";
 
 export type TransformStep = TranslateStep | RotateStep | ScaleStep | SkewStep | MatrixStep;
 

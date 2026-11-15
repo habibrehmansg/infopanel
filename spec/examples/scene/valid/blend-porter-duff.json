@@ -1,0 +1,52 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"title": {"type": "text", "label": "Title"}},
+  "nodes": [
+    {
+      "kind": "group",
+      "children": [
+        {
+          "kind": "text",
+          "text": {"op": "input", "name": "title", "field": "text"},
+          "font": {"family": "Inter", "size": 18},
+          "fill": "#e5e7eb",
+          "w": 200,
+          "overflow": "marquee"
+        },
+        {
+          "kind": "group",
+          "blend": "destination-in",
+          "children": [
+            {
+              "kind": "rect",
+              "w": 200,
+              "h": 24,
+              "fill": {
+                "type": "linear",
+                "x1": 0,
+                "y1": 0,
+                "x2": 200,
+                "y2": 0,
+                "stops": [{"at": 0, "color": "#00000000"}, {"at": 0.08, "color": "#000000"}, {"at": 0.92, "color": "#000000"}, {"at": 1, "color": "#00000000"}]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "group",
+      "transform": [{"type": "translate", "y": 32}],
+      "children": [
+        {
+          "kind": "media",
+          "w": 24,
+          "h": 24,
+          "fit": "contain",
+          "source": {"asset": "sha256:2e6bf049cc4791922aabe0704b3d6e978102348ec52e63bc29a7574281450be1"}
+        },
+        {"kind": "group", "blend": "source-atop", "children": [{"kind": "rect", "w": 24, "h": 24, "fill": "#38bdf8"}]}
+      ]
+    }
+  ]
+}

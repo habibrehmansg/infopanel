@@ -71,8 +71,47 @@ internal static class SceneDrawer
     /// <summary>A test hook: a smaller <see cref="MaxPictureBytes"/> on this thread.</summary>
     [ThreadStatic] internal static long? PictureBound;
 
-    public static void Draw(SKCanvas canvas, RNode[] nodes)
+    /// <summary>A test hook: set on a thread to count its layers (<see cref="LayersMade"/>, <see cref="DeepestLayers"/>); off by default.</summary>
+    [ThreadStatic] internal static bool CountLayers;
+
+    /// <summary>A test hook: the layers opened on this thread for groups and for scenes (not a shape's or media's own).</summary>
+    [ThreadStatic] internal static int LayersMade;
+
+    /// <summary>A test hook: the most of those layers held at once on this thread, in any one item's drawing.</summary>
+    [ThreadStatic] internal static int DeepestLayers;
+
+    /// <summary>The group and scene layers held open in the item being drawn on this thread (for <see cref="DeepestLayers"/>).</summary>
+    [ThreadStatic] private static int _openLayers;
+
+    private static void Opened()
     {
+        if (!CountLayers) return;
+        LayersMade++;
+        DeepestLayers = Math.Max(DeepestLayers, ++_openLayers);
+    }
+
+    private static void Closed()
+    {
+        if (CountLayers) _openLayers--;
+    }
+
+    /// <summary>
+    /// Draws one item's nodes. When <paramref name="isolates"/> (one of the scene's top-level nodes declares a Porter-Duff
+    /// blend, drawn on this tick or not: <see cref="SnapScene.Isolates"/>), they are drawn as one layer (spec/docs/scene.md,
+    /// Groups): an operator combines with what the scene drew before it, and never reaches another item, the panel's
+    /// background or anything else below the item.
+    /// </summary>
+    public static void Draw(SKCanvas canvas, RNode[] nodes, bool isolates = false)
+    {
+        if (CountLayers) _openLayers = 0;
+        var count = -1;
+        if (isolates)
+        {
+            count = canvas.Save();
+            Opened();
+            if (LayerBounds(nodes, null) is { } bounds) canvas.SaveLayer(bounds, null);
+            else canvas.SaveLayer();
+        }
         var paints = new ShapePaints();
         try
         {
@@ -81,6 +120,8 @@ internal static class SceneDrawer
         finally
         {
             paints.Dispose();
+            if (count >= 0) canvas.RestoreToCount(count);
+            if (CountLayers) _openLayers = 0;
         }
     }
 
@@ -110,18 +151,10 @@ internal static class SceneDrawer
             using var paint = new SKPaint { Color = new SKColor(255, 255, 255, Alpha(g.Opacity)), BlendMode = g.Blend };
             using var filter = Filter(g.Effects);
             paint.ImageFilter = filter;
-            // Size the layer to where the children can draw, grown by the effects' reach; the canvas clips it further.
-            SKRect? hint = null;
-            if (SceneBounds.Measure(g.Children) is { } extent)
-            {
-                var h = extent.Hint;
-                if (g.Clip is not null) h.Intersect(g.Clip.Bounds);
-                h.Inflate(2, 2);
-                // Raster media above scale 1 is drawn in whole canvas pixels, up to one past its edge however small
-                // the group's units are.
-                if (Zoom > 0 && HoldsRaster(g.Children)) h = GrowByCanvasPixel(h);
-                hint = h;
-            }
+            Opened();
+            // A Porter-Duff group's layer takes all of its parent's (which holds everything the parent draws), so the
+            // operator acts wherever the destination is, the source transparent where the group draws nothing.
+            var hint = SceneCompiler.PorterDuff(g.Blend) ? null : LayerBounds(g.Children, g.Clip);
             if (hint is { } bounds) canvas.SaveLayer(bounds, paint);
             else canvas.SaveLayer(paint);
         }
@@ -143,6 +176,23 @@ internal static class SceneDrawer
         }
         Panel?.RestoreToCount(panelCount);
         canvas.RestoreToCount(count);
+        if (g.NeedsLayer) Closed();
+    }
+
+    /// <summary>
+    /// A layer's bounds: where <paramref name="children"/> can draw, within <paramref name="clip"/>, grown by the effects'
+    /// reach (the canvas clips it further); none when nothing in them measures.
+    /// </summary>
+    private static SKRect? LayerBounds(RNode[] children, RGeom? clip)
+    {
+        if (SceneBounds.Measure(children) is not { } extent) return null;
+        var h = extent.Hint;
+        if (clip is not null) h.Intersect(clip.Bounds);
+        h.Inflate(2, 2);
+        // Raster media above scale 1 is drawn in whole canvas pixels, up to one past its edge however small the group's
+        // units are.
+        if (Zoom > 0 && HoldsRaster(children)) h = GrowByCanvasPixel(h);
+        return h;
     }
 
     /// <summary>The frame's matrix from canvas pixels to device pixels at scale <paramref name="s"/>.</summary>

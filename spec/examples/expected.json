@@ -538,6 +538,7 @@
   "scene/invalid/percentile-p-range.json": {"code": "schema", "path": "/nodes/0/w/p"},
   "scene/invalid/share-with-p.json": {"code": "schema", "path": "/nodes/0/w/p"},
   "scene/invalid/ramp-one-stop.json": {"code": "schema", "path": "/nodes/0/ramp"},
+  "scene/invalid/blend-not-an-operator.json": {"code": "schema", "path": "/nodes/0/blend"},
   "scene/invalid/time-pattern.json": {"code": "time.pattern", "path": "/nodes/0/text/pattern"},
   "scene/invalid/time-zone-newline.json": {"code": "schema", "path": "/nodes/0/w/zone"},
   "scene/invalid/undeclared-input.json": {"code": "ref.input", "path": "/nodes/0/w"},

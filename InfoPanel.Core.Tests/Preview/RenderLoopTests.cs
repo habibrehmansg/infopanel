@@ -234,6 +234,31 @@ public class RenderLoopTests
         Assert.Equal(600, late.Frames[^1].Frame.PixelWidth);
     }
 
+    /// <summary>
+    /// An edit that changes only which groups are drawn as layers is drawn, not kept: a hidden Porter-Duff child makes
+    /// its parent a layer, so the green in a multiply group no longer multiplies the red below it (black) but is drawn on
+    /// the layer's nothing (green).
+    /// </summary>
+    [Fact]
+    public async Task An_edit_that_makes_a_group_a_layer_draws_new_pixels()
+    {
+        static JsonObject Scene(bool isolated) => JsonNode.Parse(
+            """{"format": "infopanel.scene/1", "nodes": [{"kind": "rect", "w": 40, "h": 20, "fill": "#ff0000"}, {"kind": "group", "children": ["""
+            + """{"kind": "group", "blend": "multiply", "children": [{"kind": "rect", "w": 20, "h": 20, "fill": "#00ff00"}]}"""
+            + (isolated ? """, {"kind": "group", "visible": false, "blend": "destination-in", "children": []}""" : "") + "]}]}")!.AsObject();
+        static byte[] At(byte[] pixels, int x, int y) => pixels[((y * 40 + x) * 4)..((y * 40 + x) * 4 + 4)];
+        await using var h = new RenderHarness(RenderHarness.Doc(40, 20, DocKit.Scene("s", 0, 0, Scene(false))));
+        var sink = h.Attach();
+
+        Assert.Equal(1, h.Tick());
+        Assert.Equal(new byte[] { 0, 0, 0, 255 }, At(sink.Frames[^1].Pixels, 10, 10));
+
+        h.Commit(DocKit.Design("s", Scene(true)));
+        Assert.Equal(1, h.Tick());
+        Assert.Equal(new byte[] { 0, 255, 0, 255 }, At(sink.Frames[^1].Pixels, 10, 10));
+        Assert.Equal(new byte[] { 255, 0, 0, 255 }, At(sink.Frames[^1].Pixels, 30, 10));
+    }
+
     [Fact]
     public async Task EachSink_GetsAtMostItsOwnFrameRate()
     {

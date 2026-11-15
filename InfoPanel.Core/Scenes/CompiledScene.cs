@@ -30,6 +30,9 @@ internal sealed class CGroup : CNode
     public SKBlendMode Blend = SKBlendMode.SrcOver;
     public required CEffect[] Effects;
     public required CNode[] Children;
+
+    /// <summary>Whether a child has a Porter-Duff blend, so the group is drawn as a layer (<see cref="SceneCompiler.Isolates"/>).</summary>
+    public bool Isolates;
 }
 
 internal abstract class CTransform;
@@ -234,6 +237,10 @@ internal sealed class CompiledScene
 
     public required CCell[] Cells;
     public required CNode[] Nodes;
+
+    /// <summary>Whether a top-level node has a Porter-Duff blend, so the scene's nodes are drawn as one layer.</summary>
+    public bool Isolates => SceneCompiler.Isolates(Nodes);
+
     public required CText[] TextNodes;
     public required int TableCount;
     public required int NodeCount;
@@ -434,14 +441,18 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
         switch (node)
         {
             case GroupNode g:
+            {
+                var children = CompileNodes(g.Children, depth + 1);
                 return new CGroup
                 {
                     Transform = (g.Transform ?? []).Select(CompileTransform).ToArray(),
                     Clip = g.Clip is null ? null : CompileClip(g.Clip),
                     Blend = Blend(g.Blend),
                     Effects = (g.Effects ?? []).Select(CompileEffect).ToArray(),
-                    Children = CompileNodes(g.Children, depth + 1),
+                    Children = children,
+                    Isolates = Isolates(children),
                 };
+            }
             case RectNode r:
                 return new CRect { X = N(r.X), Y = N(r.Y), W = N(r.W), H = N(r.H), Radii = Radii(r.R), Fill = Paint(r.Fill), Stroke = Stroke(r.Stroke) };
             case EllipseNode e:
@@ -693,8 +704,31 @@ internal sealed class SceneCompiler(SpecScene scene, SpecLimits limits)
         "color" => SKBlendMode.Color,
         "luminosity" => SKBlendMode.Luminosity,
         "plus" => SKBlendMode.Plus,
+        "source-in" => SKBlendMode.SrcIn,
+        "source-out" => SKBlendMode.SrcOut,
+        "source-atop" => SKBlendMode.SrcATop,
+        "destination-over" => SKBlendMode.DstOver,
+        "destination-in" => SKBlendMode.DstIn,
+        "destination-out" => SKBlendMode.DstOut,
+        "destination-atop" => SKBlendMode.DstATop,
+        "xor" => SKBlendMode.Xor,
         _ => SKBlendMode.SrcOver,
     };
+
+    /// <summary>
+    /// Whether <paramref name="mode"/> is one of the Porter-Duff operators (spec/docs/scene.md, Groups): they combine with
+    /// what the group's parent has drawn before it, inside the parent's layer, never with what is below the parent.
+    /// </summary>
+    public static bool PorterDuff(SKBlendMode mode) => mode is SKBlendMode.SrcIn or SKBlendMode.SrcOut or SKBlendMode.SrcATop
+        or SKBlendMode.DstOver or SKBlendMode.DstIn or SKBlendMode.DstOut or SKBlendMode.DstATop or SKBlendMode.Xor;
+
+    /// <summary>Whether one of <paramref name="nodes"/> is a group with a Porter-Duff blend, so their parent is drawn as a layer.</summary>
+    public static bool Isolates(CNode[] nodes)
+    {
+        foreach (var n in nodes)
+            if (n is CGroup g && PorterDuff(g.Blend)) return true;
+        return false;
+    }
 }
 
 /// <summary>Walks expression trees without recursion.</summary>

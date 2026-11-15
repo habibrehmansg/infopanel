@@ -31,6 +31,13 @@ internal sealed class SnapGroup : SnapItem
 internal sealed class SnapScene : SnapItem
 {
     public RNode[]? Nodes;
+
+    /// <summary>
+    /// Whether <see cref="Nodes"/> are drawn as one layer: one of the scene's top-level nodes declares a Porter-Duff blend,
+    /// drawn on this tick or not (<see cref="CompiledScene.Isolates"/>).
+    /// </summary>
+    public bool Isolates;
+
     public string? Problem;
 
     /// <summary>The first problem the item's media had in the tick.</summary>
@@ -322,7 +329,7 @@ public sealed class TickSnapshot : IDisposable
             var same = (a[i], b[i]) switch
             {
                 (SnapGroup g, SnapGroup h) => SameItems(g.Children, h.Children),
-                (SnapScene s, SnapScene t) => s.Nodes is { } m && t.Nodes is { } n ? SameNodes(m, n)
+                (SnapScene s, SnapScene t) => s.Nodes is { } m && t.Nodes is { } n ? s.Isolates == t.Isolates && SameNodes(m, n)
                     : s.Nodes is null && t.Nodes is null && s.PlaceholderBox == t.PlaceholderBox,
                 _ => false,
             };
@@ -345,7 +352,7 @@ public sealed class TickSnapshot : IDisposable
         if (a.Opacity != b.Opacity) return false;
         return (a, b) switch
         {
-            (RGroup g, RGroup h) => g.Matrix.Equals(h.Matrix) && g.Blend == h.Blend && g.Effects.AsSpan().SequenceEqual(h.Effects)
+            (RGroup g, RGroup h) => g.Matrix.Equals(h.Matrix) && g.Blend == h.Blend && g.Isolates == h.Isolates && g.Effects.AsSpan().SequenceEqual(h.Effects)
                 && SameGeom(g.Clip, h.Clip) && Nullable.Equals(g.BoundsOverride, h.BoundsOverride) && SameNodes(g.Children, h.Children),
             (RShape s, RShape t) => SameGeom(s.Geom, t.Geom) && SamePaint(s.Fill, t.Fill) && SameStroke(s.Stroke, t.Stroke),
             (RText s, RText t) => ReferenceEquals(s.Layout, t.Layout) && s.Left == t.Left && s.Top == t.Top && s.AlignWidth == t.AlignWidth
@@ -430,7 +437,7 @@ public sealed class TickSnapshot : IDisposable
                     SceneDrawer.Panel?.Concat(in s.World);
                     var watch = s.Runtime is not null ? WatchSpan.Start(_drawTime) : default;
                     var start = _drawTime.GetTimestamp();
-                    if (s.Nodes is { } nodes) SceneDrawer.Draw(canvas, nodes);
+                    if (s.Nodes is { } nodes) SceneDrawer.Draw(canvas, nodes, s.Isolates);
                     else Placeholders.DrawItem(canvas, s.PlaceholderBox);
                     SceneDrawer.Panel?.RestoreToCount(panelCount);
                     canvas.RestoreToCount(count);

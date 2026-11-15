@@ -197,8 +197,9 @@ internal sealed class SceneEvaluator
     public const int MaxItemLayouts = 2_000;
 
     /// <summary>
-    /// Most groups drawn as layers (effects, an opacity below 1, a blend other than source-over) one item may nest in one
-    /// another: each holds a layer up to the frame's size until the group ends, so nested ones are allocated at once.
+    /// Most groups drawn as layers (effects, an opacity below 1, a blend other than source-over, a child with a Porter-Duff
+    /// blend; and the scene's own layer when a top-level node has one) one item may nest in one another: each holds a
+    /// layer up to the frame's size until the group ends, so nested ones are allocated at once.
     /// </summary>
     public const int MaxOpenLayers = 8;
 
@@ -308,6 +309,8 @@ internal sealed class SceneEvaluator
         foreach (var i in _scene.PhaseAfterLayout) e.Values[i] = _scene.Values[i].Eval(e);
         CheckWork();
 
+        // A scene whose top-level nodes include a Porter-Duff group is drawn as one layer, holding all the others.
+        _layers = _scene.Isolates ? 1 : 0;
         var nodes = Resolve(_scene.Nodes);
         CheckWork();
         return nodes;
@@ -405,8 +408,9 @@ internal sealed class SceneEvaluator
         }
         var clip = g.Clip is null ? null : ResolveClip(g.Clip);
         // A group drawn as a layer (as RGroup.NeedsLayer decides) holds it while its children draw, inside its enclosing
-        // groups' layers: the layer budget counts them nested. A group at opacity 0 isn't drawn, nor anything in it.
-        var layered = !_unseen && opacity > 0 && (effects.Count > 0 || opacity < 1 || g.Blend != SKBlendMode.SrcOver);
+        // groups' layers: the layer budget counts them nested. A group at opacity 0 isn't drawn, nor anything in it. A
+        // child with a Porter-Duff blend makes it one layer too (counted by the child's blend, drawn or not), not two.
+        var layered = !_unseen && opacity > 0 && (effects.Count > 0 || opacity < 1 || g.Blend != SKBlendMode.SrcOver || g.Isolates);
         if (layered && ++_layers > MaxOpenLayers)
             throw new BudgetExceeded("budget.layers", $"Its groups would draw {_layers} layers at once; at most {MaxOpenLayers} are drawn.");
         // The children are drawn through the group's transform, concatenated as the drawer does.
@@ -432,6 +436,7 @@ internal sealed class SceneEvaluator
             Blend = g.Blend,
             Effects = effects.ToArray(),
             Children = children,
+            Isolates = g.Isolates,
         };
     }
 
