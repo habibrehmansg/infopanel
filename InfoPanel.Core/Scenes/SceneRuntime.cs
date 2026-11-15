@@ -441,7 +441,7 @@ public sealed class SceneRuntime : IDisposable
                     histories[binding.Key] = history;
                 }
             }
-            inputs[i] = new InputSnap(reading, binding.Stat, history);
+            inputs[i] = new InputSnap(reading, binding.Stat, history, _options.Limits.TableRows);
         }
         return inputs;
     }

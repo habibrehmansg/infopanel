@@ -55,6 +55,24 @@ public sealed class SceneGoldenTests
         };
     }
 
+    /// <summary>data-read.json's inputs: the forecast as the engine reads a plugin's table, and two texts.</summary>
+    private static void DataRead(FakeSceneInputs i)
+    {
+        var table = new System.Data.DataTable();
+        table.Columns.Add("day", typeof(object));
+        table.Columns.Add("symbol", typeof(object));
+        table.Columns.Add("high", typeof(object));
+        (string Day, string Symbol, float High)[] days = [("Mon", "sun", 21), ("Tue", "sun", 23.5f), ("Wed", "rain", 24.5f), ("Thu", "snow", 2), ("Fri", "sun", 19)];
+        foreach (var (day, symbol, high) in days)
+            table.Rows.Add(new InfoPanel.Plugins.PluginText("day", day), new InfoPanel.Plugins.PluginText("symbol", symbol), new InfoPanel.Plugins.PluginSensor("high", high, "°C"));
+        var sensors = new FakeSensorReader();
+        var key = InfoPanel.Sensors.SensorKey.Plugin("/test/forecast");
+        sensors.Readings[key] = new InfoPanel.Models.SensorReading(table, "", "");
+        i.Readings["test:fc"] = new SensorSceneInputs(sensors, new FakeSensorHistory()).Read(key.ToString(), "table");
+        i.Text("test:accent", "#F59E0B");
+        i.Text("test:level", "62.5");
+    }
+
     private static readonly Dictionary<string, Case> Examples = new()
     {
         ["bar"] = new("scene/valid/bar.json", 260, 40, 10, 10, 240, 20, Load),
@@ -85,6 +103,9 @@ public sealed class SceneGoldenTests
         ["text-layout-t2"] = new("scene/valid/text-layout.json", 220, 180, 10, 10, null, null, Load, Elapsed: 2),
         // Tomorrow and the day after the kit's clock (Friday 2 January 2026, 03:04:05 UTC), and a sunrise at 07:42 UTC.
         ["time-at"] = new("scene/valid/time-at.json", 140, 84, 10, 6, null, null, i => i.Number("test:sunrise", 1767339720)),
+        // A five-day forecast read from a plugin's table (the third day's symbol picks the rain frame, its high a 4-pixel
+        // bar per degree), an accent colour and a level read from text.
+        ["data-read"] = new("scene/valid/data-read.json", 200, 72, 6, 4, null, null, DataRead),
         ["shapes-scale2"] = new("scene/valid/shapes.json", 220, 180, 5, 5, null, null, Scale: 2),
         ["sensor-text-rotated"] = new("scene/valid/sensor-text.json", 200, 120, 40, 40, null, null, i => i.Number("test:v", 90, "°C"), Rotation: 20),
         // A video on the tick clock: its first frame, frame 3 at 0.35 s, and frame 2 of its second loop at 1.25 s.

@@ -35,7 +35,7 @@ So a scene whose behaviour over time is written this way behaves the same whethe
 The engine renders a document in ticks. In each tick it reads, once:
 
 - the time (`elapsed`, the wall clock and the time zone) and the profile's regional format ([expressions](expressions.md#regional-format)),
-- every input (readings, statistics, status, history, tables),
+- every input (readings, statistics, status, history, tables: a table input's column names and its first `tableRows` rows, each cell with its text and its number, [bindings](bindings.md#tables)),
 - the media samples (the frame of each animated or provider media),
 
 then evaluates the values and state cells and lays out the text, once, in the two phases of [expressions](expressions.md#order-of-evaluation). Everything drawn or measured for that tick (every output at every scale, the bounds, a thumbnail taken during the tick) uses that one snapshot, so they agree pixel for pixel and with each other. State advances only when the tick does: drawing a tick again (another scale, a thumbnail) never moves it.

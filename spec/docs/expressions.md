@@ -40,7 +40,9 @@ Named operands:
 
 | `op` | Members → result | Meaning |
 |---|---|---|
-| `input` | `name`, `field` → number, string or bool | An input's reading ([bindings](bindings.md)): `value` (default; the binding's statistic), `now`, `min`, `max`, `avg`, `unit` (number inputs), `text` (text and table inputs), `status`, `available` (any input) |
+| `input` | `name`, `field` → number, string or bool | An input's reading ([bindings](bindings.md)): `value` (default; the binding's statistic), `now`, `min`, `max`, `avg`, `unit` (number inputs), `text` (text and table inputs), `rows` (table inputs: the rows of its reading, at most `tableRows`), `status`, `available` (any input) |
+| `cell` | `input`, `row`, `column`, `field` (`text`, `number`) → string or number | One cell of a table input's reading: its text (default) or its number ([reading text and tables](#reading-text-and-tables)) |
+| `parse` | `as` (`number`, `color`), `value` (a string), `else` → number or color | The text read as a number or a colour, else `else`: the only conversion from text ([reading text and tables](#reading-text-and-tables)) |
 | `history` | `input`, `fn`, `count` → number | Over the last `count` (1–4096) samples: `min`, `max`, `avg`, `first`, `last`, `count`; 0 without samples |
 | `time` | `field`, `zone`, `at` → number | From the tick's clock, or from the instant `at` when given ([another instant](#another-instant); not with `elapsed`): `elapsed` (seconds since the engine started rendering the document, monotonic), `epoch` (seconds since 1970-01-01T00:00:00Z), `dayTime` (seconds since local midnight, with fraction), `year`, `month` (1–12), `day` (1–31), `weekday` (1 Monday … 7 Sunday), `hour` (0–23), `minute`, `second`, `millisecond` |
 | `formatTime` | `pattern`, `locale`, `zone`, `at` → string | The tick's date and time, or the instant `at`'s, as text ([time patterns](#time-patterns)) |
@@ -60,7 +62,7 @@ Named operands:
 - **No number is negative zero.** A literal `-0` reads as `0` ([validation](validation.md#numbers)), and so does every result and reading that is zero: `mul(-1, 0)`, `neg(0)`, `ceil(-0.5)`, `round(-0.4)` and an input reading of −0 are all `0`. So `atan2(mul(-1, 0), -1)` is 180, never −180, and nothing an expression computes depends on a zero's sign.
 - Comparisons are exact; there is no epsilon: `eq(add(0.1, 0.2), 0.3)` is false.
 - Strings are sequences of Unicode code points. A string literal is at most 4,096 code points (schema).
-- **Every operation that produces a string** (`concat`, `upper`, `lower`, `format`, `formatTime`, and `input` with a text field: `unit`, `text`, `status`) **cuts its result to its first 4,096 Unicode scalar values** (`textLength`, [limits](limits.md)), at the operation, before the result is used anywhere: by another operation, a comparison (`eq`, `ne`), a value, a state cell or a text node. So `concat` of two 4,096-value strings is the first string, and `eq` compares the cut strings. No string an expression holds is ever longer, however the operations are chained.
+- **Every operation that produces a string** (`concat`, `upper`, `lower`, `format`, `formatTime`, `cell` with `field` `text`, and `input` with a text field: `unit`, `text`, `status`) **cuts its result to its first 4,096 Unicode scalar values** (`textLength`, [limits](limits.md)), at the operation, before the result is used anywhere: by another operation, a comparison (`eq`, `ne`), a value, a state cell or a text node. So `concat` of two 4,096-value strings is the first string, and `eq` compares the cut strings. No string an expression holds is ever longer, however the operations are chained.
 
 ## Equality
 
@@ -116,6 +118,21 @@ The mappings are those of the Unicode version the engine's platform provides; a 
 - A value that isn't finite reads 0, 1970-01-01T00:00:00Z, as every operation's result does ([numbers](#numbers-and-strings)).
 - It is clamped to the years 0001 to 9999: an instant before 0001-01-01T00:00:00Z or after 9999-12-31T23:59:59.999999Z is that bound, and a date and time in the zone that would fall outside those years is the nearest of 0001-01-01 00:00:00 and 9999-12-31 23:59:59.999999.
 - `zone` and `locale` work as they do on the tick's time: the calendar fields and the text are the instant's in `zone` (absent, the engine's local zone), its names in `locale`'s language (absent, the [regional format](#regional-format)'s); `epoch` is the instant itself, in no zone.
+
+## Reading text and tables
+
+A text input, or a table cell, can carry a number or a colour as text: a plugin's `"#ff8800"`, a reading of `"12.50"`. `parse` is the only way an expression turns text into either, and every other operation keeps text text.
+
+- `{"op": "parse", "as": "number", "value": …, "else": …}`: `value` is read as a number when it is a plain decimal, as `format` reads a number given as text ([number formatting](#number-formatting)): an optional `-`, one or more digits 0–9, then optionally `.` and one or more digits. It gives the double nearest that decimal (`"12.50"` is 12.5, `"-0"` is 0, `"007"` is 7). Any other text gives `else`: an exponent (`"1e3"`), a sign `+`, a space anywhere (`" 12"`), a group separator, a unit (`"12%"`), `".5"`, `"5."` and `""`; and so does a decimal whose nearest double isn't finite (one of about 1.8 × 10³⁰⁸ or more in size).
+- `{"op": "parse", "as": "color", "value": …, "else": …}`: `value` is read as a colour when it is `#RRGGBB` or `#RRGGBBAA` with hexadecimal digits in either case (`"#FF000080"` is `#ff000080`); any other text gives `else` (`"red"`, `"#f00"`, `" #ff0000"`).
+- `else` is required, a number or a colour as `as` says, and is evaluated whatever `value` is, as both branches of `if` are.
+
+`cell` reads one cell of a table input's reading for the tick ([bindings](bindings.md#tables)), the same reading the `table` node and the `rows` field read:
+
+- `row` is a number expression, rounded half away from zero: 0 is the first row, so 1.5 is the third row and −0.4 the first. `column` is the column's index (0 first, up to 255) or its name, matched as a `table` node's `column` is: exactly, by code point, the first column with that name.
+- `field` `text` (the default) is the cell's text, a string cut to its first 4,096 Unicode scalar values; `field` `number` is the cell's number: the source's own number for a cell it gives as a number, its unit left out, and 0 for any other cell, never read from the cell's text ([a cell's number](bindings.md#tables)).
+- A row or column the reading lacks (a row below 0 or at or past `rows`, an index past the last column, a name no column has), and any cell of an unbound or unavailable input, gives "" or 0.
+- `cell` and the `rows` field need a `table` input, and `{"op": "input", "field": "rows"}` is the reading's row count; on another type of input the scene is refused (`type.input`).
 
 ## Time patterns
 
@@ -215,7 +232,13 @@ Each expression here gives exactly the result shown (numbers as doubles, colours
 | `{"op": "formatTime", "pattern": "yyyy-MM-dd HH:mm:ss", "zone": "UTC", "at": -1}` | `"1969-12-31 23:59:59"` |
 | `{"op": "time", "field": "weekday", "zone": "UTC", "at": 0}` | `4` |
 | `{"op": "time", "field": "millisecond", "zone": "UTC", "at": 1.25}` | `250` |
+| `{"op": "parse", "as": "number", "value": "12.50", "else": -1}` | `12.5` |
+| `{"op": "parse", "as": "number", "value": "1e3", "else": -1}` | `-1` |
+| `{"op": "parse", "as": "number", "value": "", "else": -1}` | `-1` |
+| `{"op": "parse", "as": "number", "value": " 12", "else": -1}` | `-1` |
+| `{"op": "parse", "as": "color", "value": "#FF000080", "else": "#000000"}` | `"#ff000080"` |
+| `{"op": "parse", "as": "color", "value": "red", "else": "#000000"}` | `"#000000ff"` |
 
 ## Cost
 
-Each operation object counts 1 towards a scene's expression work, except the string-producing operations `concat`, `upper`, `lower`, `format` and `formatTime`, which count 16 each (each may copy up to 4,096 scalar values), and `history`, which counts 1 more per 64 samples (rounded up); values and state cells count once, however often they are read. A scene has at most 20,000 units of work and expressions nested at most 32 deep ([limits](limits.md)).
+Each operation object counts 1 towards a scene's expression work, except the string-producing operations `concat`, `upper`, `lower`, `format`, `formatTime` and `cell` with `field` `text`, and `parse`, which reads a string, which count 16 each (each may copy or read up to 4,096 scalar values), and `history`, which counts 1 more per 64 samples (rounded up); `cell` with `field` `number` counts 1; values and state cells count once, however often they are read. A scene has at most 20,000 units of work and expressions nested at most 32 deep ([limits](limits.md)).

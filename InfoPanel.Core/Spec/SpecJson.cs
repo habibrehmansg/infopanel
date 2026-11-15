@@ -206,6 +206,8 @@ public static class SpecJson
             "value" => new ValueRefExpr(Req(e, "name")),
             "state" => new StateRefExpr(Req(e, "name")),
             "steps" => new StepsExpr(ReadExpr(Member(e, "value")), List(e, "at"), List(e, "out")),
+            "parse" => new ParseExpr(Req(e, "as"), ReadExpr(Member(e, "value")), ReadExpr(Member(e, "else"))),
+            "cell" => ReadCell(e),
             _ => new CallExpr(op, List(e, "args")),
         };
         var expected = result switch
@@ -220,12 +222,26 @@ public static class SpecJson
             MeasureExpr => 3,
             DtExpr => 1,
             StepsExpr => 4,
+            ParseExpr => 4,
+            CellExpr x => 4 + (x.Field is null ? 0 : 1),
             _ => 2,
         };
         var count = 0;
         foreach (var _ in e.EnumerateObject()) count++;
         if (count != expected) throw new JsonException($"Unexpected members in a \"{op}\" expression.");
         return result;
+    }
+
+    /// <summary>A <c>cell</c>: its column an index (a whole number) or a name (a string).</summary>
+    private static CellExpr ReadCell(JsonElement e)
+    {
+        var column = Member(e, "column");
+        int? index = null;
+        string? name = null;
+        if (column.ValueKind == JsonValueKind.String) name = column.GetString();
+        else if (column.ValueKind == JsonValueKind.Number && JsonNumber.TryRead(column, out var d) && Integral32(d) is { } i) index = i;
+        else throw new JsonException("\"column\" must be an index or a name.");
+        return new CellExpr(Req(e, "input"), ReadExpr(Member(e, "row")), index, name, Str(e, "field"));
     }
 
     private static string? Str(JsonElement e, string name) =>
@@ -322,6 +338,23 @@ public static class SpecJson
                 WriteExpr(w, x.Value);
                 WriteList(w, "at", x.At);
                 WriteList(w, "out", x.Out);
+                break;
+            case ParseExpr x:
+                w.WriteString("op", "parse");
+                w.WriteString("as", x.As);
+                w.WritePropertyName("value");
+                WriteExpr(w, x.Value);
+                w.WritePropertyName("else");
+                WriteExpr(w, x.Else);
+                break;
+            case CellExpr x:
+                w.WriteString("op", "cell");
+                w.WriteString("input", x.Input);
+                w.WritePropertyName("row");
+                WriteExpr(w, x.Row);
+                if (x.Name is not null) w.WriteString("column", x.Name);
+                else w.WriteNumber("column", x.Index ?? 0);
+                if (x.Field is not null) w.WriteString("field", x.Field);
                 break;
             default:
                 throw new JsonException($"Unknown expression {expr.GetType().Name}.");

@@ -714,6 +714,11 @@ internal static class ExprWalk
                     break;
                 case TimeExpr { At: { } at }: stack.Push(at); break;
                 case FormatTimeExpr { At: { } at }: stack.Push(at); break;
+                case ParseExpr p:
+                    stack.Push(p.Value);
+                    stack.Push(p.Else);
+                    break;
+                case CellExpr c: stack.Push(c.Row); break;
                 case StepsExpr s:
                     stack.Push(s.Value);
                     foreach (var a in s.At) stack.Push(a);

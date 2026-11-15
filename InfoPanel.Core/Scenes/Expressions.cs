@@ -6,16 +6,23 @@ using InfoPanel.Spec;
 
 namespace InfoPanel.Scenes;
 
-/// <summary>One input's reading for a tick, with its history and the value its binding's statistic selects.</summary>
+/// <summary>
+/// One input's reading for a tick, with its history and the value its binding's statistic selects. A table reads its
+/// first <paramref name="tableRows"/> rows, the reading runtime's limit (spec/docs/bindings.md, "Tables"): every
+/// <c>table</c>, <c>cell</c> and <c>rows</c> of the tick reads <see cref="Table"/>, never the reading's own table.
+/// </summary>
 internal sealed class InputSnap
 {
     public static readonly InputSnap Unbound = new(SceneReading.Unbound, "now", []);
 
-    public InputSnap(SceneReading reading, string stat, IReadOnlyList<double> history)
+    private readonly SceneTable _table;
+
+    public InputSnap(SceneReading reading, string stat, IReadOnlyList<double> history, int? tableRows = null)
     {
         Reading = reading;
         History = history;
         var available = reading.Available;
+        _table = available ? reading.Table.First(tableRows ?? SpecLimits.Default.TableRows) : SceneTable.Empty;
         Value = !available ? 0 : stat switch { "min" => reading.Min, "max" => reading.Max, "avg" => reading.Avg, _ => reading.Now };
         Status = reading.Status switch
         {
@@ -38,7 +45,7 @@ internal sealed class InputSnap
     public double Avg => Available ? Reading.Avg : 0;
     public string Unit => Available ? Reading.Unit : "";
     public string Text => Available ? Reading.Text : "";
-    public SceneTable Table => Available ? Reading.Table : SceneTable.Empty;
+    public SceneTable Table => _table;
 }
 
 /// <summary>The evaluation context of one item for one tick.</summary>
@@ -273,7 +280,7 @@ internal sealed class EqExprC(bool negate, EqMode mode, CExpr a, CExpr b) : CExp
     }
 }
 
-internal enum InputField : byte { Value, Now, Min, Max, Avg, Unit, Text, Status, Available }
+internal enum InputField : byte { Value, Now, Min, Max, Avg, Unit, Text, Status, Available, Rows }
 
 internal sealed class InputExprC(int input, InputField field) : CExpr
 {
@@ -291,8 +298,85 @@ internal sealed class InputExprC(int input, InputField field) : CExpr
             InputField.Unit => Val.Str(e.Cut(s.Unit)),
             InputField.Text => Val.Str(e.Cut(s.Text)),
             InputField.Status => Val.Str(s.Status),
+            InputField.Rows => Val.Num(s.Table.Rows.Count),
             _ => Val.Bool(s.Available),
         };
+    }
+}
+
+/// <summary>
+/// <c>cell</c>: one cell of a table input's reading for the tick, its text (16 units of work, cut to
+/// <c>textLength</c>) or its number (1 unit); <paramref name="name"/> picks the column by name, else
+/// <paramref name="column"/> by index. A row or column the reading lacks reads "" or 0 (spec/docs/expressions.md,
+/// "Reading text and tables").
+/// </summary>
+internal sealed class CellExprC(int input, CExpr row, int column, string? name, bool number) : CExpr
+{
+    public override Val Eval(Ev e)
+    {
+        e.Work += number ? 1 : CallExprC.StringWork;
+        var r = Row(row.Num(e));
+        var table = input < e.Inputs.Length ? e.Inputs[input].Table : SceneTable.Empty;
+        var c = name is null ? column : table.ColumnOf(name);
+        return number ? Val.Num(table.Number(r, c)) : Val.Str(e.Cut(table.Text(r, c)));
+    }
+
+    /// <summary>A row number rounded half away from zero; -1 (no row) for one outside the ints.</summary>
+    internal static int Row(double value)
+    {
+        var rounded = Math.Round(SceneMath.Finite(value), MidpointRounding.AwayFromZero);
+        return rounded is >= 0 and <= int.MaxValue ? (int)rounded : -1;
+    }
+}
+
+/// <summary>
+/// <c>parse</c>: the only conversion from text (spec/docs/expressions.md, "Reading text and tables"). As a number, a
+/// plain decimal (<c>-?[0-9]+(\.[0-9]+)?</c>) as the double nearest it; as a colour, #RRGGBB or #RRGGBBAA; any other
+/// text, and a decimal whose nearest double isn't finite, gives <c>else</c>. Both operands are evaluated, so the work
+/// doesn't depend on the text; it counts 16, as a string operation.
+/// </summary>
+internal sealed class ParseExprC(bool color, CExpr value, CExpr otherwise) : CExpr
+{
+    public override Val Eval(Ev e)
+    {
+        e.Work += CallExprC.StringWork;
+        var text = value.Str(e);
+        var fallback = otherwise.Eval(e);
+        if (color) return Val.Col(TryColor(text, out var c) ? c : fallback.C);
+        return Val.Num(TryNumber(text, out var n) ? n : fallback.N);
+    }
+
+    /// <summary>A plain decimal's nearest double; false for any other text and for one whose nearest double isn't finite.</summary>
+    internal static bool TryNumber(string text, out double value)
+    {
+        value = 0;
+        var start = text.Length > 0 && text[0] == '-' ? 1 : 0;
+        var point = -1;
+        for (var i = start; i < text.Length; i++)
+        {
+            var ch = text[i];
+            if (ch == '.' && point < 0) point = i;
+            else if (ch is < '0' or > '9') return false;
+        }
+        var end = point < 0 ? text.Length : point;
+        if (end == start || point == text.Length - 1) return false; // no integer digits, or none after the point
+        if (!double.TryParse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out value)
+            || !double.IsFinite(value))
+        {
+            value = 0;
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>#RRGGBB or #RRGGBBAA, hexadecimal digits in either case; false for anything else.</summary>
+    internal static bool TryColor(string text, out uint rgba)
+    {
+        rgba = 0;
+        if (text.Length is not (7 or 9) || text[0] != '#') return false;
+        for (var i = 1; i < text.Length; i++)
+            if (!char.IsAsciiHexDigit(text[i])) return false;
+        return SceneColor.TryParse(text, out rgba);
     }
 }
 
@@ -601,6 +685,17 @@ internal sealed class ExprCompiler(ExprScope scope)
                 return Typed(new MeasureExprC(n, m.Field == "w"), Ty.Number);
             }
             case DtExpr: return Typed(new DtExprC(), Ty.Number);
+            case ParseExpr p:
+            {
+                var color = p.As == "color";
+                return Typed(new ParseExprC(color, Compile(p.Value, depth + 1), Compile(p.Else, depth + 1)), color ? Ty.Color : Ty.Number);
+            }
+            case CellExpr c:
+            {
+                var number = c.Field == "number";
+                var input = scope.Inputs.TryGetValue(c.Input, out var ci) ? ci : int.MaxValue;
+                return Typed(new CellExprC(input, Compile(c.Row, depth + 1), c.Index ?? -1, c.Name, number), number ? Ty.Number : Ty.String);
+            }
             case ValueRefExpr v:
                 return scope.Values.TryGetValue(v.Name, out var vi) ? Typed(new ValueRefC(vi), scope.ValueTypes[vi]) : Zero;
             case StateRefExpr s:
@@ -642,6 +737,7 @@ internal sealed class ExprCompiler(ExprScope scope)
             "text" => InputField.Text,
             "status" => InputField.Status,
             "available" => InputField.Available,
+            "rows" => InputField.Rows,
             _ => InputField.Value,
         };
         var type = field switch

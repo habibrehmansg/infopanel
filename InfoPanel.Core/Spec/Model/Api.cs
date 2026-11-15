@@ -741,7 +741,8 @@ public sealed record SensorTable
     public static SensorTable Of(System.Data.DataTable table, string? format) => new()
     {
         Columns = ColumnsOf(table),
-        Rows = InfoPanel.Scenes.SensorSceneInputs.FromDataTable(table, MaxRows).Rows,
+        // The rows a scene's reading reads first, made here: a value holds its text, not the source's table.
+        Rows = [.. InfoPanel.Scenes.SensorSceneInputs.FromDataTable(table, MaxRows).Rows],
         RowCount = table.Rows.Count,
         Format = format ?? "",
     };

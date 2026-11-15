@@ -1,0 +1,5 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"v": {"type": "number"}},
+  "nodes": [{"kind": "rect", "h": 4, "fill": "#ffffff", "w": {"op": "input", "name": "v", "field": "rows"}}]
+}

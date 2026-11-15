@@ -3169,19 +3169,19 @@ export type Origin = Opaque;
 // expression.schema.json (urn:infopanel:expression:1)
 
 /** An expression of type number. */
-export type NumberExpr = number | NumberUnaryOp | NumberBinaryOp | NumberVariadicOp | NumberTernaryOp | NumberIfOp | NumberStepsOp | NumberInputOp | HistoryOp | TimeOp | BoxOp | MeasureOp | DtOp | ValueRefOp | StateRefOp;
+export type NumberExpr = number | NumberUnaryOp | NumberBinaryOp | NumberVariadicOp | NumberTernaryOp | NumberIfOp | NumberStepsOp | NumberInputOp | HistoryOp | TimeOp | BoxOp | MeasureOp | DtOp | NumberParseOp | CellNumberOp | ValueRefOp | StateRefOp;
 
 /** An expression of type string. */
-export type StringExpr = string | ConcatOp | CaseOp | FormatOp | FormatTimeOp | StringInputOp | StringIfOp | StringStepsOp | ValueRefOp | StateRefOp;
+export type StringExpr = string | ConcatOp | CaseOp | FormatOp | FormatTimeOp | StringInputOp | StringIfOp | StringStepsOp | CellTextOp | ValueRefOp | StateRefOp;
 
 /** An expression of type bool. */
 export type BoolExpr = boolean | CompareOp | EqualOp | LogicOp | NotOp | BoolInputOp | BoolIfOp | BoolStepsOp | ValueRefOp | StateRefOp;
 
 /** An expression of type color. A literal is #RRGGBB or #RRGGBBAA. */
-export type ColorExpr = ColorLiteral | RgbaOp | AlphaOp | ColorLerpOp | ColorIfOp | ColorStepsOp | ValueRefOp | StateRefOp;
+export type ColorExpr = ColorLiteral | RgbaOp | AlphaOp | ColorLerpOp | ColorIfOp | ColorStepsOp | ColorParseOp | ValueRefOp | StateRefOp;
 
 /** An expression of type number or string: numberExpr's and stringExpr's alternatives in one list, so `op` selects the operation and an error inside it keeps its own path. */
-export type NumberOrStringExpr = number | string | NumberUnaryOp | NumberBinaryOp | NumberVariadicOp | NumberTernaryOp | NumberIfOp | NumberStepsOp | NumberInputOp | HistoryOp | TimeOp | BoxOp | MeasureOp | DtOp | ConcatOp | CaseOp | FormatOp | FormatTimeOp | StringInputOp | StringIfOp | StringStepsOp | ValueRefOp | StateRefOp;
+export type NumberOrStringExpr = number | string | NumberUnaryOp | NumberBinaryOp | NumberVariadicOp | NumberTernaryOp | NumberIfOp | NumberStepsOp | NumberInputOp | HistoryOp | TimeOp | BoxOp | MeasureOp | DtOp | NumberParseOp | CellNumberOp | ConcatOp | CaseOp | FormatOp | FormatTimeOp | StringInputOp | StringIfOp | StringStepsOp | CellTextOp | ValueRefOp | StateRefOp;
 
 /** An expression of any type. Its type is inferred (see docs/expressions.md); a string literal that is a colour literal is read as a colour where a colour is expected. */
 export type AnyExpr = NumberExpr | StringExpr | BoolExpr | ColorExpr;
@@ -3337,12 +3337,12 @@ export interface HistoryOp {
   count: number;
 }
 
-/** A number input's reading. value: the statistic the binding selects (now by default); now, min, max, avg: that statistic. An unbound or unavailable input reads 0. */
+/** A number input's reading. value: the statistic the binding selects (now by default); now, min, max, avg: that statistic. rows: a table input's row count, the rows of its reading for the tick (at most `tableRows`, see docs/bindings.md, "Tables"). An unbound or unavailable input reads 0. */
 export interface NumberInputOp {
   op: "input";
   name: Name;
   /** @default "value" */
-  field?: "value" | "now" | "min" | "max" | "avg";
+  field?: "value" | "now" | "min" | "max" | "avg" | "rows";
 }
 
 /** An input's text: text (a text input's reading, or a table input's summary), unit (a number input's unit), status (unbound, live, stale, unavailable or denied). Unavailable text reads "". The result is cut to its first 4,096 Unicode scalar values. */
@@ -3369,6 +3369,48 @@ export interface ValueRefOp {
 export interface StateRefOp {
   op: "state";
   name: Name;
+}
+
+/** A number read from text, the only conversion from text to a number: `value` when it is a plain decimal (an optional `-`, one or more digits 0–9, then optionally `.` and one or more digits), as the double nearest it; any other text (an exponent, a sign `+`, a space, a group separator, ""), and a decimal whose nearest double isn't finite, gives `else`. `value` and `else` are both evaluated (see docs/expressions.md, "Reading text and tables"). */
+export interface NumberParseOp {
+  op: "parse";
+  /** What the text is read as: `number` here, `color` where a colour is expected. */
+  as: "number";
+  value: StringExpr;
+  /** The result when `value` isn't a plain decimal. */
+  else: NumberExpr;
+}
+
+/** A colour read from text, the only conversion from text to a colour: `value` when it is #RRGGBB or #RRGGBBAA (hexadecimal digits in either case), else `else`. `value` and `else` are both evaluated (see docs/expressions.md, "Reading text and tables"). */
+export interface ColorParseOp {
+  op: "parse";
+  /** What the text is read as: `color` here, `number` where a number is expected. */
+  as: "color";
+  value: StringExpr;
+  /** The result when `value` isn't a colour. */
+  else: ColorExpr;
+}
+
+/** A column of the table input's reading by index (0 first) or by name, matched as a table node's `column` is: by name exactly, the first column with it. */
+export type CellColumn = number | string;
+
+/** One cell's text in a table input's reading for the tick (see docs/bindings.md, "Tables"): `row` (0 first) rounded half away from zero, and `column`. A row or column the reading lacks, and an unbound or unavailable input, read "". The result is cut to its first 4,096 Unicode scalar values. */
+export interface CellTextOp {
+  op: "cell";
+  input: Name;
+  row: NumberExpr;
+  column: CellColumn;
+  /** @default "text" */
+  field?: "text";
+}
+
+/** One cell's number in a table input's reading for the tick: the source's own number for a cell it gives as a number, its unit left out (a number that isn't finite is 0), and 0 for any other cell; never read from the cell's text (see docs/bindings.md, "Tables"). `row` (0 first) is rounded half away from zero; a row or column the reading lacks, and an unbound or unavailable input, read 0. */
+export interface CellNumberOp {
+  op: "cell";
+  input: Name;
+  row: NumberExpr;
+  column: CellColumn;
+  field: "number";
 }
 
 /** A colour from red, green, blue (0–255) and alpha (0–1), each clamped, every channel rounded half away from zero to 0–255. */

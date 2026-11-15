@@ -53,5 +53,14 @@ public sealed record ValueRefExpr(string Name) : Expr;
 /// <summary><c>{"op":"state"}</c>: a state cell of the scene.</summary>
 public sealed record StateRefExpr(string Name) : Expr;
 
+/// <summary><c>{"op":"parse"}</c>: <see cref="Value"/>'s text read as a number or a colour (<see cref="As"/>), else <see cref="Else"/>.</summary>
+public sealed record ParseExpr(string As, Expr Value, Expr Else) : Expr;
+
+/// <summary>
+/// <c>{"op":"cell"}</c>: one cell of a table input's reading, its text or (<see cref="Field"/> <c>number</c>) its number;
+/// the column by <see cref="Index"/> or by <see cref="Name"/>, one of them set; <see cref="Field"/> null means <c>text</c>.
+/// </summary>
+public sealed record CellExpr(string Input, Expr Row, int? Index, string? Name, string? Field) : Expr;
+
 /// <summary><c>{"op":"steps"}</c>: <c>Out[i]</c>, where i is how many of <see cref="At"/> the value is at or above.</summary>
 public sealed record StepsExpr(Expr Value, IReadOnlyList<Expr> At, IReadOnlyList<Expr> Out) : Expr;

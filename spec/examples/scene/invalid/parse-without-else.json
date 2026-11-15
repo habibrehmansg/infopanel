@@ -1,0 +1,5 @@
+{
+  "format": "infopanel.scene/1",
+  "inputs": {"s": {"type": "text"}},
+  "nodes": [{"kind": "rect", "h": 4, "fill": "#ffffff", "w": {"op": "parse", "as": "number", "value": {"op": "input", "name": "s", "field": "text"}}}]
+}

@@ -19,6 +19,8 @@
         { "$ref": "#/$defs/boxOp" },
         { "$ref": "#/$defs/measureOp" },
         { "$ref": "#/$defs/dtOp" },
+        { "$ref": "#/$defs/numberParseOp" },
+        { "$ref": "#/$defs/cellNumberOp" },
         { "$ref": "#/$defs/valueRefOp" },
         { "$ref": "#/$defs/stateRefOp" }
       ]
@@ -34,6 +36,7 @@
         { "$ref": "#/$defs/stringInputOp" },
         { "$ref": "#/$defs/stringIfOp" },
         { "$ref": "#/$defs/stringStepsOp" },
+        { "$ref": "#/$defs/cellTextOp" },
         { "$ref": "#/$defs/valueRefOp" },
         { "$ref": "#/$defs/stateRefOp" }
       ]
@@ -62,6 +65,7 @@
         { "$ref": "#/$defs/colorLerpOp" },
         { "$ref": "#/$defs/colorIfOp" },
         { "$ref": "#/$defs/colorStepsOp" },
+        { "$ref": "#/$defs/colorParseOp" },
         { "$ref": "#/$defs/valueRefOp" },
         { "$ref": "#/$defs/stateRefOp" }
       ]
@@ -83,6 +87,8 @@
         { "$ref": "#/$defs/boxOp" },
         { "$ref": "#/$defs/measureOp" },
         { "$ref": "#/$defs/dtOp" },
+        { "$ref": "#/$defs/numberParseOp" },
+        { "$ref": "#/$defs/cellNumberOp" },
         { "$ref": "#/$defs/concatOp" },
         { "$ref": "#/$defs/caseOp" },
         { "$ref": "#/$defs/formatOp" },
@@ -90,6 +96,7 @@
         { "$ref": "#/$defs/stringInputOp" },
         { "$ref": "#/$defs/stringIfOp" },
         { "$ref": "#/$defs/stringStepsOp" },
+        { "$ref": "#/$defs/cellTextOp" },
         { "$ref": "#/$defs/valueRefOp" },
         { "$ref": "#/$defs/stateRefOp" }
       ]
@@ -337,14 +344,14 @@
       }
     },
     "numberInputOp": {
-      "description": "A number input's reading. value: the statistic the binding selects (now by default); now, min, max, avg: that statistic. An unbound or unavailable input reads 0.",
+      "description": "A number input's reading. value: the statistic the binding selects (now by default); now, min, max, avg: that statistic. rows: a table input's row count, the rows of its reading for the tick (at most `tableRows`, see docs/bindings.md, \"Tables\"). An unbound or unavailable input reads 0.",
       "type": "object",
       "required": ["op", "name"],
       "additionalProperties": false,
       "properties": {
         "op": { "const": "input" },
         "name": { "$ref": "urn:infopanel:common:1#/$defs/name" },
-        "field": { "enum": ["value", "now", "min", "max", "avg"], "default": "value" }
+        "field": { "enum": ["value", "now", "min", "max", "avg", "rows"], "default": "value" }
       }
     },
     "stringInputOp": {
@@ -387,6 +394,63 @@
       "properties": {
         "op": { "const": "state" },
         "name": { "$ref": "urn:infopanel:common:1#/$defs/name" }
+      }
+    },
+    "numberParseOp": {
+      "description": "A number read from text, the only conversion from text to a number: `value` when it is a plain decimal (an optional `-`, one or more digits 0–9, then optionally `.` and one or more digits), as the double nearest it; any other text (an exponent, a sign `+`, a space, a group separator, \"\"), and a decimal whose nearest double isn't finite, gives `else`. `value` and `else` are both evaluated (see docs/expressions.md, \"Reading text and tables\").",
+      "type": "object",
+      "required": ["op", "as", "value", "else"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "parse" },
+        "as": { "const": "number", "description": "What the text is read as: `number` here, `color` where a colour is expected." },
+        "value": { "$ref": "#/$defs/stringExpr" },
+        "else": { "$ref": "#/$defs/numberExpr", "description": "The result when `value` isn't a plain decimal." }
+      }
+    },
+    "colorParseOp": {
+      "description": "A colour read from text, the only conversion from text to a colour: `value` when it is #RRGGBB or #RRGGBBAA (hexadecimal digits in either case), else `else`. `value` and `else` are both evaluated (see docs/expressions.md, \"Reading text and tables\").",
+      "type": "object",
+      "required": ["op", "as", "value", "else"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "parse" },
+        "as": { "const": "color", "description": "What the text is read as: `color` here, `number` where a number is expected." },
+        "value": { "$ref": "#/$defs/stringExpr" },
+        "else": { "$ref": "#/$defs/colorExpr", "description": "The result when `value` isn't a colour." }
+      }
+    },
+    "cellColumn": {
+      "description": "A column of the table input's reading by index (0 first) or by name, matched as a table node's `column` is: by name exactly, the first column with it.",
+      "oneOf": [
+        { "type": "integer", "minimum": 0, "maximum": 255 },
+        { "type": "string", "minLength": 1, "maxLength": 128 }
+      ]
+    },
+    "cellTextOp": {
+      "description": "One cell's text in a table input's reading for the tick (see docs/bindings.md, \"Tables\"): `row` (0 first) rounded half away from zero, and `column`. A row or column the reading lacks, and an unbound or unavailable input, read \"\". The result is cut to its first 4,096 Unicode scalar values.",
+      "type": "object",
+      "required": ["op", "input", "row", "column"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "cell" },
+        "input": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+        "row": { "$ref": "#/$defs/numberExpr" },
+        "column": { "$ref": "#/$defs/cellColumn" },
+        "field": { "const": "text", "default": "text" }
+      }
+    },
+    "cellNumberOp": {
+      "description": "One cell's number in a table input's reading for the tick: the source's own number for a cell it gives as a number, its unit left out (a number that isn't finite is 0), and 0 for any other cell; never read from the cell's text (see docs/bindings.md, \"Tables\"). `row` (0 first) is rounded half away from zero; a row or column the reading lacks, and an unbound or unavailable input, read 0.",
+      "type": "object",
+      "required": ["op", "input", "row", "column", "field"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "cell" },
+        "input": { "$ref": "urn:infopanel:common:1#/$defs/name" },
+        "row": { "$ref": "#/$defs/numberExpr" },
+        "column": { "$ref": "#/$defs/cellColumn" },
+        "field": { "const": "number" }
       }
     },
     "rgbaOp": {

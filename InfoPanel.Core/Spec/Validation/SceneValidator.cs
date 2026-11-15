@@ -313,6 +313,13 @@ public static class SceneValidator
                 }
                 case TimeExpr { At: { } at }: return References(at, path + "/at", refs);
                 case FormatTimeExpr { At: { } at }: return References(at, path + "/at", refs);
+                case ParseExpr p:
+                {
+                    var state = References(p.Value, path + "/value", refs);
+                    state |= References(p.Else, path + "/else", refs);
+                    return state;
+                }
+                case CellExpr c: return References(c.Row, path + "/row", refs);
                 default: return false;
             }
         }
@@ -325,6 +332,8 @@ public static class SceneValidator
             FormatExpr f => 1 + Ops(f.Value) + (f.Decimals is null ? 0 : Ops(f.Decimals)) + (f.Group is null ? 0 : Ops(f.Group)),
             TimeExpr { At: { } at } => 1 + Ops(at),
             FormatTimeExpr { At: { } at } => 1 + Ops(at),
+            ParseExpr p => 1 + Ops(p.Value) + Ops(p.Else),
+            CellExpr c => 1 + Ops(c.Row),
             NumberLit or StringLit or BoolLit => 0,
             _ => 1,
         };
@@ -397,7 +406,9 @@ public static class SceneValidator
                 case StringLit s: return Info.Of(ColorLiteral.IsMatch(s.Value) ? Ty.String | Ty.Color : Ty.String);
             }
 
-            if (!_quiet) _work += expr is FormatExpr or FormatTimeExpr || expr is CallExpr { Op: var op } && StringOps.Contains(op) ? StringOpWork : 1;
+            if (!_quiet)
+                _work += expr is FormatExpr or FormatTimeExpr or ParseExpr or CellExpr { Field: null or "text" } || expr is CallExpr { Op: var op } && StringOps.Contains(op)
+                    ? StringOpWork : 1;
             depth++;
             if (depth > limits.ExprDepth && !_exprDepthReported && !_quiet)
             {
@@ -508,6 +519,15 @@ public static class SceneValidator
                         Error(path + "/pattern", "time.pattern", $"'{ft.Pattern}' is not a valid time pattern.");
                     return ft.At is null ? Info.Of(Ty.String) : Info.Of(Ty.String).With(Arg(ft.At, path + "/at", Ty.Number));
                 case TimeExpr t: return t.At is null ? Info.Of(Ty.Number) : Info.Of(Ty.Number).With(Arg(t.At, path + "/at", Ty.Number));
+                case ParseExpr p:
+                {
+                    // The text read, and else of the type read (the schema has a shape for each).
+                    var t = p.As == "color" ? Ty.Color : Ty.Number;
+                    return Info.Of(t).With(Arg(p.Value, path + "/value", Ty.String)).With(Arg(p.Else, path + "/else", t));
+                }
+                case CellExpr c:
+                    RequireInput(c.Input, "table", path + "/input");
+                    return Info.Of(c.Field == "number" ? Ty.Number : Ty.String).With(Arg(c.Row, path + "/row", Ty.Number));
                 case BoxExpr: return Info.Of(Ty.Number);
                 case DtExpr:
                     if (ctx != Ctx.StateNext)
@@ -572,6 +592,9 @@ public static class SceneValidator
                 case "unit":
                     RequireInput(input.Name, "number", path);
                     return Ty.String;
+                case "rows":
+                    RequireInput(input.Name, "table", path);
+                    return Ty.Number;
                 case "text":
                     RequireInput(input.Name, "text|table", path);
                     return Ty.String;

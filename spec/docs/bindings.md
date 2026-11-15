@@ -15,7 +15,7 @@ A scene says which **inputs** it reads; an item says which sensor feeds each one
 |---|---|---|
 | `number` | A numeric sensor: its value (by the binding's statistic) and its now, min, max and average, its unit, its history | `input` fields `value`, `now`, `min`, `max`, `avg`, `unit`; `history`; `series` |
 | `text` | A text sensor's text, or an image sensor's reference (the picture it names, [API](api.md#sensor-pictures)) | `input` field `text` |
-| `table` | A table sensor: rows and named columns of text cells, and a summary text | `table`; `input` field `text` |
+| `table` | A table sensor: named columns and rows of cells, each with its text and its number ([below](#tables)), and a summary text | `table`; `cell`; `input` fields `rows`, `text` |
 
 Every input also has a `status` and `available` ([expressions](expressions.md)). A scene declares at most 64 inputs, each named like other scene names (`^[a-z][A-Za-z0-9_]{0,31}$`), with an optional `label` (up to 64 characters) for a client to show next to its binding control.
 
@@ -43,6 +43,12 @@ A binding whose name the scene doesn't declare is kept and ignored, so an item c
 An input bound to a sensor reads the sensor's status in the sensor list ([API](api.md#fonts-and-sensors)) as follows: `live` and `simulated` as `live`, `stale` as `stale`, `denied` as `denied`, and `unavailable` and `missing` as `unavailable`. A sensor of another type than the input is `unavailable`, whatever its status; an `image` sensor is a `text` input's type (it reads the picture's reference with the sensor's status), and a `number` or `table` input's other type. A `stale` input keeps the sensor's last reading.
 
 An input without a reading reads 0 (numbers), "" (text) and an empty table; a scene shows something else by testing `available` or `status`.
+
+## Tables
+
+A table input's reading for a tick is its column names and its first `tableRows` rows (4,096, [limits](limits.md#run-time-limits)), in the source's order, each cell with its text and, when the source gives the cell as a number, that number. `table`, `cell` and the `rows` field all read this one reading, so in one tick they never disagree, however the source's table changes between ticks ([identity](identity.md#the-tick-snapshot)). A source with more rows is read to its first `tableRows`; `rows` is at most that. The `table` node still draws at most 100 rows of it ([smart nodes](smart-nodes.md)).
+
+**A cell's number** is the source's own number for that cell, its unit left out: a cell given as a number with a unit (a plugin's sensor cell, whose text reads `28.6%`, [API](api.md#fonts-and-sensors)) has the number 28.6 (the value the source holds, which may carry more digits than its text shows). A number that isn't finite is 0, as every reading is; a cell that isn't a number has the number 0. A cell's number is never read from its text: a text cell that reads `42` has the number 0 (`parse` reads a number from text, [expressions](expressions.md#reading-text-and-tables)).
 
 ## History
 

@@ -277,7 +277,9 @@ internal static class SimulatedText
     /// the engine doesn't know, a number alone (a value's shape never makes <c>42 A</c> a number: <c>A</c> may be an
     /// initial). Any other cell shows a text reading of its column's (<see cref="Heuristic"/> on the real column's name,
     /// its label the heading), the <c>n</c>th row the <c>n</c>th sample. A table with a column of processes or apps keeps
-    /// at most <see cref="Processes"/>' rows, so none repeats.
+    /// at most <see cref="Processes"/>' rows, so none repeats. A made-up number cell's number is the number it shows (the
+    /// made-up source's own); every other cell's is 0. A row is made up when first read (<see cref="SceneTable.Lazy"/>),
+    /// so a long table costs the rows a tick reads.
     /// </summary>
     public static SceneTable Table(SensorKey key, SceneTable real, long step)
     {
@@ -294,11 +296,11 @@ internal static class SimulatedText
                 rows = Math.Min(rows, Processes.Count);
         }
 
-        var made = new List<IReadOnlyList<string>>(rows);
-        for (var r = 0; r < rows; r++)
+        return SceneTable.Lazy(headings, rows, r =>
         {
             var row = real.Rows[r];
             var cells = new string[row.Count];
+            double[]? numbers = null;
             for (var c = 0; c < row.Count; c++)
             {
                 var cell = row[c];
@@ -307,13 +309,15 @@ internal static class SimulatedText
                 if (cell.Trim().Length == 0)
                     cells[c] = "";
                 else if (Number(cell, trusted) is { Success: true } number)
-                    cells[c] = MadeUpNumber(key, c, r, step, number, real, trusted);
+                {
+                    (cells[c], var value) = MadeUpNumber(key, c, r, step, number, real, trusted);
+                    (numbers ??= new double[row.Count])[c] = value;
+                }
                 else
                     cells[c] = Value(kinds.ElementAtOrDefault(c) ?? Heuristic(column, cell), r, Label(heading), cell);
             }
-            made.Add(cells);
-        }
-        return new SceneTable(headings, made);
+            return new SceneRow(cells, numbers ?? []);
+        });
     }
 
     /// <summary>A table's text: its first row's cells, as a table reading's (the 1.x plugins' summary); <c>-</c> without rows.</summary>
@@ -335,9 +339,9 @@ internal static class SimulatedText
     /// <summary>
     /// A made-up number for a cell: its column's top value from the order of the column's first number (1 to 9 times it,
     /// seeded from the key and column; a percentage up to 90), a third less a row down, moved by up to 10 % each step;
-    /// in the list's spelling of its unit (<see cref="Unit"/>).
+    /// in the list's spelling of its unit (<see cref="Unit"/>). With its text, the number it shows.
     /// </summary>
-    private static string MadeUpNumber(SensorKey key, int column, int row, long step, Match number, SceneTable real, bool trusted)
+    private static (string Text, double Value) MadeUpNumber(SensorKey key, int column, int row, long step, Match number, SceneTable real, bool trusted)
     {
         var unit = Unit(number.Groups["unit"].Value);
         var decimals = number.Groups["fraction"].Length;
@@ -351,8 +355,10 @@ internal static class SimulatedText
         var start = unit.Trim() == "%" ? 10 + seed.NextDouble() * 80 : scale * (1 + seed.NextDouble() * 8);
         var jitter = new Mulberry32(StableHash.Fnv1a(string.Create(CultureInfo.InvariantCulture, $"{key}#{column}#{row}#{step}")));
         var value = start * Math.Pow(2.0 / 3, row) * (0.9 + jitter.NextDouble() * 0.2);
-        var text = Math.Round(value, decimals).ToString("F" + decimals.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
-        return number.Groups["sign"].Value + (point == "." ? text : text.Replace(".", point, StringComparison.Ordinal)) + unit;
+        var rounded = Math.Round(value, decimals);
+        var text = rounded.ToString("F" + decimals.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+        var sign = number.Groups["sign"].Value;
+        return (sign + (point == "." ? text : text.Replace(".", point, StringComparison.Ordinal)) + unit, sign == "-" ? -rounded : rounded);
     }
 
     private static string Label(string name) => name.Trim().Length > 0 ? name : NoName;

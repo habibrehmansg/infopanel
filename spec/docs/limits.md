@@ -186,6 +186,7 @@ These hold while a scene draws; content is never refused for them.
 | Limit | Value | What it bounds |
 |---|---|---|
 | `textLength` | 4,096 Unicode scalar values | Every string an expression produces, cut at the operation that produces it ([expressions](expressions.md#numbers-and-strings)); and what a text node draws, its spans together, and each table cell ([smart nodes](smart-nodes.md#text)). No string an engine holds for a scene is longer. |
+| `tableRows` | 4,096 rows | A table input's reading for a tick: its column names and its first 4,096 rows ([bindings](bindings.md#tables)), as many as a history holds, so a column and a history are lists of one size. A source with more rows is read to its first 4,096; the `table` node draws at most 100 of them (schema). |
 
 - Every number a scene draws with (a coordinate, size, radius, transform value, path or polyline number, stroke width, dash length or effect offset) is clamped to ±10⁹ on its own before drawing, and bounds are measured from the clamped values ([geometry](geometry.md#coordinate-range)). This is drawing, not acceptance, and covers a scene's own numbers only: an SVG's are held to `svgNumber`, and a file with one beyond it is refused.
 - Effect layers are clipped to the canvas plus the effect's reach.

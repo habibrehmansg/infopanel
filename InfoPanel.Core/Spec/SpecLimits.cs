@@ -194,6 +194,10 @@ public sealed record SpecLimits
     // used anywhere, comparisons included (docs/expressions.md, "Numbers and strings").
     public int TextLength { get; init; } = 4_096;
 
+    // At run time: a table input's reading for a tick is its column names and its first this many rows (docs/bindings.md,
+    // "Tables"), as many as a history holds; a table node still draws at most 100 of them (schema).
+    public int TableRows { get; init; } = 4_096;
+
     /// <summary>These limits with some replaced, by name (<c>{"nodes": 8}</c>).</summary>
     public SpecLimits With(IReadOnlyDictionary<string, double> overrides)
     {
@@ -246,6 +250,6 @@ public sealed record SpecLimits
         "mediaBytes", "videoBytes", "svgBytes", "mediaSide", "mediaArea", "mediaFrames", "mediaDuration", "mediaFrameArea", "svgElements",
         "svgNumber", "svgDepth", "svgDrawnDepth", "svgGradientChain",
         // Run-time limits.
-        "textLength",
+        "textLength", "tableRows",
     };
 }
