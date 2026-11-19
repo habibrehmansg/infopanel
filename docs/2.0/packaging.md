@@ -31,6 +31,8 @@ On a Mac with the .NET SDK `global.json` pins, Xcode's command line tools, and m
 fetched elsewhere instead of downloading it; it is refused unless its SHA-256 is the pinned one), then FFmpeg with
 `native/ffmpeg/build.sh --target macos-arm64`, into `<out>/ffmpeg` (`--ffmpeg-source <ffmpeg-<version>.tar.xz>` and
 `--dav1d-source <dav1d-<version>.tar.xz>` the same way). `INFOPANEL_BUILD_JOBS` caps FFmpeg's parallel compile jobs.
+`--ffmpeg-dir <folder>` takes a folder `native/ffmpeg/build.sh --target macos-arm64` built instead (its `bundle/`, as
+the release workflow's cache restores it), checked with `--verify` as a build here is; there is no `<out>/ffmpeg` then.
 It writes:
 
 - `<out>/libusb/`: libusb's build, `libusb-1.0.dylib` and `libusb-COPYING.txt`;
@@ -420,13 +422,26 @@ origin it is optional: a build without it sends none.
    with `build.sh --check-args`. A pushed tag is a **release**: refused unless it is a bare 2.x version, not `-dev`,
    on a commit of `2.0.x`. Anything else is a **dry run**, stamped with the version given or
    `2.0.0-dev.ci.<run number>`.
-2. `mac` (`macos-15`, Apple silicon) installs FFmpeg's build tools (`brew install meson ninja pkgconf`) and runs
-   `packaging/macos/build.sh` into the runner's temporary folder, outside the checkout, so the build isn't `-dirty`; it
-   keeps the release tarballs the app's libraries were built from (FFmpeg's, dav1d's and libusb's) as the artifact
-   `sources`. `ffmpeg-windows` (`ubuntu-24.04`) builds `native/ffmpeg/windows-cross.Dockerfile`'s container and runs
+2. `mac` (`macos-15`, Apple silicon) installs FFmpeg's build tools (`brew install meson ninja pkgconf`), fetches
+   FFmpeg's and dav1d's release tarballs and checks them against their pins, builds FFmpeg from them with
+   `native/ffmpeg/build.sh --target macos-arm64`, and runs `packaging/macos/build.sh --ffmpeg-dir` on that build, into
+   the runner's temporary folder, outside the checkout, so the build isn't `-dirty`; it keeps the release tarballs the
+   app's libraries were built from (FFmpeg's, dav1d's and libusb's) as the artifact `sources`. `ffmpeg-windows`
+   (`ubuntu-24.04`) builds `native/ffmpeg/windows-cross.Dockerfile`'s container and runs
    `native/ffmpeg/build.sh --target windows-x64` in it, then `--verify`, and keeps the `bundle` folder as the artifact
    `ffmpeg-windows` for a day. `windows` (`windows-2022`, with Inno Setup 6, installed when the image lacks it) waits
    for it and runs `packaging\windows\build.ps1` the same way, with that folder as `-FFmpegDir`.
+
+   **FFmpeg's cache.** A dry run keeps each target's FFmpeg build (its `bundle/` folder: the four libraries and the two
+   licence texts) in GitHub's Actions cache, one entry per target, keyed on a hash of everything that decides its bytes:
+   `native/ffmpeg/pins.txt` and `native/ffmpeg/build.sh` for both; for the Mac, `packaging/macos/Info.plist` (the
+   minimum macOS) and the runner image's name and version (`ImageOS`, `ImageVersion`; an empty one fails the job), its
+   macOS, selected Xcode, SDK, compiler, linker, cctools, make, meson, ninja and pkg-config versions, which change under a
+   fixed image label; for Windows, `native/ffmpeg/windows-cross.Dockerfile`. Only an exact key is restored, never a nearby
+   one. A restored build gets the same checks as a new one (`--verify`; a failure fails the job, it isn't rebuilt), and
+   a new build is saved only after those checks pass (on the Mac, after the app's smoke run too). FFmpeg's and dav1d's
+   tarballs are still fetched and checked in every run, so `sources` is the same either way. **A release never uses the
+   cache**: for a pushed tag nothing is restored or saved, and FFmpeg is built from source in the run.
 3. Each smoke-runs what it built: the engine on a temporary data folder with `--offline --no-tray --no-windows
    --no-browser --no-plugins --no-panels`, then `GET /api/session` must report the version as `engineVersion` and the
    checked-out commit, without `-dirty`, as `engineBuild`, and list `media.video` among the scene format's

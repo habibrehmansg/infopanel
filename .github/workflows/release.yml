@@ -7,7 +7,8 @@ name: Release
 # to 2.0.x that changes packaging, is a dry run: the same builds, kept as the run's artifacts only, stamped
 # 2.0.0-dev.ci.<run number> (or the version given). The web client's origin is the repository variable
 # INFOPANEL_ALLOW_ORIGIN; the address crash reports go to, the optional repository variable INFOPANEL_SENTRY_DSN (without
-# it a build sends none). Nothing here creates a tag, signs or publishes.
+# it a build sends none). A dry run keeps FFmpeg's builds in GitHub's cache, keyed on their inputs; a release builds them
+# from source. Nothing here creates a tag, signs or publishes.
 on:
   push:
     tags: ['2.*']
@@ -79,14 +80,72 @@ jobs:
         with:
           global-json-file: global.json
       - name: FFmpeg's build tools
-        # packaging/macos/build.sh builds FFmpeg and dav1d from their pinned sources (native/ffmpeg/build.sh).
+        # native/ffmpeg/build.sh builds FFmpeg and dav1d from their pinned sources (below); their versions are part of
+        # FFmpeg's cache key.
         env:
           HOMEBREW_NO_AUTO_UPDATE: '1'
           HOMEBREW_NO_INSTALL_CLEANUP: '1'
         run: brew install meson ninja pkgconf
+      - name: FFmpeg's and dav1d's source tarballs
+        # Fetched and checked against their pins in every run, a cache hit too: FFmpeg is built from them, and they are
+        # the sources artifact the release attaches.
+        run: |
+          set -euo pipefail
+          pin() { sed -n "s/^$1=//p" native/ffmpeg/pins.txt; }
+          ffmpeg_version="$(pin ffmpeg_version)"
+          dav1d_version="$(pin dav1d_version)"
+          mkdir "$RUNNER_TEMP/ffmpeg-sources"
+          for s in "https://ffmpeg.org/releases/ffmpeg-$ffmpeg_version.tar.xz $(pin ffmpeg_source_sha256)" \
+                   "https://downloads.videolan.org/pub/videolan/dav1d/$dav1d_version/dav1d-$dav1d_version.tar.xz $(pin dav1d_source_sha256)"; do
+            read -r url expected <<< "$s"
+            file="$RUNNER_TEMP/ffmpeg-sources/$(basename "$url")"
+            curl --fail --location --silent --show-error --proto '=https' "$url" -o "$file"
+            actual="$(shasum -a 256 "$file" | cut -d ' ' -f 1)"
+            [ -n "$expected" ] && [ "$actual" = "$expected" ] || { echo "::error::$file's SHA-256 is $actual, not the pinned $expected"; exit 1; }
+            echo "$file: SHA-256 $actual (pinned)"
+          done
+      # FFmpeg's build is cached for dry runs only, keyed on everything that decides its bytes: the pins, the build
+      # script, Info.plist (the minimum macOS it builds for), and the runner's image, macOS, Xcode, SDK, compiler, linker
+      # and build tools, which move under a fixed image label. No fallback key: an exact hit or a build. A release never restores or saves it.
+      - id: ffmpeg-key
+        name: FFmpeg's cache key
+        if: needs.prepare.outputs.mode == 'dry-run'
+        env:
+          INPUTS: ${{ hashFiles('native/ffmpeg/pins.txt', 'native/ffmpeg/build.sh', 'packaging/macos/Info.plist') }}
+        run: |
+          set -euo pipefail
+          [ -n "$INPUTS" ] || { echo "::error::No hash of FFmpeg's build inputs"; exit 1; }
+          # The hosted runner's image (ImageOS, ImageVersion: set on every one) and what it holds, as the build runs them:
+          # the selected Xcode, the compiler, the linker (ld -v) and cctools' version (libtool and ranlib print it; ar, lipo,
+          # strip and codesign print none, and come from the same Xcode), make, and the Homebrew tools. A query that fails,
+          # or an image variable that is empty, fails the step.
+          [ -n "${ImageOS:-}" ] && [ -n "${ImageVersion:-}" ] || { echo "::error::The runner image's ImageOS or ImageVersion is empty"; exit 1; }
+          tools="ImageOS: $ImageOS"$'\n'"ImageVersion: $ImageVersion"$'\n'
+          for tool in "sw_vers -productVersion" "sw_vers -buildVersion" "xcode-select -p" "xcodebuild -version" \
+                      "xcrun --show-sdk-version" "xcrun --show-sdk-build-version" "cc --version" "ld -v" \
+                      "libtool -V" "ranlib -V" "make --version" "meson --version" "ninja --version" "pkg-config --version"; do
+            said="$($tool 2>&1)"
+            tools+="$tool: $said"$'\n'
+          done
+          printf '%s' "$tools"
+          echo "key=ffmpeg-macos-arm64-$RUNNER_OS-$RUNNER_ARCH-$INPUTS-$(printf '%s' "$tools" | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - id: ffmpeg-cache
+        name: Restore FFmpeg's build from the cache
+        if: needs.prepare.outputs.mode == 'dry-run'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ffmpeg-mac/bundle
+          key: ${{ steps.ffmpeg-key.outputs.key }}
+      - name: Build FFmpeg's libraries
+        # native/ffmpeg/build.sh from the tarballs above, with its checks; packaging/macos/build.sh checks it again.
+        if: needs.prepare.outputs.mode != 'dry-run' || steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: |
+          native/ffmpeg/build.sh --target macos-arm64 --out "$RUNNER_TEMP/ffmpeg-mac" \
+            --source "$RUNNER_TEMP"/ffmpeg-sources/ffmpeg-*.tar.xz --dav1d-source "$RUNNER_TEMP"/ffmpeg-sources/dav1d-*.tar.xz
       - name: Build the app and its disk image
-        # The output folder is outside the checkout, so the build isn't recorded as -dirty.
-        run: packaging/macos/build.sh --version "$VERSION" --allow-origin "$ALLOW_ORIGIN" --crash-reports-dsn "$CRASH_REPORTS_DSN" --out "$RUNNER_TEMP/mac"
+        # The output folder is outside the checkout, so the build isn't recorded as -dirty. FFmpeg's build, built above or
+        # restored, is checked by --verify there either way, and a failed check fails the job.
+        run: packaging/macos/build.sh --version "$VERSION" --allow-origin "$ALLOW_ORIGIN" --crash-reports-dsn "$CRASH_REPORTS_DSN" --ffmpeg-dir "$RUNNER_TEMP/ffmpeg-mac" --out "$RUNNER_TEMP/mac"
       - name: Crash reports in this build
         run: |
           if [ -n "$CRASH_REPORTS_DSN" ]; then echo "Crash reports: on" >> "$GITHUB_STEP_SUMMARY"; else echo "Crash reports: off in this build" >> "$GITHUB_STEP_SUMMARY"; fi
@@ -153,6 +212,13 @@ jobs:
             echo "::error::The bundled FFmpeg didn't load"
             exit 1
           fi
+      # Saved only on a dry run's miss, after FFmpeg's build and its checks, the app's build and the smoke run have passed.
+      - name: Save FFmpeg's build to the cache
+        if: needs.prepare.outputs.mode == 'dry-run' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ffmpeg-mac/bundle
+          key: ${{ steps.ffmpeg-key.outputs.key }}
       - uses: actions/upload-artifact@v7
         with:
           name: mac
@@ -161,12 +227,13 @@ jobs:
           retention-days: 14
       - name: The bundled libraries' sources
         # The exact release tarballs the app's libraries were built from (FFmpeg's, dav1d's, libusb's), checked against
-        # their pins by the build; the release attaches them beside the downloads.
+        # their pins (FFmpeg's and dav1d's when fetched above, a cache hit too; libusb's by the build); the release
+        # attaches them beside the downloads.
         run: |
           set -euo pipefail
           sources="$RUNNER_TEMP/sources"
           mkdir "$sources"
-          cp "$RUNNER_TEMP"/mac/ffmpeg/source/*.tar.xz "$RUNNER_TEMP"/mac/libusb/work/libusb-*.tar.bz2 "$sources/"
+          cp "$RUNNER_TEMP"/ffmpeg-sources/*.tar.xz "$RUNNER_TEMP"/mac/libusb/work/libusb-*.tar.bz2 "$sources/"
           ls -l "$sources"
       - uses: actions/upload-artifact@v7
         with:
@@ -184,18 +251,50 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Build FFmpeg's Windows DLLs
-        # native/ffmpeg/build.sh --target windows-x64 in its pinned container (native/ffmpeg/windows-cross.Dockerfile),
-        # from the sources native/ffmpeg/pins.txt pins; then its checks again on what it built (--verify).
+      # FFmpeg's build is cached for dry runs only, keyed on everything that decides its bytes: the pins, the build
+      # script and the container's Dockerfile (its image by digest, its packages from one snapshot). No fallback key: an
+      # exact hit or a build. A release never restores or saves it.
+      - id: ffmpeg-key
+        name: FFmpeg's cache key
+        if: needs.prepare.outputs.mode == 'dry-run'
+        env:
+          INPUTS: ${{ hashFiles('native/ffmpeg/pins.txt', 'native/ffmpeg/build.sh', 'native/ffmpeg/windows-cross.Dockerfile') }}
         run: |
           set -euo pipefail
-          docker build -f native/ffmpeg/windows-cross.Dockerfile -t ffmpeg-cross native/ffmpeg
+          [ -n "$INPUTS" ] || { echo "::error::No hash of FFmpeg's build inputs"; exit 1; }
+          echo "key=ffmpeg-windows-x64-$RUNNER_OS-$RUNNER_ARCH-$INPUTS" >> "$GITHUB_OUTPUT"
+      - id: ffmpeg-cache
+        name: Restore FFmpeg's build from the cache
+        if: needs.prepare.outputs.mode == 'dry-run'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ffmpeg-win/build/bundle
+          key: ${{ steps.ffmpeg-key.outputs.key }}
+      - name: FFmpeg's build container
+        # native/ffmpeg/windows-cross.Dockerfile: the build and its checks run in it, so a cache hit needs it too.
+        run: docker build -f native/ffmpeg/windows-cross.Dockerfile -t ffmpeg-cross native/ffmpeg
+      - name: Build FFmpeg's Windows DLLs
+        # native/ffmpeg/build.sh --target windows-x64 in its pinned container, from the sources native/ffmpeg/pins.txt pins.
+        if: needs.prepare.outputs.mode != 'dry-run' || steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
           mkdir "$RUNNER_TEMP/ffmpeg-win"
           docker run --rm -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/ffmpeg-win:/out" ffmpeg-cross \
             /src/native/ffmpeg/build.sh --target windows-x64 --out /out/build
+      - name: Check FFmpeg's Windows DLLs
+        # Its checks again (--verify), on what it built or what the cache restored: a failure fails the job.
+        run: |
+          set -euo pipefail
           docker run --rm -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP/ffmpeg-win:/out:ro" ffmpeg-cross \
             /src/native/ffmpeg/build.sh --target windows-x64 --verify /out/build
           ls -l "$RUNNER_TEMP/ffmpeg-win/build/bundle"
+      # Saved only on a dry run's miss, after the build and its checks have passed.
+      - name: Save FFmpeg's build to the cache
+        if: needs.prepare.outputs.mode == 'dry-run' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ffmpeg-win/build/bundle
+          key: ${{ steps.ffmpeg-key.outputs.key }}
       - uses: actions/upload-artifact@v7
         # The four DLLs and the two licence texts, what build.ps1 takes as -FFmpegDir.
         with:

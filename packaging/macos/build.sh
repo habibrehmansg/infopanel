@@ -3,7 +3,7 @@
 #
 #   packaging/macos/build.sh --version <version> --allow-origin <origin> --out <folder> [--libusb-source <tarball>]
 #                            [--crash-reports-dsn <address>]
-#                            [--ffmpeg-source <tarball>] [--dav1d-source <tarball>]
+#                            [--ffmpeg-source <tarball>] [--dav1d-source <tarball>] [--ffmpeg-dir <folder>]
 #
 #   --version        the release's version, a SemVer such as 2.0.0, 2.0.0-beta.1 or 2.0.0+build.1 (the engine reports it;
 #                    the bundle's CFBundleShortVersionString is its major.minor.patch, CFBundleVersion the whole of it)
@@ -18,6 +18,8 @@
 #   --ffmpeg-source  FFmpeg's release tarball (ffmpeg-<version>.tar.xz), fetched elsewhere, and
 #   --dav1d-source   dav1d's (dav1d-<version>.tar.xz): native/ffmpeg/build.sh, which this script runs into <out>/ffmpeg,
 #                    refuses each unless its SHA-256 is the one native/ffmpeg/pins.txt pins; without them it downloads them
+#   --ffmpeg-dir     a folder native/ffmpeg/build.sh --target macos-arm64 built (its bundle/), taken instead of building
+#                    FFmpeg here and checked with its --verify as a build here is; not with the two above
 #   --check-args     only check the arguments above, then stop (exit 0 when they are accepted)
 #   --list-panel-drivers  only list the panel driver projects the build publishes into plugins/ (and those it leaves
 #                    out, with why), then stop; needs no other argument
@@ -33,8 +35,8 @@
 # checked (native/libusb/build.sh --verify: arm64, its install name, a minimum macOS no newer than Info.plist's
 # LSMinimumSystemVersion), joins the publish's top level first, so it takes the same way into Contents/MacOS, where the
 # engine finds it beside itself. So do FFmpeg's four decode-only libraries (video files and RTSP cameras: libavutil.61,
-# libavcodec.63, libavformat.63 and libswscale.10 .dylib), built here from FFmpeg's and dav1d's pinned sources and checked
-# (native/ffmpeg/build.sh --verify: arm64 for macOS, their install names and rpath, nothing linked but macOS's own and
+# libavcodec.63, libavformat.63 and libswscale.10 .dylib), built here from FFmpeg's and dav1d's pinned sources (or taken
+# from --ffmpeg-dir) and checked (native/ffmpeg/build.sh --verify: arm64 for macOS, their install names and rpath, nothing linked but macOS's own and
 # each other, the minimum macOS, the licence and configuration each records). The icon and the licences (LICENSE, LICENSES.md and the licence texts from
 # the bundled libraries' sources, libusb-COPYING.txt, ffmpeg-COPYING.txt and dav1d-COPYING.txt) go to
 # Contents/Resources. Every Mach-O file is signed ad hoc, deepest first, then the bundle (no hardened runtime), and the
@@ -45,7 +47,7 @@
 set -euo pipefail
 
 usage() {
-  sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -56,6 +58,7 @@ out=""
 libusb_source=""
 ffmpeg_source=""
 dav1d_source=""
+ffmpeg_dir=""
 check_args=0
 list_drivers=0
 while [ $# -gt 0 ]; do
@@ -67,6 +70,7 @@ while [ $# -gt 0 ]; do
     --libusb-source) [ $# -ge 2 ] || usage; libusb_source="$2"; shift 2 ;;
     --ffmpeg-source) [ $# -ge 2 ] || usage; ffmpeg_source="$2"; shift 2 ;;
     --dav1d-source) [ $# -ge 2 ] || usage; dav1d_source="$2"; shift 2 ;;
+    --ffmpeg-dir) [ $# -ge 2 ] || usage; ffmpeg_dir="$2"; shift 2 ;;
     --check-args) check_args=1; shift ;;
     --list-panel-drivers) list_drivers=1; shift ;;
     -h|--help) usage ;;
@@ -105,6 +109,10 @@ fi
 [ -z "$libusb_source" ] || [ -f "$libusb_source" ] || { echo "build.sh: --libusb-source isn't a file: $libusb_source" >&2; exit 2; }
 [ -z "$ffmpeg_source" ] || [ -f "$ffmpeg_source" ] || { echo "build.sh: --ffmpeg-source isn't a file: $ffmpeg_source" >&2; exit 2; }
 [ -z "$dav1d_source" ] || [ -f "$dav1d_source" ] || { echo "build.sh: --dav1d-source isn't a file: $dav1d_source" >&2; exit 2; }
+if [ -n "$ffmpeg_dir" ]; then
+  [ -z "$ffmpeg_source" ] && [ -z "$dav1d_source" ] || { echo "build.sh: --ffmpeg-dir takes no --ffmpeg-source or --dav1d-source" >&2; exit 2; }
+  [ -d "$ffmpeg_dir" ] || { echo "build.sh: --ffmpeg-dir isn't a folder: $ffmpeg_dir" >&2; exit 2; }
+fi
 
 # SemVer 2.0: numeric parts without leading zeros, then optional -prerelease (dot-separated, none empty, numeric ones
 # without leading zeros) and optional +build (dot-separated, none empty).
@@ -168,15 +176,22 @@ copying_sha256="$(sed -n 's/^source_copying_sha256=//p' "$root/native/libusb/pin
   exit 1
 }
 
-echo "==> Building FFmpeg's decode-only libraries for video from their pinned sources"
-# Only from the source tarballs native/ffmpeg/pins.txt pins (downloaded, or --ffmpeg-source and --dav1d-source).
-ffmpeg_args=(--target macos-arm64 --out "$out/ffmpeg")
-[ -z "$ffmpeg_source" ] || ffmpeg_args+=(--source "$ffmpeg_source")
-[ -z "$dav1d_source" ] || ffmpeg_args+=(--dav1d-source "$dav1d_source")
-"$root/native/ffmpeg/build.sh" "${ffmpeg_args[@]}"
-"$root/native/ffmpeg/build.sh" --target macos-arm64 --verify "$out/ffmpeg"
+if [ -n "$ffmpeg_dir" ]; then
+  # A build of the same script made elsewhere (the release workflow's cache of it): the same checks as a build here.
+  ffmpeg="$(cd "$ffmpeg_dir" && pwd)"
+  echo "==> Taking FFmpeg's decode-only libraries from $ffmpeg"
+else
+  echo "==> Building FFmpeg's decode-only libraries for video from their pinned sources"
+  # Only from the source tarballs native/ffmpeg/pins.txt pins (downloaded, or --ffmpeg-source and --dav1d-source).
+  ffmpeg="$out/ffmpeg"
+  ffmpeg_args=(--target macos-arm64 --out "$ffmpeg")
+  [ -z "$ffmpeg_source" ] || ffmpeg_args+=(--source "$ffmpeg_source")
+  [ -z "$dav1d_source" ] || ffmpeg_args+=(--dav1d-source "$dav1d_source")
+  "$root/native/ffmpeg/build.sh" "${ffmpeg_args[@]}"
+fi
+"$root/native/ffmpeg/build.sh" --target macos-arm64 --verify "$ffmpeg"
 ffmpeg_libs=(libavutil.61.dylib libavcodec.63.dylib libavformat.63.dylib libswscale.10.dylib)
-ffmpeg_texts=("$out/ffmpeg/bundle/ffmpeg-COPYING.txt" "$out/ffmpeg/bundle/dav1d-COPYING.txt")
+ffmpeg_texts=("$ffmpeg/bundle/ffmpeg-COPYING.txt" "$ffmpeg/bundle/dav1d-COPYING.txt")
 
 echo "==> Publishing the engine $version for osx-arm64"
 (cd "$root" && dotnet publish InfoPanel/InfoPanel.csproj -c Release -r osx-arm64 --self-contained true \
@@ -195,7 +210,7 @@ while IFS= read -r driver; do
 done < <(panel_drivers)
 cp "$libusb" "$publish/libusb-1.0.dylib"
 for lib in "${ffmpeg_libs[@]}"; do
-  cp "$out/ffmpeg/bundle/$lib" "$publish/$lib"
+  cp "$ffmpeg/bundle/$lib" "$publish/$lib"
 done
 
 echo "==> Assembling InfoPanel.app"
