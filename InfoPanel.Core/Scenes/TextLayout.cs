@@ -205,15 +205,45 @@ internal sealed class SceneFontMapper : FontMapper
 
     public static readonly SceneFontMapper Instance = new();
 
+    /// <summary>
+    /// The most family names <see cref="Has"/> keeps answers for. Names come from content, so a client can send any
+    /// number the engine doesn't have; a computer has a few hundred families and a profile names a handful. When it is
+    /// full, every answer is dropped and asked again when needed: an answer depends only on the fonts the engine has,
+    /// so a name resolves as it did before.
+    /// </summary>
+    internal const int MaxKnown = 2048;
+
     private static readonly ConcurrentDictionary<string, bool> Known = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Held to add an answer (and to drop them all when full), so <see cref="Known"/> never holds more than <see cref="MaxKnown"/>; reads don't take it.</summary>
+    private static readonly Lock KnownGate = new();
+
+    /// <summary>Test seams: the names <see cref="Has"/> keeps answers for.</summary>
+    internal static int KnownCount => Known.Count;
+
+    internal static bool IsKnownCached(string family) => Known.ContainsKey(family);
+
     /// <summary>Whether the engine has <paramref name="family"/> (registered or installed).</summary>
-    public static bool Has(string family) => Known.GetOrAdd(family, static f =>
+    public static bool Has(string family)
     {
-        if (FontRegistry.TryGet(f, 400, SKFontStyleSlant.Upright, out _)) return true;
-        using var typeface = SKFontManager.Default.MatchFamily(f);
-        return typeface is not null && string.Equals(typeface.FamilyName, f, StringComparison.OrdinalIgnoreCase);
-    });
+        if (Known.TryGetValue(family, out var has)) return has;
+        has = Find(family);
+        lock (KnownGate)
+        {
+            // Another thread may have stored this name since the read above: its answer stands, and a full cache isn't cleared for it.
+            if (Known.TryGetValue(family, out var stored)) return stored;
+            if (Known.Count >= MaxKnown) Known.Clear();
+            Known.TryAdd(family, has);
+        }
+        return has;
+    }
+
+    private static bool Find(string family)
+    {
+        if (FontRegistry.TryGet(family, 400, SKFontStyleSlant.Upright, out _)) return true;
+        using var typeface = SKFontManager.Default.MatchFamily(family);
+        return typeface is not null && string.Equals(typeface.FamilyName, family, StringComparison.OrdinalIgnoreCase);
+    }
 
     public override SKTypeface TypefaceFromStyle(IStyle style, bool ignoreFontVariants)
     {
