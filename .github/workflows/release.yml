@@ -117,15 +117,33 @@ jobs:
           [ -n "$INPUTS" ] || { echo "::error::No hash of FFmpeg's build inputs"; exit 1; }
           # The hosted runner's image (ImageOS, ImageVersion: set on every one) and what it holds, as the build runs them:
           # the selected Xcode, the compiler, the linker (ld -v) and cctools' version (libtool and ranlib print it; ar, lipo,
-          # strip and codesign print none, and come from the same Xcode), make, and the Homebrew tools. A query that fails,
-          # or an image variable that is empty, fails the step.
+          # strip and codesign print none, and come from the same Xcode), make, and the Homebrew tools. An image variable
+          # that is empty fails the step, and so does a query that exits nonzero or prints nothing, with an ::error::
+          # naming the query, its exit status and its output. The two cctools queries are the exception: they print
+          # their banner, "Apple Inc. version <identifier>", and may then exit nonzero (no archive given), so each
+          # contributes only its first line that starts that way with a non-empty identifier, whatever its exit status
+          # (a usage line is no banner; a missing tool, status 126 or 127, still fails, and so does no such line).
           [ -n "${ImageOS:-}" ] && [ -n "${ImageVersion:-}" ] || { echo "::error::The runner image's ImageOS or ImageVersion is empty"; exit 1; }
           tools="ImageOS: $ImageOS"$'\n'"ImageVersion: $ImageVersion"$'\n'
           for tool in "sw_vers -productVersion" "sw_vers -buildVersion" "xcode-select -p" "xcodebuild -version" \
                       "xcrun --show-sdk-version" "xcrun --show-sdk-build-version" "cc --version" "ld -v" \
                       "libtool -V" "ranlib -V" "make --version" "meson --version" "ninja --version" "pkg-config --version"; do
-            said="$($tool 2>&1)"
-            tools+="$tool: $said"$'\n'
+            status=0
+            said="$($tool 2>&1)" || status=$?
+            line="$said"
+            ok=$status
+            case "$tool" in
+              "libtool -V"|"ranlib -V")
+                if [ "$status" -ne 126 ] && [ "$status" -ne 127 ]; then
+                  line="$(printf '%s\n' "$said" | grep -m 1 -E '^Apple Inc\. version [^[:space:]]+' || true)"
+                  ok=0
+                fi ;;
+            esac
+            if [ "$ok" -ne 0 ] || [ -z "$line" ]; then
+              echo "::error::'$tool' exited $status with output: ${said//$'\n'/%0A}"
+              exit 1
+            fi
+            tools+="$tool: $line"$'\n'
           done
           printf '%s' "$tools"
           echo "key=ffmpeg-macos-arm64-$RUNNER_OS-$RUNNER_ARCH-$INPUTS-$(printf '%s' "$tools" | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
