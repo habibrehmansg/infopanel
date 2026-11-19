@@ -318,7 +318,8 @@ internal sealed class FixtureHome : IDisposable
     /// </summary>
     public string Transcript(string folder, string relative, IEnumerable<string> lines, DateTimeOffset? written = null)
     {
-        var path = System.IO.Path.Combine(folder, "projects", relative);
+        // In this platform's separators, as a listing gives the file's path (a test compares them).
+        var path = System.IO.Path.Combine(folder, "projects", relative.Replace('/', System.IO.Path.DirectorySeparatorChar));
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
         File.WriteAllText(path, string.Concat(lines.Select(l => l + "\n")));
         File.SetLastWriteTimeUtc(path, (written ?? Clock.Now).UtcDateTime);

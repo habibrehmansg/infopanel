@@ -9,7 +9,13 @@ internal sealed record UsageEnvironment(string Home, Func<string, string?> Varia
 {
     /// <summary>This computer: the user's home (<c>HOME</c>, or <c>USERPROFILE</c> on Windows), its environment, its clock.</summary>
     public static UsageEnvironment Default() =>
-        new(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Environment.GetEnvironmentVariable, TimeProvider.System, new DiskFiles());
+        new(UserHome(), Environment.GetEnvironmentVariable, TimeProvider.System, new DiskFiles());
+
+    // On Windows the profile folder .NET gives is the signed-in user's, whatever USERPROFILE says; the tools whose files this reads take USERPROFILE.
+    private static string UserHome() =>
+        OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("USERPROFILE") is { } profile && !string.IsNullOrWhiteSpace(profile)
+            ? profile
+            : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     public DateTimeOffset Now => Time.GetUtcNow();
 
