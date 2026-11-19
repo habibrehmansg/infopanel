@@ -37,6 +37,16 @@ public sealed class LibreSourceTests
         "libre:/nic/{4D36E972-E325-11CE}/throughput/7",
     ];
 
+    /// <summary>The names of the PC's top-level hardware, listed after its sensors (<see cref="LibreNameTests"/>).</summary>
+    private static readonly string[] PcNameKeys =
+    [
+        "libre:/motherboard/name",
+        "libre:/amdcpu/0/name",
+        "libre:/gpu-nvidia/0/name",
+        "libre:/nvme/0/name",
+        "libre:/nic/{4D36E972-E325-11CE}/name",
+    ];
+
     [Fact]
     public void TheKeys_AreLibreHardwareMonitorsIdentifiers_CopiedExactly_InOneFourXsOrder()
     {
@@ -45,8 +55,8 @@ public sealed class LibreSourceTests
         rig.Open();
 
         // By the sensor's own hardware's type (the Super I/O chip before the CPU), then its index; braces and all.
-        Assert.Equal(PcKeys, rig.Keys);
-        Assert.Equal(tree.Sensors.Select(s => "libre:" + s.Identifier).Order(), rig.Keys.Order());
+        Assert.Equal([.. PcKeys, .. PcNameKeys], rig.Keys);
+        Assert.Equal(tree.Sensors.Select(s => "libre:" + s.Identifier).Order(), rig.Keys.Take(tree.Sensors.Count).Order());
         Assert.All(rig.Source.GetSensors(), s => Assert.Equal("libre", s.SourceId));
     }
 
@@ -74,7 +84,7 @@ public sealed class LibreSourceTests
         using var rig = TreeRig(FakeTree.Pc(), out _);
         rig.Open();
 
-        Assert.Equal(["V", "RPM", "%", "%", "°C", "°C", "GB", "B/s"], rig.Source.GetSensors().Select(s => s.Unit));
+        Assert.Equal(["V", "RPM", "%", "%", "°C", "°C", "GB", "B/s", "", "", "", "", ""], rig.Source.GetSensors().Select(s => s.Unit)); // the names have none
         // 1.4.x labelled this number "KB/s"; it is LibreHardwareMonitor's bytes per second, unchanged.
         Assert.True(rig.Source.TryRead(SensorKey.Libre("/nic/{4D36E972-E325-11CE}/throughput/7"), out var upload));
         Assert.Equal((1536, "B/s"), (upload.ValueNow, upload.Unit));
@@ -349,8 +359,8 @@ public sealed class LibreSourceTests
         using var rig = TreeRig(tree, out _);
         rig.Open();
         var sampler = rig.Source.Sampler!;
-        Assert.Equal(8, rig.Keys.Count);
-        Assert.Equal(8, sampler.ListedCount);
+        Assert.Equal(13, rig.Keys.Count); // 8 sensors and 5 hardware names
+        Assert.Equal(13, sampler.ListedCount);
 
         var id = "/amdcpu/0/load/1";
         for (var i = 2; i < 52; i++)
@@ -363,13 +373,13 @@ public sealed class LibreSourceTests
             rig.Poll(LibreSource.Interval);
             rig.Poll(LibreSource.Interval);
             Assert.Equal(SensorStatus.Stale, rig.Status(id));
-            Assert.Equal(9, rig.Keys.Count);
-            Assert.Equal(9, sampler.ListedCount);
+            Assert.Equal(14, rig.Keys.Count);
+            Assert.Equal(14, sampler.ListedCount);
 
             rig.Poll(TimeSpan.FromSeconds(31));
             Assert.DoesNotContain("libre:" + id, rig.Keys);
-            Assert.Equal(8, rig.Keys.Count);
-            Assert.Equal(8, sampler.ListedCount);
+            Assert.Equal(13, rig.Keys.Count);
+            Assert.Equal(13, sampler.ListedCount);
             id = fresh;
         }
 
@@ -379,7 +389,7 @@ public sealed class LibreSourceTests
         rig.Poll(LibreSource.Interval);
         rig.Poll(LibreSource.Interval);
         Assert.Equal(SensorStatus.Stale, rig.Status("/nvme/0/data/24"));
-        Assert.Equal(8, sampler.ListedCount);
+        Assert.Equal(13, sampler.ListedCount);
 
         rig.Settings = rig.Settings with { Enabled = false };
         rig.Poll(LibreSource.Interval);

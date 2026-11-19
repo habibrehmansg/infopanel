@@ -71,7 +71,8 @@ public sealed class LibreRecordingTests : IDisposable
         }
 
         Assert.Equal(["libre:/lpc/nct6798d/0/voltage/0", "libre:/lpc/nct6798d/0/fan/1", "libre:/amdcpu/0/load/0", "libre:/amdcpu/0/load/1",
-            "libre:/amdcpu/0/temperature/2", "libre:/gpu-nvidia/0/temperature/0", "libre:/nvme/0/data/24", "libre:/nic/{4D36E972-E325-11CE}/throughput/7"], rig.Keys);
+            "libre:/amdcpu/0/temperature/2", "libre:/gpu-nvidia/0/temperature/0", "libre:/nvme/0/data/24", "libre:/nic/{4D36E972-E325-11CE}/throughput/7",
+            "libre:/motherboard/name", "libre:/amdcpu/0/name", "libre:/gpu-nvidia/0/name", "libre:/nvme/0/name", "libre:/nic/{4D36E972-E325-11CE}/name"], rig.Keys);
         Assert.Equal([9.75, 20, 30, 40, 9.75, 20], values);
         Assert.Equal("ASUS PRIME B650", rig.Source.GetSensors()[1].Group);
         Assert.Equal(SensorStatus.Unavailable, rig.Status("/lpc/nct6798d/0/voltage/0")); // recorded null stays a failed read
@@ -140,7 +141,7 @@ public sealed class LibreRecordingTests : IDisposable
         rig.Poll(LibreSource.Interval);
 
         Assert.Equal((SourceStateKind.Limited, "noDriver"), (rig.State.Kind, rig.State.Reason?.Code));
-        Assert.Equal(199, rig.Keys.Count);
+        Assert.Equal(199 + 22, rig.Keys.Count); // the recorded sensors, then the names of its 22 top-level hardware
         Assert.Equal("libre:/amdcpu/0/load/0", rig.Keys[0]);
         Assert.Equal(SensorStatus.Live, rig.Status("/amdcpu/0/load/0"));
         Assert.Equal(("AMD Ryzen 7 8845HS w/ Radeon 780M Graphics", "CPU Total", "%"),
@@ -234,15 +235,38 @@ public sealed class LibreRecordingTests : IDisposable
         using var rig = new LibreRig(_ => replay);
         rig.Open();
         var seen = new List<(double?, SensorStatus)> { (rig.Now("/amdcpu/0/load/0"), rig.Status("/amdcpu/0/load/0")) };
+        var names = new List<(string?, SensorStatus)> { (rig.Peek("/amdcpu/0/name").Reading.ValueText, rig.Status("/amdcpu/0/name")) };
         for (var i = 0; i < 6; i++)
         {
             rig.Poll(LibreSource.Interval);
             seen.Add((rig.Now("/amdcpu/0/load/0"), rig.Status("/amdcpu/0/load/0")));
+            names.Add((rig.Peek("/amdcpu/0/name").Reading.ValueText, rig.Status("/amdcpu/0/name")));
         }
 
         Assert.Equal([(10, SensorStatus.Live), (10, SensorStatus.Stale), (10, SensorStatus.Stale), (13, SensorStatus.Live),
             (13, SensorStatus.Stale), (13, SensorStatus.Stale), (10, SensorStatus.Live)], seen);
+        // The hardware's name goes stale with its sensors through an outage, and is live again with the next answer.
+        Assert.Equal([("CPU", SensorStatus.Live), ("CPU", SensorStatus.Stale), ("CPU", SensorStatus.Stale), ("CPU", SensorStatus.Live),
+            ("CPU", SensorStatus.Stale), ("CPU", SensorStatus.Stale), ("CPU", SensorStatus.Live)], names);
         Assert.Equal(SourceState.Running, rig.State);
+    }
+
+    [Fact]
+    public void ARecordedRound_AnsweredWithEveryNumberNull_KeepsTheNamesLive()
+    {
+        // The helper answered each round, every reading failed: not an outage, so the hardware's name is read.
+        WriteRound(0, Hello, CatalogueOf(1, "/amdcpu/0/load/0"), SampleOf(1, [null]));
+        WriteRound(1, SampleOf(1, [null]));
+        SensorRecording.WriteLibreManifest(_root, LibreSource.Interval, false, DateTimeOffset.UnixEpoch, rounds: 2);
+
+        using var rig = new LibreRig(_ => LibreReplay.Load(_root));
+        rig.Open();
+        for (var i = 0; i < 3; i++)
+        {
+            rig.Poll(LibreSource.Interval);
+            Assert.Equal(SensorStatus.Unavailable, rig.Status("/amdcpu/0/load/0"));
+            Assert.Equal((SensorStatus.Live, "CPU"), (rig.Status("/amdcpu/0/name"), rig.Peek("/amdcpu/0/name").Reading.ValueText));
+        }
     }
 
     [Fact]

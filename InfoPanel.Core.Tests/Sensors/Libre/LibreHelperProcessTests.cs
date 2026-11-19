@@ -60,7 +60,7 @@ public sealed class LibreHelperProcessTests
 
             // A helper told another start time ends with 0 before it serves: this one served.
             Assert.Equal(SourceState.Running, rig.State);
-            Assert.Equal(["libre:/amdcpu/0/load/0"], rig.Keys);
+            Assert.Equal(["libre:/amdcpu/0/load/0", "libre:/amdcpu/0/name"], rig.Keys);
             Assert.Equal(12.5, rig.Now("/amdcpu/0/load/0"));
             Assert.True(Runs(launcher.LastProcessId));
         }

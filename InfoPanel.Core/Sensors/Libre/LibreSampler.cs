@@ -430,6 +430,14 @@ public sealed class LibreSampler : ISensorSampler
             Fail(samples);
             return;
         }
+        catch (LibreRoundUnreadException)
+        {
+            // The helper answers, but read nothing this round (a replay's recorded outage): every reading fails, the names too.
+            Answered();
+            Fail(samples);
+            _state = StateOf(_hello);
+            return;
+        }
         catch (HelperErrorException ex) when (ex.Code is ErrorAnswer.TreeFailed or "tooLarge")
         {
             // LibreHardwareMonitor failed this read; the helper's pipe is still in step.
@@ -461,13 +469,18 @@ public sealed class LibreSampler : ISensorSampler
         }
 
         var values = sample.Answer.Value;
-        for (var i = 0; i < samples.Length && i < values.Count; i++)
+        var catalogue = _catalogue;
+        for (var i = 0; i < samples.Length && i < values.Count && i < catalogue.HelperCount; i++)
         {
             if (values[i] is { } value)
                 samples[i].Set(value);
             else
                 samples[i].Outcome = SampleOutcome.Failed;
         }
+
+        // The hardware names, after the helper's sensors: read with every answered round.
+        for (var i = catalogue.HelperCount; i < samples.Length && i < catalogue.Count; i++)
+            samples[i].SetText(catalogue.Sensors[i].HardwareName);
 
         _state = StateOf(_hello);
     }
@@ -803,3 +816,6 @@ public sealed class LibreSampler : ISensorSampler
         }
     }
 }
+
+/// <summary>A sample a helper answers with a round it read nothing in (a replay's recorded outage), not a failure of the helper.</summary>
+public sealed class LibreRoundUnreadException() : Exception("The sensor helper read nothing this round.");

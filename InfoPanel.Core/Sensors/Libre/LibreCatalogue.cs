@@ -8,7 +8,8 @@ namespace InfoPanel.Sensors.Libre;
 /// One Libre sensor as the engine lists it, with what LibreHardwareMonitor says of it beyond the sensor list: its
 /// <see cref="SensorType"/> (<c>Temperature</c>), its hardware's identifier, name and <see cref="HardwareType"/>
 /// (<c>Cpu</c>, <c>SuperIO</c>), and the hardware it is listed under (<see cref="Group"/>: the topmost hardware it is
-/// part of). Kept for a 1.x import that maps another tool's sensors by type (AIDA64's).
+/// part of). Kept for a 1.x import that maps another tool's sensors by type (AIDA64's). A top-level hardware's name is
+/// listed here too, as a text: <see cref="SensorType"/> <c>Name</c>, <see cref="Index"/> −1, which such a mapping skips.
 /// </summary>
 public sealed record LibreSensor(
     string Identifier,
@@ -26,18 +27,25 @@ public sealed record LibreSensor(
 /// <c>libre:{Identifier}</c>, its identifier exactly as LibreHardwareMonitor gives it (and as 1.4.x stored it); named
 /// as LibreHardwareMonitor names it; grouped under its hardware's name, sub-hardware folded into the hardware it is part
 /// of (a board's Super I/O chip under the board, as 1.4.x listed it); in the helper's order, 1.4.x's (by hardware type,
-/// then sensor index); with its type's unit as the helper gives it (throughput in B/s).
+/// then sensor index); with its type's unit as the helper gives it (throughput in B/s). After the helper's sensors, each
+/// top-level hardware's name (sub-hardware has none), in the helper's hardware order: a text sensor
+/// <c>libre:{hardware Identifier}/name</c>, named <c>Name</c>, in the hardware's group, with no unit; so the helper's
+/// values keep their places (<see cref="HelperCount"/>).
 /// </summary>
 public sealed class LibreCatalogue
 {
-    private LibreCatalogue(long version, IReadOnlyList<LibreSensor> sensors, IReadOnlyList<SensorDefinition> definitions)
+    private LibreCatalogue(long version, IReadOnlyList<LibreSensor> sensors, IReadOnlyList<SensorDefinition> definitions, int helperCount)
     {
         Version = version;
         Sensors = sensors;
         Definitions = definitions;
+        HelperCount = helperCount;
     }
 
-    public static LibreCatalogue Empty { get; } = new(0, [], []);
+    public static LibreCatalogue Empty { get; } = new(0, [], [], 0);
+
+    /// <summary>The helper's own sensors, the first ones listed; the hardware names follow them.</summary>
+    public int HelperCount { get; }
 
     /// <summary>The helper's version of it (0 for none).</summary>
     public long Version { get; }
@@ -67,8 +75,22 @@ public sealed class LibreCatalogue
             definitions.Add(new SensorDefinition(s.Id, group, s.Name, s.Unit));
         }
 
-        return new LibreCatalogue(answer.Version, sensors, definitions);
+        // Each top-level hardware's name (part of no hardware listed: its own group), once, after the helper's sensors.
+        var helperCount = sensors.Count;
+        foreach (var h in answer.Hardware)
+        {
+            if ((h.Parent is { } parent && hardware.ContainsKey(parent)) || !ReferenceEquals(hardware[h.Id], h))
+                continue;
+            var id = h.Id + "/name";
+            sensors.Add(new LibreSensor(id, NameSensor, NameSensor, -1, "", h.Id, h.Name, h.Type, h.Name));
+            definitions.Add(new SensorDefinition(id, h.Name, NameSensor, "", SensorKind.Text));
+        }
+
+        return new LibreCatalogue(answer.Version, sensors, definitions, helperCount);
     }
+
+    /// <summary>A hardware name's sensor name, and its sensor type in <see cref="LibreSensor"/>.</summary>
+    private const string NameSensor = "Name";
 
     /// <summary>The name of the topmost hardware <paramref name="own"/> is part of (itself when it is part of none).</summary>
     private static string GroupOf(HelperHardware? own, Dictionary<string, HelperHardware> hardware)

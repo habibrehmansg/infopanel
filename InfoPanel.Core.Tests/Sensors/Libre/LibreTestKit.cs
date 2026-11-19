@@ -61,6 +61,50 @@ internal sealed class DriverTree(FakeTree inner, string driver, bool elevated = 
     public void Dispose() => inner.Dispose();
 }
 
+/// <summary>Fake trees for the hardware names.</summary>
+internal static class NamesTree
+{
+    /// <summary>
+    /// <see cref="FakeTree.Pc"/> (a board with a Super I/O chip under it, a CPU, a GPU, a drive, a network card) with a
+    /// second GPU of the same model and a top-level hardware with no sensors (the memory), last.
+    /// </summary>
+    public static FakeTree Pc()
+    {
+        var tree = FakeTree.Pc();
+        var at = tree.Hardware.FindIndex(h => h.Identifier == "/gpu-nvidia/0");
+        tree.Hardware.Insert(at + 1, new("/gpu-nvidia/1", "NVIDIA GeForce RTX 4070", "GpuNvidia", 4, null));
+        tree.Hardware.Add(new("/ram", "Generic Memory", "Memory", 3, null));
+        tree.Sensors.Add(new("/gpu-nvidia/1/temperature/0", "GPU Core", "Temperature", 0, "/gpu-nvidia/1", 63f, 45f, 80f));
+        return tree;
+    }
+
+    /// <summary>The helper's sensors of <see cref="Pc"/>, in its order.</summary>
+    public static readonly string[] SensorKeys =
+    [
+        "libre:/lpc/nct6798d/0/voltage/0",
+        "libre:/lpc/nct6798d/0/fan/1",
+        "libre:/amdcpu/0/load/0",
+        "libre:/amdcpu/0/load/1",
+        "libre:/amdcpu/0/temperature/2",
+        "libre:/gpu-nvidia/0/temperature/0",
+        "libre:/gpu-nvidia/1/temperature/0",
+        "libre:/nvme/0/data/24",
+        "libre:/nic/{4D36E972-E325-11CE}/throughput/7",
+    ];
+
+    /// <summary>The top-level hardware of <see cref="Pc"/> in the helper's order, with its name.</summary>
+    public static readonly (string Id, string Name)[] TopLevel =
+    [
+        ("/motherboard", "ASUS PRIME B650"),
+        ("/amdcpu/0", "AMD Ryzen 7 8845HS"),
+        ("/gpu-nvidia/0", "NVIDIA GeForce RTX 4070"),
+        ("/gpu-nvidia/1", "NVIDIA GeForce RTX 4070"),
+        ("/nvme/0", "Samsung SSD 990 PRO 2TB"),
+        ("/nic/{4D36E972-E325-11CE}", "Ethernet"),
+        ("/ram", "Generic Memory"),
+    ];
+}
+
 /// <summary>A helper whose every answer the test sets, and whose end the test causes.</summary>
 internal sealed class ScriptedHelper : ILibreHelper
 {
@@ -235,6 +279,9 @@ internal sealed class LibreRig : IDisposable
     public SensorStatus Status(string id) => Source.GetStatus(SensorKey.Libre(id));
 
     public double? Now(string id) => Source.TryRead(SensorKey.Libre(id), out var reading) ? reading.ValueNow : null;
+
+    /// <summary>The sensor's state, its type and reading, without counting as a read.</summary>
+    public SensorState Peek(string id) => Polled.PeekState(SensorKey.Libre(id));
 
     public void Dispose() => Source.Dispose();
 

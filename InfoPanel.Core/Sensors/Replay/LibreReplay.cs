@@ -513,6 +513,9 @@ public sealed class LibreReplay : ILibreHelperLauncher
             if (!changed)
                 replay.Played(step);
             _awaitingFetch = changed ? step : null;
+            // A round the engine read nothing in plays as one: its readings fail, the hardware names with them.
+            if (step.Sample is null && !changed)
+                return Task.FromException<HelperSample>(new LibreRoundUnreadException());
             return Task.FromResult(new HelperSample(answer, changed));
         }
 
