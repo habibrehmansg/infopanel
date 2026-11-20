@@ -11,11 +11,15 @@
 #   COMMIT_SHA     github.sha (the commit a tag points at)
 #   ALLOW_ORIGIN   the repository variable INFOPANEL_ALLOW_ORIGIN
 #   RELEASE_BRANCH the ref a tagged commit must be on (default origin/2.0.x)
+#   CODENAMES_FILE the release lines' codenames (default packaging/codenames.txt; set only for local checks)
 #
 # A push of a tag is a release: the tag must be a bare SemVer 2 version with major 2 (2.0.0, 2.0.0-beta.1), no +build,
 # not a -dev version, on a commit of 2.0.x. Anything else is a dry run, stamped with the dispatch's version or
-# 2.0.0-dev.ci.<run number> (SemVer 2, major 2, no +build). Writes mode, version and prerelease to $GITHUB_OUTPUT
-# (else stdout) and a line to $GITHUB_STEP_SUMMARY when set. Exit 0 accepted, 1 refused.
+# 2.0.0-dev.ci.<run number> (SemVer 2, major 2, no +build). Either way the whole of packaging/codenames.txt is checked,
+# and the version's release line (major.minor) gives the codename, if the file has one for it, and the release's
+# title: InfoPanel <version> "<codename>", or InfoPanel <version> without one. Writes mode, version, prerelease,
+# codename (empty without one) and title to $GITHUB_OUTPUT (else stdout), only once everything is accepted, and a line
+# to $GITHUB_STEP_SUMMARY when set. Exit 0 accepted, 1 refused.
 set -euo pipefail
 
 # A value as it may be shown in a log line: printable version characters only, at most 80.
@@ -57,6 +61,8 @@ build_id='[0-9A-Za-z-]+'
 if ! [[ "$version" =~ ^$num\.$num\.$num(-$pre_id(\.$pre_id)*)?(\+$build_id(\.$build_id)*)?$ ]]; then
   refuse "'$(shown "$version")' isn't a SemVer version such as 2.0.0 or 2.0.0-beta.1 (no leading v)"
 fi
+# The release line, kept before another match replaces BASH_REMATCH: numbers without leading zeros, as the list's keys.
+line_key="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 [ "${BASH_REMATCH[1]}" = "2" ] || refuse "'$(shown "$version")' isn't a 2.x version"
 # No +build anywhere: the engine reports the version without it, and the Windows installer's script refuses it.
 [[ "$version" != *+* ]] || refuse "'$(shown "$version")' has +build metadata: use the bare version"
@@ -75,6 +81,44 @@ if [ "$mode" = "release" ]; then
   fi
 fi
 
+# The release lines' codenames, checked whole in every run, a release's and a dry run's alike, so a bad edit fails the
+# dry run it starts, before any tag: LF-ended lines, each a '#' comment, empty, or major.minor=Name; each key a release
+# line written as the version's numbers are (2.0, no leading zeros), at most once; each name ASCII letters and digits,
+# words joined by single spaces or hyphens, starting with a letter, at most 32 characters. That keeps quotes (the
+# title's pair), shell, Markdown and HTML characters, ':' (workflow commands), control characters and non-ASCII out of
+# every place the name goes. Matched byte by byte (the C locale), so no locale's letters pass for A-Z. A refusal names
+# the line and never echoes the name.
+codenames="${CODENAMES_FILE:-packaging/codenames.txt}"
+codenames_shown="$(printf '%s' "$codenames" | LC_ALL=C tr -c '0-9A-Za-z./_-' '?' | cut -c1-200)"
+[ -f "$codenames" ] && [ -r "$codenames" ] || refuse "$codenames_shown isn't a readable file: it lists the release lines' codenames"
+LC_ALL=C tr -d '\000' < "$codenames" | cmp -s - "$codenames" || refuse "$codenames_shown holds a NUL byte"
+LC_ALL=C
+key_rule='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+name_rule='^[A-Za-z][A-Za-z0-9]*([ -][A-Za-z0-9]+)*$'
+codename=""
+seen=" "
+n=0
+while IFS= read -r entry || [ -n "$entry" ]; do
+  n=$((n + 1))
+  at="$codenames_shown, line $n"
+  [[ ! "$entry" =~ [[:cntrl:]] ]] || refuse "$at holds a control character (a CRLF line end, a tab): LF-ended lines only"
+  [ -n "$entry" ] && [ "${entry:0:1}" != "#" ] || continue
+  [[ "$entry" == *=* ]] || refuse "$at isn't a comment, an empty line or major.minor=Name"
+  key="${entry%%=*}"
+  name="${entry#*=}"
+  [[ "$key" =~ $key_rule ]] || refuse "$at: the key '$(shown "$key")' isn't a release line such as 2.0 (major.minor, no leading zeros)"
+  [[ "$seen" != *" $key "* ]] || refuse "$at: the release line $key is listed twice"
+  seen+="$key "
+  if ! [[ "$name" =~ $name_rule ]] || [ "${#name}" -gt 32 ]; then
+    refuse "$at: the codename for $key isn't 1 to 32 ASCII letters and digits, words joined by single spaces or hyphens, starting with a letter"
+  fi
+  [ "$key" != "$line_key" ] || codename="$name"
+done < "$codenames"
+
+# The release's title: the draft release's (the release job's --title) and the one a dry run prints, the same words.
+title="InfoPanel $version"
+[ -z "$codename" ] || title="$title \"$codename\""
+
 # Every 2.x release is a GitHub pre-release for now, 2.0.0 included: 1.x's update check offers every release that isn't
 # one, so a 2.x release marked otherwise would be offered to 1.x users.
 prerelease=true
@@ -88,12 +132,14 @@ out="${GITHUB_OUTPUT:-/dev/stdout}"
   echo "mode=$mode"
   echo "version=$version"
   echo "prerelease=$prerelease"
+  echo "codename=$codename"
+  echo "title=$title"
 } >> "$out"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-  echo "**$mode**: InfoPanel $version" >> "$GITHUB_STEP_SUMMARY"
+  echo "**$mode**: $title" >> "$GITHUB_STEP_SUMMARY"
   if [ -n "$note" ]; then
     printf '\n%s\n' "$note" >> "$GITHUB_STEP_SUMMARY"
   fi
 fi
 [ -z "$note" ] || echo "::notice::$note"
-echo "Accepted: $mode, $version"
+echo "Accepted: $mode, $title"

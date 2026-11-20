@@ -1,0 +1,5 @@
+# Release codenames, one per release line (major.minor): the name shows beside the version in a release's title and
+# its tag's message. key=value; '#' lines are comments; a line with no entry has no name. A name is ASCII letters and
+# digits, words joined by single spaces or hyphens, starting with a letter, at most 32 characters. Read by
+# .github/scripts/release-version.sh in every release workflow run.
+2.0=Evan

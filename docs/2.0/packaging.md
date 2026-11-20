@@ -407,6 +407,15 @@ from this repository alone. Nothing is signed beyond the Mac's ad hoc signature,
 tag of the bare version, with no `v` and no `+build`: `2.0.0-beta.1`, `2.0.0`. A `-dev` version is never a release's.
 The engine also reports the commit it was built from (`engineBuild`), with `-dirty` when the checkout had changes.
 
+**Codenames.** A release line (major.minor) may have a codename, kept in `packaging/codenames.txt`: one
+`major.minor=Name` line each (`2.0=Evan`), `#` lines are comments. Every version of the line takes it, pre-releases and
+dry runs too: `2.0.0-beta.1`, `2.0.3` and `2.0.0-dev.ci.7` are all "Evan". A release's title is
+`InfoPanel <version> "<codename>"` (`InfoPanel 2.0.0-beta.1 "Evan"`), or the bare `InfoPanel <version>` for a line
+without one (`InfoPanel 2.1.0`). A name is ASCII letters and digits, words joined by single spaces or hyphens, starting
+with a letter, at most 32 characters; a key is written as the version writes its numbers (`2.0`, never `02.0`), at most
+once. The workflow's first job checks the whole file in every run, so a bad edit fails the dry run it starts (an edit
+under `packaging/`), naming the line. The tag stays the bare version; its message is the release's title.
+
 **The web client's origin** (built in as `--allow-origin`'s default) is the repository variable
 `INFOPANEL_ALLOW_ORIGIN` (Settings › Secrets and variables › Actions › Variables), never written in this repository.
 Every run needs it: without it the first job fails with "Set the repository variable INFOPANEL_ALLOW_ORIGIN to the web
@@ -421,7 +430,8 @@ origin it is optional: a build without it sends none.
 1. `prepare` (Linux) decides the mode and the version (`.github/scripts/release-version.sh`) and checks the arguments
    with `build.sh --check-args`. A pushed tag is a **release**: refused unless it is a bare 2.x version, not `-dev`,
    on a commit of `2.0.x`. Anything else is a **dry run**, stamped with the version given or
-   `2.0.0-dev.ci.<run number>`.
+   `2.0.0-dev.ci.<run number>`. Either way it checks `packaging/codenames.txt` and names the release's title, which
+   every run prints in its summary (`**dry-run**: InfoPanel 2.0.0-dev.ci.7 "Evan"`).
 2. `mac` (`macos-15`, Apple silicon) installs FFmpeg's build tools (`brew install meson ninja pkgconf`), fetches
    FFmpeg's and dav1d's release tarballs and checks them against their pins, builds FFmpeg from them with
    `native/ffmpeg/build.sh --target macos-arm64`, and runs `packaging/macos/build.sh --ffmpeg-dir` on that build, into
@@ -451,10 +461,10 @@ origin it is optional: a build without it sends none.
    tarball against its pin (`native/ffmpeg/pins.txt`, `native/libusb/pins.txt`) and writes `SHA256SUMS` for the two
    downloads and the three tarballs. It never reuses a release: if one exists for the tag, a draft or a published one,
    it fails and writes nothing. It also fails unless the tag on GitHub still points at the commit the run built.
-   Otherwise it makes a **draft** pre-release from the existing tag, with the disk image, the setup, the tarballs
-   (the source of the bundled libraries, offered beside them as their licences ask) and `SHA256SUMS` attached in the
-   same call (`gh release create --draft --verify-tag`: it never makes a tag) and `packaging/release-notes.md` as its
-   notes.
+   Otherwise it makes a **draft** pre-release from the existing tag, titled with the title `prepare` named, with the
+   disk image, the setup, the tarballs (the source of the bundled libraries, offered beside them as their licences
+   ask) and `SHA256SUMS` attached in the same call (`gh release create --draft --verify-tag`: it never makes a tag)
+   and `packaging/release-notes.md` as its notes.
 
 Every 2.x release is marked pre-release on GitHub for now, `2.0.0` included: 1.x's update check offers every release
 that isn't one, so a 2.x release marked otherwise would be offered to 1.x users.
@@ -465,15 +475,16 @@ not show while the repository's default branch is `1.4.x`, which has no such wor
 
 ```bash
 gh workflow run release.yml --ref 2.0.x                          # stamped 2.0.0-dev.ci.<run number>
-gh workflow run release.yml --ref 2.0.x -f version=2.0.0-beta.1  # a release-like build to try; not a release
+gh workflow run release.yml --ref 2.0.x -f version=2.0.0-beta.1  # a release-like build and its title; not a release
 gh run download <run id> --dir <a new folder>                    # its artifacts: the disk image and the setup
 ```
 
 **A release:**
 
-1. Tag the `2.0.x` commit to release with its version and push the tag: `git tag -s 2.0.0-beta.1 -m "InfoPanel
-   2.0.0-beta.1"`, then `git push origin 2.0.0-beta.1`.
-2. The run for the tag builds both downloads and makes the draft release "InfoPanel 2.0.0-beta.1".
+1. Tag the `2.0.x` commit to release with its version, the release's title as the tag's message, and push the tag:
+   `git tag -s 2.0.0-beta.1 -m 'InfoPanel 2.0.0-beta.1 "Evan"'` (single quotes outside keep the double ones), then
+   `git push origin 2.0.0-beta.1`.
+2. The run for the tag builds both downloads and makes the draft release `InfoPanel 2.0.0-beta.1 "Evan"`.
 3. On the Releases page, edit the draft's notes (replace `<version>` in them), try its files, then publish it.
 
 A tag the workflow refuses makes no release: delete the tag, fix what the run's first job says and tag again. To rebuild

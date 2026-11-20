@@ -8,7 +8,9 @@ name: Release
 # 2.0.0-dev.ci.<run number> (or the version given). The web client's origin is the repository variable
 # INFOPANEL_ALLOW_ORIGIN; the address crash reports go to, the optional repository variable INFOPANEL_SENTRY_DSN (without
 # it a build sends none). A dry run keeps FFmpeg's builds in GitHub's cache, keyed on their inputs; a release builds them
-# from source. Nothing here creates a tag, signs or publishes.
+# from source. Nothing here creates a tag, signs or publishes. The draft's title, InfoPanel <version> "<codename>" (or
+# InfoPanel <version> for a release line without one), comes from packaging/codenames.txt: prepare names it in every
+# run, dry runs too, and the release job takes it from there.
 on:
   push:
     tags: ['2.*']
@@ -37,6 +39,8 @@ jobs:
       mode: ${{ steps.version.outputs.mode }}
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      codename: ${{ steps.version.outputs.codename }}
+      title: ${{ steps.version.outputs.title }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -482,6 +486,7 @@ jobs:
     env:
       TAG: ${{ needs.prepare.outputs.version }}
       PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      TITLE: ${{ needs.prepare.outputs.title }}
       COMMIT_SHA: ${{ github.sha }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -511,6 +516,8 @@ jobs:
       - name: Draft release
         run: |
           set -euo pipefail
+          # The title prepare named (.github/scripts/release-version.sh, from packaging/codenames.txt).
+          [ -n "$TITLE" ] || { echo "::error::prepare named no title for the release"; exit 1; }
           dmg="InfoPanel-$TAG-mac-arm64.dmg"
           setup="InfoPanel-$TAG-win-x64-setup.exe"
           linux=("InfoPanel-$TAG-linux-amd64.deb" "InfoPanel-$TAG-linux-amd64.tar.gz" "InfoPanel-$TAG-linux-arm64.deb" "InfoPanel-$TAG-linux-arm64.tar.gz")
@@ -560,12 +567,12 @@ jobs:
           fi
 
           # The draft and its files in one call: no upload to an existing release, nothing replaced.
-          flags=(--draft --verify-tag --title "InfoPanel $TAG" --notes-file packaging/release-notes.md)
+          flags=(--draft --verify-tag --title "$TITLE" --notes-file packaging/release-notes.md)
           [ "$PRERELEASE" != "true" ] || flags+=(--prerelease)
           gh release create "$TAG" "${flags[@]}" "dist/$dmg" "dist/$setup" "${linux[@]/#/dist/}" "${sources[@]/#/dist/}" dist/SHA256SUMS
 
           {
-            echo "### InfoPanel $TAG"
+            echo "### $TITLE"
             echo ""
             echo "Built from \`$COMMIT_SHA\`."
             echo ""
