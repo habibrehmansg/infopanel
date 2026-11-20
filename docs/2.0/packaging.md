@@ -205,6 +205,11 @@ while the compiler runs. `-PawnIoSetup`, `-LibusbArchive` (the 7z), `-LibusbSour
 runtime, change `$Runtime` in `build.ps1` (its version, URL and SHA-512 from
 `https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`).
 
+`InfoPanel.exe` is a Windows-subsystem program (`OutputType` `WinExe` for a Windows runtime in `InfoPanel.csproj`, on
+whatever computer publishes it; `EnginePublishTests` pins its PE subsystem at 2), as the sensor helper is: the Start
+menu shortcut, the finish page, the Run value and an `infopanel:` link start it with no console window. From a
+terminal it prints there but the terminal doesn't wait for it (docs/2.0/desktop-shell.md, Windows; docs/agents/hosting.md).
+
 The engine itself is self-contained and needs no .NET. The sensor helper is framework-dependent and rolls forward to
 any stable .NET 8 or later, so the installer adds Microsoft's runtime only on a PC with none (where 1.x, which shipped
 self-contained, left none). It counts a folder under `shared\Microsoft.NETCore.App` only when its name is a stable

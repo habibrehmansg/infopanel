@@ -258,7 +258,9 @@ public class EnginePublishTests
             Assert.False(config.RootElement.GetProperty("runtimeOptions").GetProperty("configProperties").GetProperty("System.StartupHookProvider.IsSupported").GetBoolean());
             // A Windows-subsystem program (IMAGE_SUBSYSTEM_WINDOWS_GUI, 2): a task's launch shows no console window.
             Assert.Equal(2, Subsystem(Path.Combine(folder, "InfoPanel.SensorHelper.exe")));
-
+            // The engine too (WinExe for a Windows runtime, whatever computer publishes it): a shortcut, the installer's
+            // finish page or the sign-in Run value starts it with no console window, which would end it when closed.
+            Assert.Equal(2, Subsystem(Path.Combine(root, "InfoPanel.exe")));
         }
         finally
         {

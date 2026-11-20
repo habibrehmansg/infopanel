@@ -191,6 +191,13 @@ stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in star
   held, or a queue of messages that never empties, doesn't extend the wait. Console shutdown events don't reach a
   process that has loaded user32, so the icon's window hears it.
 - Not shown when the process's window station isn't interactive (a service, a shell started over SSH).
+- **No console window.** `InfoPanel.exe` is a Windows-subsystem program, so the Start menu's shortcut, the installer's
+  finish page, Start when I sign in and an `infopanel:` link start it with no console window beside the icon, whose
+  closing would end it: Exit, a sign-out or a shutdown stops it. Started from a terminal it prints there (`--help`, its errors, its
+  log and links), but the terminal doesn't wait for it: the prompt comes back at once and the exit code isn't the
+  shell's unless the caller waits (`start /wait`, PowerShell's `Start-Process -Wait`, or a redirect;
+  docs/agents/hosting.md). Started that way it shares the terminal's console: Ctrl+C there stops it, and closing the
+  terminal ends it.
 
 ## Opening the editor
 

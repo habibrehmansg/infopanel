@@ -29,6 +29,16 @@
     <SentryNative>false</SentryNative>
   </PropertyGroup>
 
+  <!-- Windows: a Windows-subsystem program (WinExe), so a shortcut, a double-click, the installer's finish page or the
+       sign-in Run value starts it with no console window (one that, closed, would end the engine); its plugin and panel
+       hosts, which the engine starts from this executable with their output redirected, show none either. Started from a
+       terminal it attaches to that terminal's console (Hosting/ParentConsole.cs). For a Windows runtime only (dotnet
+       publish -r win-x64, as the packaging scripts publish), whatever computer builds it; a build for no runtime, and
+       every macOS and Linux build, stays the console program (Exe) the Web SDK makes. -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('win-'))">
+    <OutputType>WinExe</OutputType>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="InfoPanel.Tests" />
   </ItemGroup>

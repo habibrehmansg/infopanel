@@ -40,6 +40,11 @@ if (InfoPanel.Plugins.Host.PluginHostEntry.IsHostMode(args))
 if (InfoPanel.Panels.PanelHostEntry.IsHostMode(args))
     return await InfoPanel.Panels.PanelHostEntry.RunAsync(args);
 
+// Windows: the engine is a Windows-subsystem program (no console window of its own). Started from a terminal, it writes
+// to that terminal's console; standard streams its parent redirected stay as they are, and none is ever made (a shortcut's
+// start has nowhere to write, without failing). Before anything touches Console. The hosts above never come here.
+ParentConsole.AttachIfNeeded();
+
 var parsed = EngineCommandLine.Parse(args);
 if (parsed.ShowHelp)
 {
