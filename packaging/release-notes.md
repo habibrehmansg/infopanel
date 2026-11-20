@@ -1,4 +1,4 @@
-**This is a pre-release** of InfoPanel 2. Try it, and tell us what breaks.
+**This is a pre-release** of InfoPanel 2.0. Try it, and tell us what breaks.
 
 ## Install on a Mac (Apple silicon, macOS 15 or later)
 
@@ -13,10 +13,16 @@
 
 1. Download `InfoPanel-<version>-win-x64-setup.exe` and run it.
 2. The setup isn't signed yet: if Windows says it protected your PC, choose **More info**, then **Run anyway**.
-3. It installs as **InfoPanel 2**, beside InfoPanel 1.x, which it leaves alone: 1.x's program, settings and profiles
-   stay as they are. The first time you open the editor, it opens Import with your 1.x profiles.
-4. InfoPanel 2 runs in the notification area. Its menu's **Open editor** opens the editor, and **Start when I sign in**
-   starts it with Windows.
+3. **InfoPanel 2.0 replaces InfoPanel 1.x.** If 1.x is installed, the setup says so before it starts, then closes 1.x,
+   uninstalls it and installs 2.0 in `C:\Program Files\InfoPanel`. Save any work in 1.x first. Your 1.x profiles and
+   settings stay on your PC: 2.0 only reads them. The first time you open the editor, it opens Import with your 1.x
+   profiles and brings them over as copies. Plugins you added to 1.x aren't brought over.
+4. InfoPanel runs in the notification area. Its menu's **Open editor** opens the editor, and **Start when I sign in**
+   starts it with Windows. 1.x ran as administrator; 2.0 doesn't. For the sensors that need it, turn on **Read all
+   sensors** in Settings (one Windows prompt).
+5. **Going back to 1.x:** uninstall InfoPanel in Settings › Apps first, then install 1.x from its release. 1.x finds
+   its profiles as you left them; what you made or changed in 2.0 stays with 2.0. Installing 1.x without uninstalling
+   2.0 first leaves two InfoPanels sharing one Start menu entry, and 1.x switches off 2.0's start when you sign in.
 
 ## Source of the bundled libraries
 

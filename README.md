@@ -23,11 +23,11 @@ Each release lists the files' SHA-256 in `SHA256SUMS`.
 
 **On a Mac**, open the disk image and drag InfoPanel to Applications. The app isn't notarised yet, so the first time you open it macOS says it can't verify it: choose **Done**, then System Settings › Privacy & Security › **Open Anyway**. InfoPanel lives in the menu bar, with no Dock icon.
 
-**On Windows**, run the setup. It isn't signed yet, so SmartScreen may say "Windows protected your PC": choose **More info**, then **Run anyway**. It installs as InfoPanel 2 in `C:\Program Files\InfoPanel 2` and sits in the notification area by the clock. **Start when I sign in**, in its menu, starts it with Windows.
+**On Windows**, run the setup. It isn't signed yet, so SmartScreen may say "Windows protected your PC": choose **More info**, then **Run anyway**. It installs in `C:\Program Files\InfoPanel` and sits in the notification area by the clock. **Start when I sign in**, in its menu, starts it with Windows.
 
 Then choose **Open Editor** in the menu (on Windows, a click on the icon does the same). Starting InfoPanel again while it runs opens the editor too. InfoPanel includes an example profile to start from.
 
-**Coming from InfoPanel 1.x?** On Windows, 2.0 installs beside it and leaves 1.x's program, settings and profiles alone. If InfoPanel finds your 1.x profiles, the first time you open the editor it opens Import with them, so you can bring them over.
+**Coming from InfoPanel 1.x?** On Windows, 2.0 replaces it: the setup closes 1.x and uninstalls it, and leaves 1.x's settings and profiles where they are, only reading them. If InfoPanel finds your 1.x profiles, the first time you open the editor it opens Import with them, so you can bring them over as copies. To go back to 1.x, uninstall InfoPanel in Settings › Apps, then install 1.x.
 
 **Updates.** Once a day InfoPanel checks GitHub for a newer release. When there is one, its menu says **Update Available** and you get one notification; both open the release page. **Check for Updates…** checks straight away.
 

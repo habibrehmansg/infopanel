@@ -1,4 +1,4 @@
-# Builds InfoPanel 2's Windows installer, InfoPanel-<version>-win-x64-setup.exe, on Windows (a Windows publish puts the
+# Builds InfoPanel 2.0's Windows installer, InfoPanel-<version>-win-x64-setup.exe, on Windows (a Windows publish puts the
 # manifest and the icon into InfoPanel.exe only when built on Windows). Needs the .NET SDK (global.json's) and Inno
 # Setup 6. See docs/2.0/packaging.md.
 #

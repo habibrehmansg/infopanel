@@ -105,7 +105,7 @@ and its major, which renaming the file doesn't change), its `{name}_version` exp
 licence texts beside `libusb-COPYING.txt`; the engine loads them by full path from beside itself
 (`InfoPanel.Core/Images/Video/FFmpeg.cs`). To replace them (a right their licence gives users, `LICENSES.md`), put another build of the same majors in
 `InfoPanel.app/Contents/MacOS` under the same names and sign the app again ad hoc:
-`codesign --force --deep --sign - InfoPanel.app` (on Windows, put them in `C:\Program Files\InfoPanel 2` under the
+`codesign --force --deep --sign - InfoPanel.app` (on Windows, put them in `C:\Program Files\InfoPanel` under the
 same names). To move to new releases, change `pins.txt`.
 
 **Signing.** Ad hoc only: every Mach-O file is signed (`codesign --force --sign -`), the deepest first, then the bundle,
@@ -156,8 +156,9 @@ engine runs (another engine on the default data folder would take the launch and
 ## Windows
 
 The Windows download is `InfoPanel-<version>-win-x64-setup.exe`, an Inno Setup 6 installer built on Windows by
-`packaging/windows/build.ps1` from `packaging/windows/InfoPanel.iss`. It installs **InfoPanel 2** beside InfoPanel 1.x
-and never replaces, moves or changes anything of 1.x's.
+`packaging/windows/build.ps1` from `packaging/windows/InfoPanel.iss`. It installs **InfoPanel** and replaces InfoPanel
+1.x: on a PC with 1.x it closes 1.x and runs 1.x's own uninstaller before it installs (Replacing 1.x, below). 1.x's
+profiles and settings stay where they are, and 2.0 only reads them.
 
 ### Building it
 
@@ -220,45 +221,53 @@ holds `coreclr.dll` (`packaging/windows/dotnet-check.iss`). Without it, Read all
 `InfoPanel.csproj`; `packaging/windows/make-icon.ps1` makes it from `Images/logo.png` (on Windows; the `.ico` is
 committed, so it runs only when the logo changes).
 
-### What it installs, and beside 1.x
+### What it installs, and what it does with 1.x
 
-| | InfoPanel 2 | InfoPanel 1.x |
+| | InfoPanel 2.0 | InfoPanel 1.x |
 |---|---|---|
-| AppId (Programs and Features) | `{B63E31BF-4503-4A62-BB7A-D021C854BEEA}`, kept for every 2.0 release | `{761BE813-4A06-4646-B930-3E647446A307}` |
-| Program folder | `C:\Program Files\InfoPanel 2`, always | `C:\Program Files\InfoPanel` |
-| Start menu | `InfoPanel 2` (and Uninstall InfoPanel 2) | `InfoPanel` |
-| Start when I sign in | the Run value `InfoPanel 2` | its task `\InfoPanel` (1.4.x deletes the Run value `InfoPanel` at every start) |
-| Read all sensors | the tasks `\InfoPanel 2\Sensor helper <SID>` | none (it ran elevated) |
-| Data | `%LOCALAPPDATA%\InfoPanel\v2` | `%LOCALAPPDATA%\InfoPanel` (2.0's 1.x import only reads it) |
+| AppId (Settings › Apps) | `{B63E31BF-4503-4A62-BB7A-D021C854BEEA}`, kept for every 2.0 release | `{761BE813-4A06-4646-B930-3E647446A307}`, its key in the 32-bit registry view (1.x's setup is 32-bit) |
+| Program folder | `C:\Program Files\InfoPanel`, always | `C:\Program Files (x86)\InfoPanel` (or the folder chosen then) |
+| Start menu | `InfoPanel` (and Uninstall InfoPanel) | `InfoPanel`, the same paths, removed by 1.x's uninstaller first |
+| Start when I sign in | the Run value `InfoPanel` | its task `\InfoPanel` at the Task Scheduler's root (1.4.x deletes the Run value `InfoPanel` at every start) |
+| Read all sensors | the tasks `\InfoPanel\Sensor helper <SID>` | none (it ran elevated) |
+| Data | `%LOCALAPPDATA%\InfoPanel\v2` | `%LOCALAPPDATA%\InfoPanel` (kept; 2.0's 1.x import only reads it) |
 | Setup file | `InfoPanel-<version>-win-x64-setup.exe` | `InfoPanelSetup.exe` |
 
-The Task Scheduler can't hold a task and a folder of one name at its root: with 1.4.x's Run on startup on (its root task
-`\InfoPanel`), a folder `\InfoPanel` can't be created, and a task made beside the folder hides it. So 2.0's folder is
-`\InfoPanel 2`.
+Taking 1.x's AppId wouldn't upgrade it: Inno Setup looks for an earlier install only in its own registry view, and 2.0's
+64-bit setup and 1.x's 32-bit one use different views. So 2.0 keeps its own AppId and runs 1.x's uninstaller.
 
-- **One folder**, `C:\Program Files\InfoPanel 2` (`{autopf}\InfoPanel 2`): no folder page, and an earlier install's
-  folder isn't reused. A `/DIR` that resolves anywhere else (1.x's `C:\Program Files\InfoPanel`, a folder a user can
-  write) is refused before anything is stopped or written (exit code 7).
+The Task Scheduler can't hold a task and a folder of one name at its root: with 1.4.x's Run on startup on (its root task
+`\InfoPanel`), a folder `\InfoPanel` can't be created, and a task made beside the folder hides it. So Setup removes
+1.x's root task before Read all sensors can make the folder `\InfoPanel`.
+
+- **One folder**, `C:\Program Files\InfoPanel` (`{autopf}\InfoPanel`, the 64-bit Program Files: Read all sensors
+  registers its task only for a helper there): no folder page, and an earlier install's folder isn't reused. A `/DIR`
+  that resolves anywhere else (a folder a user can write) is refused before anything is stopped or written (exit code
+  7).
+- **The Start menu group** is always `InfoPanel` (`UsePreviousGroup=no`, no group page).
 - **Per machine**, administrator rights asked once (UAC). Read all sensors registers its SYSTEM task only for a helper
   under Program Files, whose files a user can't write. x64 Windows 10 or later only.
 - The licence page shows `LICENSE`; `LICENSE`, `LICENSES.md`, `libusb-COPYING.txt`, `ffmpeg-COPYING.txt` and
   `dav1d-COPYING.txt` are installed beside the engine.
-- The finish page's "Launch InfoPanel 2" starts the engine as the user who started Setup, not with Setup's administrator
+- The Ready page names 1.x, when it is installed, with its version: Setup closes it if it is running and uninstalls
+  it; its profiles and settings stay; save any work in it first.
+- The finish page's "Launch InfoPanel" starts the engine as the user who started Setup, not with Setup's administrator
   rights, and is offered only when that user's token is unelevated (integrity Medium). Setup started elevated (Run as
   administrator, an elevated prompt, UAC off) offers no launch, since it would start the engine elevated. A silent
   install (`/VERYSILENT`) launches nothing.
-- The finish page's "Start InfoPanel 2 when I sign in", ticked, turns on the tray's Start when I sign in for the user
-  who started Setup: `reg.exe`, run as that user, writes the Run value `InfoPanel 2`,
-  `"C:\Program Files\InfoPanel 2\InfoPanel.exe"`, into that user's `HKCU` and clears its Task Manager switch, as the
+- The finish page's "Start InfoPanel when I sign in", ticked, turns on the tray's Start when I sign in for the user
+  who started Setup: `reg.exe`, run as that user, writes the Run value `InfoPanel`,
+  `"C:\Program Files\InfoPanel\InfoPanel.exe"`, into that user's `HKCU` and clears its Task Manager switch, as the
   tray does (not through Setup's own `HKCU`, the administrator's when another user than the one who started it
   elevated it). Unticked, nothing changes. A silent install writes it too, unless `/STARTATSIGNIN=no`. Offered, as the
   launch, only when that user's token is unelevated: Setup started elevated (Run as administrator, maybe with another
   administrator's credentials) can't run anything as the user who started it, so it offers and writes nothing; then
   turn it on from the tray's Start when I sign in.
-- **Over a running InfoPanel 2** (an update or a repair): Setup first stops this install's running sensor helper
+- **Over a running InfoPanel 2.0** (an update or a repair): Setup first stops this install's running sensor helper
   tasks (the helper runs as SYSTEM in session 0), then stops the engine as it stops at a sign-out (below). The Restart
   Manager then closes, without forcing, anything else holding a file (`CloseApplications=yes`), and Setup restarts
-  nothing. An earlier 2.0's `sensor-helper\` and `pawnio\` are replaced whole, and the retired bundled plugin folder of earlier builds (`plugins\InfoPanel.Extras\`) is removed.
+  nothing. An earlier 2.0's `sensor-helper\` and `pawnio\` are replaced whole, names 1.x never had; nothing under
+  `plugins\` is removed, where 1.x's uninstaller leaves its plugins' `.dll.ini` settings.
 - **Stopping the engine** (Setup and the uninstaller): each of this install's engines on Setup's desktop gets
   `WM_ENDSESSION` at its hidden window (`InfoPanelMessageWindow`), which it takes as the session ending: its own orderly
   stop, which writes every unsaved change to `recovery.json`. Setup waits up to 20 s for it, then up to 5 s for its
@@ -268,21 +277,60 @@ The Task Scheduler can't hold a task and a folder of one name at its root: with 
 - Desktop shortcut: an optional task, on by default (as 1.x's).
 - **The `infopanel:` link**, per machine (`[Registry]`, `HKA`: HKLM in this administrative install):
   `HKLM\Software\Classes\infopanel` with its default value `URL:InfoPanel` and an empty `URL Protocol`, `DefaultIcon`
-  `"C:\Program Files\InfoPanel 2\InfoPanel.exe",0` and `shell\open\command`
-  `"C:\Program Files\InfoPanel 2\InfoPanel.exe" "%1"`: the link is the engine's only argument, which it accepts only
+  `"C:\Program Files\InfoPanel\InfoPanel.exe",0` and `shell\open\command`
+  `"C:\Program Files\InfoPanel\InfoPanel.exe" "%1"`: the link is the engine's only argument, which it accepts only
   alone and never reads (desktop-shell.md, "Opening the editor"). 1.x registers no such scheme.
+
+### Replacing 1.x
+
+Before it writes anything (`PrepareToInstall`), after the folder check, Setup, in this order:
+
+1. **Refuses an earlier test build of 2.0** in another folder (2.0's own key, `HKLM64`, whose `InstallLocation` isn't
+   `C:\Program Files\InfoPanel`: the early dry-run builds' folder and name had a "2" in them): "An earlier test build
+   of InfoPanel is installed in <its folder>. Uninstall it ("<its name in Settings › Apps>") from Settings › Apps, then
+   run this setup again." It doesn't run that uninstaller itself. A 2.0 in the same folder is an update and passes.
+2. **Finds 1.x** through its uninstall key, `…\Uninstall\{761BE813-…}_is1`, in the 32-bit view (`HKLM32`), else the
+   64-bit one, never by guessing a folder: its `UninstallString`, its folder (`InstallLocation`) and `DisplayVersion`.
+   Without the key, steps 3 and 4 are skipped. If you installed 1.x yourself into `C:\Program Files\InfoPanel` (or a
+   folder holding it or inside it), Setup stops here and changes nothing: "InfoPanel <version> is installed in the
+   folder this setup uses (<its folder>). Uninstall it from Settings › Apps, then run this setup again; its profiles
+   and settings are kept." (exit code 7 when silent).
+3. **Closes 1.x:** every `InfoPanel.exe` under 1.x's folder (never one under 2.0's), its plugin hosts too, ended by
+   force, as 1.x's own updates did (1.x has no window to ask; the Ready page says to save first). Setup waits up to
+   10 s and offers Retry while one is left, or while Windows can't list the running programs or an `InfoPanel.exe`'s
+   path can't be read and it hasn't gone (Setup can't tell then whether 1.x runs, and ends nothing); a silent run
+   answers Cancel, and Setup stops (exit code 7) before 1.x's uninstaller runs.
+4. **Runs 1.x's uninstaller** silently (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`) and waits for it. It removes what
+   1.x's setup installed: the program, its shortcuts and its key. Then Setup checks that 1.x's key is gone from its
+   view and that 1.x's `InfoPanel.exe` is gone (asking again for up to 10 s); otherwise, or with no uninstaller, it
+   stops: "InfoPanel <version> couldn't be uninstalled (code N). Uninstall it from Settings › Apps, then run this setup
+   again."
+5. **Removes 1.x's sign-in task**, always (also when 1.x was uninstalled earlier by hand): the task `\InfoPanel` at the
+   Task Scheduler's root, stopped if running and deleted, only when it has exactly one action, a program whose file
+   name is `InfoPanel.exe`. Anything else of that name is left alone and logged, and a folder `\InfoPanel` (2.0's
+   Read all sensors tasks) is never touched.
+6. Then, as for an update: this install's helper tasks and engines are stopped (above).
+
+Setup never touches `%LOCALAPPDATA%\InfoPanel` (1.x's profiles, settings and assets, and 2.0's `v2\`),
+`C:\ProgramData\InfoPanel`, the `.dll.ini` plugin settings 1.x's uninstaller leaves in its `plugins` folder, 1.x's leftover
+folder, firewall rules, or another user's legacy Run value `InfoPanel`. 1.x's plugins aren't brought over.
+
+**Going back to 1.x:** uninstall InfoPanel (2.0) from Settings › Apps, then install 1.x. 1.x's setup doesn't know 2.0:
+installed over it, it leaves two InfoPanels sharing one Start menu entry and desktop icon; 1.x, at each start, deletes
+the Run value `InfoPanel`, now 2.0's, which switches off 2.0's Start when I sign in; and with Read all sensors on,
+1.x's sign-in task can't be created beside the folder `\InfoPanel`.
 
 ### Uninstalling
 
-The uninstaller (Settings › Apps, or Uninstall InfoPanel 2 in the Start menu):
+The uninstaller (Settings › Apps, or Uninstall InfoPanel in the Start menu):
 
 - stops this install's engines as above (only those under its program folder: 1.x's program is `InfoPanel.exe` too),
   or stops, changing nothing, while one is left;
-- stops and removes every user's Read all sensors task that is this install's: in `\InfoPanel 2`, named
+- stops and removes every user's Read all sensors task that is this install's: in `\InfoPanel`, named
   `Sensor helper <SID>`, with one action, exactly this install's helper (its path resolved: `..` doesn't pass) with
-  `--serve --user <SID>`; any other is left alone. Then the `\InfoPanel 2` folder once empty. Through the Task
+  `--serve --user <SID>`; any other is left alone. Then the `\InfoPanel` folder once empty. Through the Task
   Scheduler: the helper isn't run, since a .NET program run elevated would take the user's environment;
-- removes the Run value `InfoPanel 2` (and its Task Manager switch) from the uninstaller's own `HKCU` and from every
+- removes the Run value `InfoPanel` (and its Task Manager switch) from the uninstaller's own `HKCU` and from every
   user hive loaded under `HKEY_USERS` (each signed-in user's, so the user who started the uninstall too when another
   administrator's credentials elevated it: the uninstaller can run nothing as that user), each read and checked by the
   uninstaller itself: removed only when its program (the command line's first part, its path resolved; the arguments
@@ -290,7 +338,8 @@ The uninstaller (Settings › Apps, or Uninstall InfoPanel 2 in the Start menu):
   that is gone;
 - removes the program folder and the shortcuts, and the `infopanel:` link's key, `HKLM\Software\Classes\infopanel`
   (`uninsdeletekey`);
-- **keeps** `%LOCALAPPDATA%\InfoPanel\v2` (profiles, settings, logs), and touches nothing of 1.x's.
+- **keeps** `%LOCALAPPDATA%\InfoPanel\v2` (profiles, settings, logs), and touches nothing of 1.x's; 1.x isn't
+  restored.
 
 ### Unsigned
 

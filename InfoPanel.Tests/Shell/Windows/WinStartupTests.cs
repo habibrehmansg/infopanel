@@ -8,7 +8,7 @@ using Xunit;
 namespace InfoPanel.Tests.Shell.Windows;
 
 /// <summary>
-/// Start when I sign in: the <c>InfoPanel 2</c> value under the user's Run key, read as Task Manager reads it (its
+/// Start when I sign in: the <c>InfoPanel</c> value under the user's Run key, read as Task Manager reads it (its
 /// StartupApproved entry can turn it off), written with the engine's own path, removed with its StartupApproved entry.
 /// Through <see cref="FakeRegistry"/> on any OS; the registry itself on Windows, under a key of the test's own.
 /// </summary>
@@ -53,19 +53,11 @@ public sealed class WinStartupTests
         Startup().Set(true);
 
         Assert.Equal(@"Software\Microsoft\Windows\CurrentVersion\Run", WinStartup.RunKey);
-        Assert.Equal("InfoPanel 2", WinStartup.ValueName);
+        Assert.Equal("InfoPanel", WinStartup.ValueName);
         var (key, value) = Assert.Single(_registry.Values);
         Assert.Equal((WinStartup.RunKey, WinStartup.ValueName), key);
         Assert.Equal(Command, value);
         Assert.True(Startup().IsOn());
-    }
-
-    [Fact]
-    public void TheValue_IsNot1xs()
-    {
-        // 1.4.x deletes the Run value "InfoPanel" at every start (its legacy startup removal), so beside it 2.0's own
-        // value must be another name; Windows compares value names without case.
-        Assert.False(string.Equals("InfoPanel", WinStartup.ValueName, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -93,23 +85,23 @@ public sealed class WinStartupTests
     [Fact]
     public void TheInstallersFinishPage_OffersIt_Ticked_WritingThisValue_AsTheUserWhoStartedSetup()
     {
-        // packaging/windows/InfoPanel.iss: the finish page's "Start InfoPanel 2 when I sign in" runs reg.exe as the user
+        // packaging/windows/InfoPanel.iss: the finish page's "Start InfoPanel when I sign in" runs reg.exe as the user
         // who started Setup (Setup's own HKCU is the elevating administrator's hive), writing what Set(true) writes for
         // the installed engine, after clearing Task Manager's switch as Set does. Ticked, and run by a silent install.
         var script = File.ReadAllText(Path.Combine(LiveEngine.RepoRoot(), "packaging", "windows", "InfoPanel.iss"));
         var defines = Regex.Matches(script, @"(?m)^#define (\w+) ""([^""]*)""\r?$")
             .ToDictionary(m => m.Groups[1].Value, m => m.Groups[2].Value);
         string Defined(string text) => Regex.Replace(text, @"\{#(\w+)\}", m => defines[m.Groups[1].Value]);
-        string Installed(string text) => Defined(text).Replace("{app}", @"C:\Program Files\InfoPanel 2").Replace("{sys}", @"C:\Windows\System32");
+        string Installed(string text) => Defined(text).Replace("{app}", @"C:\Program Files\InfoPanel").Replace("{sys}", @"C:\Windows\System32");
 
         var entry = Assert.Single(RunEntries(script), e => e.GetValueOrDefault("Description", "").Contains("sign in"));
 
-        Assert.Equal("Start InfoPanel 2 when I sign in", Installed(entry["Description"]));
+        Assert.Equal("Start InfoPanel when I sign in", Installed(entry["Description"]));
         Assert.Equal(@"C:\Windows\System32\reg.exe", Installed(entry["Filename"]));
         Assert.Equal(["postinstall", "runasoriginaluser", "runhidden"], entry["Flags"].Split(' ', StringSplitOptions.RemoveEmptyEntries).Order());
         Assert.Equal(
             ["add", @"HKCU\" + WinStartup.RunKey, "/v", WinStartup.ValueName, "/t", "REG_SZ", "/d",
-                WinStartup.CommandFor(@"C:\Program Files\InfoPanel 2\InfoPanel.exe", @"C:\Program Files\InfoPanel 2\InfoPanel.dll"), "/f"],
+                WinStartup.CommandFor(@"C:\Program Files\InfoPanel\InfoPanel.exe", @"C:\Program Files\InfoPanel\InfoPanel.dll"), "/f"],
             Arguments(Installed(entry["Parameters"])));
         var before = Regex.Match(script, $@"(?ms)^procedure {Regex.Escape(entry["BeforeInstall"])};\r?$.*?^end;\r?$");
         Assert.True(before.Success, "No procedure " + entry["BeforeInstall"]);
