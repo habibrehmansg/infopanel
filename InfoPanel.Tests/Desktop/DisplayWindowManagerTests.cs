@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using InfoPanel.Desktop;
@@ -870,7 +871,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AUserMove_IsOneUndoableEdit_WithTheDisplayUnderTheTopLeft_AndSaveKeepsIt()
+    public async Task AUserMove_IsOneUndoableEdit_WithTheDisplayUnderTheTopLeft_SavedAtOnceOnACleanProfile()
     {
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
@@ -880,7 +881,8 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         await _platform.IdleAsync();
 
         Assert.Equal(2, doc.Rev);
-        Assert.True(doc.Dirty);
+        // The only change since the profile was saved: saved straight after, as a client's placement change is.
+        Assert.False(doc.Dirty);
         Assert.True(doc.CanUndo);
         Assert.Equal((120, 64), (W(doc).X, W(doc).Y));
         var target = W(doc).Display!;
@@ -891,13 +893,585 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         Assert.Equal(2, doc.Rev);
         Assert.True(window.FrameChanges > changes);
 
-        doc.Save();
-        var saved = JsonNode.Parse(File.ReadAllText(Path.Combine(_base.DataDir, "profiles", doc.Id, "document.json")))!["profile"]!["window"]!;
+        var saved = JsonNode.Parse(File.ReadAllText(DocumentFile(doc)))!["profile"]!["window"]!;
         Assert.Equal((120, 64, "External", 2560), (saved["x"]!.GetValue<int>(), saved["y"]!.GetValue<int>(), saved["display"]!["name"]!.GetValue<string>(), saved["display"]!["width"]!.GetValue<int>()));
 
+        // Undo is kept by the save, and leaves the profile with an unsaved change again.
         Undo(doc);
         await _platform.IdleAsync();
         Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
+        Assert.True(doc.Dirty);
+        AssertNoErrors();
+    }
+
+    /// <summary>The profile's saved document.</summary>
+    private string DocumentFile(ProfileDocument doc) => Path.Combine(_base.DataDir, "profiles", doc.Id, "document.json");
+
+    /// <summary>The profile as its saved document has it.</summary>
+    private DocumentProfile SavedProfile(ProfileDocument doc) =>
+        JsonNode.Parse(File.ReadAllText(DocumentFile(doc)))!["profile"].Deserialize<DocumentProfile>(SpecJson.Options)!;
+
+    /// <summary>Counts the document's saves from now on.</summary>
+    private static Func<int> CountSaves(ProfileDocument doc)
+    {
+        var saves = 0;
+        doc.Changed += (_, e) =>
+        {
+            if (e.Change == DocumentChange.Saved)
+                Interlocked.Increment(ref saves);
+        };
+        return () => Volatile.Read(ref saves);
+    }
+
+    /// <summary>Stops the engine as a quit does (an orderly stop), then starts it again on the same data folder; returns "Wide bar".</summary>
+    private async Task<ProfileDocument> Restart()
+    {
+        await _factory.DisposeAsync();
+        _platform.Dispose();
+        await _base.WaitForTheFolderAsync(Ct);
+        _platform = new FakeDesktopPlatform(BuiltIn, External);
+        _factory = Create(_platform);
+        return await Start();
+    }
+
+    /// <summary>A resize to <paramref name="frame"/>, committed after its quiet time, or at the release of the button.</summary>
+    private async Task Resize(FakeWindow window, PointRect frame, bool atRelease)
+    {
+        if (atRelease)
+        {
+            await _platform.InvokeAsync(() =>
+            {
+                window.BeginUserMove();
+                window.UserResize(frame);
+                window.EndUserMove();
+            });
+        }
+        else
+        {
+            await _platform.InvokeAsync(() => window.UserResize(frame));
+            _clock.Advance(DisplayWindowManager.ResizeQuiet);
+            await _platform.IdleAsync();
+        }
+
+        await _platform.IdleAsync();
+    }
+
+    /// <summary>
+    /// A drag on a profile with no unsaved changes is saved at once: the place is in <c>document.json</c> before anything
+    /// else happens, the profile is clean, and a start after a quit (or a crash, which has nothing unsaved to lose) finds
+    /// it there, not in a recovery file.
+    /// </summary>
+    [Fact]
+    public async Task ADragOnACleanProfile_IsSavedAtOnce_AndAStartAfterAQuitFindsItThere()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var saves = CountSaves(doc);
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+
+        Assert.Equal((2L, false, 1), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal(W(doc), SavedProfile(doc).Window);
+        Assert.Equal((120, 64, "External"), (W(doc).X, W(doc).Y, W(doc).Display!.Name));
+        Assert.False(File.Exists(Path.Combine(_base.DataDir, "profiles", doc.Id, "recovery.json")));
+
+        var again = await Restart();
+        Assert.Equal((1L, false, null), (again.Rev, again.Dirty, again.Status.Recovered));
+        Assert.Equal((120, 64, "External"), (W(again).X, W(again).Y, W(again).Display!.Name));
+        Assert.Equal(Rect(-288, -1376, 1920, 480), (await RequireWindow(again.Id)).Frame);
+        AssertNoErrors();
+    }
+
+    /// <summary>A drag on a profile with other unsaved changes saves nothing: they and the drag stay unsaved together, as before.</summary>
+    [Fact]
+    public async Task ADragWithOtherUnsavedChanges_SavesNothing_AndLeavesThemAllUnsaved()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        await Patch(doc, new JsonObject { ["level"] = "top" });
+        var stored = File.ReadAllBytes(DocumentFile(doc));
+        var saves = CountSaves(doc);
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+
+        Assert.Equal((3L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal((120, 64, "External", "top"), (W(doc).X, W(doc).Y, W(doc).Display!.Name, W(doc).Level));
+        Assert.Equal(stored, File.ReadAllBytes(DocumentFile(doc)));
+
+        // Undo takes back the drag alone; the other change stays unsaved.
+        Undo(doc);
+        await _platform.IdleAsync();
+        Assert.Equal((null, "top", true), (W(doc).Display, W(doc).Level, doc.Dirty));
+        AssertNoErrors();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AResizeOnACleanProfile_IsSavedAtOnce_AfterItsQuietOrAtItsRelease(bool atRelease)
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var saves = CountSaves(doc);
+
+        await Resize(window, Rect(0, 0, 900, 240), atRelease);
+
+        Assert.Equal((2L, false, 1), (doc.Rev, doc.Dirty, saves()));
+        var saved = SavedProfile(doc);
+        Assert.Equal((1800, 480, 0, 0), (saved.Width, saved.Height, saved.Window!.X, saved.Window.Y));
+        Assert.Equal(Rect(0, 0, 900, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AResizeWithOtherUnsavedChanges_SavesNothing_AfterItsQuietOrAtItsRelease(bool atRelease)
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        await Patch(doc, new JsonObject { ["level"] = "top" });
+        var stored = File.ReadAllBytes(DocumentFile(doc));
+        var saves = CountSaves(doc);
+
+        await Resize(window, Rect(0, 0, 900, 240), atRelease);
+
+        Assert.Equal((3L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal((1800, 480, "top"), (P(doc).Width, P(doc).Height, W(doc).Level));
+        Assert.Equal(stored, File.ReadAllBytes(DocumentFile(doc)));
+        AssertNoErrors();
+    }
+
+    /// <summary>A drag that leaves the window's place as it is commits nothing, and so saves nothing.</summary>
+    [Fact]
+    public async Task ADragThatChangesNothing_OnACleanProfile_SavesNothing()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        PlaceOn(doc, 0, 0, BuiltIn);
+        doc.Save();
+        await _platform.IdleAsync();
+        var revision = doc.Rev;
+        var saves = CountSaves(doc);
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(0.2, 0.2, 960, 240)));
+        await _platform.IdleAsync();
+
+        Assert.Equal((revision, false, 0), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal(Rect(0, 0, 960, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// Another client's change between the drag's read and its commit: the commit is read again and retried, and the
+    /// profile then holds that client's unsaved change, so nothing is saved: a drag never writes another client's change.
+    /// </summary>
+    [Fact]
+    public async Task ADragRetriedAfterAnotherClientsChange_SavesNothing()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var stored = File.ReadAllBytes(DocumentFile(doc));
+        var saves = CountSaves(doc);
+        Manager.BeforeCommit = _ =>
+        {
+            Manager.BeforeCommit = null;
+            var changed = JsonNode.Parse(JsonSerializer.Serialize(W(doc) with { Level = "desktop" }, SpecJson.Options))!;
+            TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["window"] = changed }));
+        };
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+
+        Assert.Equal((3L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal((120, 64, "External", "desktop"), (W(doc).X, W(doc).Y, W(doc).Display!.Name, W(doc).Level));
+        Assert.Equal(stored, File.ReadAllBytes(DocumentFile(doc)));
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// Another client's change between the drag's commit and its save: the save names the drag's own revision, so it
+    /// is refused and nothing is written; both changes stay unsaved.
+    /// </summary>
+    [Fact]
+    public async Task AnotherClientsChange_BetweenTheDragsCommitAndItsSave_IsNeverSaved()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var stored = File.ReadAllBytes(DocumentFile(doc));
+        var saves = CountSaves(doc);
+        var first = true;
+        doc.Changed += (_, e) =>
+        {
+            if (e.Change != DocumentChange.Commit || !first)
+                return;
+            first = false;
+            var changed = JsonNode.Parse(JsonSerializer.Serialize(W(doc) with { Level = "desktop" }, SpecJson.Options))!;
+            TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["window"] = changed }));
+        };
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+
+        Assert.Equal((3L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal((120, 64, "External", "desktop"), (W(doc).X, W(doc).Y, W(doc).Display!.Name, W(doc).Level));
+        Assert.Equal(stored, File.ReadAllBytes(DocumentFile(doc)));
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// A save the folder refuses leaves the drag committed and unsaved, the window where the user put it, a warning in
+    /// the log, and the change kept as any unsaved change is: an orderly stop keeps it, and the next start restores it.
+    /// </summary>
+    [Fact]
+    public async Task ADragWhoseSaveFails_StaysCommittedAndUnsaved_WhereTheUserPutIt_AndIsKeptAsAnyUnsavedChange()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Refuses the save through Unix file modes.");
+        if (OperatingSystem.IsWindows())
+            return; // for the platform analyzer: SkipWhen has already ended the test
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var stored = File.ReadAllBytes(DocumentFile(doc));
+        var folder = Path.GetDirectoryName(DocumentFile(doc))!;
+        var mode = File.GetUnixFileMode(folder);
+        File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+            await _platform.IdleAsync();
+
+            Assert.Equal((2L, true), (doc.Rev, doc.Dirty));
+            Assert.Equal((120, 64, "External"), (W(doc).X, W(doc).Y, W(doc).Display!.Name));
+            Assert.Equal(Rect(-288, -1376, 1920, 480), window.Frame);
+            Assert.Equal(stored, File.ReadAllBytes(DocumentFile(doc)));
+            Assert.Single(_log.Messages, m => m.Contains("couldn't be saved"));
+        }
+        finally
+        {
+            File.SetUnixFileMode(folder, mode);
+        }
+
+        var again = await Restart();
+        Assert.Equal((2L, true), (again.Rev, again.Dirty));
+        Assert.NotNull(again.Status.Recovered);
+        Assert.Equal((120, 64, "External"), (W(again).X, W(again).Y, W(again).Display!.Name));
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// A save that replaced <c>document.json</c> but couldn't flush the profile's folder: the drag is saved (the file holds
+    /// it, the profile is clean), and the warning says so and that it couldn't be confirmed on disk, never that it stays
+    /// unsaved; nothing reaches the platform. The folder is made unreadable (write and search kept), so the new document
+    /// goes in and the folder can't be opened to flush it.
+    /// </summary>
+    [Fact]
+    public async Task ADragWhoseSaveReplacesTheDocumentButCantFlushItsFolder_IsSaved_AndLoggedAsNotConfirmedOnDisk()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Fails the folder's flush through Unix file modes.");
+        if (OperatingSystem.IsWindows())
+            return; // for the platform analyzer: SkipWhen has already ended the test
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var saves = CountSaves(doc);
+        var folder = Path.GetDirectoryName(DocumentFile(doc))!;
+        var mode = File.GetUnixFileMode(folder);
+        File.SetUnixFileMode(folder, UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        try
+        {
+            await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+            await _platform.IdleAsync();
+        }
+        finally
+        {
+            File.SetUnixFileMode(folder, mode);
+        }
+
+        Assert.Equal((2L, false, 1), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal(W(doc), SavedProfile(doc).Window);
+        Assert.Equal((120, 64, "External"), (W(doc).X, W(doc).Y, W(doc).Display!.Name));
+        Assert.Equal(Rect(-288, -1376, 1920, 480), window.Frame);
+        Assert.Single(_log.Messages, m => m.Contains("is saved, but") && m.Contains("on disk"));
+        Assert.DoesNotContain(_log.Messages, m => m.Contains("stays unsaved"));
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// Sets the workspace's test hook that runs as a save is about to write a document, under the document's save lock
+    /// (<c>Workspace.Saving</c>, internal to the core library, so set by reflection).
+    /// </summary>
+    private void OnSaving(Action<string>? saving) =>
+        (typeof(Workspace).GetField("Saving", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new MissingFieldException(nameof(Workspace), "Saving")).SetValue(Workspace, saving);
+
+    /// <summary>
+    /// The profile deleted after the drag's save has begun, before it writes: the store no longer lists it, so the
+    /// save meets a profile that is gone (<see cref="KeyNotFoundException"/>, not a disposed document). That is the
+    /// deletion it is: nothing saved, no failure logged, and the release's handling goes on to its end (the window put
+    /// at the profile's place); then the deletion closes the window.
+    /// </summary>
+    [Fact]
+    public async Task ADragWhoseProfileIsDeletedAsItsSaveBegins_SavesNothing_LogsNoFailure_AndItsReleaseFinishes()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var instance = doc.Instance;
+        DeleteOutcome? deleted = null;
+        OnSaving(id =>
+        {
+            OnSaving(null);
+            deleted = Workspace.Delete(id, instance);
+        });
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+
+        Assert.Equal(new DeleteOutcome(true, null), deleted);
+        Assert.Equal(Rect(-288, -1376, 1920, 480), window.Frame);
+        Assert.True(window.Disposed);
+        Assert.Null(await WindowOf(WideBarId));
+        Assert.Null(Workspace.Open(WideBarId));
+        Assert.DoesNotContain(_log.Messages, m => m.Contains("saved"));
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// A resize held past its quiet time, then gone on with, then released: the quiet commit waits for the release
+    /// (nothing saved while the button is down, the profile unsaved meanwhile), and the release saves once, the final
+    /// size: one save, one kept version, for one gesture.
+    /// </summary>
+    [Fact]
+    public async Task AResizeHeldPastItsQuiet_ThenGoneOn_IsSavedOnce_AtItsRelease_WithItsFinalSize()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var saves = CountSaves(doc);
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.UserResize(Rect(0, 0, 900, 240));
+        });
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        Assert.Equal((2L, true, 0), (doc.Rev, doc.Dirty, saves()));
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.UserResize(Rect(0, 0, 800, 240));
+            window.EndUserMove();
+        });
+        await _platform.IdleAsync();
+
+        Assert.Equal((3L, false, 1), (doc.Rev, doc.Dirty, saves()));
+        var saved = SavedProfile(doc);
+        Assert.Equal((1600, 480, 0, 0), (saved.Width, saved.Height, saved.Window!.X, saved.Window.Y));
+        Assert.Equal(Rect(0, 0, 800, 240), window.Frame);
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// A held resize on a clean profile with another client's change between its quiet commit and its release's: the
+    /// gesture's commits are no longer the profile's only changes, so nothing is saved, that client's change included.
+    /// </summary>
+    [Fact]
+    public async Task AHeldResize_WithAnotherClientsChangeBetweenItsCommits_SavesNothing()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var stored = File.ReadAllBytes(DocumentFile(doc));
+        var saves = CountSaves(doc);
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.UserResize(Rect(0, 0, 900, 240));
+        });
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        await Patch(doc, new JsonObject { ["level"] = "top" });
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.UserResize(Rect(0, 0, 800, 240));
+            window.EndUserMove();
+        });
+        await _platform.IdleAsync();
+
+        Assert.Equal((4L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal((1600, 480, "top"), (P(doc).Width, P(doc).Height, W(doc).Level));
+        Assert.Equal(stored, File.ReadAllBytes(DocumentFile(doc)));
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// A held resize on a clean profile whose quiet commit is waiting for the release, and another client's change the
+    /// release's commit doesn't touch (the profile's name) committed after that commit read the profile and before it
+    /// applied: the release's commit applies on top of it, so the press's commits are no longer the profile's only
+    /// changes, and nothing is saved; both stay unsaved.
+    /// </summary>
+    [Fact]
+    public async Task AHeldResize_WithAnotherClientsChangeBetweenItsReleasesReadAndItsCommit_SavesNothing()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var stored = File.ReadAllBytes(DocumentFile(doc));
+        var saves = CountSaves(doc);
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.UserResize(Rect(0, 0, 900, 240));
+        });
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        Assert.Equal((2L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        RenameBeforeTheNextCommit(doc);
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.UserResize(Rect(0, 0, 800, 240));
+            window.EndUserMove();
+        });
+        await _platform.IdleAsync();
+
+        Assert.Equal((4L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal((1600, 480, "Renamed by a client"), (P(doc).Width, P(doc).Height, P(doc).Name));
+        Assert.Equal(stored, File.ReadAllBytes(DocumentFile(doc)));
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// The same for a drag after a resize's quiet commit in the same press: another client's rename between the drag's
+    /// read and its commit, at the release, means the press saves nothing; both stay unsaved.
+    /// </summary>
+    [Fact]
+    public async Task ADragAfterAHeldResizesQuietCommit_WithAnotherClientsChangeBetweenItsReadAndItsCommit_SavesNothing()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var stored = File.ReadAllBytes(DocumentFile(doc));
+        var saves = CountSaves(doc);
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.UserResize(Rect(0, 0, 900, 240));
+        });
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        Assert.Equal((2L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        RenameBeforeTheNextCommit(doc);
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.DragTo(Rect(100, 50, 900, 240));
+            window.EndUserMove();
+        });
+        await _platform.IdleAsync();
+
+        Assert.Equal((4L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal((1800, 480, 200, 100, "Renamed by a client"), (P(doc).Width, P(doc).Height, W(doc).X, W(doc).Y, P(doc).Name));
+        Assert.Equal(stored, File.ReadAllBytes(DocumentFile(doc)));
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// Another client's rename between a held resize's first read and its quiet commit: the profile isn't clean when the
+    /// press's first commit applies, so the press saves nothing, at its quiet or its release; both stay unsaved.
+    /// </summary>
+    [Fact]
+    public async Task AHeldResize_WithAnotherClientsChangeBeforeItsFirstCommit_SavesNothing()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var stored = File.ReadAllBytes(DocumentFile(doc));
+        var saves = CountSaves(doc);
+        RenameBeforeTheNextCommit(doc);
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.UserResize(Rect(0, 0, 900, 240));
+        });
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        Assert.Equal((3L, true, 0), (doc.Rev, doc.Dirty, saves()));
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.UserResize(Rect(0, 0, 800, 240));
+            window.EndUserMove();
+        });
+        await _platform.IdleAsync();
+
+        Assert.Equal((4L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal((1600, 480, "Renamed by a client"), (P(doc).Width, P(doc).Height, P(doc).Name));
+        Assert.Equal(stored, File.ReadAllBytes(DocumentFile(doc)));
+        AssertNoErrors();
+    }
+
+    /// <summary>
+    /// Another client's rename between a drag's read and its commit, which it doesn't conflict with: the profile isn't
+    /// clean when the drag's commit applies, so nothing is saved; both stay unsaved.
+    /// </summary>
+    [Fact]
+    public async Task ADrag_WithAnotherClientsChangeBetweenItsReadAndItsCommit_SavesNothing()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var stored = File.ReadAllBytes(DocumentFile(doc));
+        var saves = CountSaves(doc);
+        RenameBeforeTheNextCommit(doc);
+
+        await _platform.InvokeAsync(() => window.UserMove(Rect(-408 + 120, -1440 + 64, 960, 240)));
+        await _platform.IdleAsync();
+
+        Assert.Equal((3L, true, 0), (doc.Rev, doc.Dirty, saves()));
+        Assert.Equal((120, 64, "External", "Renamed by a client"), (W(doc).X, W(doc).Y, W(doc).Display!.Name, P(doc).Name));
+        Assert.Equal(stored, File.ReadAllBytes(DocumentFile(doc)));
+        AssertNoErrors();
+    }
+
+    /// <summary>Another client renames the profile once, between the window's next commit's read of the profile and that commit.</summary>
+    private void RenameBeforeTheNextCommit(ProfileDocument doc) =>
+        Manager.BeforeCommit = _ =>
+        {
+            Manager.BeforeCommit = null;
+            TestDocs.Commit(doc, TestDocs.Profile(new JsonObject { ["name"] = "Renamed by a client" }));
+        };
+
+    /// <summary>A resize held past its quiet time and released where it is: the release commits nothing more and saves the quiet commit, once.</summary>
+    [Fact]
+    public async Task AHeldResize_WhoseReleaseChangesNothingMore_SavesItsQuietCommitOnce_AtTheRelease()
+    {
+        var doc = await Start();
+        var window = await RequireWindow(doc.Id);
+        var saves = CountSaves(doc);
+
+        await _platform.InvokeAsync(() =>
+        {
+            window.BeginUserMove();
+            window.UserResize(Rect(0, 0, 900, 240));
+        });
+        _clock.Advance(DisplayWindowManager.ResizeQuiet);
+        await _platform.IdleAsync();
+        await _platform.IdleAsync();
+        Assert.Equal((2L, true, 0), (doc.Rev, doc.Dirty, saves()));
+
+        await _platform.InvokeAsync(window.EndUserMove);
+        await _platform.IdleAsync();
+
+        Assert.Equal((2L, false, 1), (doc.Rev, doc.Dirty, saves()));
+        var saved = SavedProfile(doc);
+        Assert.Equal((1800, 480, 0, 0), (saved.Width, saved.Height, saved.Window!.X, saved.Window.Y));
+        Assert.Equal(Rect(0, 0, 900, 240), window.Frame);
         AssertNoErrors();
     }
 
@@ -946,7 +1520,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AUserMove_RaisesTheWorkspacesEntriesChangedOnce_AndAPlainClick_None()
+    public async Task AUserMove_RaisesTheWorkspacesEntriesChangedOnceForItsCommitAndOnceForItsSave_AndAPlainClick_None()
     {
         var doc = await Start();
         var window = await RequireWindow(doc.Id);
@@ -966,8 +1540,9 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         await _platform.InvokeAsync(() => window.UserMove(Rect(120, 64, 960, 240)));
         await _platform.IdleAsync();
         Assert.Equal(2, doc.Rev);
-        Assert.Equal([before + 1], entries);
-        Assert.Equal(before + 1, Workspace.Version);
+        // The drag's commit, then its save (the profile had no unsaved changes): one each.
+        Assert.Equal([before + 1, before + 2], entries);
+        Assert.Equal(before + 2, Workspace.Version);
         AssertNoErrors();
     }
 
@@ -1055,7 +1630,7 @@ public sealed class DisplayWindowManagerTests : IAsyncLifetime
         await _platform.IdleAsync();
         await _platform.IdleAsync();
         Assert.Equal(2, doc.Rev);
-        Assert.True(doc.Dirty);
+        Assert.False(doc.Dirty); // the only change since the profile was saved: saved straight after
                 Assert.Equal((1401, 520, 0, 0), (P(doc).Width, P(doc).Height, W(doc).X, W(doc).Y));
         Assert.Equal(Rect(0, 0, 700.5, 260), window.Frame);
 

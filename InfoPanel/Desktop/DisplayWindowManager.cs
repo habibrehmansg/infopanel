@@ -1,3 +1,4 @@
+using System.Text.Json;
 using InfoPanel.Documents;
 using InfoPanel.Hosting;
 using InfoPanel.Output;
@@ -19,7 +20,9 @@ namespace InfoPanel.Desktop;
 /// re-matches displays when they change (<see cref="DisplayMatcher.Place"/>: the most recent place whose display is
 /// connected). Its own moves never produce commits.</item>
 /// <item>The window's own changes are <c>profile</c> commits with a <c>gesture:</c> coalescing key of their own and the
-/// revision they read as <c>baseRev</c> (undoable, dirty, saved by Save; read again and retried on a conflict), each
+/// revision they read as <c>baseRev</c> (undoable; read again and retried on a conflict; saved at once when it was the
+/// profile's only change since it was saved, else left unsaved with the others: <see cref="SaveIfOnlyChange"/>; one
+/// made while the button is still down, at the release, once for the press), each
 /// putting the window on the display it ended on (<see cref="DisplayMatcher.Promote"/>: that display becomes
 /// <c>display</c>, the previous one goes first in <c>spots</c>): one per finished drag (the display holding the window's
 /// top-left), one per resize at its release or after <see cref="ResizeQuiet"/> without changes, whichever comes first
@@ -496,6 +499,8 @@ public sealed class DisplayWindowManager(
             Edit(entry, x, y, null, display);
         }
 
+        SaveHeld(entry);
+
         // Whether or not anything changed, the window goes to exactly the profile's place, sized for its scale there.
         Reconcile(entry.ProfileId);
     }
@@ -578,14 +583,24 @@ public sealed class DisplayWindowManager(
     /// <c>window</c> as read, so it carries that read's revision as its <c>baseRev</c>: when another change to the
     /// profile came first (409), the latest window is read and the place applied to it again, up to
     /// <see cref="CommitAttempts"/> times, so another client's <c>level</c>, <c>resizable</c>, <c>enabled</c> or
-    /// <c>spots</c> is never undone. A commit that changes nothing makes no revision.
+    /// <c>spots</c> is never undone. A commit that changes nothing makes no revision. One that does is saved at once
+    /// when the profile had no unsaved changes just before it applied (<see cref="SaveIfOnlyChange"/>); one made while
+    /// the button is still down (a resize quiet for <see cref="ResizeQuiet"/>) is saved at the release instead, once for
+    /// the press, only when nothing but the press changed the profile since it was saved (<see cref="WindowEntry.Held"/>).
     /// </summary>
     private void Edit(WindowEntry entry, int x, int y, (int Width, int Height)? size, DisplayInfo display)
     {
         var doc = entry.Document;
         var key = $"gesture:{_gestureClient}:{++_gestures}";
+        // A commit of the press while one waits for the release follows straight on it only when the document is still
+        // at the waiting commit's revision as this one applies: seen by the guard, under the lock that applies the
+        // commit, so no other client's commit can come between (a revision read before it could be passed already).
+        var waiting = entry.Held;
+        var follows = false;
+        Action<Document>? guard = waiting is { } w ? _ => follows = doc.Rev == w.Rev : null;
         Generation current;
         CommitOutcome outcome;
+        bool wasClean;
         for (var attempt = 1; ; attempt++)
         {
             current = doc.Current;
@@ -595,14 +610,14 @@ public sealed class DisplayWindowManager(
             BeforeCommit?.Invoke(entry.ProfileId);
             try
             {
-                outcome = doc.Commit(new CommitRequest
+                outcome = doc.Commit(JsonSerializer.SerializeToUtf8Bytes(new CommitRequest
                 {
                     OpId = Guid.NewGuid().ToString("N"),
                     Instance = doc.Instance,
                     BaseRev = current.Rev,
                     CoalesceKey = key,
                     Ops = [new ProfileOp { BaseRev = current.Rev, Set = new ProfileFields { Window = window, Width = size?.Width, Height = size?.Height } }],
-                });
+                }, SpecJson.Options), guard, out wasClean);
             }
             catch (ObjectDisposedException)
             {
@@ -632,6 +647,61 @@ public sealed class DisplayWindowManager(
         {
             logger.LogInformation("The desktop window of profile {ProfileId} was moved on the desktop to ({WindowX}, {WindowY}) on {Display}",
                 entry.ProfileId, x, y, display.Name);
+        }
+
+        // One save per press: a commit made while the button is still down (a resize quiet for a while) waits for the
+        // release, which saves the press's last commit, when the profile had no unsaved changes before its first and
+        // nothing else changed it between them (each commit applied straight on the one before it, as its guard saw).
+        // The first: wasClean, read under the same lock as it applied.
+        var clean = waiting is { } held ? held.Clean && follows : wasClean;
+        if (entry.Window.UserMoving)
+        {
+            entry.Held = (result.Rev, clean);
+            return;
+        }
+
+        entry.Held = null;
+        if (clean)
+            SaveIfOnlyChange(entry, doc, result.Rev);
+    }
+
+    /// <summary>The release: a commit of the press that waits for it (<see cref="WindowEntry.Held"/>), no later commit having saved it, is saved now.</summary>
+    private void SaveHeld(WindowEntry entry)
+    {
+        if (entry.Held is not { } held)
+            return;
+
+        entry.Held = null;
+        if (held.Clean)
+            SaveIfOnlyChange(entry, entry.Document, held.Rev);
+    }
+
+    /// <summary>
+    /// The save after the window's own commit when the profile had no unsaved changes just before it applied, as a
+    /// client's placement controls and an AI app's tools save theirs: a save that names the commit's own revision
+    /// (<see cref="ProfileDocument.Save(HistoryRequest)"/>), so a change another client made after it is refused and
+    /// nothing is saved. A profile with other unsaved changes isn't saved: the commit stays with them. A save that fails
+    /// before the document is replaced leaves the commit unsaved, kept as any unsaved change is, and the window where it
+    /// is; one that replaced it but couldn't flush its folder (<see cref="SavedNotFlushedException"/>) has saved it, not
+    /// confirmed on disk. A profile deleted meanwhile (its document disposed, or no longer in the store) saves nothing.
+    /// </summary>
+    private void SaveIfOnlyChange(WindowEntry entry, ProfileDocument doc, long rev)
+    {
+        try
+        {
+            doc.Save(new HistoryRequest { Instance = doc.Instance, BaseRev = rev });
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or KeyNotFoundException)
+        {
+            // Deleted meanwhile; the workspace's event closes the window.
+        }
+        catch (SavedNotFlushedException ex)
+        {
+            logger.LogWarning(ex, "The desktop window's change to profile {ProfileId} is saved, but the save couldn't confirm it is on disk", entry.ProfileId);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "The desktop window's change to profile {ProfileId} couldn't be saved; it stays unsaved", entry.ProfileId);
         }
     }
 
@@ -699,6 +769,13 @@ public sealed class DisplayWindowManager(
 
         /// <summary>A display went away or changed during the current press: its release is no move.</summary>
         public bool DisplaysChanged { get; set; }
+
+        /// <summary>
+        /// The current press's last commit, made while the button was still down (<see cref="IDesktopWindow.UserMoving"/>),
+        /// and whether the release may save it: the profile had no unsaved changes before the press's first commit, and
+        /// each later one read the one before it. Saved, or dropped, at the release; null when no commit waits for one.
+        /// </summary>
+        public (long Rev, bool Clean)? Held { get; set; }
 
         public bool Closed { get; set; }
     }
