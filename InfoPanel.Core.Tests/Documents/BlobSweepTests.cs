@@ -718,6 +718,61 @@ public class BlobSweepTests
         }
     }
 
+    /// <summary>
+    /// A blob only an earlier save names stays through a restore of another save and the next sweep (every kept save is a
+    /// root), and is there for the media store to draw once its own save is restored.
+    /// </summary>
+    [Fact]
+    public void ABlobOnlyAnEarlierSaveNames_SurvivesARestoreOfAnother_AndTheSweep_AndDrawsOnceItsSaveIsRestored()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var stores = new Stores(paths).Open();
+        var assets = Path.Combine(InfoPanel.Core.Tests.Golden.TestPaths.ProjectDirectory, "Fixtures", "assets");
+        string PutFile(string name)
+        {
+            var id = stores.Blobs.Put(File.ReadAllBytes(Path.Combine(assets, name)));
+            File.SetLastWriteTimeUtc(paths.BlobFile(id), Now.AddDays(-30).UtcDateTime);
+            return id;
+        }
+        var first = PutFile("gauge-0.png");
+        var second = PutFile("gauge-1.png");
+        System.Text.Json.Nodes.JsonObject Showing(string blob) => System.Text.Json.Nodes.JsonNode.Parse(
+            $$$"""{"format":"infopanel.scene/1","nodes":[{"kind":"media","w":24,"h":24,"source":{"asset":"{{{blob}}}"}}]}""")!.AsObject();
+
+        using var workspace = new Workspace(stores.Documents, stores.Blobs, new WorkspaceOptions { HistoryBudget = new HistoryBudget(HistoryBudget.DefaultMaxBytes), ExamplesWanted = static () => false });
+        var document = System.Text.Json.Nodes.JsonNode.Parse(DocKit.Doc(DocKit.Scene("m", 0, 0, Showing(first))).GetRawText())!.AsObject();
+        document["id"] = A;
+        Assert.NotNull(workspace.Create(Encoding.UTF8.GetBytes(new System.Text.Json.Nodes.JsonObject { ["id"] = A, ["document"] = document }.ToJsonString())).Entry);
+        var doc = workspace.Open(A)!;
+        void SaveShowing(System.Text.Json.Nodes.JsonObject scene)
+        {
+            doc.Ok(DocKit.Commit(doc, $"op-{Guid.NewGuid():N}", null, DocKit.Design("m", scene)));
+            doc.Save();
+        }
+        SaveShowing(Showing(second)); // version 1 shows the first blob
+        SaveShowing(DocKit.Rect()); // version 2 shows the second
+        Assert.Contains(first, File.ReadAllText(paths.VersionFile(A, 1)));
+
+        CommitOutcome Restore(long n)
+        {
+            var found = workspace.FindVersion(A, n);
+            return found.Document!.RestoreVersion(SpecJson.Write(new HistoryRequest { Instance = doc.Instance, BaseRev = doc.Rev }), found.Version!);
+        }
+        Assert.NotNull(Restore(2).Result); // the second blob's save; the first is named by version 1 alone
+        Assert.DoesNotContain(first, File.ReadAllText(paths.DocumentFile(A)));
+
+        var result = Sweep(stores, Now);
+
+        Assert.Null(result.SkippedBecause);
+        Assert.True(stores.Blobs.Exists(first));
+        Assert.True(stores.Blobs.Exists(second));
+
+        Assert.NotNull(Restore(1).Result);
+        Assert.Contains(first, File.ReadAllText(paths.DocumentFile(A)));
+        Assert.Equal(File.ReadAllBytes(Path.Combine(assets, "gauge-0.png")), new BlobMediaStore(stores.Blobs).Read(first));
+    }
+
     /// <summary>Sweeps at the next start, as the engine does.</summary>
     private static BlobSweepResult Sweep(Stores stores, DateTimeOffset now)
     {

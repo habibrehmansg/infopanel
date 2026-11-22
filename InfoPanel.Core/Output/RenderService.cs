@@ -287,6 +287,18 @@ public sealed class RenderService : IAsyncDisposable
     }
 
     /// <summary>
+    /// A PNG thumbnail of a generation no document holds (a profile's earlier save; spec/docs/api.md, "Earlier saves"),
+    /// <paramref name="width"/> pixels wide as <see cref="RenderOnce(ProfileDocument, int)"/>'s: always from a one-off
+    /// snapshot of it (state at init, elapsed 0) through <see cref="InspectOnce"/>, so no loop, output or document is
+    /// touched: admitted by the process budget as a live tick is, its reservation held through the draw and the PNG's
+    /// encoding (what doesn't fit drawn as budget placeholders), and its videos on decode sessions of its own, closed with
+    /// its runtime, so a loop showing the same video is never asked for its time 0. The generation must have been checked
+    /// with the workspace's limits and support, as the loops' are. A caller bounds how many are drawn at once.
+    /// </summary>
+    public byte[] RenderOnce(Generation generation, int width) =>
+        InspectOnce(generation, simulated: false, (snapshot, _) => Thumbnail.RenderPng(snapshot, width, Gpu));
+
+    /// <summary>
     /// Hands <paramref name="inspect"/> one tick snapshot and the document generation it was drawn from, and releases the
     /// snapshot after: one tick for a picture and whatever is measured from it (its bounds, its text, the same frame drawn
     /// without text), with the document's content of that same generation (its items' names and kinds), so they all

@@ -32,7 +32,7 @@ export interface Session {
   /** When this run of the engine started, in UTC to the second. The same for the whole run, like `instance`. */
   started: Timestamp;
   /**
-   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels, `simulated.text` (a `simulated` subscription makes up text and tables as well as numbers, docs/api.md#simulated-sensors), `sensors.image` (GET /api/sensors/image, an image sensor's picture, docs/api.md#sensor-pictures) and `preview` (POST /api/preview, a given document drawn as a loop or a still, docs/api.md#previews). A client ignores a name it doesn't know.
+   * The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels, `simulated.text` (a `simulated` subscription makes up text and tables as well as numbers, docs/api.md#simulated-sensors), `sensors.image` (GET /api/sensors/image, an image sensor's picture, docs/api.md#sensor-pictures), `preview` (POST /api/preview, a given document drawn as a loop or a still, docs/api.md#previews) and `profiles.versions` (the requests under /api/profiles/{id}/versions, a profile's earlier saves listed, drawn and restored, docs/api.md#earlier-saves). A client ignores a name it doesn't know.
    * Unique items.
    */
   features: ApiFeature[];
@@ -164,6 +164,83 @@ export interface ProfileStatusProblem {
   /** The profile's `problem` (profileEntry). */
   problem: ValidationError;
 }
+
+/** GET /api/profiles/{id}/versions (the profiles.versions feature): the profile's earlier saves the engine keeps, newest first: at most the newest ten, the number the engine keeps; older leftovers are not listed (docs/api.md#earlier-saves). */
+export interface VersionList {
+  versions: VersionEntry[];
+}
+
+/** One earlier save in versionList. `status` says whether the engine can open the document it holds, checked as a profile's own document is, and which members come with it: ok (name, width and height), unsupported (a problem, and the name when the document has one) or unreadable (a problem only). Only an ok version can be drawn or restored. A client treats a status it doesn't know as unreadable. */
+export type VersionEntry = VersionEntryOk | VersionEntryUnsupported | VersionEntryUnreadable;
+
+/** An earlier save whose document the engine opens. */
+export interface VersionEntryOk {
+  n: VersionNumber;
+  /** When the save it holds was made. */
+  written: Timestamp;
+  /**
+   * The size of the stored file in bytes.
+   * Range: ≥ 0.
+   */
+  bytes: number;
+  status: "ok";
+  /**
+   * The profile's name in that save.
+   * Length: 1–256.
+   */
+  name: string;
+  /**
+   * The canvas width in pixels in that save.
+   * Range: 1–16384.
+   */
+  width: number;
+  /**
+   * The canvas height in pixels in that save.
+   * Range: 1–16384.
+   */
+  height: number;
+}
+
+/** An earlier save whose document needs a format major version or a document capability this engine lacks. */
+export interface VersionEntryUnsupported {
+  n: VersionNumber;
+  /** When the save it holds was made. */
+  written: Timestamp;
+  /**
+   * The size of the stored file in bytes.
+   * Range: ≥ 0.
+   */
+  bytes: number;
+  status: "unsupported";
+  /**
+   * The document's `profile.name` when that is a string of 1–256 characters, else absent.
+   * Length: 1–256.
+   */
+  name?: string;
+  /** Why the engine doesn't open it: `unsupported.format` (at /format) or `unsupported.capability` (at /requires/i), with a JSON pointer into the stored document. */
+  problem: ValidationError;
+}
+
+/** An earlier save whose stored file can't be read, is over the size a document is read within, isn't JSON, or breaks the document schema or a document limit outside its scenes. */
+export interface VersionEntryUnreadable {
+  n: VersionNumber;
+  /** When the save it holds was made. */
+  written: Timestamp;
+  /**
+   * The size of the stored file in bytes.
+   * Range: ≥ 0.
+   */
+  bytes: number;
+  status: "unreadable";
+  /** The first problem found, with a JSON pointer into the stored document: `io` (the file can't be read), `limit.documentBytes`, `json` (not JSON) or a document check's code (`schema`, ...; docs/validation.md). */
+  problem: ValidationError;
+}
+
+/**
+ * An earlier save's number within its profile: higher is newer, and a number is never used again for another save of the profile.
+ * Range: 1–9007199254740991.
+ */
+export type VersionNumber = number;
 
 /** POST /api/profiles: a new profile under a client-chosen id, either empty (a canvas with no items) or from a document. An id that already exists: 409 existsProblem. Answered 201 with the new profile's profileEntry (docs/api.md). */
 export type CreateProfileRequest = CreateProfileEmpty | CreateProfileFromDocument;
@@ -5810,6 +5887,94 @@ export interface ApiOperations {
     };
   };
   /**
+   * listVersions: The profile's earlier saves, newest first: at most the newest ten (the profiles.versions feature).
+   *
+   * docs/api.md#earlier-saves.
+   */
+  "GET /api/profiles/{id}/versions": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+    };
+    query: { [key: string]: never };
+    request: never;
+    responses: {
+      /** The earlier saves: the newest ten the engine keeps at most; older leftovers are not listed. */
+      200: VersionList;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile's document can't be opened: its status is unsupported or unreadable. */
+      409: ProfileStatusProblem;
+      /** The profile's folder of earlier saves can't be listed. The error is in the engine's log. */
+      500: Problem;
+    };
+  };
+  /**
+   * getVersionThumbnail: A PNG of an earlier save (the profiles.versions feature).
+   *
+   * docs/api.md#earlier-saves.
+   */
+  "GET /api/profiles/{id}/versions/{n}/thumbnail": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+      /** The earlier save's number (versionEntry's `n`), spelled in ASCII decimal digits with no sign and no leading zero, from 1 to 9,007,199,254,740,991 (2^53 − 1); any other spelling, `01` or `+1` included, is answered 400. */
+      n: number;
+    };
+    query: {
+      /** The width in pixels, clamped to 16–4,096; 320 when absent. */
+      w?: number;
+    };
+    request: never;
+    responses: {
+      /** The picture. */
+      200: "image/png";
+      /** The earlier save's number isn't spelled in ASCII decimal digits with no sign and no leading zero, from 1 to 9,007,199,254,740,991, or a query parameter isn't a whole number from −2,147,483,648 to 2,147,483,647. */
+      400: Problem;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile can't be opened, or the earlier save can't be (profileStatusProblem, the save's own status and problem); or another earlier save's picture or a preview is being drawn, as the engine draws one at a time (problem): ask again when it is done. */
+      409: ProfileStatusProblem | Problem;
+    };
+  };
+  /**
+   * restoreVersion: Brings back an earlier save: one undo step to its content, then saved (the profiles.versions feature).
+   *
+   * docs/api.md#earlier-saves.
+   */
+  "POST /api/profiles/{id}/versions/{n}/restore": {
+    params: {
+      /** The profile's id: its document's id. */
+      id: string;
+      /** The earlier save's number (versionEntry's `n`), spelled in ASCII decimal digits with no sign and no leading zero, from 1 to 9,007,199,254,740,991 (2^53 − 1); any other spelling, `01` or `+1` included, is answered 400. */
+      n: number;
+    };
+    query: { [key: string]: never };
+    request: HistoryRequest;
+    responses: {
+      /** The step, and the document's state once it is saved. */
+      200: CommitResult;
+      /** The earlier save's number isn't spelled in ASCII decimal digits with no sign and no leading zero, from 1 to 9,007,199,254,740,991, or a query parameter isn't a whole number from −2,147,483,648 to 2,147,483,647. */
+      400: Problem;
+      /** No token, or one the engine doesn't know or has revoked. */
+      401: Problem;
+      /** The token lacks the scope the request needs. */
+      403: ScopeProblem;
+      /** No such profile, blob or token. */
+      404: Problem;
+      /** The profile or the earlier save can't be opened (profileStatusProblem), or the request names another document's tag or the document changed since baseRev (conflictProblem); nothing was applied. */
+      409: ProfileStatusProblem | ConflictProblem;
+      /** The body breaks its definition, the formats, a rule or a limit; nothing was applied. */
+      422: InvalidProblem;
+      /** The restored save couldn't be written: the step stays, unsaved, kept across a restart as any unsaved change is. The error is in the engine's log. */
+      500: Problem;
+    };
+  };
+  /**
    * drawPreview: Draws a document the request gives, with readings it gives, as an animated WebP loop or a PNG still; stores nothing (the preview feature).
    *
    * docs/api.md#previews.
@@ -5825,7 +5990,7 @@ export interface ApiOperations {
       401: Problem;
       /** The token lacks the scope the request needs. */
       403: ScopeProblem;
-      /** Another preview is being drawn: the engine draws one at a time. Nothing was drawn; the client asks again. */
+      /** Another preview, or an earlier save's picture, is being drawn: the engine draws one at a time. Nothing was drawn; the client asks again. */
       409: Problem;
       /** The body breaks its definition or a check beyond it (preview.frames, preview.height), the document one a create makes (under /document), no quality fits maxBytes (preview.size, its message naming the smallest size reached), or the drawing took longer than the engine allows (preview.time). */
       422: InvalidProblem;

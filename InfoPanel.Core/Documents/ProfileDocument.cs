@@ -783,57 +783,144 @@ public sealed class ProfileDocument : IDisposable
                         return Conflict(generation.Rev, ChangedAfter(generation, guard.BaseRev), $"The document changed after revision {guard.BaseRev}.");
                 }
             }
-            try
-            {
-                persistence.Save(generation);
-            }
-            catch (SavedNotFlushedException ex)
-            {
-                // The stored document is this version: it is the saved one from now on, and the save still fails.
-                notFlushed = ExceptionDispatchInfo.Capture(ex);
-            }
-            Generation current;
-            bool clear;
-            lock (_lock)
-            {
-                _saved = generation;
-                _dirty = null;
-                _recovered = null;
-                current = _current;
-                result = Result(current.Rev, null, null);
-                clear = !result.Dirty && _checkpointOnDisk;
-                if (result.Dirty)
-                {
-                    // What was kept was made against the version this save replaced: kept again at once, against this one.
-                    _checkpointOnDisk = true;
-                    _keptRev = 0;
-                }
-            }
-
-            if (clear)
-                ClearCheckpointCore();
-            else if (result.Dirty)
-            {
-                try
-                {
-                    persistence.Checkpoint(current);
-                    lock (_lock)
-                    {
-                        _keptRev = current.Rev;
-                        _removalPending = false;
-                    }
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // Kept again at the next checkpoint; until then what is on disk was made against the earlier save,
-                    // which is never restored over this one.
-                    Logger.Warning(ex, "Saved document {DocumentId}, but could not keep the changes made during the save; they are kept at its next checkpoint", Id);
-                }
-            }
+            result = WriteSaved(persistence, generation, out notFlushed);
         }
         Raise(generation, DocumentChange.Saved);
         notFlushed?.Throw();
         return new CommitOutcome { Result = result };
+    }
+
+    /// <summary>
+    /// Save's write, under the save lock: hands <paramref name="generation"/> to the persistence and makes it the saved
+    /// one, then removes what was kept when the document is clean, or keeps the changes made during the write against
+    /// it. The answer is the state once the write is done. A write that fails once the stored document is the new
+    /// version is <paramref name="notFlushed"/>, for the caller to throw once it has told the save; any other failure is
+    /// thrown here, nothing changed.
+    /// </summary>
+    private CommitResult WriteSaved(IDocumentPersistence persistence, Generation generation, out ExceptionDispatchInfo? notFlushed)
+    {
+        notFlushed = null;
+        CommitResult result;
+        try
+        {
+            persistence.Save(generation);
+        }
+        catch (SavedNotFlushedException ex)
+        {
+            // The stored document is this version: it is the saved one from now on, and the save still fails.
+            notFlushed = ExceptionDispatchInfo.Capture(ex);
+        }
+        Generation current;
+        bool clear;
+        lock (_lock)
+        {
+            _saved = generation;
+            _dirty = null;
+            _recovered = null;
+            current = _current;
+            result = Result(current.Rev, null, null);
+            clear = !result.Dirty && _checkpointOnDisk;
+            if (result.Dirty)
+            {
+                // What was kept was made against the version this save replaced: kept again at once, against this one.
+                _checkpointOnDisk = true;
+                _keptRev = 0;
+            }
+        }
+
+        if (clear)
+            ClearCheckpointCore();
+        else if (result.Dirty)
+        {
+            try
+            {
+                persistence.Checkpoint(current);
+                lock (_lock)
+                {
+                    _keptRev = current.Rev;
+                    _removalPending = false;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Kept again at the next checkpoint; until then what is on disk was made against the earlier save,
+                // which is never restored over this one.
+                Logger.Warning(ex, "Saved document {DocumentId}, but could not keep the changes made during the save; they are kept at its next checkpoint", Id);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Brings back an earlier saved version (<paramref name="version"/>, loaded as a stored document is, with the same
+    /// limits and support), spec/docs/api.md "Earlier saves": checked as an undo is (<paramref name="body"/>, a
+    /// <c>historyRequest</c>: the body, 422; the <c>instance</c>, 409; a <c>baseRev</c> newer than the document, 422;
+    /// the revision, 409 listing what changed after it), then, under the save lock so no other save comes between, one
+    /// step from the current content to the version's, recorded as a revert's is (unsaved changes undone as one step that
+    /// Undo brings back), and Save's write of that step (<see cref="WriteSaved"/>). Content equal to the version's takes
+    /// no step and writes nothing. The answer is the step's (<c>rev</c>, <c>items</c>, <c>removed</c>,
+    /// <c>profileRev</c>) with the state once the write is done (<c>dirty</c> when commits came during it). Told as
+    /// <see cref="DocumentChange.Revert"/>, then <see cref="DocumentChange.Saved"/>. When the write fails the step stays,
+    /// unsaved, kept by the recovery file as any unsaved change is, and the failure is thrown, as Save's is.
+    /// </summary>
+    public CommitOutcome RestoreVersion(JsonElement body, Generation version)
+    {
+        var request = ReadHistoryRequest(body, out var errors);
+        if (request is null) return Invalid(errors, "Invalid request");
+        var persistence = _options.Persistence ?? throw new InvalidOperationException("This document has nowhere to save to.");
+
+        Generation published;
+        CommitResult step;
+        CommitResult saved;
+        ExceptionDispatchInfo? notFlushed = null;
+        ExceptionDispatchInfo? failed = null;
+        lock (_saveLock)
+        {
+            lock (_lock)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                var current = _current;
+                if (request.Instance != _options.Instance) return InstanceConflict(current.Rev);
+                if (request.BaseRev > current.Rev)
+                    return Invalid([CommitApplier.FutureBaseRev("/baseRev", request.BaseRev, current.Rev)], "Invalid request");
+                if (current.Rev != request.BaseRev)
+                    return Conflict(current.Rev, ChangedAfter(current, request.BaseRev), $"The document changed after revision {request.BaseRev}.");
+
+                _history.EndMerge();
+                if (ChangeSet.SameContent(current.Content, version.Content))
+                    return new CommitOutcome { Result = Result(current.Rev, null, null) };
+                var changes = ChangeSet.Diff(current.Content, version.Content);
+                _recovered = null;
+                published = Publish(version.Content, changes);
+                _history.Record(current.Content, version.Content, changes.Bytes, null);
+                step = Result(published.Rev, changes, null);
+            }
+
+            try
+            {
+                saved = WriteSaved(persistence, published, out notFlushed);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The step stays, unsaved: the recovery file keeps it as any unsaved change, and a step that left the
+                // document as saved removes what was kept, as a revert's does.
+                failed = ExceptionDispatchInfo.Capture(ex);
+                bool clean;
+                lock (_lock)
+                    clean = !DirtyCore && _checkpointOnDisk;
+                if (clean)
+                    ClearCheckpointCore();
+                saved = step;
+            }
+        }
+
+        Raise(published, DocumentChange.Revert);
+        if (failed is null)
+            Raise(published, DocumentChange.Saved);
+        _options.HistoryBudget.NotifyEvicted();
+        failed?.Throw();
+        notFlushed?.Throw();
+        return new CommitOutcome { Result = step with { Dirty = saved.Dirty, CanUndo = saved.CanUndo, CanRedo = saved.CanRedo } };
     }
 
     /// <summary>A guarded save built in code: serialized and checked as <see cref="Save(JsonElement)"/>.</summary>

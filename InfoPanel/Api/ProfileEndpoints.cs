@@ -159,7 +159,86 @@ public static class ProfileEndpoints
                 return Invalid("", "json", "The body isn't JSON.");
             return Acting(id, () => Outcome(found.Document!.Save(json.RootElement)));
         }).RequireScope(ApiScope.Edit);
+
+        MapVersions(api);
     }
+
+    /// <summary>
+    /// A profile's earlier saves (spec/docs/api.md, "Earlier saves"; the <c>profiles.versions</c> feature): the list, a
+    /// version's picture and its restore. <c>n</c> is checked first, as a query parameter is (400), and only as a
+    /// number: a version is found by that number in the store's listing, never by a path the request gives. Then the
+    /// profile (404, 409), the version (404, 409 with the version's own status and problem), and for the restore the
+    /// body and what undo checks.
+    /// </summary>
+    private static void MapVersions(RouteGroupBuilder api)
+    {
+        api.MapGet("/{id}/versions", (string id, Workspace workspace) =>
+        {
+            var (found, problem, list) = workspace.Versions(id);
+            return problem != null ? Problem(problem, StatusCodes.Status409Conflict) : found ? Json(list!) : ProfileNotFound(id);
+        }).RequireScope(ApiScope.Read);
+
+        // Drawn one at a time, through the gate previews are drawn through (a second meanwhile is 409 problem, as a
+        // preview's), admitted by the process budget with its reservation held through the encoding.
+        api.MapGet("/{id}/versions/{n}/thumbnail", (string id, string n, int? w, Workspace workspace, RenderService render, PreviewGate gate,
+            HttpContext context) =>
+        {
+            if (VersionNumberOf(n) is not { } number)
+                return BadVersionNumber();
+            var found = workspace.FindVersion(id, number);
+            if (Refused(id, number, found) is { } refused)
+                return refused;
+            if (!gate.TryEnter())
+                return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Conflict",
+                    detail: "Another earlier save's picture or a preview is being drawn; the engine draws one at a time. Ask again when it is done.");
+            byte[] png;
+            try
+            {
+                png = render.RenderOnce(found.Version!, w ?? Thumbnail.DefaultWidth);
+            }
+            finally
+            {
+                gate.Exit();
+            }
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.File(png, "image/png");
+        }).RequireScope(ApiScope.Read);
+
+        api.MapPost("/{id}/versions/{n}/restore", async (string id, string n, HttpRequest request, Workspace workspace, CancellationToken ct) =>
+        {
+            if (VersionNumberOf(n) is not { } number)
+                return BadVersionNumber();
+            var found = workspace.FindVersion(id, number);
+            if (Refused(id, number, found) is { } refused)
+                return refused;
+
+            var (body, over) = await ReadBodyAsync(request, workspace.Limits.RequestBytes, ct);
+            if (over)
+                return OverRequestBytes(workspace);
+            using var json = ParseJson(body);
+            if (json == null)
+                return Invalid("", "json", "The body isn't JSON.");
+            return Acting(id, () => Outcome(found.Document!.RestoreVersion(json.RootElement, found.Version!)));
+        }).RequireScope(ApiScope.Edit);
+    }
+
+    /// <summary>A version number as the path gives it: 1 to 9,007,199,254,740,991 in ASCII decimal digits, no sign, no leading zero; null otherwise.</summary>
+    private static long? VersionNumberOf(string n) =>
+        n.Length is >= 1 and <= 16 && n[0] != '0' && n.All(char.IsAsciiDigit)
+        && long.Parse(n, System.Globalization.CultureInfo.InvariantCulture) is var number && number <= DocumentStore.MaxListedVersion
+            ? number
+            : null;
+
+    private static IResult BadVersionNumber() =>
+        Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Bad Request",
+            detail: "A version's number is a whole number from 1 to 9,007,199,254,740,991, in ASCII decimal digits with no sign and no leading zero.");
+
+    /// <summary>404 for no profile or no such version, 409 for a profile or version that can't be opened; null when both can.</summary>
+    private static IResult? Refused(string id, long n, Workspace.VersionLookup found) =>
+        found.Problem is { } problem ? Problem(problem, StatusCodes.Status409Conflict)
+        : found.Found ? null
+        : found.Document is null ? ProfileNotFound(id)
+        : Security.Problems.NotFound($"Profile '{id}' has no version {n}.");
 
     /// <summary>
     /// The <c>instance</c> query parameter: given once, 1–64 characters (the schema's <c>instanceId</c>); null otherwise.

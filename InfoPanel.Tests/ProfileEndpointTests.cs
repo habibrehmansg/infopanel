@@ -714,4 +714,295 @@ public class ProfileEndpointTests(SeededEngineFactory factory) : IClassFixture<S
         await Problem(huge, HttpStatusCode.RequestEntityTooLarge);
         Assert.Equal(blobs, Directory.GetFiles(Path.Combine(factory.DataDir, "blobs")).Order().ToArray());
     }
+
+    // ---- earlier saves ----------------------------------------------------------------------------------------------
+
+    private string VersionFile(string id, int n) => Path.Combine(factory.DataDir, "profiles", id, "versions", $"{n}.json");
+
+    private static JsonObject HistoryBody(string instance, long baseRev) => new() { ["instance"] = instance, ["baseRev"] = baseRev };
+
+    private async Task<JsonElement> Versions(string id)
+    {
+        var list = await Get($"/api/profiles/{id}/versions");
+        Assert.True(Valid(list, "versionList"));
+        return list.GetProperty("versions");
+    }
+
+    /// <summary>Saves the profile after moving <c>a</c> to <paramref name="x"/>; returns the saved document's write time just before the save, to the second.</summary>
+    private async Task<string> MoveAndSave(HttpClient api, string id, double x)
+    {
+        using (var moved = await CommitAsync(api, id, Ct, Place("a", x, 0)))
+            Assert.Equal(HttpStatusCode.OK, moved.StatusCode);
+        var before = File.GetLastWriteTimeUtc(Path.Combine(factory.DataDir, "profiles", id, "document.json")).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
+        using var saved = await api.PostAsync($"/api/profiles/{id}/save", null, Ct);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        return before;
+    }
+
+    /// <summary>
+    /// Create, save, save: the list answers two earlier saves newest first, each with the time of the save it holds; the
+    /// picture of one is a PNG; a restore answers the step, saved, and the list then holds three; undo answers the content
+    /// from before the restore, unsaved.
+    /// </summary>
+    [Fact]
+    public async Task EarlierSaves_AreListed_Drawn_AndRestored()
+    {
+        using var api = Api();
+        var id = await NewProfile(Scene("a", 10, 0));
+        Assert.Equal(0, (await Versions(id)).GetArrayLength());
+        var first = await MoveAndSave(api, id, 20);
+        var second = await MoveAndSave(api, id, 30);
+
+        var listed = await Versions(id);
+        Assert.Equal([2, 1], listed.EnumerateArray().Select(v => v.GetProperty("n").GetInt32()));
+        Assert.Equal([second, first], listed.EnumerateArray().Select(v => v.GetProperty("written").GetString()));
+        var oldest = listed[1];
+        Assert.Equal(("ok", "Profile", 300, 100), (oldest.GetProperty("status").GetString(), oldest.GetProperty("name").GetString(),
+            oldest.GetProperty("width").GetInt32(), oldest.GetProperty("height").GetInt32()));
+        Assert.Equal(new FileInfo(VersionFile(id, 1)).Length, oldest.GetProperty("bytes").GetInt64());
+
+        using (var picture = await api.GetAsync($"/api/profiles/{id}/versions/1/thumbnail?w=150", Ct))
+        {
+            Assert.Equal(HttpStatusCode.OK, picture.StatusCode);
+            Assert.Equal("image/png", picture.Content.Headers.ContentType?.MediaType);
+            Assert.Equal("no-store", picture.Headers.CacheControl?.ToString());
+            using var bitmap = SKBitmap.Decode(await picture.Content.ReadAsByteArrayAsync(Ct));
+            Assert.Equal((150, 50), (bitmap.Width, bitmap.Height));
+        }
+        // It is the save's own content: each save's picture differs from the current document's and from the other's.
+        var current = await api.GetByteArrayAsync($"/api/profiles/{id}/thumbnail?w=150", Ct);
+        var firstPicture = await api.GetByteArrayAsync($"/api/profiles/{id}/versions/1/thumbnail?w=150", Ct);
+        var secondPicture = await api.GetByteArrayAsync($"/api/profiles/{id}/versions/2/thumbnail?w=150", Ct);
+        Assert.NotEqual(current, firstPicture);
+        Assert.NotEqual(current, secondPicture);
+        Assert.NotEqual(firstPicture, secondPicture);
+
+        var tag = await TagAsync(api, id, Ct);
+        var rev = await RevAsync(api, id, Ct);
+        using var restored = await api.PostAsync($"/api/profiles/{id}/versions/1/restore", Json(HistoryBody(tag, rev)), Ct);
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+        var result = await Body(restored);
+        Assert.True(Valid(result, "commitResult"));
+        Assert.Equal((rev + 1, false, true), (result.GetProperty("rev").GetInt64(), result.GetProperty("dirty").GetBoolean(), result.GetProperty("canUndo").GetBoolean()));
+        var document = await Get($"/api/profiles/{id}");
+        Assert.Equal(10, document.GetProperty("document").GetProperty("items")[0].GetProperty("placement").GetProperty("x").GetDouble());
+        Assert.False(document.GetProperty("dirty").GetBoolean());
+        Assert.Equal([3, 2, 1], (await Versions(id)).EnumerateArray().Select(v => v.GetProperty("n").GetInt32()));
+
+        using var undone = await api.PostAsync($"/api/profiles/{id}/undo", Json(HistoryBody(tag, rev + 1)), Ct);
+        Assert.Equal(HttpStatusCode.OK, undone.StatusCode);
+        Assert.True((await Body(undone)).GetProperty("dirty").GetBoolean());
+        document = await Get($"/api/profiles/{id}");
+        Assert.Equal(30, document.GetProperty("document").GetProperty("items")[0].GetProperty("placement").GetProperty("x").GetDouble());
+        Assert.True(document.GetProperty("dirty").GetBoolean());
+    }
+
+    /// <summary>
+    /// <c>n</c> is a whole number from 1 to 2^53 − 1 in decimal digits, checked first (400), so nothing a request gives
+    /// reaches a path; then the profile (404, 409), the version (404, 409 with its own status), and the scopes: a read
+    /// token lists and draws, and is refused a restore.
+    /// </summary>
+    [Fact]
+    public async Task EarlierSaves_Refuse_BadNumbers_MissingAndUnopenableSaves_AndAReadTokensRestore()
+    {
+        using var api = Api();
+        var id = await NewProfile(Scene("a", 10, 0));
+        await MoveAndSave(api, id, 20);
+        // A version that isn't JSON, and a file beside the versions a traversal would aim at.
+        File.WriteAllText(VersionFile(id, 2), "{ not json");
+        File.WriteAllText(Path.Combine(factory.DataDir, "profiles", id, "versions", "..json"), "{}");
+        var tag = await TagAsync(api, id, Ct);
+        var rev = await RevAsync(api, id, Ct);
+        var saved = File.ReadAllBytes(Path.Combine(factory.DataDir, "profiles", id, "document.json"));
+
+        foreach (var n in new[] { "0", "01", "-1", "1.0", "1.json", "abc", "9007199254740992", "99999999999999999999", "..%2F..%2Fdocument.json", "1%20", "1e3", "%EF%BC%91" })
+        {
+            using var picture = await api.GetAsync($"/api/profiles/{id}/versions/{n}/thumbnail", Ct);
+            await Problem(picture, HttpStatusCode.BadRequest, "problem");
+            using var restore = await api.PostAsync($"/api/profiles/{id}/versions/{n}/restore", Json(HistoryBody(tag, rev)), Ct);
+            await Problem(restore, HttpStatusCode.BadRequest, "problem");
+        }
+        using (var wide = await api.GetAsync($"/api/profiles/{id}/versions/1/thumbnail?w=wide", Ct))
+            await Problem(wide, HttpStatusCode.BadRequest);
+
+        using (var noProfile = await api.GetAsync("/api/profiles/00000000-0000-4000-8000-0000000000aa/versions", Ct))
+            await Problem(noProfile, HttpStatusCode.NotFound);
+        using (var traversal = await api.GetAsync("/api/profiles/..%2F..%2Fprofiles.json/versions", Ct))
+            Assert.Equal(HttpStatusCode.NotFound, traversal.StatusCode);
+        using (var noVersion = await api.GetAsync($"/api/profiles/{id}/versions/9007199254740991/thumbnail", Ct))
+            await Problem(noVersion, HttpStatusCode.NotFound);
+        using (var noVersion = await api.PostAsync($"/api/profiles/{id}/versions/99/restore", Json(HistoryBody(tag, rev)), Ct))
+            await Problem(noVersion, HttpStatusCode.NotFound);
+
+        foreach (var path in new[] { "versions", "versions/1/thumbnail" })
+        {
+            using var unsupported = await api.GetAsync($"/api/profiles/{SeededEngineFactory.Unsupported}/{path}", Ct);
+            Assert.Equal("unsupported", (await Problem(unsupported, HttpStatusCode.Conflict, "profileStatusProblem")).GetProperty("code").GetString());
+        }
+        using (var unsupported = await api.PostAsync($"/api/profiles/{SeededEngineFactory.Unsupported}/versions/1/restore", Json(HistoryBody(tag, 1)), Ct))
+            await Problem(unsupported, HttpStatusCode.Conflict, "profileStatusProblem");
+
+        var listed = await Versions(id);
+        Assert.Equal([2, 1], listed.EnumerateArray().Select(v => v.GetProperty("n").GetInt32()));
+        Assert.Equal(("unreadable", "json"), (listed[0].GetProperty("status").GetString(), listed[0].GetProperty("problem").GetProperty("code").GetString()));
+        using (var unreadable = await api.GetAsync($"/api/profiles/{id}/versions/2/thumbnail", Ct))
+            Assert.Equal("unreadable", (await Problem(unreadable, HttpStatusCode.Conflict, "profileStatusProblem")).GetProperty("code").GetString());
+        using (var unreadable = await api.PostAsync($"/api/profiles/{id}/versions/2/restore", Json(HistoryBody(tag, rev)), Ct))
+            Assert.Equal("json", (await Problem(unreadable, HttpStatusCode.Conflict, "profileStatusProblem")).GetProperty("problem").GetProperty("code").GetString());
+        using (var invalid = await api.PostAsync($"/api/profiles/{id}/versions/1/restore", Json(new JsonObject()), Ct))
+            await Problem(invalid, HttpStatusCode.UnprocessableEntity, "invalidProblem");
+        using (var notJson = await api.PostAsync($"/api/profiles/{id}/versions/1/restore", new StringContent("{", Encoding.UTF8, "application/json"), Ct))
+            await Problem(notJson, HttpStatusCode.UnprocessableEntity, "invalidProblem");
+        using (var stale = await api.PostAsync($"/api/profiles/{id}/versions/1/restore", Json(HistoryBody("another-instance", rev)), Ct))
+            await Problem(stale, HttpStatusCode.Conflict, "conflictProblem");
+
+        using (var created = await api.PostAsync("/api/tokens", JsonContent.Create(new { name = "versions-read", scopes = new[] { "read" } }), Ct))
+        {
+            var token = (await Body(created)).GetProperty("token").GetString();
+            using var reader = factory.CreateRawClient();
+            reader.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using (var list = await reader.GetAsync($"/api/profiles/{id}/versions", Ct))
+                Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+            using (var picture = await reader.GetAsync($"/api/profiles/{id}/versions/1/thumbnail", Ct))
+                Assert.Equal(HttpStatusCode.OK, picture.StatusCode);
+            using var restore = await reader.PostAsync($"/api/profiles/{id}/versions/1/restore", Json(HistoryBody(tag, rev)), Ct);
+            Assert.Equal("edit", (await Problem(restore, HttpStatusCode.Forbidden, "scopeProblem")).GetProperty("scope").GetString());
+        }
+
+        // Nothing above wrote anything.
+        Assert.Equal(saved, File.ReadAllBytes(Path.Combine(factory.DataDir, "profiles", id, "document.json")));
+        Assert.Equal(rev, await RevAsync(api, id, Ct));
+        Assert.Equal(["..json", "1.json", "2.json"], Directory.GetFileSystemEntries(Path.Combine(factory.DataDir, "profiles", id, "versions")).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// An earlier save's picture is drawn one at a time, through the gate previews are drawn through: while a picture or a
+    /// preview holds it, another is refused 409 <c>problem</c>, as a preview is; the profile's and the version's own
+    /// refusals come first; once it is free the picture is drawn.
+    /// </summary>
+    [Fact]
+    public async Task EarlierSavePictures_AreDrawnOneAtATime_ThroughThePreviewsGate()
+    {
+        using var api = Api();
+        var id = await NewProfile(Scene("a", 10, 0));
+        await MoveAndSave(api, id, 20);
+        var gate = factory.Services.GetRequiredService<InfoPanel.Api.PreviewGate>();
+        Assert.True(gate.TryEnter());
+        try
+        {
+            using (var busy = await api.GetAsync($"/api/profiles/{id}/versions/1/thumbnail", Ct))
+                Assert.Contains("one at a time", (await Problem(busy, HttpStatusCode.Conflict, "problem")).GetProperty("detail").GetString());
+            using (var noVersion = await api.GetAsync($"/api/profiles/{id}/versions/99/thumbnail", Ct))
+                await Problem(noVersion, HttpStatusCode.NotFound);
+            using (var unsupported = await api.GetAsync($"/api/profiles/{SeededEngineFactory.Unsupported}/versions/1/thumbnail", Ct))
+                await Problem(unsupported, HttpStatusCode.Conflict, "profileStatusProblem");
+        }
+        finally
+        {
+            gate.Exit();
+        }
+
+        using var picture = await api.GetAsync($"/api/profiles/{id}/versions/1/thumbnail", Ct);
+        Assert.Equal(HttpStatusCode.OK, picture.StatusCode);
+        Assert.True(gate.TryEnter(), "The picture let the gate go");
+        gate.Exit();
+    }
+
+    /// <summary>
+    /// An earlier save over the read cap, one that isn't JSON, and (Unix) one the engine may not open: the list, the
+    /// picture and the restore answer each with a fixed text that names no path of the computer and no exception.
+    /// </summary>
+    [Fact]
+    public async Task EarlierSaves_ThatCantBeOpened_NameNoPathAndNoException()
+    {
+        using var api = Api();
+        var id = await NewProfile(Scene("a", 10, 0));
+        await MoveAndSave(api, id, 20);
+        var tag = await TagAsync(api, id, Ct);
+        var rev = await RevAsync(api, id, Ct);
+        var unopenable = new List<int> { 2, 4 };
+        using (var large = File.Create(VersionFile(id, 2)))
+            large.SetLength(64L * 1024 * 1024 + 1);
+        File.WriteAllText(VersionFile(id, 4), "{ not json");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.Copy(VersionFile(id, 1), VersionFile(id, 3));
+            File.SetUnixFileMode(VersionFile(id, 3), UnixFileMode.None);
+            unopenable.Add(3);
+        }
+        try
+        {
+            var texts = new List<string> { (await Get($"/api/profiles/{id}/versions")).GetRawText() };
+            foreach (var n in unopenable)
+            {
+                using (var picture = await api.GetAsync($"/api/profiles/{id}/versions/{n}/thumbnail", Ct))
+                    texts.Add((await Problem(picture, HttpStatusCode.Conflict, "profileStatusProblem")).GetRawText());
+                using var restore = await api.PostAsync($"/api/profiles/{id}/versions/{n}/restore", Json(HistoryBody(tag, rev)), Ct);
+                texts.Add((await Problem(restore, HttpStatusCode.Conflict, "profileStatusProblem")).GetRawText());
+            }
+
+            var listed = (await Versions(id)).EnumerateArray().ToDictionary(v => v.GetProperty("n").GetInt32());
+            Assert.Equal("limit.documentBytes", listed[2].GetProperty("problem").GetProperty("code").GetString());
+            Assert.Equal("json", listed[4].GetProperty("problem").GetProperty("code").GetString());
+            if (unopenable.Contains(3))
+                Assert.Equal("io", listed[3].GetProperty("problem").GetProperty("code").GetString());
+            foreach (var text in texts)
+            {
+                Assert.DoesNotContain(factory.DataDir, text, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain(factory.DataDir.Replace("\\", "\\\\"), text, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("Exception", text);
+                Assert.DoesNotContain("versions/", text);
+                Assert.DoesNotContain("LineNumber", text);
+                Assert.DoesNotContain("BytePositionInLine", text);
+            }
+        }
+        finally
+        {
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(VersionFile(id, 3), UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+    }
+
+    /// <summary>
+    /// The 1.x all-kinds profile as a document (the 1.x import's look and settings, with its pictures): saved, changed and
+    /// saved again, its first save restored is exported byte for byte as it was before the change, and that save's picture
+    /// is the canvas in proportion.
+    /// </summary>
+    [Fact]
+    public async Task TheV1AllKindsProfile_RestoresByteForByte()
+    {
+        using var api = Api();
+        var root = Editing.LiveEngine.RepoRoot();
+        foreach (var asset in Directory.GetFiles(Path.Combine(root, "InfoPanel.Core.Tests", "Fixtures", "assets")))
+        {
+            using var stored = await api.PostAsync("/api/blobs", new ByteArrayContent(File.ReadAllBytes(asset)), Ct);
+            Assert.True(stored.IsSuccessStatusCode);
+        }
+        var document = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "InfoPanel.Core.Tests", "Scenes", "Reference", "v1", "all-kinds.document.json")))!.AsObject();
+        var id = await CreateAsync(api, document, Ct);
+        var exported = await api.GetByteArrayAsync($"/api/profiles/{id}/document", Ct);
+        var profile = JsonNode.Parse(exported)!["profile"]!;
+        var (width, height) = ((int)profile["width"]!, (int)profile["height"]!);
+        var items = (await Get($"/api/profiles/{id}")).GetProperty("document").GetProperty("items");
+        var first = items[0].GetProperty("id").GetString()!;
+        var x = items[0].GetProperty("placement").GetProperty("x").GetDouble();
+
+        using (var moved = await CommitAsync(api, id, Ct, Place(first, x + 7, 3), Profile(new JsonObject { ["name"] = "Changed" })))
+            Assert.Equal(HttpStatusCode.OK, moved.StatusCode);
+        using (var saved = await api.PostAsync($"/api/profiles/{id}/save", null, Ct))
+            Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        Assert.NotEqual(exported, await api.GetByteArrayAsync($"/api/profiles/{id}/document", Ct));
+
+        using (var picture = await api.GetAsync($"/api/profiles/{id}/versions/1/thumbnail?w=400", Ct))
+        {
+            Assert.Equal(HttpStatusCode.OK, picture.StatusCode);
+            using var bitmap = SKBitmap.Decode(await picture.Content.ReadAsByteArrayAsync(Ct));
+            Assert.Equal((400, Math.Max(1, (int)Math.Round(400.0 * height / width, MidpointRounding.AwayFromZero))), (bitmap.Width, bitmap.Height));
+        }
+        using (var restored = await api.PostAsync($"/api/profiles/{id}/versions/1/restore", Json(HistoryBody(await TagAsync(api, id, Ct), await RevAsync(api, id, Ct))), Ct))
+            Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+
+        Assert.Equal(exported, await api.GetByteArrayAsync($"/api/profiles/{id}/document", Ct));
+        Assert.Equal(exported, File.ReadAllBytes(Path.Combine(factory.DataDir, "profiles", id, "document.json")));
+    }
 }

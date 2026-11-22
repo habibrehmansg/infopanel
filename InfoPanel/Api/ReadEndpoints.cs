@@ -274,9 +274,11 @@ public static partial class ReadEndpoints
     /// listed whether or not the engine drives panels; <c>simulated.text</c>, a <c>simulated</c> subscription that makes up
     /// text and tables as well as numbers (spec/docs/api.md, "Simulated sensors"), so a client can say every value is
     /// made up; <c>sensors.image</c>, an image sensor's picture by request (<c>GET /api/sensors/image</c>); <c>preview</c>, a
-    /// given document drawn as a loop or a still (<c>POST /api/preview</c>, <see cref="PreviewEndpoints"/>).
+    /// given document drawn as a loop or a still (<c>POST /api/preview</c>, <see cref="PreviewEndpoints"/>);
+    /// <c>profiles.versions</c>, a profile's earlier saves listed, drawn and restored (<c>/api/profiles/{id}/versions</c>,
+    /// <see cref="ProfileEndpoints"/>).
     /// </summary>
-    public static IReadOnlyList<string> Features { get; } = ["plugins", "devices", "simulated.text", "sensors.image", "preview"];
+    public static IReadOnlyList<string> Features { get; } = ["plugins", "devices", "simulated.text", "sensors.image", "preview", "profiles.versions"];
 
     /// <summary>What the engine reads, by format string: each format's newest minor version, its capabilities the engine has and its limits.</summary>
     public static IReadOnlyDictionary<string, SupportedFormat> FormatSupportOf(Workspace workspace) =>

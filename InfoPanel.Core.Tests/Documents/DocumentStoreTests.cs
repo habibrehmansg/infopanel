@@ -1070,6 +1070,155 @@ public class DocumentStoreTests
         }
     }
 
+    /// <summary>
+    /// The listing counts what a save counts, newest first, with each file's length and write time: only regular files of a
+    /// version's exact name, not links, FIFOs, folders, leading zeros or another letter case; a number over 2^53 − 1 (a
+    /// name made by hand) isn't listed. A version read by number is found only among those.
+    /// </summary>
+    [Fact]
+    public void ListVersions_ListsWhatTheStoreCounts_NewestFirst()
+    {
+        using var temp = new TempDirectory();
+        using var outside = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var store = new DocumentStore(paths);
+        store.Open();
+        store.Create(A, Document(A, "s0"));
+        Assert.Empty(store.ListVersions(A));
+        for (var i = 1; i <= 3; i++)
+            store.Save(A, Document(A, $"s{i}"));
+
+        var folder = paths.VersionsFolder(A);
+        var linked = Path.Combine(outside.Path, "linked.json");
+        File.WriteAllBytes(linked, Document(A, "linked"));
+        File.CreateSymbolicLink(Path.Combine(folder, "4.json"), linked);
+        if (Fifo.Supported)
+            Fifo.Create(Path.Combine(folder, "5.json"));
+        File.WriteAllBytes(Path.Combine(folder, "06.json"), Document(A, "zero"));
+        File.WriteAllBytes(Path.Combine(folder, "7.JSON"), Document(A, "case"));
+        Directory.CreateDirectory(Path.Combine(folder, "8.json"));
+        File.WriteAllBytes(Path.Combine(folder, "9007199254740992.json"), Document(A, "over"));
+        File.WriteAllBytes(Path.Combine(folder, "9007199254740991.json"), Document(A, "highest"));
+
+        var listed = Fifo.Within(10, () => store.ListVersions(A), Path.Combine(folder, "5.json"));
+
+        // The listing opens nothing: a FIFO of a version's name is listed, and left out when its one open finds it isn't
+        // a regular file (so the reader's list never shows it).
+        if (Fifo.Supported)
+        {
+            Assert.Null(Fifo.Within(10, () => store.ReadListedVersion(A, listed[1]), Path.Combine(folder, "5.json")));
+            listed = [.. listed.Where(v => v.Number != 5)];
+        }
+        Assert.Equal([9007199254740991L, 3, 2, 1], listed.Select(v => v.Number));
+        Assert.Equal(Document(A, "s2").Length, listed[1].Bytes);
+        Assert.Equal(File.GetLastWriteTimeUtc(paths.VersionFile(A, 3)), listed[1].Written.UtcDateTime);
+        Assert.Equal(Document(A, "s2"), store.ReadListedVersion(A, listed[1]));
+        Assert.Equal(Document(A, "s0"), store.ReadVersion(A, 1));
+        Assert.Equal(Document(A, "highest"), store.ReadVersion(A, 9007199254740991));
+        foreach (var n in new long[] { 0, 4, 5, 6, 7, 8, 9007199254740992, -1 })
+            Assert.Null(Fifo.Within(10, () => store.ReadVersion(A, n), Path.Combine(folder, "5.json")));
+        Assert.Throws<KeyNotFoundException>(() => store.ListVersions(B));
+        Assert.Throws<KeyNotFoundException>(() => store.ReadVersion(B, 1));
+    }
+
+    /// <summary>A versions folder that is a link or a file lists nothing and reads nothing: it is never followed.</summary>
+    [Fact]
+    public void ListVersions_OfAVersionsFolderThatIsALinkOrAFile_IsEmpty()
+    {
+        using var temp = new TempDirectory();
+        using var outside = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var store = new DocumentStore(paths);
+        store.Open();
+        store.Create(A, Document(A, "a"));
+        store.Create(B, Document(B, "b"));
+        File.WriteAllBytes(Path.Combine(outside.Path, "1.json"), Document(A, "outside"));
+        Directory.CreateSymbolicLink(paths.VersionsFolder(A), outside.Path);
+        File.WriteAllText(paths.VersionsFolder(B), "not a folder");
+
+        Assert.Empty(store.ListVersions(A));
+        Assert.Null(store.ReadVersion(A, 1));
+        Assert.Empty(store.ListVersions(B));
+        Assert.Null(store.ReadVersion(B, 1));
+    }
+
+    /// <summary>
+    /// A kept version takes the write time of the saved document it copies, the time that save was made, not the time it
+    /// was kept; a version kept before (a time of its own) is listed with it.
+    /// </summary>
+    [Fact]
+    public void KeptVersion_TakesTheWriteTimeOfTheDocumentItCopies()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var store = new DocumentStore(paths);
+        store.Open();
+        store.Create(A, Document(A, "a"));
+        var savedAt = new DateTime(2026, 10, 29, 9, 30, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(paths.DocumentFile(A), savedAt);
+
+        store.Save(A, Document(A, "b"));
+
+        Assert.Equal(savedAt, File.GetLastWriteTimeUtc(paths.VersionFile(A, 1)));
+        Assert.Equal(savedAt, store.ListVersions(A).Single().Written.UtcDateTime);
+        Assert.NotEqual(savedAt, File.GetLastWriteTimeUtc(paths.DocumentFile(A)));
+
+        // One kept by an earlier engine, with the time it was written, lists with that time.
+        var earlier = new DateTime(2026, 10, 30, 8, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(paths.VersionFile(A, 1), earlier);
+        Assert.Equal(earlier, store.ListVersions(A).Single().Written.UtcDateTime);
+    }
+
+    /// <summary>The newest version reused by a retried save keeps its time: the retry copies nothing.</summary>
+    [Fact]
+    public void ReusedNewestVersion_KeepsItsWriteTime()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var faults = new MatchFaults
+        {
+            Fail = (step, path) => step == StorageStep.CreateTemp && path.StartsWith(paths.DocumentFile(A) + ".", StringComparison.Ordinal),
+        };
+        var store = new DocumentStore(paths, null, faults);
+        store.Open();
+        store.Create(A, Document(A, "a"));
+        Assert.Throws<IOException>(() => store.Save(A, Document(A, "b")));
+        Assert.Equal(["1.json"], VersionNames(paths, A));
+        var kept = new DateTime(2026, 10, 30, 8, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(paths.VersionFile(A, 1), kept);
+
+        faults.Fail = null;
+        store.Save(A, Document(A, "b"));
+
+        Assert.Equal(["1.json"], VersionNames(paths, A));
+        Assert.Equal(kept, File.GetLastWriteTimeUtc(paths.VersionFile(A, 1)));
+    }
+
+    /// <summary>A version whose time can't be set is kept all the same, with the time it was kept, and the save goes on.</summary>
+    [Fact]
+    public void KeptVersion_WhoseTimeCantBeSet_IsStillKept()
+    {
+        using var temp = new TempDirectory();
+        var paths = new DataPaths(temp.Path);
+        var store = new DocumentStore(paths);
+        var asked = new List<string>();
+        store.SettingWriteTime = path =>
+        {
+            asked.Add(path);
+            throw new IOException("Its time can't be set.");
+        };
+        store.Open();
+        store.Create(A, Document(A, "a"));
+        File.SetLastWriteTimeUtc(paths.DocumentFile(A), new DateTime(2026, 10, 29, 9, 30, 0, DateTimeKind.Utc));
+
+        store.Save(A, Document(A, "b"));
+
+        Assert.Equal([paths.VersionFile(A, 1)], asked);
+        Assert.Equal(Document(A, "a"), store.ReadVersion(A, 1));
+        Assert.Equal(Document(A, "b"), store.Read(A));
+        Assert.NotEqual(new DateTime(2026, 10, 29, 9, 30, 0, DateTimeKind.Utc), File.GetLastWriteTimeUtc(paths.VersionFile(A, 1)));
+    }
+
     /// <summary>The names in a profile's versions folder, by length and then in ordinal order (so by number); none when it isn't there.</summary>
     private static string[] VersionNames(DataPaths paths, string id)
     {

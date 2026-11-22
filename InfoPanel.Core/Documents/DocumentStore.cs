@@ -12,6 +12,13 @@ using Serilog;
 
 namespace InfoPanel.Documents;
 
+/// <summary>An earlier saved version as the store lists it (<see cref="DocumentStore.ListVersions"/>): its number, last write time (UTC) and length.</summary>
+public readonly record struct StoredVersion(long Number, DateTimeOffset Written, long Bytes)
+{
+    /// <summary>The entry the store's listing found it at, which <see cref="DocumentStore.ReadListedVersion"/> reads.</summary>
+    internal string? Listed { get; init; }
+}
+
 /// <summary>
 /// A create that would take the stored profile list (<c>profiles.json</c>) over its bound, <c>profileListBytes</c>
 /// (spec/docs/limits.md): nothing was written.
@@ -504,7 +511,11 @@ public sealed partial class DocumentStore
             if (reuse)
                 AtomicFile.SyncFolder(folder, _faults);
             else
-                AtomicFile.Write(Paths.VersionFile(id, highest + 1), previous, root: null, _faults);
+            {
+                var kept = Paths.VersionFile(id, highest + 1);
+                AtomicFile.Write(kept, previous, root: null, _faults);
+                TryKeepWriteTime(id, kept);
+            }
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -516,6 +527,131 @@ public sealed partial class DocumentStore
 
     /// <summary>The name of version <paramref name="n"/>: <c>{n}.json</c>.</summary>
     private static string VersionName(ulong n) => n.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".json";
+
+    /// <summary>
+    /// Gives the version just kept at <paramref name="kept"/> the last write time of the saved document it copies, the
+    /// time that save was made (docs/2.0/data-folder.md, "Earlier saves"), as <c>cp -p</c> keeps it. Display only, so
+    /// not flushed; a failure is logged and the save goes on.
+    /// </summary>
+    private void TryKeepWriteTime(string id, string kept)
+    {
+        try
+        {
+            SettingWriteTime?.Invoke(kept);
+            File.SetLastWriteTimeUtc(kept, File.GetLastWriteTimeUtc(Paths.DocumentFile(id)));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Logger.Warning(ex, "Kept {Path}, an earlier saved version, with the time it was kept rather than its save's", kept);
+        }
+    }
+
+    /// <summary>Tests: called with a kept version's path just before its write time is set; what it throws is that step's failure.</summary>
+    internal Action<string>? SettingWriteTime;
+
+    /// <summary>Tests: called with an earlier saved version's path just before it is opened to be read.</summary>
+    internal Action<string>? ReadingVersion;
+
+    /// <summary>The highest version number listed or read: a JSON integer's, 2^53 − 1.</summary>
+    public const long MaxListedVersion = 9_007_199_254_740_991;
+
+    /// <summary>
+    /// A profile's newest earlier saved versions, at most the number the store keeps (<see cref="MaxVersions"/>), from one
+    /// listing of its own <c>versions</c> folder: entries of a version's exact name that are files and not links, numbered
+    /// at most <see cref="MaxListedVersion"/>; each with its last write time and length as listed, newest first. Older
+    /// leftovers (a drop that failed, files made by hand) are not listed. Nothing is opened here: each is opened once, by
+    /// the entry this listing found, with <see cref="ReadListedVersion"/>, which leaves out one that isn't a regular file.
+    /// None when <c>versions</c> is absent, a link or a file.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">No profile has this id.</exception>
+    /// <exception cref="IOException"><c>versions</c> can't be listed.</exception>
+    /// <exception cref="UnauthorizedAccessException"><c>versions</c> may not be listed.</exception>
+    public IReadOnlyList<StoredVersion> ListVersions(string id)
+    {
+        lock (_lock)
+        {
+            RequireListed(id);
+            var versions = new List<StoredVersion>();
+            foreach (var entry in VersionEntries(id))
+            {
+                if (VersionNumber(entry.Name) is var n && n <= MaxListedVersion)
+                    versions.Add(new StoredVersion((long)n, new DateTimeOffset(entry.LastWriteTimeUtc, TimeSpan.Zero), ((FileInfo)entry).Length)
+                    {
+                        Listed = entry.FullName,
+                    });
+            }
+            versions.Sort((x, y) => y.Number.CompareTo(x.Number));
+            return versions.Count > MaxVersions ? versions.GetRange(0, MaxVersions) : versions;
+        }
+    }
+
+    /// <summary>
+    /// A version <see cref="ListVersions"/> listed, read whole within <see cref="MaxBytes"/> through the entry that listing
+    /// found (never a path made from a number), opened once with its type checked on that handle; null when it is no
+    /// longer there or isn't a regular file (a FIFO, a device), which the store doesn't count.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">No profile has this id.</exception>
+    /// <exception cref="InvalidDataException">It is larger than <see cref="MaxBytes"/>.</exception>
+    /// <exception cref="IOException">It is there but can't be read.</exception>
+    /// <exception cref="UnauthorizedAccessException">It is there but may not be read.</exception>
+    public byte[]? ReadListedVersion(string id, StoredVersion version)
+    {
+        lock (_lock)
+        {
+            RequireListed(id);
+            if (version.Listed is not { } path)
+                return null;
+            return ReadVersionFile(path);
+        }
+    }
+
+    /// <summary>A version file found in a listing, read within <see cref="MaxBytes"/>; null when it is gone or not a regular file. Under the lock.</summary>
+    private byte[]? ReadVersionFile(string path)
+    {
+        try
+        {
+            ReadingVersion?.Invoke(path);
+            return ReadAtMost(path, MaxBytes);
+        }
+        catch (Exception ex) when (ex is NotARegularFileException or FileNotFoundException or DirectoryNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Version <paramref name="n"/> of a profile as stored, read whole within <see cref="MaxBytes"/>; null when the store
+    /// doesn't count one by that number (<see cref="ListVersions"/>): none, or anything but a regular file of that exact name.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">No profile has this id.</exception>
+    /// <exception cref="InvalidDataException">It is larger than <see cref="MaxBytes"/>.</exception>
+    /// <exception cref="IOException">It, or <c>versions</c>, can't be read.</exception>
+    /// <exception cref="UnauthorizedAccessException">It may not be read.</exception>
+    public byte[]? ReadVersion(string id, long n)
+    {
+        lock (_lock)
+        {
+            RequireListed(id);
+            if (n is < 1 or > MaxListedVersion)
+                return null;
+            // Found by its exact name in the listing, never by a path the number makes: so a name in another letter case
+            // on a drive that ignores case is never taken for it.
+            var name = VersionName((ulong)n);
+            var entry = VersionEntries(id).FirstOrDefault(e => e.Name == name);
+            return entry is null ? null : ReadVersionFile(entry.FullName);
+        }
+    }
+
+    /// <summary>The entries of a profile's own <c>versions</c> folder with a version's exact name that are files and not links; none when it is absent, a link or a file. Under the lock.</summary>
+    private IEnumerable<FileSystemInfo> VersionEntries(string id)
+    {
+        var folder = Paths.VersionsFolder(id);
+        if (RegularFile.StateOf(folder) != PathState.Folder || !IsOwnFolderOrAbsent(folder))
+            return [];
+        return RegularFile.List(folder, new ListingBudget(RegularFile.MaxListing, $"Listing {folder}"))
+            .Where(entry => entry is FileInfo && entry.LinkTarget == null && IsVersionName(entry.Name))
+            .ToList();
+    }
 
     /// <summary>
     /// Whether the regular file at <paramref name="path"/> holds exactly <paramref name="bytes"/>, on disk: its content is

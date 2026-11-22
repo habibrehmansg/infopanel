@@ -1,0 +1,8 @@
+{
+  "versions": [
+    {"n": 9, "written": "2026-11-22T09:41:07Z", "bytes": 48211, "status": "ok", "name": "Desk", "width": 800, "height": 480},
+    {"n": 8, "written": "2026-11-20T08:12:40Z", "bytes": 5120, "status": "unsupported", "name": "Desk", "problem": {"path": "/format", "code": "unsupported.format", "message": "This engine reads infopanel.document/1, not infopanel.document/2."}},
+    {"n": 7, "written": "2026-11-19T21:30:00Z", "bytes": 2048, "status": "unreadable", "problem": {"path": "", "code": "json", "message": "The stored document isn't JSON."}},
+    {"n": 6, "written": "2026-11-19T20:58:13Z", "bytes": 47002, "status": "unreadable", "problem": {"path": "/items/0/source", "code": "schema", "message": "A sensor key in a form this engine doesn't read."}}
+  ]
+}

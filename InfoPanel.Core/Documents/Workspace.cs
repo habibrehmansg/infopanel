@@ -471,6 +471,142 @@ public sealed class Workspace : IDisposable
         return (Serialize(doc.Current), null);
     }
 
+    /// <summary>
+    /// A profile's earlier saves (spec/docs/api.md, "Earlier saves"), newest first: the newest the store keeps, ten, from
+    /// one listing (<see cref="DocumentStore.ListVersions"/>; older leftovers aren't listed), each opened once by the entry
+    /// that listing found (<see cref="DocumentStore.ReadListedVersion"/>) and checked as the profile's own document is when
+    /// it opens (<see cref="CheckStored"/>), so its status is the one its restore would find. A version gone between the
+    /// listing and its read, or not a regular file, is left out, as the store doesn't count it; one there but not to be
+    /// read is <c>unreadable</c> with <c>io</c>. Not found when there is no such profile; the profile's
+    /// <see cref="ProfileStatusProblem"/> when it isn't <c>ok</c>. Read outside the workspace's and the document's locks.
+    /// </summary>
+    /// <exception cref="IOException">The profile's <c>versions</c> folder can't be listed.</exception>
+    /// <exception cref="UnauthorizedAccessException">The profile's <c>versions</c> folder may not be listed.</exception>
+    public (bool Found, ProfileStatusProblem? Problem, VersionList? List) Versions(string id)
+    {
+        var found = Find(id);
+        if (!found.Found)
+            return (false, null, null);
+        if (found.Problem is { } problem)
+            return (true, problem, null);
+        IReadOnlyList<StoredVersion> listed;
+        try
+        {
+            listed = Documents.ListVersions(id);
+        }
+        catch (KeyNotFoundException)
+        {
+            return (false, null, null);
+        }
+
+        var versions = new List<VersionEntry>();
+        foreach (var version in listed)
+        {
+            if (ReadVersion(id, version.Number, () => Documents.ReadListedVersion(id, version)) is not { } read)
+                continue;
+            var entry = new VersionEntry
+            {
+                N = version.Number,
+                Written = RecoveryFile.Written(version.Written),
+                Bytes = read.Bytes ?? version.Bytes,
+                Status = read.Status,
+                Problem = read.Problem,
+                Name = read.Generation?.Document.Profile.Name ?? read.Name,
+                Width = read.Generation?.Document.Profile.Width,
+                Height = read.Generation?.Document.Profile.Height,
+            };
+            versions.Add(entry);
+        }
+        return (true, null, new VersionList { Versions = versions });
+    }
+
+    /// <summary>
+    /// What a request on one earlier save finds (<see cref="FindVersion"/>): nothing (no such profile; no such version,
+    /// with the profile's open document), the profile's or the version's <see cref="ProfileStatusProblem"/>, or the
+    /// profile's open document and the version's generation.
+    /// </summary>
+    public sealed record VersionLookup(bool Found, ProfileDocument? Document, Generation? Version, ProfileStatusProblem? Problem);
+
+    /// <summary>
+    /// Version <paramref name="n"/> of a profile, read and checked outside the document's locks as <see cref="Versions"/>
+    /// lists it: not found when there is no such profile or the store counts no such version (one dropped meanwhile
+    /// included); 409 <see cref="ProfileStatusProblem"/> for a profile that isn't <c>ok</c>, then for a version that isn't
+    /// (its status as <c>code</c>, its problem); else its generation, checked with the workspace's limits and support.
+    /// </summary>
+    public VersionLookup FindVersion(string id, long n)
+    {
+        var found = Find(id);
+        if (!found.Found)
+            return new VersionLookup(false, null, null, null);
+        if (found.Problem is { } problem)
+            return new VersionLookup(true, null, null, problem);
+        if (ReadVersion(id, n, () => Documents.ReadVersion(id, n)) is not { } read)
+            return new VersionLookup(false, found.Document, null, null);
+        if (read.Generation is { } generation)
+            return new VersionLookup(true, found.Document, generation, null);
+        return new VersionLookup(true, null, null, new ProfileStatusProblem
+        {
+            Title = "Version can't be opened",
+            Detail = $"Version {n} of profile '{id}' is {read.Status}: {read.Problem!.Message}",
+            Status = 409,
+            Code = read.Status,
+            Problem = read.Problem,
+        });
+    }
+
+    /// <summary>A version read and checked: its generation when it opens, else its status (<c>unsupported</c>, <c>unreadable</c>) and problem.</summary>
+    private sealed record ReadVersionResult(Generation? Generation, string Status, ValidationErrorBody? Problem, string? Name, long? Bytes);
+
+    /// <summary>The public message of an earlier save over the read cap: fixed, the file's path and the error only in the log.</summary>
+    internal const string VersionTooLarge = "The earlier save is larger than the engine reads.";
+
+    /// <summary>The public message of an earlier save that is there but can't be read: fixed, the file's path and the error only in the log.</summary>
+    internal const string VersionUnreadable = "The earlier save can't be read.";
+
+    /// <summary>The public message of an earlier save whose bytes aren't JSON: fixed, the parser's text (its line and position) only in the log.</summary>
+    internal const string VersionNotJson = "The earlier save isn't JSON.";
+
+    /// <summary>
+    /// Reads version <paramref name="n"/> with <paramref name="read"/> (the store's read, within the read cap) and checks
+    /// it (<see cref="CheckStored"/>); null when the store counts no such version (or the profile went). A file over the
+    /// cap is <c>limit.documentBytes</c>, one that can't be read <c>io</c>, bytes that aren't JSON <c>json</c>: each
+    /// <c>unreadable</c>, each with a fixed message (<see cref="VersionTooLarge"/>, <see cref="VersionUnreadable"/>,
+    /// <see cref="VersionNotJson"/>), the error itself logged.
+    /// </summary>
+    private ReadVersionResult? ReadVersion(string id, long n, Func<byte[]?> read)
+    {
+        byte[]? bytes;
+        try
+        {
+            bytes = read();
+        }
+        catch (KeyNotFoundException)
+        {
+            return null;
+        }
+        catch (InvalidDataException ex)
+        {
+            Logger.Warning(ex, "Earlier save {Version} of profile {ProfileId} is over the read cap", n, id);
+            return new ReadVersionResult(null, "unreadable", new ValidationErrorBody { Path = "", Code = "limit.documentBytes", Message = VersionTooLarge }, null, null);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Logger.Warning(ex, "Could not read earlier save {Version} of profile {ProfileId}", n, id);
+            return new ReadVersionResult(null, "unreadable", new ValidationErrorBody { Path = "", Code = "io", Message = VersionUnreadable }, null, null);
+        }
+        if (bytes is null)
+            return null;
+
+        var stored = CheckStored(id, bytes);
+        if (stored.Status == "json")
+        {
+            Logger.Warning("Earlier save {Version} of profile {ProfileId} isn't JSON: {Problem}", n, id, stored.Problem!.Message);
+            return new ReadVersionResult(null, "unreadable", new ValidationErrorBody { Path = "", Code = "json", Message = VersionNotJson }, null, bytes.Length);
+        }
+
+        return new ReadVersionResult(stored.Generation, stored.Status, stored.Problem, stored.Name, bytes.Length);
+    }
+
     private Slot? GetSlot(string id)
     {
         if (!DocumentStore.IsValidId(id))
@@ -529,6 +665,74 @@ public sealed class Workspace : IDisposable
             return ReadAgain(id, tag, ex.Message);
         }
 
+        var stored = CheckStored(id, bytes);
+        if (stored.RenamedFrom is { } ownId)
+            Logger.Warning("The document in profile folder {ProfileId} has the id {DocumentId}; it is opened, and saved, under its folder's id",
+                id, ownId);
+        if (stored.Generation is { } generation)
+        {
+            // The kept changes are read before the document opens: a file that fails to read this time isn't
+            // taken for one that can't be used, so the profile doesn't open as saved and nothing replaces it.
+            byte[]? kept = null;
+            string? unusable = null;
+            try
+            {
+                kept = Documents.ReadRecovery(id);
+            }
+            // A link whose target can't be reached isn't content: what it stands for is unknown, so it is read again.
+            catch (Exception ex) when (ex is InvalidDataException or NotARegularFileException)
+            {
+                unusable = ex.Message;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (!again)
+                    Logger.Warning(ex, "Could not read the unsaved changes kept for profile {ProfileId}; it isn't opened until they can be read, and the file is left as it is", id);
+                return ReadAgain(id, tag, $"Its unsaved changes can't be read: {ex.Message}");
+            }
+
+            if (stored.Placeholders is { Count: > 0 } items)
+                Logger.Warning("Profile {ProfileId} has {Count} item(s) drawn as placeholders (first: {ItemId}, {Problem})",
+                    id, items.Count, items[0].Id, items[0].Problem);
+            var doc = OpenDocument(id, generation, bytes, tag);
+            Recover(id, doc, bytes, kept, unusable);
+            var watch = new DocumentWatch(this, doc);
+            if (doc.RemovalPending)
+                _recovery.Note(doc);
+            return new Slot(doc, null, watch);
+        }
+
+        var problem = stored.Problem!;
+        if (stored.Status == "json")
+            return Unreadable(id, tag, problem.Path, problem.Code, problem.Message);
+        if (stored.Status == "unsupported")
+        {
+            Logger.Information("Profile {ProfileId} needs what this engine doesn't read ({Code} at {Path}); it is listed but not opened", id, problem.Code, problem.Path);
+            return new Slot(null, new ProfileEntry { Id = id, Status = "unsupported", Instance = tag, Name = stored.Name, Problem = problem });
+        }
+
+        Logger.Warning("Profile {ProfileId} can't be opened ({Code} at {Path}: {Message})", id, problem.Code, problem.Path, problem.Message);
+        return new Slot(null, new ProfileEntry { Id = id, Status = "unreadable", Instance = tag, Problem = problem });
+    }
+
+    /// <summary>
+    /// What <see cref="CheckStored"/> found in a stored document's bytes: its generation (with the items drawn as
+    /// placeholders) when it opens, else its status, <c>unsupported</c> or <c>unreadable</c> (<c>json</c> for bytes
+    /// that aren't JSON, an <c>unreadable</c> the open logs nothing for), and the first problem; <see cref="Name"/> an
+    /// unsupported one's name (<see cref="NameOf"/>); <see cref="RenamedFrom"/> the document's own id when it isn't its
+    /// folder's.
+    /// </summary>
+    private sealed record StoredCheck(Generation? Generation, IReadOnlyList<ItemCheck>? Placeholders, string Status,
+        ValidationErrorBody? Problem, string? Name, string? RenamedFrom);
+
+    /// <summary>
+    /// Checks a stored document's bytes as a profile's <c>document.json</c> is checked when it opens (<see cref="Load"/>),
+    /// and an earlier saved version of it the same way (<see cref="Versions"/>): JSON, the JSON-level pass on the bytes
+    /// as stored, the folder's id in place of the document's own, then <see cref="Generation.Load(JsonElement, long?, SpecLimits, EngineSupport, Scenes.SceneChecker?, bool)"/>'s
+    /// document check (scenes it can't draw as placeholders). Reads, writes and logs nothing.
+    /// </summary>
+    private StoredCheck CheckStored(string id, byte[] bytes)
+    {
         JsonDocument json;
         try
         {
@@ -536,7 +740,7 @@ public sealed class Workspace : IDisposable
         }
         catch (JsonException ex)
         {
-            return Unreadable(id, tag, "", "json", $"The stored document isn't JSON: {ex.Message}");
+            return new StoredCheck(null, null, "json", new ValidationErrorBody { Path = "", Code = "json", Message = $"The stored document isn't JSON: {ex.Message}" }, null, null);
         }
 
         using (json)
@@ -544,17 +748,13 @@ public sealed class Workspace : IDisposable
             var root = json.RootElement;
             // The JSON-level pass on the file as stored, before the folder's id replaces the document's own.
             if (ValidationText.CheckJson(root, Limits.JsonDepth) is { } invalidJson)
-            {
-                var error = ValidationText.Cap(invalidJson)[0];
-                Logger.Warning("Profile {ProfileId} can't be opened ({Code} at {Path}: {Message})", id, error.Code, error.Path, error.Message);
-                return Unreadable(id, tag, error.Path, error.Code, error.Message);
-            }
+                return new StoredCheck(null, null, "unreadable", Body(ValidationText.Cap(invalidJson)[0]), null, null);
             JsonDocument? renamed = null;
+            string? renamedFrom = null;
             if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("id", out var ownId) && ownId.ValueKind == JsonValueKind.String
                 && ownId.GetString() != id)
             {
-                Logger.Warning("The document in profile folder {ProfileId} has the id {DocumentId}; it is opened, and saved, under its folder's id",
-                    id, ownId.GetString());
+                renamedFrom = ownId.GetString();
                 renamed = WithId(root, id);
                 root = renamed.RootElement;
             }
@@ -563,48 +763,12 @@ public sealed class Workspace : IDisposable
             {
                 var load = Generation.Load(root, 1, Limits, Support, null, jsonChecked: true);
                 if (load.Generation is { } generation)
-                {
-                    // The kept changes are read before the document opens: a file that fails to read this time isn't
-                    // taken for one that can't be used, so the profile doesn't open as saved and nothing replaces it.
-                    byte[]? kept = null;
-                    string? unusable = null;
-                    try
-                    {
-                        kept = Documents.ReadRecovery(id);
-                    }
-                    // A link whose target can't be reached isn't content: what it stands for is unknown, so it is read again.
-                    catch (Exception ex) when (ex is InvalidDataException or NotARegularFileException)
-                    {
-                        unusable = ex.Message;
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        if (!again)
-                            Logger.Warning(ex, "Could not read the unsaved changes kept for profile {ProfileId}; it isn't opened until they can be read, and the file is left as it is", id);
-                        return ReadAgain(id, tag, $"Its unsaved changes can't be read: {ex.Message}");
-                    }
+                    return new StoredCheck(generation, load.Check.Items, "ok", null, null, renamedFrom);
 
-                    if (load.Check.Items.Count > 0)
-                        Logger.Warning("Profile {ProfileId} has {Count} item(s) drawn as placeholders (first: {ItemId}, {Problem})",
-                            id, load.Check.Items.Count, load.Check.Items[0].Id, load.Check.Items[0].Problem);
-                    var doc = OpenDocument(id, generation, bytes, tag);
-                    Recover(id, doc, bytes, kept, unusable);
-                    var watch = new DocumentWatch(this, doc);
-                    if (doc.RemovalPending)
-                        _recovery.Note(doc);
-                    return new Slot(doc, null, watch);
-                }
-
-                var first = load.Check.Errors.FirstOrDefault() ?? new SpecError("", "schema", "The document can't be opened.");
-                var problem = Body(first);
-                if (load.Check.Status == CheckStatus.Unsupported)
-                {
-                    Logger.Information("Profile {ProfileId} needs what this engine doesn't read ({Code} at {Path}); it is listed but not opened", id, first.Code, first.Path);
-                    return new Slot(null, new ProfileEntry { Id = id, Status = "unsupported", Instance = tag, Name = NameOf(root), Problem = problem });
-                }
-
-                Logger.Warning("Profile {ProfileId} can't be opened ({Code} at {Path}: {Message})", id, first.Code, first.Path, first.Message);
-                return new Slot(null, new ProfileEntry { Id = id, Status = "unreadable", Instance = tag, Problem = problem });
+                var problem = Body(load.Check.Errors.FirstOrDefault() ?? new SpecError("", "schema", "The document can't be opened."));
+                return load.Check.Status == CheckStatus.Unsupported
+                    ? new StoredCheck(null, null, "unsupported", problem, NameOf(root), renamedFrom)
+                    : new StoredCheck(null, null, "unreadable", problem, null, renamedFrom);
             }
         }
     }

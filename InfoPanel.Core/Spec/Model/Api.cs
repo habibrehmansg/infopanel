@@ -93,6 +93,36 @@ public sealed record ProfileStatusProblem
     public required ValidationErrorBody Problem { get; init; }
 }
 
+/// <summary><c>GET /api/profiles/{id}/versions</c> (the schema's <c>versionList</c>): a profile's earlier saves, newest first.</summary>
+[SpecDef("urn:infopanel:api:1#/$defs/versionList")]
+public sealed record VersionList
+{
+    public required IReadOnlyList<VersionEntry> Versions { get; init; }
+}
+
+/// <summary>
+/// One earlier save (the schema's <c>versionEntry</c>, a union of one definition per status): <see cref="N"/>,
+/// <see cref="Written"/>, <see cref="Bytes"/> and <see cref="Status"/> always; <c>ok</c> with <see cref="Name"/>,
+/// <see cref="Width"/> and <see cref="Height"/>, <c>unsupported</c> with <see cref="Problem"/> (and <see cref="Name"/>
+/// when the document has one), <c>unreadable</c> with only <see cref="Problem"/>.
+/// </summary>
+[SpecDef("urn:infopanel:api:1#/$defs/versionEntryOk", "urn:infopanel:api:1#/$defs/versionEntryUnsupported",
+    "urn:infopanel:api:1#/$defs/versionEntryUnreadable")]
+public sealed record VersionEntry
+{
+    /// <summary>The version's number: higher is newer, never reused within the profile's lifetime.</summary>
+    public required long N { get; init; }
+    /// <summary>When the save it holds was made, as its file's last write time: RFC 3339 in UTC, to the second.</summary>
+    public required string Written { get; init; }
+    /// <summary>The file's length in bytes.</summary>
+    public required long Bytes { get; init; }
+    public required string Status { get; init; }
+    public string? Name { get; init; }
+    public int? Width { get; init; }
+    public int? Height { get; init; }
+    public ValidationErrorBody? Problem { get; init; }
+}
+
 /// <summary>
 /// <c>POST /api/profiles</c> (the schema's <c>createProfileRequest</c>): <see cref="Id"/> with either <see cref="Name"/>,
 /// <see cref="Width"/> and <see cref="Height"/> (an empty profile) or <see cref="Document"/>.

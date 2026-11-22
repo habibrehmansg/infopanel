@@ -30,7 +30,7 @@
         "instance": { "$ref": "#/$defs/instanceId", "description": "This run of the engine: new every time the engine starts, so a client that sees another knows the engine restarted (and that every document tag it read before is stale). Not a document's tag: a commit names its document's (documentResponse)." },
         "started": { "$ref": "#/$defs/timestamp", "description": "When this run of the engine started, in UTC to the second. The same for the whole run, like `instance`." },
         "features": {
-          "description": "The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels, `simulated.text` (a `simulated` subscription makes up text and tables as well as numbers, docs/api.md#simulated-sensors), `sensors.image` (GET /api/sensors/image, an image sensor's picture, docs/api.md#sensor-pictures) and `preview` (POST /api/preview, a given document drawn as a loop or a still, docs/api.md#previews). A client ignores a name it doesn't know.",
+          "description": "The optional API features the engine has, by name, each once (docs/api.md#session): every operation added after this version of the API comes under one, and a client uses it only when its name is listed. This version defines `plugins` (the requests under /api/plugins and POST /api/folders/plugins/open, docs/api.md#plugins), which an engine lists whether or not it hosts plugins, `devices` (the requests under /api/devices and the socket's `devices` message, docs/api.md#devices), which an engine lists whether or not it drives panels, `simulated.text` (a `simulated` subscription makes up text and tables as well as numbers, docs/api.md#simulated-sensors), `sensors.image` (GET /api/sensors/image, an image sensor's picture, docs/api.md#sensor-pictures), `preview` (POST /api/preview, a given document drawn as a loop or a still, docs/api.md#previews) and `profiles.versions` (the requests under /api/profiles/{id}/versions, a profile's earlier saves listed, drawn and restored, docs/api.md#earlier-saves). A client ignores a name it doesn't know.",
           "type": "array",
           "items": { "$ref": "#/$defs/apiFeature" },
           "uniqueItems": true
@@ -166,6 +166,83 @@
         "code": { "description": "The profile's status. A client treats a status it doesn't know as a profile it can't open.", "enum": ["unsupported", "unreadable"] },
         "problem": { "$ref": "#/$defs/validationError", "description": "The profile's `problem` (profileEntry)." }
       }
+    },
+
+    "versionList": {
+      "description": "GET /api/profiles/{id}/versions (the profiles.versions feature): the profile's earlier saves the engine keeps, newest first: at most the newest ten, the number the engine keeps; older leftovers are not listed (docs/api.md#earlier-saves).",
+      "type": "object",
+      "required": ["versions"],
+      "additionalProperties": false,
+      "properties": {
+        "versions": { "type": "array", "items": { "$ref": "#/$defs/versionEntry" } }
+      }
+    },
+    "versionEntry": {
+      "description": "One earlier save in versionList. `status` says whether the engine can open the document it holds, checked as a profile's own document is, and which members come with it: ok (name, width and height), unsupported (a problem, and the name when the document has one) or unreadable (a problem only). Only an ok version can be drawn or restored. A client treats a status it doesn't know as unreadable.",
+      "oneOf": [
+        { "$ref": "#/$defs/versionEntryOk" },
+        { "$ref": "#/$defs/versionEntryUnsupported" },
+        { "$ref": "#/$defs/versionEntryUnreadable" }
+      ]
+    },
+    "versionEntryOk": {
+      "description": "An earlier save whose document the engine opens.",
+      "type": "object",
+      "required": ["n", "written", "bytes", "status", "name", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "n": { "$ref": "#/$defs/versionNumber" },
+        "written": { "$ref": "#/$defs/timestamp", "description": "When the save it holds was made." },
+        "bytes": { "description": "The size of the stored file in bytes.", "type": "integer", "minimum": 0 },
+        "status": { "const": "ok" },
+        "name": { "description": "The profile's name in that save.", "type": "string", "minLength": 1, "maxLength": 256 },
+        "width": { "description": "The canvas width in pixels in that save.", "type": "integer", "minimum": 1, "maximum": 16384 },
+        "height": { "description": "The canvas height in pixels in that save.", "type": "integer", "minimum": 1, "maximum": 16384 }
+      }
+    },
+    "versionEntryUnsupported": {
+      "description": "An earlier save whose document needs a format major version or a document capability this engine lacks.",
+      "type": "object",
+      "required": ["n", "written", "bytes", "status", "problem"],
+      "additionalProperties": false,
+      "properties": {
+        "n": { "$ref": "#/$defs/versionNumber" },
+        "written": { "$ref": "#/$defs/timestamp", "description": "When the save it holds was made." },
+        "bytes": { "description": "The size of the stored file in bytes.", "type": "integer", "minimum": 0 },
+        "status": { "const": "unsupported" },
+        "name": {
+          "description": "The document's `profile.name` when that is a string of 1–256 characters, else absent.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "problem": {
+          "$ref": "#/$defs/validationError",
+          "description": "Why the engine doesn't open it: `unsupported.format` (at /format) or `unsupported.capability` (at /requires/i), with a JSON pointer into the stored document."
+        }
+      }
+    },
+    "versionEntryUnreadable": {
+      "description": "An earlier save whose stored file can't be read, is over the size a document is read within, isn't JSON, or breaks the document schema or a document limit outside its scenes.",
+      "type": "object",
+      "required": ["n", "written", "bytes", "status", "problem"],
+      "additionalProperties": false,
+      "properties": {
+        "n": { "$ref": "#/$defs/versionNumber" },
+        "written": { "$ref": "#/$defs/timestamp", "description": "When the save it holds was made." },
+        "bytes": { "description": "The size of the stored file in bytes.", "type": "integer", "minimum": 0 },
+        "status": { "const": "unreadable" },
+        "problem": {
+          "$ref": "#/$defs/validationError",
+          "description": "The first problem found, with a JSON pointer into the stored document: `io` (the file can't be read), `limit.documentBytes`, `json` (not JSON) or a document check's code (`schema`, ...; docs/validation.md)."
+        }
+      }
+    },
+    "versionNumber": {
+      "description": "An earlier save's number within its profile: higher is newer, and a number is never used again for another save of the profile.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
     },
 
     "createProfileRequest": {

@@ -82,6 +82,22 @@ public class OneOffDrawTests
             Thread.Sleep(2);
         }
         Assert.Equal(1, media.VideoSessions);
+
+        // The picture of a generation no document holds (an earlier save) holding the same video: this checks only that
+        // the draw leaves the live session and its frame as they were and that the sessions of its own are closed after.
+        // It doesn't check that the picture shows the video: the one-off's session may not have decoded a frame when the
+        // single snapshot is taken, and the picture then shows the loading placeholder, as any one-off preview does.
+        Assert.NotEmpty(service.RenderOnce(h.Document.Current, 64));
+        deadline = DateTime.UtcNow.AddSeconds(10);
+        while (media.VideoSessions != 1 && DateTime.UtcNow < deadline)
+            Thread.Sleep(2);
+        Assert.Equal(1, media.VideoSessions);
+        for (var i = 0; i < 20; i++)
+        {
+            Assert.Equal(9, Tick());
+            Thread.Sleep(2);
+        }
+        Assert.Equal(1, media.VideoSessions);
     }
 
     /// <summary>

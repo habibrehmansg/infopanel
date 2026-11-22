@@ -861,6 +861,100 @@
         }
       }
     },
+    "/api/profiles/{id}/versions": {
+      "parameters": [{"$ref": "#/components/parameters/profileId"}],
+      "get": {
+        "operationId": "listVersions",
+        "summary": "The profile's earlier saves, newest first: at most the newest ten (the profiles.versions feature).",
+        "description": "docs/api.md#earlier-saves.",
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {
+            "description": "The earlier saves: the newest ten the engine keeps at most; older leftovers are not listed.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/versionList"}}}
+          },
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "404": {"$ref": "#/components/responses/notFound"},
+          "409": {"$ref": "#/components/responses/profileStatus"},
+          "500": {
+            "description": "The profile's folder of earlier saves can't be listed. The error is in the engine's log.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
+    "/api/profiles/{id}/versions/{n}/thumbnail": {
+      "parameters": [{"$ref": "#/components/parameters/profileId"}, {"$ref": "#/components/parameters/versionNumber"}],
+      "get": {
+        "operationId": "getVersionThumbnail",
+        "summary": "A PNG of an earlier save (the profiles.versions feature).",
+        "description": "docs/api.md#earlier-saves.",
+        "parameters": [
+          {
+            "name": "w",
+            "in": "query",
+            "required": false,
+            "description": "The width in pixels, clamped to 16–4,096; 320 when absent.",
+            "schema": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647}
+          }
+        ],
+        "security": [{"bearer": ["read"]}],
+        "responses": {
+          "200": {"description": "The picture.", "content": {"image/png": {}}},
+          "400": {"$ref": "#/components/responses/badVersion"},
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "404": {"$ref": "#/components/responses/notFound"},
+          "409": {
+            "description": "The profile can't be opened, or the earlier save can't be (profileStatusProblem, the save's own status and problem); or another earlier save's picture or a preview is being drawn, as the engine draws one at a time (problem): ask again when it is done.",
+            "content": {"application/problem+json": {"schema": {"oneOf": [
+              {"$ref": "urn:infopanel:api:1#/$defs/profileStatusProblem"},
+              {"$ref": "urn:infopanel:api:1#/$defs/problem"}
+            ]}}}
+          }
+        }
+      }
+    },
+    "/api/profiles/{id}/versions/{n}/restore": {
+      "parameters": [{"$ref": "#/components/parameters/profileId"}, {"$ref": "#/components/parameters/versionNumber"}],
+      "post": {
+        "operationId": "restoreVersion",
+        "summary": "Brings back an earlier save: one undo step to its content, then saved (the profiles.versions feature).",
+        "description": "docs/api.md#earlier-saves.",
+        "security": [{"bearer": ["edit"]}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/historyRequest"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "The step, and the document's state once it is saved.",
+            "content": {"application/json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/commitResult"}}}
+          },
+          "400": {"$ref": "#/components/responses/badVersion"},
+          "401": {"$ref": "#/components/responses/unauthorized"},
+          "403": {"$ref": "#/components/responses/forbidden"},
+          "404": {"$ref": "#/components/responses/notFound"},
+          "409": {
+            "description": "The profile or the earlier save can't be opened (profileStatusProblem), or the request names another document's tag or the document changed since baseRev (conflictProblem); nothing was applied.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "oneOf": [
+                    {"$ref": "urn:infopanel:api:1#/$defs/profileStatusProblem"},
+                    {"$ref": "urn:infopanel:api:1#/$defs/conflictProblem"}
+                  ]
+                }
+              }
+            }
+          },
+          "422": {"$ref": "#/components/responses/invalid"},
+          "500": {
+            "description": "The restored save couldn't be written: the step stays, unsaved, kept across a restart as any unsaved change is. The error is in the engine's log.",
+            "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+          }
+        }
+      }
+    },
     "/api/preview": {
       "post": {
         "operationId": "drawPreview",
@@ -879,7 +973,7 @@
           "401": {"$ref": "#/components/responses/unauthorized"},
           "403": {"$ref": "#/components/responses/forbidden"},
           "409": {
-            "description": "Another preview is being drawn: the engine draws one at a time. Nothing was drawn; the client asks again.",
+            "description": "Another preview, or an earlier save's picture, is being drawn: the engine draws one at a time. Nothing was drawn; the client asks again.",
             "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
           },
           "422": {
@@ -1512,6 +1606,13 @@
         "description": "The profile's id: its document's id.",
         "schema": {"type": "string"}
       },
+      "versionNumber": {
+        "name": "n",
+        "in": "path",
+        "required": true,
+        "description": "The earlier save's number (versionEntry's `n`), spelled in ASCII decimal digits with no sign and no leading zero, from 1 to 9,007,199,254,740,991 (2^53 − 1); any other spelling, `01` or `+1` included, is answered 400.",
+        "schema": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}
+      },
       "pluginFolder": {
         "name": "folder",
         "in": "path",
@@ -1537,6 +1638,10 @@
     "responses": {
       "badQuery": {
         "description": "A query parameter isn't a whole number from −2,147,483,648 to 2,147,483,647.",
+        "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
+      },
+      "badVersion": {
+        "description": "The earlier save's number isn't spelled in ASCII decimal digits with no sign and no leading zero, from 1 to 9,007,199,254,740,991, or a query parameter isn't a whole number from −2,147,483,648 to 2,147,483,647.",
         "content": {"application/problem+json": {"schema": {"$ref": "urn:infopanel:api:1#/$defs/problem"}}}
       },
       "unauthorized": {

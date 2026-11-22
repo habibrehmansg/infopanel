@@ -547,6 +547,43 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         await Send(session, "POST", $"/api/profiles/{AbsentProfile}/save", 404);
         await Send(session, "POST", $"/api/profiles/{SeededEngineFactory.Unsupported}/save", 409);
 
+        // Earlier saves: listed, drawn and restored, with their refusals.
+        await Send(session, "POST", $"/api/profiles/{id}/commit", 200, Json(CommitBody(instance, await Rev(), Place("a", 40, 40))));
+        await Send(session, "POST", $"/api/profiles/{id}/save", 200);
+        await Send(session, "GET", $"/api/profiles/{id}/versions", 200);
+        await Send(session, "GET", $"/api/profiles/{AbsentProfile}/versions", 404);
+        await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.Unsupported}/versions", 409);
+        await Send(session, "GET", $"/api/profiles/{id}/versions/1/thumbnail?w=64", 200);
+        await Send(session, "GET", $"/api/profiles/{id}/versions/0/thumbnail", 400);
+        await Send(session, "GET", $"/api/profiles/{id}/versions/99/thumbnail", 404);
+        await Send(session, "GET", $"/api/profiles/{SeededEngineFactory.Unsupported}/versions/1/thumbnail", 409);
+        await Send(session, "POST", $"/api/profiles/{id}/versions/1/restore", 200, JsonBytes(History(instance, await Rev())));
+        await Send(session, "POST", $"/api/profiles/{id}/versions/0/restore", 400, JsonBytes(History(instance, await Rev())));
+        await Send(session, "POST", $"/api/profiles/{id}/versions/99/restore", 404, JsonBytes(History(instance, await Rev())));
+        await Send(session, "POST", $"/api/profiles/{id}/versions/1/restore", 409, JsonBytes(History("another-instance", await Rev())));
+        await Send(session, "POST", $"/api/profiles/{id}/versions/1/restore", 422, Body("{}"));
+        // The engine draws one earlier save's picture at a time, through the previews' gate: held, a picture is 409 problem.
+        var gate = factory.Services.GetRequiredService<InfoPanel.Api.PreviewGate>();
+        Assert.True(gate.TryEnter());
+        try
+        {
+            await Send(session, "GET", $"/api/profiles/{id}/versions/1/thumbnail", 409);
+        }
+        finally
+        {
+            gate.Exit();
+        }
+        // A folder of earlier saves that can't be listed (its access list on Windows, its mode elsewhere) is 500; a restore
+        // whose write fails (its document held open without delete sharing on Windows, its folder read-only elsewhere) is
+        // 500, its step kept unsaved and saved once the write can go.
+        var profileFolder = Path.Combine(factory.DataDir, "profiles", id);
+        using (Unlistable(Path.Combine(profileFolder, "versions")))
+            await Send(session, "GET", $"/api/profiles/{id}/versions", 500);
+        await Send(session, "POST", $"/api/profiles/{id}/commit", 200, Json(CommitBody(instance, await Rev(), Place("a", 41, 41))));
+        using (Unwritable(profileFolder))
+            await Send(session, "POST", $"/api/profiles/{id}/versions/1/restore", 500, JsonBytes(History(instance, await Rev())));
+        await Send(session, "POST", $"/api/profiles/{id}/save", 200);
+
         // Blobs.
         var blob = (await Send(session, "POST", "/api/blobs", 201, new ByteArrayContent([1, 2, 3, 4]))).GetProperty("id").GetString();
         await Send(session, "POST", "/api/blobs", 200, new ByteArrayContent([1, 2, 3, 4]));
@@ -653,6 +690,53 @@ public class ContractTourTests(SeededEngineFactory factory) : IClassFixture<Seed
         var content = new ByteArrayContent(bytes);
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         return content;
+    }
+
+    /// <summary>
+    /// Makes <paramref name="folder"/> a folder this user can't list until disposed: its access list denies the listing on
+    /// Windows, its mode allows nothing elsewhere.
+    /// </summary>
+    private static IDisposable Unlistable(string folder)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var info = new DirectoryInfo(folder);
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            var deny = new System.Security.AccessControl.FileSystemAccessRule(identity.User!,
+                System.Security.AccessControl.FileSystemRights.ListDirectory, System.Security.AccessControl.AccessControlType.Deny);
+            var security = info.GetAccessControl();
+            security.AddAccessRule(deny);
+            info.SetAccessControl(security);
+            return new Undo(() =>
+            {
+                security.RemoveAccessRule(deny);
+                info.SetAccessControl(security);
+            });
+        }
+        var mode = File.GetUnixFileMode(folder);
+        File.SetUnixFileMode(folder, UnixFileMode.None);
+        return new Undo(() => File.SetUnixFileMode(folder, mode));
+    }
+
+    /// <summary>
+    /// Makes a profile's document impossible to replace until disposed: held open without delete sharing on Windows (a
+    /// rename over it fails), its folder read-only elsewhere (no temp file can be made in it).
+    /// </summary>
+    private static IDisposable Unwritable(string profileFolder)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var held = new FileStream(Path.Combine(profileFolder, "document.json"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return held;
+        }
+        var mode = File.GetUnixFileMode(profileFolder);
+        File.SetUnixFileMode(profileFolder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        return new Undo(() => File.SetUnixFileMode(profileFolder, mode));
+    }
+
+    private sealed class Undo(Action undo) : IDisposable
+    {
+        public void Dispose() => undo();
     }
 }
 
