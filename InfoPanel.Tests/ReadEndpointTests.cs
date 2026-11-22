@@ -94,6 +94,39 @@ public class ReadEndpointTests(EngineFactory factory) : IClassFixture<EngineFact
         Assert.Equal(EngineFactory.Port, session.GetProperty("port").GetInt32());
     }
 
+    [Fact]
+    public async Task Session_NamesTheEnginesReleaseLine_AndLeavesTheMemberOut_WhenThereIsNoName()
+    {
+        // Every test engine is 2.0.0-dev, on the 2.0 line: its codename is Evan (packaging/codenames.txt).
+        var session = await GetJson("/api/session");
+        Assert.StartsWith("2.0.", session.GetProperty("engineVersion").GetString());
+        Assert.Equal("Evan", session.GetProperty("engineCodename").GetString());
+
+        // The same answer with no name (an explicit null, whatever the shipped list holds): no engineCodename at all, and still a session.
+        var answer = JsonSerializer.Deserialize<Session>(session.GetRawText(), SpecJson.Options)!;
+        var unnamed = JsonSerializer.SerializeToElement(answer with { EngineVersion = "2.1.0", EngineCodename = null }, SpecJson.Options);
+        Assert.False(unnamed.TryGetProperty("engineCodename", out _));
+        Assert.True(Valid(unnamed, "session"));
+        Assert.Equal(session.EnumerateObject().Where(p => p.Name is not ("engineCodename" or "engineVersion")).Select(p => p.Name),
+            unnamed.EnumerateObject().Where(p => p.Name != "engineVersion").Select(p => p.Name));
+    }
+
+    [Theory]
+    [InlineData("codename-quote.json", "pattern")]
+    [InlineData("codename-empty.json", "minLength")]
+    public void ACodename_IsRefused_ForWhatItsExampleIsNamedFor(string example, string keyword)
+    {
+        var path = Path.Combine(Editing.LiveEngine.RepoRoot(), "spec", "examples", "api", "session", "invalid", example);
+        using var body = JsonDocument.Parse(File.ReadAllText(path));
+
+        var result = SpecSchemas.Strict.Validate(body.RootElement, SpecSchemas.Api + "#/$defs/session");
+
+        // Refused at the codename only, and for what the example is named for (an empty one breaks the pattern too).
+        Assert.False(result.IsValid);
+        Assert.All(result.Errors, e => Assert.Equal("/engineCodename", e.InstancePath));
+        Assert.Contains(result.Errors, e => e.Keyword == keyword);
+    }
+
     /// <summary>The schema's <c>timestamp</c>: RFC 3339 in UTC, to the second.</summary>
     private const string TimestampPattern = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$";
 

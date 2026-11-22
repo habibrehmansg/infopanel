@@ -294,7 +294,7 @@ public sealed class ShellService(
         catch (Exception ex)
         {
             logger.LogError(ex, "The menu couldn't read the engine's state");
-            return ShellMenu.Build(new ShellState(ReadEndpoints.EngineVersion()) { HasCredential = true });
+            return ShellMenu.Build(new ShellState(ReadEndpoints.EngineVersion()) { Codename = ReadEndpoints.EngineCodename(), HasCredential = true });
         }
     }
 
@@ -309,6 +309,7 @@ public sealed class ShellService(
         var signedIn = holder.Current;
         return new ShellState(ReadEndpoints.EngineVersion())
         {
+            Codename = ReadEndpoints.EngineCodename(),
             HasCredential = signedIn.Held,
             SignedInAs = signedIn.Name,
             SignedInEmail = signedIn.Email,

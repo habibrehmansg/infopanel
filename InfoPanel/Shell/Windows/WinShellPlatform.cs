@@ -43,7 +43,7 @@ internal sealed class WinShellPlatform : IShellPlatform
     public event Action? TerminateRequested;
 
     public void Show(ShellIcon icon, Func<ShellMenu> menu, Func<string, Task> invoked) =>
-        _thread.Post(() => EnsureTray()?.Show(WinShellText.Tooltip(ReadEndpoints.EngineVersion()), menu, invoked));
+        _thread.Post(() => EnsureTray()?.Show(WinShellText.Tooltip(ReadEndpoints.EngineVersion(), ReadEndpoints.EngineCodename()), menu, invoked));
 
     public void Remove()
     {

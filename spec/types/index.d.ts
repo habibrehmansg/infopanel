@@ -12,6 +12,12 @@ export interface Session {
    */
   engineVersion: string;
   /**
+   * The codename of the engine's release line (its version's major.minor), such as "Evan" for every 2.0 version, shown beside `engineVersion` (docs/api.md#session): ASCII letters and digits, words joined by single spaces or hyphens, starting with a letter. Absent when the line has none. A client shows it as given.
+   * Length: 1–32.
+   * Pattern: `^[A-Za-z][A-Za-z0-9]*([ -][A-Za-z0-9]+)*$`.
+   */
+  engineCodename?: string;
+  /**
    * The source revision the engine was built from, for a bug report (docs/api.md#session): the commit's abbreviated id as git writes it, such as "004cf52", followed by "-dirty" when the build had changes not yet committed; "unknown" when the build couldn't tell (built without git or outside a repository, as from a source archive). A client shows it as given.
    * Pattern: `^(unknown|[0-9a-f]{7,64}(-dirty)?)$`.
    */

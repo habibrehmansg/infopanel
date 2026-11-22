@@ -148,7 +148,8 @@ engine runs (another engine on the default data folder would take the launch and
 2. Open InfoPanel from Applications. macOS refuses it, saying it can't verify the app: choose Done.
 3. System Settings › Privacy & Security: under Security, **Open Anyway** for InfoPanel; confirm with the user's
    password. InfoPanel starts.
-4. The menu-bar icon appears; its menu says "Running · <version>". No window and no browser open by themselves.
+4. The menu-bar icon appears; its menu says "Running · <version>", with the codename after it for a line that has one
+   ("Running · 2.0.0-beta.2 “Evan”"). No window and no browser open by themselves.
 5. Double-click InfoPanel in Applications again while it runs: the editor opens in the browser (the app is told it was
    opened again; no second process starts).
 6. Quit InfoPanel from its menu: the icon goes.
@@ -468,7 +469,11 @@ dry runs too: `2.0.0-beta.1`, `2.0.3` and `2.0.0-dev.ci.7` are all "Evan". A rel
 without one (`InfoPanel 2.1.0`). A name is ASCII letters and digits, words joined by single spaces or hyphens, starting
 with a letter, at most 32 characters; a key is written as the version writes its numbers (`2.0`, never `02.0`), at most
 once. The workflow's first job checks the whole file in every run, so a bad edit fails the dry run it starts (an edit
-under `packaging/`), naming the line. The tag stays the bare version; its message is the release's title.
+under `packaging/`), naming the line. The tag stays the bare version; its message is the release's title. The engine
+embeds the same file and reads it by the same rule: `GET /api/session` gives its line's name as `engineCodename` (left
+out for a line without one), and the menu bar's and the tray's status lines and the tray icon's tooltip show it after
+the version in typographic quotes (`2.0.0 “Evan”`); a list the engine can't read names no line, with one warning in the
+log. Nothing else (the installers, file names, `Info.plist`, Copy Engine Details, the update line) carries it.
 
 **The web client's origin** (built in as `--allow-origin`'s default) is the repository variable
 `INFOPANEL_ALLOW_ORIGIN` (Settings › Secrets and variables › Actions › Variables), never written in this repository.

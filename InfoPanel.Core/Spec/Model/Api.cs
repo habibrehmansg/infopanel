@@ -11,6 +11,8 @@ namespace InfoPanel.Spec;
 public sealed record Session
 {
     public required string EngineVersion { get; init; }
+    /// <summary>The codename of the engine's release line (major.minor), shown beside its version; null (left out) when the line has none.</summary>
+    public string? EngineCodename { get; init; }
     /// <summary>The commit the engine was built from (abbreviated, <c>-dirty</c> with uncommitted changes), or <c>unknown</c>.</summary>
     public required string EngineBuild { get; init; }
     public required int Protocol { get; init; }

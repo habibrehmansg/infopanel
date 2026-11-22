@@ -69,6 +69,11 @@
     <EmbeddedResource Include="..\Images\logo.png" LogicalName="InfoPanel.Shell.logo.png" Link="Shell\Windows\logo.png" />
   </ItemGroup>
 
+  <!-- The release lines' codenames, the name beside the engine's version (Hosting/ReleaseCodename.cs). -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\packaging\codenames.txt" LogicalName="InfoPanel.Hosting.codenames.txt" Link="Hosting\codenames.txt" />
+  </ItemGroup>
+
   <!-- The bundled plugins: every BundledPlugin project is built and its output copied into plugins/{its assembly name}/
        beside the engine (on build and on publish), where the engine finds its bundled packages (docs/2.0/plugins.md).
        Copied, not referenced, and not as content, so projects that reference the engine (the tests) don't get a plugins

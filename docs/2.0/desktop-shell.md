@@ -8,8 +8,9 @@ for light and dark menu bars. On Windows it is an icon in the notification area,
 
 Click the hexagon. The menu is built afresh from the engine's state each time it opens:
 
-1. The header, "InfoPanel" (bold, not greyed, not clickable), and under it "Running · 2.0.0" in the secondary colour.
-   Under that, the update line (below, "Updates"): **Update Available: InfoPanel 2.0.1…** while a newer version is
+1. The header, "InfoPanel" (bold, not greyed, not clickable), and under it "Running · 2.0.0" in the secondary colour,
+   with the release line's codename after the version when it has one: "Running · 2.0.0 “Evan”" (packaging.md,
+   "Codenames"). Under that, the update line (below, "Updates"): **Update Available: InfoPanel 2.0.1…** while a newer version is
    known, which opens its release page in the browser; otherwise **Check for Updates…**. A development build has
    neither.
 2. — Who is signed in, one row: while the engine holds a credential for the configured service and knows its holder, a
@@ -151,14 +152,15 @@ read by `ReleaseFeed`, both in `InfoPanel.Core/Updates/`):
 ## Windows
 
 The app's coloured logo in the notification area, as Windows apps show theirs, the same on a light taskbar and a dark
-one, at the small-icon size for the taskbar's display scale (redrawn when the scale changes). Its tooltip is "InfoPanel 2.0.0". Each engine has one icon, removed when it
+one, at the small-icon size for the taskbar's display scale (redrawn when the scale changes). Its tooltip is "InfoPanel 2.0.0", with the release line's codename after the version when it has one ("InfoPanel 2.0.0 “Evan”"). Each engine has one icon, removed when it
 stops; Explorer restarting (or a taskbar that didn't exist yet at a sign-in start) adds it again (`TaskbarCreated`).
 
 - **Click** it (or press Enter on it): the editor opens, as the menu's Open editor. The second click of a double-click
   doesn't open a second tab.
 - **Right-click** it (or the menu key): the menu, built afresh each time, in Windows' sentence case (Windows menus stay
   light in dark mode):
-  1. "InfoPanel · Running · 2.0.0", grey: the header and the status in one line (a Windows menu has no header);
+  1. "InfoPanel · Running · 2.0.0", grey (with the codename, "InfoPanel · Running · 2.0.0 “Evan”"): the header and the
+     status in one line (a Windows menu has no header);
      under it **Update available: InfoPanel 2.0.1…** or **Check for updates…** (above, "Updates");
   2. — who is signed in, one line (a Windows menu line has no second line, nor an image here): "‹name› (‹email›)", the
      email alone when the holder has no name, or "Not signed in · Sign in…"; it opens the editor at its sign-in

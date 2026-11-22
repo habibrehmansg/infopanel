@@ -76,7 +76,8 @@ public sealed class ShellServiceTests : IDisposable
         Assert.True(_shell.ShownAfterStart);
         Assert.Equal($"InfoPanel — http://127.0.0.1:{EngineFactory.Port}", _shell.Icon!.Tooltip);
         Assert.False(_shell.Removed);
-        Assert.Equal(ShellMenu.Build(new ShellState(InfoPanel.Api.ReadEndpoints.EngineVersion())), _shell.OpenMenu(), new MenuComparer());
+        // A test engine's version line, with its release line's codename (2.0.0-dev “Evan”).
+        Assert.Equal(ShellMenu.Build(new ShellState(InfoPanel.Api.ReadEndpoints.EngineVersion()) { Codename = "Evan" }), _shell.OpenMenu(), new MenuComparer());
 
         _factory.Dispose();
 

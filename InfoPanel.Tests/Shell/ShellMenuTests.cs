@@ -60,6 +60,18 @@ public sealed class ShellMenuTests
     }
 
     [Fact]
+    public void TheStatus_NamesTheReleaseLine_InTypographicQuotes_AfterTheVersion()
+    {
+        var named = ShellMenu.Build(new ShellState("2.0.0-beta.2") { Codename = "Evan" }).Items;
+        var unnamed = ShellMenu.Build(new ShellState("2.0.0-beta.2")).Items;
+
+        Assert.Equal((ShellMenu.Status, "Running · 2.0.0-beta.2 “Evan”", ShellItemKind.Status), (named[1].Id, named[1].Label, named[1].Kind));
+        Assert.Equal("Running · 2.0.0-beta.2", unnamed[1].Label);
+        // Only the status line changes.
+        Assert.Equal(unnamed.Where(i => i.Id != ShellMenu.Status), named.Where(i => i.Id != ShellMenu.Status));
+    }
+
+    [Fact]
     public void WhoIsSignedIn_TheName_TheEmailBeneath_AndTheNamesInitial_AClickableRow()
     {
         var menu = ShellMenu.Build(new ShellState("2.0.0") { HasCredential = true, SignedInAs = "habib rehman", SignedInEmail = "habib@example.com" });

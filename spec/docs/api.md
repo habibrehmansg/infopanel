@@ -189,13 +189,14 @@ The test vector (also as bodies in `examples/api/pairingChallengeRequest/`, `pai
 - `started` is when this run of the engine started, in UTC to the second (`2026-10-29T09:30:00Z`). Like `instance`, it changes only when the engine restarts.
 - `media.providers` lists the media providers configured on the engine, by name, each once ([providers](providers.md)): `http` for web images, `now-playing` for the cover of what the computer plays (every engine lists it, though one without the now-playing source, such as one in mock mode, has no cover to show), `plugin` for a plugin's own pictures (every engine lists it, though one without plugins has none to show), and `rtsp` for RTSP camera streams, which an engine lists only when it can decode them (with a video decoder, as for `media.video`). A client offers a provider source only for a provider listed here, and ignores a name it doesn't know; `media.provider` in the scene format's `capabilities` says only that providers exist. It changes only when the engine restarts.
 - `mock` is true when the engine was started in mock mode, or replaying a recording of a computer's sensors: its sensors are simulated (a mock source's, and `simulated` ones for keys no source has, [below](#fonts-and-sensors)) or replayed from a recording rather than the computer's, so a client can say its readings aren't real. It changes only when the engine restarts.
-- `engineVersion`, `engineBuild`, `platform`, `osVersion`, `arch` and `dataDir` describe the engine, for people and for bug reports:
+- `engineVersion`, `engineCodename`, `engineBuild`, `platform`, `osVersion`, `arch` and `dataDir` describe the engine, for people and for bug reports:
+  - `engineCodename` is the codename of the engine's release line (its version's major.minor; `Evan` for every 2.0 version, pre-releases included), shown beside `engineVersion`: ASCII letters and digits, words joined by single spaces or hyphens, starting with a letter, at most 32 characters; absent when the line has none;
   - `engineBuild` is the source revision the engine was built from: the commit's abbreviated id as git writes it (`004cf52`), followed by `-dirty` when the build had changes not yet committed, or `unknown` when the build couldn't tell (built without git or outside a repository, as from a source archive);
   - `platform` is the operating system (`macos`, `windows`, `linux` or `other`), and `osVersion` its version as it reports it: macOS's product version (`26.1`), Windows's major.minor.build (`10.0.26100`), Linux's kernel release (`6.8.0-45-generic`), or `unknown` when the engine can't read it;
   - `arch` is the processor architecture the engine runs as, `x64`, `arm64`, `x86`, `arm` or `other`: the engine's own, so an engine emulated on another architecture reports the one it was built for;
   - `dataDir` is the folder the engine keeps its data in.
 
-  A client shows `engineBuild` and `osVersion` as given, and treats a `platform` or `arch` it doesn't know as `other`.
+  A client shows `engineCodename`, `engineBuild` and `osVersion` as given, and treats a `platform` or `arch` it doesn't know as `other`.
 
 ## Fonts and sensors
 

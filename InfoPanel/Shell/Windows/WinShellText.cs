@@ -46,8 +46,8 @@ internal static class WinShellText
     private const string UpdateAvailableModel = "Update Available:";
     private const string UpdateAvailable = "Update available:";
 
-    /// <summary>The icon's tooltip: "InfoPanel 2.0.0".</summary>
-    public static string Tooltip(string version) => $"InfoPanel {version}";
+    /// <summary>The icon's tooltip: "InfoPanel 2.0.0", with the release line's codename after it ("InfoPanel 2.0.0 “Evan”") when it has one.</summary>
+    public static string Tooltip(string version, string? codename = null) => $"InfoPanel {Hosting.ReleaseCodename.VersionLine(version, codename)}";
 
     /// <summary>Who is signed in, signed out, on Windows: one line, "Not signed in · Sign in…".</summary>
     public const string SignIn = "Sign in…";

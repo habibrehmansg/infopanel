@@ -1,3 +1,5 @@
+using InfoPanel.Hosting;
+
 namespace InfoPanel.Shell;
 
 /// <summary>
@@ -67,10 +69,12 @@ public sealed record ShellProfile(string Id, string Name, bool Shown, bool Click
 /// <see cref="Profiles"/>: the profiles that can be opened, in the library's order; <see cref="DesktopWindows"/>: this
 /// engine shows desktop windows (not <c>--no-windows</c>, and a platform that has them); <see cref="Update"/>: a newer
 /// version the update check found, and its release page; <see cref="ChecksForUpdates"/>: this engine checks for updates
-/// (not a development build).
+/// (not a development build); <see cref="Codename"/>: the codename of the engine's release line, or null for none.
 /// </summary>
 public sealed record ShellState(string Version)
 {
+    public string? Codename { get; init; }
+
     public (string Version, string Url)? Update { get; init; }
 
     public bool ChecksForUpdates { get; init; }
@@ -123,7 +127,8 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
     public const string SignIn = "Sign In…";
 
     /// <summary>
-    /// The header "InfoPanel" and "Running · {version}"; beneath it "Update Available: InfoPanel {version}…" while the
+    /// The header "InfoPanel" and "Running · {version}", with the release line's codename after it ("Running · 2.0.0 “Evan”")
+    /// when it has one; beneath it "Update Available: InfoPanel {version}…" while the
     /// update check knows a newer version (its version shortened in the middle past <see cref="UpdateVersionLength"/>
     /// characters), else "Check for Updates…" when this engine checks for updates; who is signed in, one line that opens the editor at its sign-in
     /// settings: the name with the email beneath and the name's initial while a credential is held and its holder known
@@ -137,7 +142,7 @@ public sealed record ShellMenu(IReadOnlyList<ShellMenuItem> Items)
         var items = new List<ShellMenuItem>
         {
             new(Header, "InfoPanel", ShellItemKind.Header),
-            new(Status, $"Running · {state.Version}", ShellItemKind.Status),
+            new(Status, $"Running · {ReleaseCodename.VersionLine(state.Version, state.Codename)}", ShellItemKind.Status),
         };
         if (state.Update is { } update)
             items.Add(new(UpdateAvailable, $"Update Available: InfoPanel {MiddleShortened(update.Version, UpdateVersionLength)}…"));

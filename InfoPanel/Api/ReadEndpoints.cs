@@ -81,6 +81,8 @@ public static partial class ReadEndpoints
         api.MapGet("/session", (DataPaths paths, Workspace workspace, RegionalFormat regional, EngineRuntime runtime, EngineOptions options, SceneRuntimeOptions scenes) => ApiResults.Json(new Session
         {
             EngineVersion = EngineVersion(),
+            // The release line's codename, left out when the line has none.
+            EngineCodename = EngineCodename(),
             EngineBuild = EngineBuild(),
             Protocol = Protocol,
             Instance = workspace.Instance,
@@ -316,6 +318,20 @@ public static partial class ReadEndpoints
         var plus = version.IndexOf('+');
         return plus >= 0 ? version[..plus] : version;
     }
+
+    /// <summary>
+    /// The codename of the engine's release line (packaging/codenames.txt, embedded; docs/2.0/packaging.md "Codenames"),
+    /// shown beside its version, or null when the line has none.
+    /// </summary>
+    internal static string? EngineCodename() => CodenameOf(EngineVersion());
+
+    /// <summary>The codename of <paramref name="version"/>'s release line in the embedded list, or null.</summary>
+    internal static string? CodenameOf(string version) => ReleaseCodename.Of(version, Codenames.Value);
+
+    /// <summary>The embedded list, read once: one that can't be read names no line, with one warning.</summary>
+    private static readonly Lazy<IReadOnlyDictionary<string, string>> Codenames = new(() => ReleaseCodename.Load(
+        () => typeof(ReadEndpoints).Assembly.GetManifestResourceStream(ReleaseCodename.Resource),
+        Serilog.Log.ForContext(typeof(ReleaseCodename))));
 
     internal static string Platform() =>
         OperatingSystem.IsMacOS() ? "macos" : OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsLinux() ? "linux" : "other";

@@ -253,6 +253,8 @@
   "api/serviceState/invalid/without-fingerprint.json": {"code": "schema", "path": ""},
   "api/session/invalid/arch-amd64.json": {"code": "schema", "path": "/arch"},
   "api/session/invalid/build-upper-case.json": {"code": "schema", "path": "/engineBuild"},
+  "api/session/invalid/codename-empty.json": {"code": "schema", "path": "/engineCodename"},
+  "api/session/invalid/codename-quote.json": {"code": "schema", "path": "/engineCodename"},
   "api/session/invalid/feature-name.json": {"code": "schema", "path": "/features/0"},
   "api/session/invalid/feature-twice.json": {"code": "schema", "path": "/features"},
   "api/session/invalid/locale-separator-empty.json": {"code": "schema", "path": "/locale/groupSeparator"},

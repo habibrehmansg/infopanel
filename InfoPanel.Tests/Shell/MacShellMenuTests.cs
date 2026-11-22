@@ -151,6 +151,17 @@ public sealed unsafe class MacShellMenuTests
     }
 
     [Fact]
+    public void TheStatus_WithTheReleaseLinesCodename_IsOneLine_InTheSecondaryColour()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "AppKit");
+
+        var status = Lines(Named with { Codename = "Evan" })[1];
+
+        Assert.Equal((ShellMenu.Status, "Running · 2.0.0 “Evan”", false, "secondaryLabelColor", "secondaryLabelColor", false, false),
+            (status.Id, status.Text, status.Bold, status.FirstColour, status.LastColour, status.Enabled, status.HasAction));
+    }
+
+    [Fact]
     public void WhoIsSignedIn_TheInitial_TheName_AndTheEmailInTheSecondaryColour_OneRowThatOpensTheSignInSettings()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "AppKit");

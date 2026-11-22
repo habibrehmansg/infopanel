@@ -284,6 +284,19 @@ public sealed class WinTrayTests
     public void TheTooltip_IsTheNameAndVersion() => Assert.Equal("InfoPanel 2.0.0", WinShellText.Tooltip("2.0.0"));
 
     [Fact]
+    public void TheTooltip_AndTheStatusLine_NameTheReleaseLine_AfterTheVersion()
+    {
+        Assert.Equal("InfoPanel 2.0.0 “Evan”", WinShellText.Tooltip("2.0.0", "Evan"));
+        Assert.Equal("InfoPanel 2.0.0", WinShellText.Tooltip("2.0.0", null));
+
+        var named = WinTrayMenu.Lines(ShellMenu.Build(Full() with { Codename = "Evan" }), startAtSignIn: false);
+        var unnamed = WinTrayMenu.Lines(ShellMenu.Build(Full()), startAtSignIn: false);
+        Assert.Equal((ShellMenu.Status, "InfoPanel · Running · 2.0.0 “Evan”", WinMenuFlags.Disabled), (named[0].Id, named[0].Label, named[0].Flags));
+        Assert.Equal("InfoPanel · Running · 2.0.0", unnamed[0].Label);
+        Assert.Equal(Labels(unnamed).Skip(1), Labels(named).Skip(1));
+    }
+
+    [Fact]
     public void ExitsPrompt_IsInWindowsWords_WithCancelLast()
     {
         var mac = ShellService.QuitPrompt(["Desk overlay", "Wide bar"]);
