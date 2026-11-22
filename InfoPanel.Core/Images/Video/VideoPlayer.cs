@@ -546,7 +546,7 @@ internal sealed class VideoPlayer : IDisposable
 
         private Frame Keep(double seconds, SKImage image)
         {
-            var sample = MediaSample.FromImage(image, info.Width, info.Height);
+            var sample = MediaSample.FromImage(image, info.Width, info.Height, VideoDecoder.FrameAllocation(image.Width, image.Height));
             player._budget.Charge(sample.Bytes);
             return new Frame(seconds, sample);
         }

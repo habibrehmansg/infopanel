@@ -584,13 +584,20 @@ internal sealed unsafe class VideoDecoder : IDisposable
     }
 
     /// <summary>
+    /// The bytes <see cref="FrameData"/> allocates for a <paramref name="width"/> x <paramref name="height"/> frame: its
+    /// <see cref="Layout"/> bytes and the slack to align its first pixel. What a decoded video frame holds, and what the
+    /// media cache charges for it.
+    /// </summary>
+    internal static long FrameAllocation(int width, int height) => Layout(width, height).Bytes + FrameAlignment - 1;
+
+    /// <summary>
     /// The pixels of a <paramref name="width"/> x <paramref name="height"/> frame, laid out as <see cref="Layout"/> gives,
     /// its first pixel <see cref="FrameAlignment"/>-byte aligned; null without the memory.
     /// </summary>
     internal static SKData? FrameData(int width, int height, out int rowBytes)
     {
         (rowBytes, var bytes) = Layout(width, height);
-        using var block = SKData.Create(bytes + FrameAlignment - 1);
+        using var block = SKData.Create(FrameAllocation(width, height));
         if (block is null) return null;
         var offset = (FrameAlignment - (long)((ulong)block.Data % FrameAlignment)) % FrameAlignment;
         return block.Subset((ulong)offset, (ulong)bytes); // shares the block's memory and keeps it alive

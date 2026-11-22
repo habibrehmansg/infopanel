@@ -159,6 +159,25 @@ public sealed class RtspProviderTests
     }
 
     [Fact]
+    public async Task ACameraFrames_Sample_IsChargedTheBytesItsAllocationHolds()
+    {
+        await using var rig = new Rig();
+        var first = await rig.AskUntil(rig.Server.Url(), m => m.Sample is not null);
+        var sample = first.Sample!;
+        try
+        {
+            var (width, height) = (sample.Image!.Width, sample.Image.Height);
+            Assert.Equal((VideoFixtures.Width, VideoFixtures.Height), (width, height));
+            Assert.Equal(VideoDecoder.FrameAllocation(width, height), sample.Bytes);
+            Assert.Equal(12_415L, sample.Bytes); // 64 x 48: 127 bytes more than width x height x 4
+        }
+        finally
+        {
+            sample.Release();
+        }
+    }
+
+    [Fact]
     public async Task LiveFrames_FollowTheCamera()
     {
         await using var rig = new Rig();

@@ -755,14 +755,14 @@ public sealed class VideoSessionTests : IDisposable
         Assert.Equal(0, cache.Bytes);
         Assert.Equal(3, Shown(cache, id, 0.35));
         Assert.Equal(1, cache.VideoSessions);
-        // The frame shown, 64 x 48 x 4 bytes, counted in the cache's budget (synchronous, the session decodes to it).
-        Assert.Equal(64L * 48 * 4, cache.Bytes);
+        // The frame shown, what its allocation holds (64 x 48: 12,415 bytes), counted in the cache's budget (synchronous, the session decodes to it).
+        Assert.Equal(12_415L, cache.Bytes);
 
         _time.Advance(TimeSpan.FromSeconds(31));
         var other = _store.Add("clip-vp9.webm");
         Assert.Equal(0, Shown(cache, other, 0));
         Assert.Equal(1, cache.VideoSessions);
-        Assert.Equal(64L * 48 * 4, cache.Bytes); // the closed session's frame is gone; the new one's first frame
+        Assert.Equal(12_415L, cache.Bytes); // the closed session's frame is gone; the new one's first frame
     }
 
     [Fact]
@@ -780,7 +780,7 @@ public sealed class VideoSessionTests : IDisposable
         var id = _store.Add("clip-h264.mp4");
         Assert.Equal(3, Shown(cache, id, 0.35));
         Assert.Equal(1, cache.VideoSessions);
-        Assert.Equal(64L * 48 * 4, cache.Bytes);
+        Assert.Equal(12_415L, cache.Bytes);
 
         time.Advance(TimeSpan.FromSeconds(29));
         Assert.Equal(1, cache.VideoSessions);
@@ -792,8 +792,8 @@ public sealed class VideoSessionTests : IDisposable
     [Fact]
     public void FramesOverTheBudget_PushOutPictureFrames()
     {
-        // A budget a byte short of a video frame and a 40 x 30 picture: the video's frame counts, so the picture goes.
-        var cache = Cache(budget: 64L * 48 * 4 + 40 * 30 * 4 - 1);
+        // A budget a byte short of a video frame (12,415 bytes) and a 40 x 30 picture: the video's frame counts, so the picture goes.
+        var cache = Cache(budget: 12_415L + 40 * 30 * 4 - 1);
         using var png = SKImage.FromBitmap(new SKBitmap(40, 30)).Encode(SKEncodedImageFormat.Png, 100);
         var picture = _store.Add(png.ToArray());
         var pictureLookup = cache.Get(picture, 0, MediaPlayback.Loop);
@@ -802,7 +802,46 @@ public sealed class VideoSessionTests : IDisposable
 
         var id = _store.Add("clip-h264.mp4");
         Assert.Equal(1, Shown(cache, id, 0.1));
-        Assert.Equal(64L * 48 * 4, cache.Bytes);
+        Assert.Equal(12_415L, cache.Bytes);
+    }
+
+    [Theory]
+    [InlineData(40, 40, 7_807L)]
+    [InlineData(1, 8192, 524_415L)]
+    [InlineData(64, 48, 12_415L)] // a width that is a multiple of 16: no row padding, still 127 bytes more than w x h x 4
+    [InlineData(1280, 720, 3_686_527L)]
+    public void AVideoFrameHolds_ItsLayoutsRowsAndPadding_AndItsFirstPixelsAlignmentSlack(int width, int height, long held)
+    {
+        var (rowBytes, bytes) = VideoDecoder.Layout(width, height);
+        Assert.Equal(bytes + VideoDecoder.FrameAlignment - 1, VideoDecoder.FrameAllocation(width, height));
+        Assert.Equal(held, VideoDecoder.FrameAllocation(width, height));
+        Assert.Equal((long)rowBytes * height + 2 * VideoDecoder.FrameAlignment - 1, held);
+        using var data = VideoDecoder.FrameData(width, height, out _)!;
+        Assert.Equal(bytes, (long)data.Size); // the frame's own part of the block FrameAllocation sizes
+    }
+
+    [Theory]
+    [InlineData("small-h264-40x40.mp4", 40, 40, 7_807L)]
+    [InlineData("small-h264-26x14.mp4", 26, 14, 14 * 128 + 127L)]
+    [InlineData("clip-h264.mp4", 64, 48, 12_415L)]
+    public void AVideoFramesSample_IsChargedTheBytesItsAllocationHolds_NotWidthTimesHeightTimesFour(string clip, int width, int height, long held)
+    {
+        var cache = Cache();
+        var id = _store.Add(clip);
+        var lookup = cache.GetVideo(id, 0, MediaPlayback.Loop, null, null);
+        Assert.True(lookup.State == MediaState.Ready, $"{lookup.State}: {lookup.Problem}");
+        var sample = lookup.Sample!;
+        try
+        {
+            Assert.Equal((width, height), (sample.Image!.Width, sample.Image.Height));
+            Assert.Equal(held, sample.Bytes);
+            Assert.NotEqual((long)width * height * 4, sample.Bytes);
+            Assert.Equal(held, cache.Bytes); // the one frame the session holds is the one charged to the budget
+        }
+        finally
+        {
+            sample.Release();
+        }
     }
 
     [Theory]

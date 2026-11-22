@@ -195,6 +195,34 @@ public sealed class MediaSampleCacheTests
     }
 
     [Fact]
+    public void A_picture_decoded_by_Skia_is_charged_its_width_times_height_times_four()
+    {
+        // Pinned: only a video frame (padded rows) is charged what its allocation holds.
+        var store = new MemoryAssets();
+        using var bitmap = new SKBitmap(5, 3);
+        using var png = SKImage.FromBitmap(bitmap).Encode(SKEncodedImageFormat.Png, 100);
+        store.Assets["png"] = png.ToArray();
+        store.Assets["gif"] = TestGif.Build(6, 2, new TestGif.Frame(0, 0, 6, 2, 1));
+        using var media = new MediaSampleCache(store, new MediaSampleCacheOptions { Synchronous = true });
+        var still = media.Get("png", 0, MediaPlayback.Loop).Sample!;
+        Assert.Equal(60L, still.Bytes);
+        still.Release();
+        Assert.Equal(60L, media.Bytes);
+        var animated = media.Get("gif", 0, MediaPlayback.Loop).Sample!;
+        Assert.Equal(48L, animated.Bytes);
+        animated.Release();
+        Assert.Equal(60L + 48, media.Bytes);
+
+        using var image = SKImage.FromBitmap(bitmap);
+        var sample = MediaSample.FromImage(image.Subset(new SKRectI(0, 0, 5, 3))!);
+        Assert.Equal(60L, sample.Bytes);
+        sample.Release();
+        var scaled = MediaSample.FromImage(image.Subset(new SKRectI(0, 0, 5, 3))!, 50, 30);
+        Assert.Equal(60L, scaled.Bytes); // the pixels held, not the natural size
+        scaled.Release();
+    }
+
+    [Fact]
     public void An_asset_no_tick_asks_for_is_dropped_on_the_clock_with_no_later_lookup()
     {
         var store = new MemoryAssets();

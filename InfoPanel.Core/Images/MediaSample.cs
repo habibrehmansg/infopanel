@@ -28,6 +28,10 @@ namespace InfoPanel.Images
         public static MediaSample FromImage(SKImage image) =>
             new(image, null, image.Width, image.Height, (long)image.Width * image.Height * 4);
 
+        /// <summary>A raster frame that holds <paramref name="bytes"/> in memory (a video frame, whose rows are padded); the sample takes ownership of <paramref name="image"/>.</summary>
+        public static MediaSample FromImage(SKImage image, long bytes) =>
+            new(image, null, image.Width, image.Height, bytes);
+
         /// <summary>
         /// A raster frame decoded at its own pixel size for media whose natural size is <paramref name="width"/> ×
         /// <paramref name="height"/> (a video decoded smaller than its own size): laid out at the natural size, drawn
@@ -35,6 +39,10 @@ namespace InfoPanel.Images
         /// </summary>
         public static MediaSample FromImage(SKImage image, float width, float height) =>
             new(image, null, width, height, (long)image.Width * image.Height * 4);
+
+        /// <summary><see cref="FromImage(SKImage, float, float)"/> for a frame that holds <paramref name="bytes"/> in memory (a video frame, whose rows are padded).</summary>
+        public static MediaSample FromImage(SKImage image, float width, float height, long bytes) =>
+            new(image, null, width, height, bytes);
 
         /// <summary>A vector picture drawn at <paramref name="width"/> × <paramref name="height"/> natural size; the sample takes ownership.</summary>
         public static MediaSample FromPicture(SKPicture picture, float width, float height) =>

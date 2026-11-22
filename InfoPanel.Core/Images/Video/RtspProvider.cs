@@ -479,7 +479,8 @@ public sealed class RtspProvider : IMediaProvider, IDisposable
                     stream.SetCeiling(pixels);
                     Settle(camera, run, pixels * BytesPerPixel);
                 }
-                Publish(camera, run, MediaSample.FromImage(stream.Convert()));
+                var frame = stream.Convert();
+                Publish(camera, run, MediaSample.FromImage(frame, VideoDecoder.FrameAllocation(frame.Width, frame.Height)));
             }
         }
         catch (RtspException e) when (relay.Problem is null && (e.Changed || e.Status.Code == "media.malformed"))
