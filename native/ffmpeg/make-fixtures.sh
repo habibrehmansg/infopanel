@@ -49,6 +49,18 @@ make clip-av1-10bit.webm -c:v libsvtav1 -pix_fmt yuv420p10le -crf 10 -g 10 -svta
 echo "camera-h264-640x480.mp4 $(wc -c < "$OUT/camera-h264-640x480.mp4" | tr -d ' ') bytes"
 make camera-h264-444p10.mp4 -c:v libx264 -pix_fmt yuv444p10le -crf 8 -g 10 -bf 0 -x264-params log-level=error
 
+# Small pictures whose width isn't a multiple of 16 (FFmpeg's x86 converters write blocks of 16 pixels): 30 frames at
+# 30 fps (1 s), H.264 Main, frame i drawn in the colour of frame floor(i / 3) of the table above.
+small() {
+  local size="$1" name="$2"
+  "$FFMPEG" "${GLOBAL[@]}" -f lavfi -i "color=c=black:s=$size:r=30:d=1" "${OUTPUT[@]}" \
+    -vf "format=rgb24,geq=r=floor(N/3)*25:g=250-floor(N/3)*25:b=40+170*(floor(N/3)-2*floor(N/6))" \
+    -c:v libx264 -profile:v main -pix_fmt yuv420p -crf 8 -g 30 -bf 0 -x264-params log-level=error "$OUT/$name"
+  echo "$name $(wc -c < "$OUT/$name" | tr -d ' ') bytes"
+}
+small 40x40 small-h264-40x40.mp4
+small 26x14 small-h264-26x14.mp4
+
 # Containers the probe reads holding a codec outside the list: refused as media.codec, never decoded.
 make outside-mpeg2.mkv -c:v mpeg2video -q:v 2
 make outside-qtrle.mov -c:v qtrle

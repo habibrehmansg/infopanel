@@ -7,6 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <RootNamespace>InfoPanel.Core.Tests</RootNamespace>
+    <!-- The video conversion tests call FFmpeg's scaler through the engine's function pointers. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Run through VSTest (xunit.runner.visualstudio), so dotnet test filters by trait (Category=...) work
          without opting the repo into the Microsoft.Testing.Platform `dotnet test` mode. -->
     <IsTestingPlatformApplication>false</IsTestingPlatformApplication>

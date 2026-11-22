@@ -931,4 +931,53 @@ public sealed class VideoSessionTests : IDisposable
         Assert.Equal(1, Wait(1.1, 1));
         Assert.Equal(5, Wait(1.5, 5));
     }
+
+    [Theory]
+    [InlineData("small-h264-40x40.mp4", 40, 40)]
+    [InlineData("small-h264-26x14.mp4", 26, 14)]
+    public void InARenderLoop_ASmallClipLoopsForSeconds_InFramesLaidOutForTheScaler_AndStopsCleanly(string clip, int width, int height)
+    {
+        // A picture whose width isn't a multiple of 16, decoded at its own size by its own thread: FFmpeg's x86 converters
+        // write whole blocks of 16 pixels, so every frame has the layout that holds them (VideoDecoder.Layout).
+        var cache = Cache(synchronous: false);
+        var id = _store.Add(clip);
+        var (rowBytes, _) = VideoDecoder.Layout(width, height);
+        var seen = new HashSet<int>();
+        // Three loops of the 1 s clip, 30 frames each: each frame's time asked for until its frame shows.
+        for (var tick = 0; tick < 90; tick++)
+        {
+            var seconds = tick / 30.0;
+            var expected = tick % 30 / 3; // frame i has the colour of the table's frame i / 3
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while (true)
+            {
+                var lookup = cache.GetVideo(id, seconds, MediaPlayback.Loop, null, null);
+                Assert.True(lookup.State != MediaState.Failed, $"{lookup.State}: {lookup.Problem}");
+                if (lookup.Sample is { } sample)
+                {
+                    var image = sample.Image!;
+                    Assert.Equal((width, height), (image.Width, image.Height));
+                    using (var pixels = image.PeekPixels())
+                    {
+                        Assert.Equal(rowBytes, pixels.RowBytes);
+                        Assert.Equal(0, (long)pixels.GetPixels() % VideoDecoder.FrameAlignment);
+                    }
+                    var frame = FrameOf(sample);
+                    sample.Release();
+                    if (frame == expected)
+                    {
+                        seen.Add(tick);
+                        break;
+                    }
+                }
+                Assert.True(DateTime.UtcNow < deadline, $"frame {expected} never showed at {seconds:0.###} s");
+                Thread.Sleep(1);
+            }
+        }
+        Assert.Equal(90, seen.Count);
+
+        cache.Dispose();
+        Assert.Equal(0, cache.VideoSessions);
+        Assert.True(_store.AllClosed(id), "the decoder's stream is still open");
+    }
 }

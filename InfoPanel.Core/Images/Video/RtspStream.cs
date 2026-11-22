@@ -395,12 +395,11 @@ internal sealed unsafe class RtspStream : IDisposable
             if (_sws is null) throw new RtspException("media.malformed", $"The camera's pixel format ({format}) can't be converted.");
         }
         var info = new SKImageInfo(w, h, SKImageInfo.PlatformColorType, SKAlphaType.Unpremul);
-        using var data = SKData.Create(info.BytesSize64) ?? throw new RtspException("media.provider", "No memory for the frame.");
-        var dst = (byte*)data.Data;
-        var dstStride = info.RowBytes;
-        var rows = _f.sws_scale(_sws, (byte**)((byte*)_frame + FFmpegAbi.FrameData), (int*)((byte*)_frame + FFmpegAbi.FrameLinesize), 0, h, &dst, &dstStride);
+        // Laid out as the video decoder lays out its frames (VideoDecoder.Layout): FFmpeg's scaler writes whole blocks of pixels.
+        using var data = VideoDecoder.FrameData(w, h, out var rowBytes) ?? throw new RtspException("media.provider", "No memory for the frame.");
+        var rows = VideoDecoder.Scale(_f, _sws, (byte**)((byte*)_frame + FFmpegAbi.FrameData), (int*)((byte*)_frame + FFmpegAbi.FrameLinesize), h, (byte*)data.Data, rowBytes);
         if (rows <= 0) throw new RtspException("media.malformed", "The frame could not be converted.");
-        return SKImage.FromPixels(info, data, info.RowBytes) ?? throw new RtspException("media.provider", "No memory for the frame.");
+        return SKImage.FromPixels(info, data, rowBytes) ?? throw new RtspException("media.provider", "No memory for the frame.");
     }
 
     private static byte[] Utf8(string s) => Encoding.UTF8.GetBytes(s + "\0");

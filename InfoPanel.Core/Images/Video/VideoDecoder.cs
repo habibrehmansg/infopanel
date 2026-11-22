@@ -108,6 +108,9 @@ internal sealed unsafe class VideoDecoder : IDisposable
     public (int Width, int Height, int Format) FrameShape =>
         (Field<int>(_frame, FFmpegAbi.FrameWidth), Field<int>(_frame, FFmpegAbi.FrameHeight), Field<int>(_frame, FFmpegAbi.FrameFormat));
 
+    /// <summary>The decoded frame itself, FFmpeg's (tests convert it themselves too).</summary>
+    internal void* Frame => _frame;
+
     private static T Field<T>(void* p, int offset) where T : unmanaged => *(T*)((byte*)p + offset);
 
     private static void SetField<T>(void* p, int offset, T value) where T : unmanaged => *(T*)((byte*)p + offset) = value;
@@ -539,28 +542,71 @@ internal sealed unsafe class VideoDecoder : IDisposable
         if (_sws is null || w != _swsWidth || h != _swsHeight || format != _swsFormat)
         {
             if (_sws is not null) _f.sws_freeContext(_sws);
-            var flags = Width < w || Height < h ? FFmpegAbi.SwsArea : FFmpegAbi.SwsBilinear;
-            _sws = _f.sws_getContext(w, h, format, Width, Height, Target, flags, null, null, null);
+            _sws = _f.sws_getContext(w, h, format, Width, Height, Target, ScaleFlags(w, h, Width, Height), null, null, null);
             (_swsWidth, _swsHeight, _swsFormat) = (w, h, format);
             if (_sws is null) throw new VideoException(MediaProbe.MalformedCode, $"The video's pixel format ({format}) can't be converted.");
         }
         var info = new SKImageInfo(Width, Height, SKImageInfo.PlatformColorType, SKAlphaType.Unpremul);
-        var data = SKData.Create(info.BytesSize64);
+        var data = FrameData(Width, Height, out var rowBytes);
         if (data is null) throw new VideoException(MediaProbe.MalformedCode, "No memory for the frame.");
         try
         {
-            var dst = (byte*)data.Data;
-            var dstStride = info.RowBytes;
             var srcData = (byte**)((byte*)frame + FFmpegAbi.FrameData);
             var srcStride = (int*)((byte*)frame + FFmpegAbi.FrameLinesize);
-            var rows = _f.sws_scale(_sws, srcData, srcStride, 0, h, &dst, &dstStride);
+            var rows = Scale(_f, _sws, srcData, srcStride, h, (byte*)data.Data, rowBytes);
             if (rows <= 0) throw new VideoException(MediaProbe.MalformedCode, "The frame could not be converted.");
-            return SKImage.FromPixels(info, data, info.RowBytes) ?? throw new VideoException(MediaProbe.MalformedCode, "No memory for the frame.");
+            return SKImage.FromPixels(info, data, rowBytes) ?? throw new VideoException(MediaProbe.MalformedCode, "No memory for the frame.");
         }
         finally
         {
             data.Dispose(); // the image holds its own reference
         }
+    }
+
+    /// <summary>The scaler's flags for a <paramref name="w"/> x <paramref name="h"/> picture scaled to <paramref name="width"/> x <paramref name="height"/>.</summary>
+    internal static int ScaleFlags(int w, int h, int width, int height) => width < w || height < h ? FFmpegAbi.SwsArea : FFmpegAbi.SwsBilinear;
+
+    /// <summary>The alignment of a converted frame's rows and first pixel, and the padding after its last row.</summary>
+    internal const int FrameAlignment = 64;
+
+    /// <summary>
+    /// A converted frame's row bytes and the bytes its pixels are given, at <paramref name="width"/> x <paramref name="height"/>:
+    /// laid out as FFmpeg lays out the pictures it allocates itself, which its scaler is written for (libavutil's
+    /// <c>av_frame_get_buffer</c>: the buffer size and data pointer aligned for the CPU's vector instructions, at most 64
+    /// bytes, with padding after the last row). FFmpeg's converters write whole blocks of pixels, so a row may be written
+    /// up to its next 64-byte boundary (FFmpeg 9.0's x86 YUV to RGB converters write blocks of 16 pixels): in a frame
+    /// packed tightly, 4 bytes a pixel, the last row's block runs past the frame into memory something else owns.
+    /// </summary>
+    internal static (int RowBytes, long Bytes) Layout(int width, int height)
+    {
+        var rowBytes = (width * 4 + FrameAlignment - 1) / FrameAlignment * FrameAlignment;
+        return (rowBytes, (long)rowBytes * height + FrameAlignment);
+    }
+
+    /// <summary>
+    /// The pixels of a <paramref name="width"/> x <paramref name="height"/> frame, laid out as <see cref="Layout"/> gives,
+    /// its first pixel <see cref="FrameAlignment"/>-byte aligned; null without the memory.
+    /// </summary>
+    internal static SKData? FrameData(int width, int height, out int rowBytes)
+    {
+        (rowBytes, var bytes) = Layout(width, height);
+        using var block = SKData.Create(bytes + FrameAlignment - 1);
+        if (block is null) return null;
+        var offset = (FrameAlignment - (long)((ulong)block.Data % FrameAlignment)) % FrameAlignment;
+        return block.Subset((ulong)offset, (ulong)bytes); // shares the block's memory and keeps it alive
+    }
+
+    /// <summary>
+    /// Converts <paramref name="srcHeight"/> rows of a picture (its planes and strides) into <paramref name="dst"/>, rows
+    /// <paramref name="rowBytes"/> apart, laid out as <see cref="Layout"/> gives: the rows written, or FFmpeg's error.
+    /// FFmpeg takes the destination's planes and strides as arrays of four and reads all four, so the other three are
+    /// given as none.
+    /// </summary>
+    internal static int Scale(FFmpeg f, void* sws, byte** srcData, int* srcStride, int srcHeight, byte* dst, int rowBytes)
+    {
+        var planes = stackalloc byte*[4] { dst, null, null, null };
+        var strides = stackalloc int[4] { rowBytes, 0, 0, 0 };
+        return f.sws_scale(sws, srcData, srcStride, 0, srcHeight, planes, strides);
     }
 
     /// <summary>FFmpeg's pixel format matching Skia's platform colour type.</summary>
