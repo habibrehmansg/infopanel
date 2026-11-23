@@ -1,5 +1,8 @@
 **This is a pre-release** of InfoPanel 2.0. Try it, and tell us what breaks.
 
+**The editor is invite-only during the beta.** **Open Editor** opens the editor in your browser, and it asks you to
+sign in: for now, only invited people can.
+
 ## Install on a Mac (Apple silicon, macOS 15 or later)
 
 1. Download `InfoPanel-<version>-mac-arm64.dmg` and open it.
